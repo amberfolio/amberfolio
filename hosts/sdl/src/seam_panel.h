@@ -43,7 +43,7 @@
 // --------------------------------
 //
 // This file builds rows out of a `seam_engine` and paints them. Turning
-// a seam on is `main()`'s, through the same `enable()`/`disable()` a
+// a seam on is `overlays.h`'s, through the same `enable()`/`disable()` a
 // `--seam` flag takes, with the refusal reported: a panel that recorded a
 // choice it had not made would be the one failure a fail-closed toggle
 // surface cannot have.

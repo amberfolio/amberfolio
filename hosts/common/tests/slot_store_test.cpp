@@ -56,13 +56,14 @@ using machine::file_event;
 using machine::journal_kind;
 using machine::vfs_error;
 
-/// The names this store owns, and the program's own slot files it
+/// The names this store owns, the two an earlier build kept between saves
+/// and `attach()` now takes away, and the program's own slot files it
 /// watches for. Spelled out, because they are the interface a player's
 /// directory sees.
-constexpr std::string_view working_path = "SAVE\\AFMAP.DAT";
+constexpr std::string_view retired_map_path = "SAVE\\AFMAP.DAT";
 constexpr std::string_view slot_a_path = "SAVE\\AFMAPA.DAT";
 constexpr std::string_view slot_b_path = "SAVE\\AFMAPB.DAT";
-constexpr std::string_view log_working_path = "SAVE\\AFSEEN.DAT";
+constexpr std::string_view retired_log_path = "SAVE\\AFSEEN.DAT";
 constexpr std::string_view log_slot_a_path = "SAVE\\AFSEENA.DAT";
 constexpr std::string_view log_slot_b_path = "SAVE\\AFSEENB.DAT";
 constexpr std::string_view game_slot_a = "SAVE\\SAVGAMA.DAT";
@@ -281,7 +282,7 @@ TEST(AutomapSidecar, AnOverlandRecordSurvivesTheRoundTrip) {
 TEST(AutomapSidecar, AFileFromTheVersionBeforeTheOverlandStillOpens) {
   // Laid out from version 1's own documented shape (automap.h) rather
   // than written by anything here: the point is that a player's existing
-  // `AFMAP.DAT` opens, and a test that produced it with today's writer
+  // `AFMAP<L>.DAT` opens, and a test that produced it with today's writer
   // would only be agreeing with itself.
   constexpr std::size_t header = machine::automap_sidecar_header_bytes;
   constexpr std::size_t stride = machine::automap_sidecar_v1_record_bytes;
@@ -368,54 +369,66 @@ TEST(SlotStore, OffItReadsNothingAndWritesNothing) {
   rig r;
   r.store.attach(*r.box);
   r.explore(3, 0, 0, 4, 4);
-  r.store.changed();
   r.store.saw(event_of(file_action::create, game_slot_a));
   r.store.saw(event_of(file_action::close, game_slot_a));
 
-  EXPECT_FALSE(r.has(working_path));
   EXPECT_FALSE(r.has(slot_a_path));
   EXPECT_EQ(r.store.writes(), 0u);
   EXPECT_EQ(r.store.reads(), 0u);
 }
 
-TEST(SlotStore, OnItWritesTheWorkingTableWhenTheMapMoves) {
-  rig r;
-  r.store.enable(true);
-  r.store.attach(*r.box);
-  EXPECT_EQ(r.store.reads(), 0u) << "there is nothing there to read yet";
-
-  r.explore(3, 0, 0, 4, 4);
-  r.store.changed();
-
-  ASSERT_TRUE(r.has(working_path));
-  EXPECT_EQ(r.store.writes(), 1u);
-  EXPECT_EQ(r.store.trouble(), slot_trouble::none);
-
-  const std::vector<std::uint8_t> written = r.bytes_of(working_path);
-  automap_state read_back;
-  ASSERT_TRUE(read_back.read_sidecar(written));
-  const automap_record* map = read_back.find(3, 0, 0);
-  ASSERT_NE(map, nullptr);
-  EXPECT_TRUE(automap_state::seen(*map, 4, 4));
-}
-
-TEST(SlotStore, AWorkingTableComesBackWhenTheNextMachineAttaches) {
+TEST(SlotStore, ANewMachineStartsWithNothingWhateverIsOnTheDisk) {
+  // Every run starts at the program's main menu with no party in it. A
+  // map read in here would be overwritten by the first load and handed to
+  // a new party by the first *Begin adventuring*, which is the bug that
+  // retired the file that follows the machine between saves.
   rig first;
   first.store.enable(true);
   first.store.attach(*first.box);
   first.explore(3, 0, 0, 6, 6);
-  first.store.changed();
-  const std::vector<std::uint8_t> written = first.bytes_of(working_path);
+  first.cite(journal_kind::tale, 4);
+  first.store.saw(event_of(file_action::create, game_slot_a));
+  first.store.saw(event_of(file_action::close, game_slot_a));
+  const std::vector<std::uint8_t> map = first.bytes_of(slot_a_path);
+  const std::vector<std::uint8_t> log = first.bytes_of(log_slot_a_path);
 
   rig second;
-  second.put(working_path, written);
+  second.put(slot_a_path, map);
+  second.put(log_slot_a_path, log);
+  // Under the names an earlier build read at startup, too.
+  second.put(retired_map_path, map);
+  second.put(retired_log_path, log);
   second.store.enable(true);
   second.store.attach(*second.box);
 
-  EXPECT_EQ(second.store.reads(), 1u);
-  const automap_record* map = second.maps().find(3, 0, 0);
-  ASSERT_NE(map, nullptr);
-  EXPECT_TRUE(automap_state::seen(*map, 6, 6));
+  EXPECT_EQ(second.store.reads(), 0u);
+  EXPECT_EQ(second.maps().records_used(), 0u);
+  EXPECT_TRUE(second.log.seen().empty());
+}
+
+TEST(SlotStore, AttachTakesAwayTheFilesAnEarlierBuildKeptBetweenSaves) {
+  rig r;
+  const std::array<std::uint8_t, 4> stale{'A', 'F', 'M', 2};
+  r.put(retired_map_path, stale);
+  r.put(retired_log_path, stale);
+  r.put(slot_a_path, stale);
+  r.store.enable(true);
+  r.store.attach(*r.box);
+
+  EXPECT_FALSE(r.has(retired_map_path));
+  EXPECT_FALSE(r.has(retired_log_path));
+  EXPECT_TRUE(r.has(slot_a_path)) << "a slot's own file is not one of them";
+  EXPECT_EQ(r.store.trouble(), slot_trouble::none);
+}
+
+TEST(SlotStore, OffAttachLeavesEveryFileWhereItIs) {
+  rig r;
+  const std::array<std::uint8_t, 4> stale{'A', 'F', 'M', 2};
+  r.put(retired_map_path, stale);
+  r.store.attach(*r.box);
+
+  EXPECT_TRUE(r.has(retired_map_path))
+      << "a player who has not asked for sidecars has not asked for this";
 }
 
 TEST(SlotStore, ASavedSlotGetsItsOwnSnapshot) {
@@ -430,7 +443,8 @@ TEST(SlotStore, ASavedSlotGetsItsOwnSnapshot) {
 
   EXPECT_EQ(r.store.slot(), 'A');
   ASSERT_TRUE(r.has(slot_a_path)) << "the snapshot";
-  ASSERT_TRUE(r.has(working_path)) << "and the working table follows it";
+  EXPECT_FALSE(r.has(retired_map_path)) << "and nothing beside it";
+  EXPECT_EQ(r.store.writes(), 1u);
 
   automap_state snapshot;
   ASSERT_TRUE(snapshot.read_sidecar(r.bytes_of(slot_a_path)));
@@ -524,7 +538,7 @@ TEST(SlotStore, TheLoadMenuLookingAtEverySlotIsNotNineLoads) {
 
   EXPECT_EQ(r.store.slot(), 'B') << "the save, and neither of the looks";
   const automap_record* here = r.maps().find(3, 0, 0);
-  ASSERT_NE(here, nullptr) << "and the working table is untouched";
+  ASSERT_NE(here, nullptr) << "and the table in the machine is untouched";
   EXPECT_TRUE(automap_state::seen(*here, 7, 7));
   EXPECT_EQ(r.maps().find(8, 29, 4), nullptr) << "B's map was not pulled in";
 }
@@ -547,7 +561,6 @@ TEST(SlotStore, ItOnlyWatchesTheProgramsSaveSlots) {
 
   EXPECT_EQ(r.store.slot(), 0);
   EXPECT_EQ(r.store.writes(), 0u);
-  EXPECT_FALSE(r.has(working_path));
 }
 
 TEST(SlotStore, AFailedOpenIsNotASlotEvent) {
@@ -570,9 +583,12 @@ TEST(SlotStore, SomethingElseUnderOurNameIsRefusedAndSaidOutLoud) {
   rig r;
   const std::array<std::uint8_t, 12> impostor{'N', 'O', 'T', 'M', 'I', 'N',
                                               'E', 0,   0,   0,   0,   0};
-  r.put(working_path, impostor);
+  r.put(slot_a_path, impostor);
   r.store.enable(true);
   r.store.attach(*r.box);
+
+  r.store.saw(event_of(file_action::open, game_slot_a));
+  r.store.saw(event_of(file_action::close, game_slot_a));
 
   EXPECT_EQ(r.store.reads(), 0u);
   EXPECT_EQ(r.store.trouble(), slot_trouble::not_a_sidecar);
@@ -617,53 +633,10 @@ TEST(SlotStore, OffTheReadLogIsNeitherWrittenNorRead) {
   rig r;
   r.cite(journal_kind::entry, 12);
   r.store.attach(*r.box);
-  r.store.journal_changed();
   r.store.saw(event_of(file_action::create, game_slot_a));
   r.store.saw(event_of(file_action::close, game_slot_a));
 
-  EXPECT_FALSE(r.has(log_working_path));
   EXPECT_FALSE(r.has(log_slot_a_path));
-}
-
-TEST(SlotStore, OnItWritesTheWorkingLogWhenTheGameCitesSomething) {
-  rig r;
-  r.store.enable(true);
-  r.store.attach(*r.box);
-
-  r.cite(journal_kind::entry, 12);
-  r.store.journal_changed();
-
-  ASSERT_TRUE(r.has(log_working_path));
-  EXPECT_EQ(r.store.trouble(), slot_trouble::none);
-  EXPECT_FALSE(r.log.log_changed()) << "written means written down";
-
-  journal_store read_back;
-  ASSERT_TRUE(read_back.read_log_sidecar(r.bytes_of(log_working_path)));
-  ASSERT_EQ(read_back.seen().size(), 1u);
-  EXPECT_EQ(read_back.seen()[0].what.kind, journal_kind::entry);
-  EXPECT_EQ(read_back.seen()[0].what.number, 12);
-}
-
-TEST(SlotStore, AWorkingLogComesBackWhenTheNextRunAsksForIt) {
-  rig first;
-  first.store.enable(true);
-  first.store.attach(*first.box);
-  first.cite(journal_kind::tale, 4);
-  first.store.journal_changed();
-  const std::vector<std::uint8_t> written = first.bytes_of(log_working_path);
-
-  // A second run: the store's own file is read by a host first — which is
-  // why this is a second call and not part of `attach()` — and then the
-  // sidecar goes over the top.
-  rig second;
-  second.put(log_working_path, written);
-  second.store.enable(true);
-  second.store.attach(*second.box);
-  EXPECT_TRUE(second.log.seen().empty()) << "not yet: attach is the map's";
-
-  second.store.read_journal_log();
-  ASSERT_EQ(second.log.seen().size(), 1u);
-  EXPECT_EQ(second.log.seen()[0].what.number, 4);
 }
 
 TEST(SlotStore, ASavedSlotGetsItsOwnReadLog) {
@@ -676,7 +649,7 @@ TEST(SlotStore, ASavedSlotGetsItsOwnReadLog) {
   r.store.saw(event_of(file_action::close, game_slot_a));
 
   ASSERT_TRUE(r.has(log_slot_a_path)) << "the snapshot";
-  ASSERT_TRUE(r.has(log_working_path)) << "and the working log follows it";
+  EXPECT_FALSE(r.has(retired_log_path)) << "and nothing beside it";
 
   journal_store snapshot;
   ASSERT_TRUE(snapshot.read_log_sidecar(r.bytes_of(log_slot_a_path)));
@@ -726,13 +699,9 @@ TEST(SlotStore, ASlotWithNoReadLogComesBackEmpty) {
   rig r;
   r.store.enable(true);
   r.store.attach(*r.box);
+  // The last party's list, in the store and in the machine.
   r.cite(journal_kind::entry, 12);
-  // The last party's list, on the disk. Here so that what the load does
-  // to it is a *replacement* and can be seen as one: a working log that
-  // was never written would come back empty for the uninteresting
-  // reason that nothing writes an empty one (#385).
-  r.store.journal_changed();
-  ASSERT_TRUE(r.has(log_working_path));
+  ASSERT_EQ(r.log.seen().size(), 1u);
 
   // A save made before this was ever switched on. An empty log is the
   // truth about a playthrough nobody recorded one for, and keeping the
@@ -744,13 +713,6 @@ TEST(SlotStore, ASlotWithNoReadLogComesBackEmpty) {
   EXPECT_TRUE(r.log.seen().empty());
   EXPECT_TRUE(r.box->journal().seen().empty());
   EXPECT_EQ(r.store.trouble(), slot_trouble::none);
-
-  // And the working log was written over with the empty one, so a run
-  // that stopped here would not read the previous party's back next time.
-  ASSERT_TRUE(r.has(log_working_path));
-  journal_store working;
-  ASSERT_TRUE(working.read_log_sidecar(r.bytes_of(log_working_path)));
-  EXPECT_TRUE(working.seen().empty());
 }
 
 TEST(SlotStore, AMarkedRowStaysMarkedAcrossASaveAndALoad) {
@@ -780,15 +742,15 @@ TEST(SlotStore, SomethingElseUnderTheLogsNameIsRefusedAndSaidOutLoud) {
   rig r;
   const std::array<std::uint8_t, 12> impostor{'N', 'O', 'T', 'M', 'I', 'N',
                                               'E', 0,   0,   0,   0,   0};
-  r.put(log_working_path, impostor);
+  r.put(log_slot_a_path, impostor);
   r.store.enable(true);
   r.store.attach(*r.box);
-  r.cite(journal_kind::entry, 3);
-  r.store.read_journal_log();
+
+  r.store.saw(event_of(file_action::open, game_slot_a));
+  r.store.saw(event_of(file_action::close, game_slot_a));
 
   EXPECT_EQ(r.store.trouble(), slot_trouble::not_a_sidecar);
-  ASSERT_EQ(r.log.seen().size(), 1u)
-      << "a file that is not ours is a reason to say so, not to forget";
+  EXPECT_TRUE(r.log.seen().empty());
 }
 
 // ---------------------------------------------------------------------------
@@ -800,9 +762,8 @@ TEST(SlotStore, ASaveWithNothingAccumulatedPutsNoFileInTheDirectory) {
   // assertion (`hosts/sdl/src/sidecar_consent.h`): a player who says yes
   // and then saves before walking anywhere or being cited anything finds
   // their `SAVE\` exactly as they left it. Without this the save close
-  // wrote three eight-byte headers into it — the two working tables and
-  // the slot's own — every one of them a file of ours in a directory of
-  // theirs, saying nothing.
+  // wrote two eight-byte headers into it — the slot's map and its log —
+  // each a file of ours in a directory of theirs, saying nothing.
   rig r;
   r.store.enable(true);
   r.store.attach(*r.box);
@@ -810,9 +771,7 @@ TEST(SlotStore, ASaveWithNothingAccumulatedPutsNoFileInTheDirectory) {
   r.store.saw(event_of(file_action::create, game_slot_a));
   r.store.saw(event_of(file_action::close, game_slot_a));
 
-  EXPECT_FALSE(r.has(working_path));
   EXPECT_FALSE(r.has(slot_a_path));
-  EXPECT_FALSE(r.has(log_working_path));
   EXPECT_FALSE(r.has(log_slot_a_path));
   EXPECT_EQ(r.store.writes(), 0u);
   EXPECT_EQ(r.store.trouble(), slot_trouble::none);
@@ -877,9 +836,7 @@ TEST(SlotStoreDirectory, ACopyThatSavesBesideItsGameFilesGetsItsSidecarsThere) {
   r.store.saw(event_of(file_action::create, "POOLRAD\\SAVGAMA.DAT"));
   r.store.saw(event_of(file_action::close, "POOLRAD\\SAVGAMA.DAT"));
   EXPECT_EQ(r.store.slot(), 'A');
-  EXPECT_TRUE(r.has("POOLRAD\\AFMAP.DAT"));
   EXPECT_TRUE(r.has("POOLRAD\\AFMAPA.DAT"));
-  EXPECT_FALSE(r.has(working_path));
   EXPECT_FALSE(r.has(slot_a_path));
 }
 
@@ -899,7 +856,6 @@ TEST(SlotStoreDirectory, ACopyThatSavesOneFurtherDownGetsThemThere) {
   r.store.saw(event_of(file_action::close, "POOLRAD\\SAVE\\SAVGAMB.DAT"));
   EXPECT_EQ(r.store.slot(), 'B');
   EXPECT_TRUE(r.has("POOLRAD\\SAVE\\AFMAPB.DAT"));
-  EXPECT_TRUE(r.has("POOLRAD\\SAVE\\AFMAP.DAT"));
 }
 
 TEST(SlotStoreDirectory, ACopyThatDoesNotSayGetsNoSidecarsAndSaysSo) {
@@ -919,12 +875,11 @@ TEST(SlotStoreDirectory, ACopyThatDoesNotSayGetsNoSidecarsAndSaysSo) {
   EXPECT_STREQ(slot_trouble_name(r.store.trouble()), "no-save-directory");
 
   r.explore(3, 0, 0, 1, 1);
-  r.store.changed();
   r.store.saw(event_of(file_action::create, game_slot_a));
   r.store.saw(event_of(file_action::close, game_slot_a));
   EXPECT_EQ(r.store.writes(), 0u);
-  EXPECT_FALSE(r.has(working_path));
-  EXPECT_FALSE(r.has("OTHERDIR\\AFMAP.DAT"));
+  EXPECT_FALSE(r.has(slot_a_path));
+  EXPECT_FALSE(r.has("OTHERDIR\\AFMAPA.DAT"));
 }
 
 }  // namespace

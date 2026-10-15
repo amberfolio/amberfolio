@@ -86,7 +86,7 @@ if(NOT err MATCHES "${question}")
   message(FATAL_ERROR
     "a launch with a person in it was never asked.\nstderr: ${err}")
 endif()
-foreach(expected "AFMAP.DAT" "AFSEEN.DAT" "until there is something to put")
+foreach(expected "AFMAPA.DAT" "AFSEENA.DAT" "until there is something to put")
   if(NOT err MATCHES "${expected}")
     message(FATAL_ERROR
       "the question never said '${expected}'.\nstderr: ${err}")

@@ -742,6 +742,23 @@ TEST(dos_handles, reports_too_many_open_files_when_the_table_is_full) {
             dos_error_code(vfs_error::too_many_open_files));
 }
 
+TEST(dos_handles, a_reset_closes_the_files_a_program_left_open) {
+  rig r;
+
+  // Each round leaves one file open and resets the machine. The
+  // filesystem outlives every reset, so a reset that only forgot the
+  // handle would run it out of slots within `max_open_handles` rounds
+  // and refuse every open after that (#514).
+  r.write_asciz(path_area, "HELD.DAT");
+  for (std::size_t i = 0; i < 3 * memory_filesystem::max_open_handles; ++i) {
+    r.call(ah(0x3C), 0, 0, path_area);
+    ASSERT_FALSE(r.carry()) << "round " << i;
+    ASSERT_EQ(r.regs()[cpu::reg16::ax], 5u) << "round " << i;
+    r.pc().reset();
+    ASSERT_EQ(r.pc().dos().find(5), nullptr) << "round " << i;
+  }
+}
+
 // --- The standard handles ---------------------------------------------
 
 TEST(dos_standard_handles,
@@ -1153,6 +1170,24 @@ TEST(dos_current_directory, survives_a_reset_and_is_not_in_the_state) {
 
   r.pc().reset();
   EXPECT_EQ(r.pc().dos().current_directory(), path_named("\\POOLRAD"));
+}
+
+TEST(dos_exit, closes_the_files_the_program_left_open) {
+  rig r;
+  r.write_asciz(path_area, "HELD.DAT");
+  r.call(ah(0x3C), 0, 0, path_area);
+  ASSERT_FALSE(r.carry());
+
+  r.call(ah(0x4C));
+  ASSERT_EQ(r.pc().stop().reason, stop_reason::program_exited);
+  EXPECT_EQ(r.pc().dos().find(5), nullptr);
+  EXPECT_NE(r.pc().dos().find(1), nullptr);  // The standard handles stay.
+
+  // Every one of the backend's slots is free again.
+  for (std::size_t i = 0; i < memory_filesystem::max_open_handles; ++i) {
+    EXPECT_TRUE(r.fs->open(path_named("\\HELD.DAT"), open_mode::read_only).ok())
+        << "slot " << i;
+  }
 }
 
 }  // namespace

@@ -133,7 +133,12 @@ void machine::reset() {
   // The DOS handle table is the running program's state, not wiring —
   // unlike the handlers `install_dos_services()` installed, which
   // `services_.reset()` just proved it leaves alone. A warm boot gets the
-  // same five standard handles a cold one does.
+  // same five standard handles a cold one does. Its open files are closed
+  // on the filesystem first, which outlives the reset and would
+  // otherwise keep them open for good (dos.h, `close_files()`).
+  if (vfs_ != nullptr) {
+    dos_.close_files(*vfs_);
+  }
   dos_.reset();
 
   stop_ = {};
@@ -166,6 +171,8 @@ void machine::reset() {
   automap_.clear();
   // Nor has anything been cited at it, or read (journal.h).
   journal_.clear();
+  // Nor is a selection block on the screen (selection_margin.h).
+  margins_.clear();
 
   // The video BIOS's bookkeeping goes back to power-on state along with
   // everything else here: a reset machine has no mode set, exactly as a
@@ -256,10 +263,16 @@ cpu::step_status machine::step() {
   // seam pointed at a BIOS stub sees the state the handler left rather
   // than the state that reached it.
   //
-  // The cost when nothing is enabled is the `armed()` test alone.
+  // The cost when nothing is enabled is the `armed()` test alone. When
+  // something is, a step at an address no point is at costs `wants()`,
+  // two tests of two words, and `dispatch` is not called (seam.h, "The
+  // cost when it is off").
   if (seams_.armed()) {
-    seams_.dispatch(*this, cpu::physical_address(cpu_.regs()[cpu::sreg::cs],
-                                                 cpu_.regs().ip));
+    const std::uint32_t at =
+        cpu::physical_address(cpu_.regs()[cpu::sreg::cs], cpu_.regs().ip);
+    if (seams_.wants(at)) {
+      seams_.dispatch(*this, at);
+    }
   }
 
   // Last thing before the instruction, so that what is recorded is where

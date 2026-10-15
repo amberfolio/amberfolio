@@ -23,15 +23,16 @@ namespace {
 /// files are in it because "beside your saves" is not something a person
 /// can go and look at afterwards, and a file they can find is a file they
 /// can delete.
-constexpr std::array<std::string_view, 8> question{
+constexpr std::array<std::string_view, 9> question{
     "may this build keep your progress beside your saved games?",
     "  Two of the enhancements learn something as you play: which streets",
     "  the automap has drawn for you, and which journal entries the game",
     "  has sent you to. Neither survives the machine stopping.",
-    "  Kept, they go in AFMAP.DAT and AFSEEN.DAT - files of this project's",
-    "  own, in your game directory, in the folder your saves are in and",
-    "  never inside one. Your own files are never written to, and neither",
-    "  of these appears at all until there is something to put in it.",
+    "  Kept, each saved game gets its own pair: AFMAPA.DAT and AFSEENA.DAT",
+    "  beside slot A, and so on. They are files of this project's own, in",
+    "  your game directory, in the folder your saves are in and never",
+    "  inside one. Your own files are never written to, and none of these",
+    "  appears at all until there is something to put in it.",
 };
 
 constexpr std::string_view prompt = "keep them beside my saves? [y/n] ";

@@ -114,6 +114,18 @@ legs "$repo" --game-disk "$tmp/disk" --leg empty-single
 expect_code "a single leg with no same line is refused" 1
 expect_says "and says why" "checks nothing"
 
+# A `text` line is a digest of the program's own output, and a digest is
+# sixty-four hex characters: a short one would match nothing, forever,
+# and read as a screen that changed.
+leg short-text \
+  "kind single" \
+  "program MADEUP.EXE" \
+  "until 1000" \
+  "text 10 abc123"
+legs "$repo" --game-disk "$tmp/disk" --leg short-text
+expect_code "a text line with a short digest is refused" 1
+expect_says "and says what a digest is" "64 hex characters"
+
 # --- a leg that is malformed says which line, and does not run -----------
 leg no-kind \
   "program MADEUP.EXE" \
@@ -166,7 +178,7 @@ cp "$here"/../tests/visual/*.leg "$repo/tests/visual/" 2>/dev/null || true
 rm -f "$repo/tests/visual/empty-pair.leg" "$repo/tests/visual/empty-single.leg" \
       "$repo/tests/visual/no-kind.leg" "$repo/tests/visual/typo.leg" \
       "$repo/tests/visual/unknown-rect.leg" "$repo/tests/visual/no-store.leg" \
-      "$repo/tests/visual/good.leg"
+      "$repo/tests/visual/good.leg" "$repo/tests/visual/short-text.leg"
 mkdir -p "$repo/tests/visual"
 # Both of them: `rdr-art.leg` has a store of its own, because the
 # picture in it would move frames the cite-all legs have pinned

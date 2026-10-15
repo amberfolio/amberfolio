@@ -2,6 +2,7 @@
 
 #include "amberfolio/machine/platform.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 
@@ -165,6 +166,28 @@ bool audio_timeline::publish(ticks at, bool level) noexcept {
   if (have_published_ && at <= last_published_) {
     return false;
   }
+  last_published_ = at;
+  have_published_ = true;
+
+  // The producer's own record of what it has published, for the state
+  // serialization (state.h): FNV-1a over the tick's eight bytes and the
+  // level, the same mixing the framebuffer checks use. Taken before the
+  // ring is asked and whatever it answers: whether anybody is draining
+  // the ring is the host's business and must not be in the state (#444).
+  // Only the first `pinned_edges` are folded, which keeps the digest
+  // what it was when the ring itself set that limit.
+  if (published_ < pinned_edges) {
+    std::uint64_t hash = edge_digest_;
+    for (unsigned i = 0; i < 8; ++i) {
+      hash ^= static_cast<std::uint8_t>(at >> (8U * i));
+      hash *= 1099511628211ULL;
+    }
+    hash ^= level ? 1U : 0U;
+    hash *= 1099511628211ULL;
+    edge_digest_ = hash;
+    pinned_last_ = at;
+  }
+  ++published_;
 
   // The producer owns `head_`, so a relaxed load of its own value is
   // enough; `tail_` is the consumer's and has to be acquired, because
@@ -182,22 +205,6 @@ bool audio_timeline::publish(ticks at, bool level) noexcept {
   // the edge, and an acquiring consumer sees everything written before
   // it.
   head_.store(head + 1, std::memory_order_release);
-
-  last_published_ = at;
-  have_published_ = true;
-
-  // The producer's own record of what it has published, for the state
-  // serialization (state.h): FNV-1a over the tick's eight bytes and the
-  // level, the same mixing the framebuffer checks use.
-  ++published_;
-  std::uint64_t hash = edge_digest_;
-  for (unsigned i = 0; i < 8; ++i) {
-    hash ^= static_cast<std::uint8_t>(at >> (8U * i));
-    hash *= 1099511628211ULL;
-  }
-  hash ^= level ? 1U : 0U;
-  hash *= 1099511628211ULL;
-  edge_digest_ = hash;
 
   // And, if anybody asked, the edge itself. The branch is the whole cost
   // of the facility to a run that did not ask for it — the same bargain
@@ -220,6 +227,21 @@ bool audio_timeline::publish_chip(ticks at, std::uint8_t value) noexcept {
   if (chip_published_ != 0 && at < last_chip_at_) {
     return false;
   }
+  last_chip_at_ = at;
+
+  // The record first, whatever the ring will say, for the reason
+  // `publish()` gives (#444).
+  if (chip_published_ < pinned_chip_writes) {
+    std::uint64_t hash = chip_digest_;
+    for (unsigned i = 0; i < 8; ++i) {
+      hash ^= static_cast<std::uint8_t>(at >> (8U * i));
+      hash *= 1099511628211ULL;
+    }
+    hash ^= value;
+    hash *= 1099511628211ULL;
+    chip_digest_ = hash;
+  }
+  ++chip_published_;
 
   // The same ordering as `publish()`: the slot first, then the release
   // store that hands it over.
@@ -231,17 +253,6 @@ bool audio_timeline::publish_chip(ticks at, std::uint8_t value) noexcept {
   }
   chip_writes_[head % chip_write_capacity] = {.at = at, .value = value};
   chip_head_.store(head + 1, std::memory_order_release);
-
-  last_chip_at_ = at;
-  ++chip_published_;
-  std::uint64_t hash = chip_digest_;
-  for (unsigned i = 0; i < 8; ++i) {
-    hash ^= static_cast<std::uint8_t>(at >> (8U * i));
-    hash *= 1099511628211ULL;
-  }
-  hash ^= value;
-  hash *= 1099511628211ULL;
-  chip_digest_ = hash;
   return true;
 }
 
@@ -257,11 +268,13 @@ std::size_t audio_timeline::read_edge_log(std::span<audio_edge> out) noexcept {
 }
 
 void audio_timeline::save_state(state_sink& out) const {
-  out.u64(published_);
+  // What the digests cover, and no more (`pinned_edges`): the ring a host
+  // may or may not be draining is not machine state (#444).
+  out.u64(std::min(published_, pinned_edges));
   out.u64(edge_digest_);
   out.flag(have_published_);
-  out.u64(have_published_ ? last_published_ : 0);
-  out.u64(chip_published_);
+  out.u64(have_published_ ? pinned_last_ : 0);
+  out.u64(std::min(chip_published_, pinned_chip_writes));
   out.u64(chip_digest_);
 }
 
@@ -285,6 +298,7 @@ void audio_timeline::restart() noexcept {
   epoch_.fetch_add(1, std::memory_order_release);
   last_published_ = 0;
   have_published_ = false;
+  pinned_last_ = 0;
   published_ = 0;
   edge_digest_ = 1469598103934665603ULL;
   last_chip_at_ = 0;

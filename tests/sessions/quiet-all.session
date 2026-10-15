@@ -1,18 +1,26 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
 # M5-V1's subset check (#177), and the strongest form the fidelity
-# invariant takes here: every seam this build carries, all on at once,
-# and none of them triggered.
+# invariant takes here: every seam this build carries that draws nothing
+# until the player uses it, all on at once, and none of them triggered.
 # Its `identical` names `quiet-journal` rather than `quiet`, and that is
 # the claim: the reader alone moves an idle machine, because it splices
 # `Notes` onto a bar the game keeps redrawing (quiet-journal.session),
 # and adding the automap, the Encamp Fix, the explored overlay and all
 # three cheats on top of it changes nothing across all 90 checkpoints.
-# That is what "individually toggleable" has to mean: a subset of seams
-# is no more than the sum of what each one does.
+# That is what "individually toggleable" has to mean: a subset of seams is
+# no more than the sum of what each one does.
+# Left out, and each with a pair of its own: the faces, which are
+# alternatives and seen from the first text (quiet-font-sans), and
+# modern-controls, which draws on sight: the main menu's cursor from the
+# first frame the menu is drawn, the roster's numbers from the first time the
+# party list is, and every highlight in yellow (quiet-modern-controls).
+# quiet-all-on-sight is this run with modern-controls added, which is a
+# contrast against it.
 
-about every seam on at once with none of them triggered: the same
-about machine as the journal alone, checkpoint for checkpoint
+about every seam on at once that draws nothing until it is used, none of
+about them triggered: the same machine as the journal alone, checkpoint for
+about checkpoint
 disk external
 code-wheel-answered
 journal-store tests/visual/reader-store.txt

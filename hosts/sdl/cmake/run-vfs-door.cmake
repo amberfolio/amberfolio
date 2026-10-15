@@ -31,7 +31,7 @@ file(WRITE "${save_file}" "abc")
 # not what DOS writes, and deciding which is which is core's job and not
 # this host's (machine/vfs.h's `canonicalize_host_path`).
 execute_process(
-  COMMAND "${HOST}" "${DISK}" HELLO.EXE --headless
+  COMMAND "${HOST}" --no-config "${DISK}" HELLO.EXE --headless
     --vfs-list --vfs-get "SAVE/SAVE1.DAT" --vfs-remove "save\\save1.dat"
   RESULT_VARIABLE code
   OUTPUT_VARIABLE out

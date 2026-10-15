@@ -1,0 +1,58 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# TEXT-1: what the screen says, read back in the program's own font
+# (machine/screen_text.h), through leg 0's creation of a character: the
+# main menu, the race, gender, class and alignment lists, the name prompt
+# with the rolled character under it, the party menu, and the Modify
+# screen. Each `text` line holds one still's screen text - every cell's
+# character, ink and paper - to the digest the program's own output had
+# when this leg was driven. The text itself is the program's and is not
+# here.
+#
+# Over `por-pristine` (an empty SAVE\), on the shorter boot (#291).
+# `--wall none` makes the roll the same roll every run.
+
+about the screen read back as text through character creation
+kind single
+program START.EXE
+code-wheel-answered
+seam code-wheel
+until 258000000
+every 30
+
+# docs/playable.md leg 0, to the party menu; then MODIFY CHARACTER.
+key C@7550
+key Return@7700
+key Return@7850
+key Return@8000
+key Return@8150
+key Return@8300
+key Y@8500
+key B@8700
+key O@8730
+key B@8760
+key Return@8850
+key K@10100
+key E@10800
+key Y@11550
+key A@11900
+key A@12150
+key E@12400
+key M@12700
+
+# The main menu, each shortcut letter in its own ink.
+text 7440 978760cddb89a1c78638a02742e6051fb6dcbac68eb353b4360267118fea863f
+# Race, the first item in the highlight's ink.
+text 7650 c06337690995ba63dab367d805ab11bceaa4d5d98b92d12c6101a671d2f84b11
+# Gender.
+text 7740 c5faecc1dd753ea2c4c9b76769ca16b51fb0ea56d7ffc5e4ba12f80518d5723d
+# Class.
+text 7890 eb80b30ab752db8689355c796771c595dc3228f48cacae61f68133f58bba745d
+# Alignment.
+text 8100 b79bd833f856cf344410d133f1c94015cd5f7491fae6b9126c940fae26099112
+# The name prompt, typed, over the rolled character.
+text 8790 88597fc8d3474be8307517bfff8b74c6d0ad31dd1f96ec375f672beea51883c4
+# The party menu, with the character in the roster.
+text 12540 f04b23aedc4a00a463549f24b7ddf2938f891ebb0374975017db6ff4351b61e3
+# Modify, the stat being changed in its own ink.
+text 12960 0c3da33079de331dbf222d11e5e1d50c56d2f8a305055951f6ba61b53a5f3bd1

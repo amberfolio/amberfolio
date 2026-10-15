@@ -28,6 +28,12 @@ The rest (`sdl-host-vfs-door`, `sdl-host-presents-a-document`,
 `sdl-host-verifies-a-session`) are headless and belong to the doors they
 name.
 
+Host tests never read the developer's config (§2a): every launch passes
+`--no-config`, or `--config` with a file the test wrote (the two are refused
+together), and `scripts/check-host-tests.sh` fails one that says neither.
+`run-config-file.cmake` shows why: a config with every seam and
+`save-sidecars` on reaches a launch that lacks the flag and not one that has it.
+
 The windowed cases run **without** `--headless`, under SDL's `dummy` video
 and audio drivers with `SDL_RENDER_DRIVER=software`: SDL's real window,
 renderer, texture, audio stream and event queue, pointed at no hardware.
@@ -94,10 +100,10 @@ authority (`docs/machine.md` §5). The SHA-256 is the seam table's key
 | `--press KEY@FRAME[:down\|:up]` | post a real SDL key event at frame `FRAME`. `KEY` is any `SDL_GetScancodeFromName` name: `A`, `Escape`, `Left`, `Keypad 5`. Bare, the make and the break; `:down` the make only, so the key stays held (`Left Alt@7580:down`); `:up` the break only. `hosts/sdl/src/press_spec.h`. Repeatable. |
 | `--pull ID@FRAME` | pull a seam's trigger at the top of frame `FRAME` (#161, `docs/seams.md` §3a). Needs `--seam ID`, works headless, refused with `--replay`. Repeatable. |
 | `--steps N`, `--until TICKS` | bound the run, the only way to catch a hang. `--steps N` ends on step N exactly. |
-| `--dump PREFIX` | at the end of the run write `PREFIX.ppm` (composed frame), `PREFIX.wav` (the speaker and the Tandy chip rendered, the first minute) and `PREFIX.edges` (the speaker's edges, §4). |
-| `--dump-every N` | also `PREFIX-NNNNNN.ppm` every N frames, numbered in the frames `--press` counts. Needs `--dump`. |
+| `--dump PREFIX` | at the end of the run write `PREFIX.ppm` (composed frame), `PREFIX.txt` (its screen text, §10), `PREFIX.scene.json` (the scene, §13), `PREFIX.wav` (the speaker and the Tandy chip rendered, the first minute) and `PREFIX.edges` (the speaker's edges, §4). |
+| `--dump-every N` | also `PREFIX-NNNNNN.ppm`, `.txt` and `.scene.json` every N frames, numbered in the frames `--press` counts. Needs `--dump`. |
 | `--trace` | keep and print with the report the last 256 instructions, 64 service calls and 32 naming file calls; print each file the program names as it happens. |
-| `--watch OFF[:N]` | print a data-segment word when it changes. `OFF` is a hex offset in the data segment, `N` is 1 or 2 bytes, default 1. Repeatable. Reads `memory_map::ram()`, not the bus, so it disturbs no EGA latch. Line format: the comment atop `hosts/sdl/src/main.cpp`. |
+| `--watch OFF[:N]` | print a data-segment word when it changes. `OFF` is a hex offset in the data segment, `N` is 1 or 2 bytes, default 1. Repeatable. Reads `memory_map::ram()`, not the bus, so it disturbs no EGA latch. Line format: the comment atop `hosts/sdl/src/options.h`. |
 | `--seam ID` | turn one seam on (PLAN.md §5, `machine/seam.h`), refused unless the loaded program is the binary its addresses are facts about. Repeatable. |
 | `--seams` | list every seam this build carries, and exit. |
 | `--vfs-list`, `--vfs-get PATH`, `--vfs-remove PATH` | after the run: list the disk; print one file's size and SHA-256, never its bytes; delete one. |
@@ -109,7 +115,7 @@ authority (`docs/machine.md` §5). The SHA-256 is the seam table's key
 | `--wall now\|none\|YYYY-MM-DD[THH:MM[:SS[.CC]]]` | seed the wall clock (#320): this host's clock; unseeded (1 January 1980 plus uptime, which every recording in `tests/sessions/` was made on); or a stated date. Read once before the first instruction, recorded as a `wall` line. Refused with `--replay`. |
 | `--speed xt\|turbo\|at\|386` | which machine to be (`machine/clock.h`): 4, 2, 1 or 51/256 ticks a step, `xt` by default. Not a fast-forward. |
 | `--fast N\|max` | run virtual time N times faster than the wall, or unpaced. Only the loop's sleep changes (`platform.h`); the run is byte-identical. |
-| `--save-sidecars`, `--no-save-sidecars` | keep what this playthrough has accumulated beside its saves (M5-E2c #173, #351): the automap's exploration in `AFMAP.DAT` and the journal's read log in `AFSEEN.DAT`, in the save directory the copy's `POOL.CFG` names (§6), each with a snapshot per slot, never inside a save. A copy that names none gets none, and the end-of-run line says `trouble=no-save-directory`. Off by default, and a launch with a person in it is **asked** (#385, §2b); neither file appears until there is something to put in it. |
+| `--save-sidecars`, `--no-save-sidecars` | keep what this playthrough has accumulated beside its saves (M5-E2c #173, #351): the automap's exploration in `AFMAP<L>.DAT` and the journal's read log in `AFSEEN<L>.DAT`, written when the program saves slot `L` and read when it loads it, in the save directory the copy's `POOL.CFG` names (§6), never inside a save. Nothing follows the machine between saves: a new game starts empty. An `AFMAP.DAT` or `AFSEEN.DAT` an earlier build left there is removed at startup. A copy that names none gets none, and the end-of-run line says `trouble=no-save-directory`. Off by default, and a launch with a person in it is **asked** (#385, §2b); neither file appears until there is something to put in it. |
 | `--code-wheel-answered`, `--code-wheel-store PATH`, `--forget-code-wheel` | say the code-wheel challenge has been answered on this copy; where answered copies are remembered; forget this one (#290). |
 | `--journal PATH`, `--journal-store PATH`, `--journal-ocr PATH\|none`, `--journal-probe`, `--cite-all-journal` | ingest a journal; where its text lives; which OCR engine; add the synthetic probe edition; cite every entry onto the `Notes` log (`docs/journal.md`). |
 | `--volume 0-100`, `--mute` | how loudly to play it (§4); a run at 25% is the same run as one at 100%, to the last edge. |
@@ -123,6 +129,7 @@ authority (`docs/machine.md` §5). The SHA-256 is the seam table's key
 | **F11** | toggle the mute (#148) |
 | **F12** | step the volume through 25/50/75/100% and wrap (#148) |
 | **Pause/Break** | pull the trigger of every triggered seam that is on (#161) |
+| **right mouse button** | the toggle panel (§8), then the key card (§11), then closed |
 | **middle mouse button** | step the on-screen keyboard on: hidden, then each layout in turn, then hidden again (#377, §7) |
 | **left mouse button** | press the on-screen key under the pointer, while it is up |
 | **the four arrows, Return** | move the on-screen keyboard's focus and commit, **while it is up**; they reach the machine as usual when it is not |
@@ -147,6 +154,23 @@ takes — counted and recorded like any other key, so a replay releases them
 at the same tick — and never by writing the BDA shift flags (#313,
 `hosts/common/include/amberfolio/host/held_keys.h`). The page does the
 same on `blur` and on the tab going hidden.
+
+**A held physical key repeats on both hosts.** The operating system's
+auto-repeat of a held key reaches the machine as the same make code again,
+once per repeat, with no break between: SDL's `repeat` events on the
+desktop, the browser's repeating `keydown` on the page. That is what the
+original keyboard did in its own hardware, and the machine cannot tell a
+repeat from a make (`key_action::down`, `platform.h`): an ordinary key puts
+one keystroke in the BIOS ring per make, and a repeated Caps, Num or
+Scroll Lock make toggles its lock once (`machine/keyboard.h`). The rate is
+the player's keyboard's and the OS's; this project sets none. A recording
+holds each repeat as the `key ... down` line it is, a replay delivers them
+at their ticks, and nothing struck at the window reaches the machine
+during one. The host's *own* controls above ignore repeats — a held
+Return does not commit an on-screen key again, a held arrow does not walk
+the panel's focus — and a repeat follows whoever took its make, so
+stepping the on-screen keyboard on or off under a held arrow neither
+sends the machine a break it never had a make for nor swallows one it did.
 
 ### Traps
 
@@ -289,13 +313,13 @@ PATH` is an ingestion that happens once.
 ## 2b. The one question either host asks (#385)
 
 `--save-sidecars` / `saveSidecars(on)` writes files of this project's own
-into the copy the player has: `AFMAP.DAT` and `AFSEEN.DAT` in the folder
-its saves are in (`\SAVE\` on the archive release, §6), plus a snapshot
-per save slot. It is the one M6 surface that changes
+into the copy the player has: `AFMAP<L>.DAT` and `AFSEEN<L>.DAT` for
+each slot `L` the program saves, in the folder its saves are in (`\SAVE\`
+on the archive release, §6). It is the one M6 surface that changes
 something somebody else owns, so both hosts ask before they do, once, and
 keep the answer with the rest of the settings.
 
-**The desktop asks on stdin, from `settle_config`**, before SDL comes up
+**The desktop asks on stdin, from `settle_config`** (`launch_config.cpp`), before SDL comes up
 — the only surface this host has at that point, and where flag > config >
 default is already settled. **The page asks in a panel**, and the two
 buttons record an answer rather than applying one.
@@ -318,10 +342,11 @@ session and naming it rather than failing it — so a wrong answer here
 turns the whole session library into skips without anything going red.
 
 **Once, at install.** Turning the store on attaches it, and the attach
-reads the working exploration table with `read_sidecar`, which replaces
-every record in the machine. So it happens once per run, after the files
-are in and before the program is loaded, on both hosts — which is why the
-page's panel says a change takes effect at the next boot.
+reads where the copy saves, so it needs the files in; and it has to be
+watching before the program loads a slot, or that load's map is never
+read. So it happens once per run, after the files are in and before the
+program is loaded, on both hosts — which is why the page's panel says a
+change takes effect at the next boot.
 
 **Neither file appears until there is something to put in it.** A sidecar
 with no records is its header alone, and one of those is written *over* a
@@ -691,8 +716,12 @@ prints the chip's traffic at the end of any run that had some:
 amberfolio: tandy writes=1907 dropped=0
 ```
 
-`dropped` is the ring overflowing, sound the machine made and no host
-got. It should be zero; `psg_test.cpp`'s `ChipTimeline` suite pins the
+`writes` is every write the program made. `dropped` is the ring
+overflowing, sound the machine made and no host got, and it is a fact
+about the host and not the machine: a run nobody drains (a headless
+replay) drops what a window would have played, and the two hash alike
+(`AudioState` in `platform_test.cpp`; `docs/replay.md` §2). It should be
+zero in a window; `psg_test.cpp`'s `ChipTimeline` suite pins the
 ring's rules and `PsgSynth` the waveform.
 
 ---
@@ -927,7 +956,7 @@ rename or removal of either moves these numbers — `abi.h` says so at
 compares `major` against what it was written for and refuses before
 fetching the module.
 
-The ABI is 2.2: 1.1 added the two doors below (#228, #229), 1.2 added
+The ABI moved as follows (`abi.h` has the whole list, now at 3.2): 1.1 added the two doors below (#228, #229), 1.2 added
 `af_machine_code_wheel_answered` and `af_machine_set_code_wheel_answered`
 (#291), 1.3 added `af_web_journal_part_begins_paragraph` (#361), which is
 how a fragment boundary that is a paragraph break reaches the page that
@@ -954,7 +983,9 @@ It also adds `af_machine_set_current_directory`, `af_machine_current_directory`,
 (#397, §2c): the directory a program starts in, and where it saves. The
 `af_machine_save_layer_*` calls kept their names and their answers on the
 archive release; on another layout their rows follow the save directory
-the copy names (§6).
+the copy names (§6). 3.1 adds `af_web_key_card_json` (#427, §11). 3.2
+adds `af_machine_text_entry` (#504, §12). 3.3 adds
+`af_machine_scene_json` (#520, §13).
 
 **`exportsDigest` does not depend on anyone having bumped the right
 number.** It is the sha256 of the `exports` list, sorted and
@@ -1017,9 +1048,12 @@ visits is below; onboarding beyond this is M6's (#265).
   own console line, being a hole in the disk about to be booted. Both hosts
   use `describeSkip()` in `host.mjs`.
 - The stop report is the desktop host's text (`machine/report.h`).
-- Cursor keys: on an 83-key board the arrows, Home/End, Page and
-  Insert/Delete are the keypad and map to its scancodes
-  (`hosts/web/tests/smoke.mjs`).
+- Cursor keys: the arrows, Home/End, Page and Insert/Delete are the
+  enhanced board's cursor pad, each its keypad twin's scancode plus `0x20`
+  (`keyboard.h`, #517). The BIOS answers them with the keypad's
+  navigation word whatever Num Lock says, so turning Num Lock on to type
+  digits on the keypad leaves the arrows moving. Both hosts map them this
+  way (`hosts/web/tests/smoke.mjs`, `keymap_test.cpp`).
 - Losing the keyboard releases the keys (#313): on the window's `blur` and
   on the tab going hidden the page posts a break for every key it still
   holds a make for, in ascending scancode order, through `postKey()` like
@@ -1230,7 +1264,7 @@ beside the module, so it imports `./host.mjs` with no path.
 | `--seam ID` | turn one seam on after the load, before the first step. Repeatable; a refusal **ends the run**, so a script never silently gets a plain machine. |
 | `--seams` | list every seam this build carries, and exit. |
 | `--install DIR` | put the directory's files at `DIR` (`\POOLRAD`) and make it current before the load, the desktop's `--install` (§2c). |
-| `--save-sidecars` | the playthrough's sidecars, the same filenames and bytes as the desktop's, in this module's filesystem. Turn it on once, after the files are in and before the program is loaded: it reads the working exploration table back, and a second call would replace every record in the machine. The read log comes back with the journal store, which is this side's. A driven run is never asked about this and states it (§2b). |
+| `--save-sidecars` | the playthrough's sidecars, the same filenames and bytes as the desktop's, in this module's filesystem. Turn it on once, after the files are in and before the program is loaded, so the first load is watched. A driven run is never asked about this and states it (§2b). |
 | `--document PATH` | present a document the player holds; hashed and dropped. Repeatable. |
 | `--code-wheel-answered` | say the challenge has been answered on this copy (#291). Without it the seam only watches, and a driven run sits at the challenge for ever. |
 | `--code-wheel-store PATH` | where answered copies are remembered, in the desktop host's format. Read before the first step, written when somebody answers. |
@@ -1238,8 +1272,8 @@ beside the module, so it imports `./host.mjs` with no path.
 | `--replay PATH` | be the run a recording describes (`af_machine_verify_recording`), and check it. The recording decides seams and speed, so `--seam` is refused beside it; a document or journal store it needs is still this side's. |
 | `--speed xt\|turbo\|at\|386` | the governor, spelled as on the desktop host. |
 | `--trace` | the trace ring and the service-call and file channels. |
-| `--dump PREFIX` | `PREFIX.ppm`, `PREFIX.wav` and `PREFIX.edges`, in the SDL host's formats. |
-| `--dump-every N` | also `PREFIX-NNNNNN.ppm` every N frames. |
+| `--dump PREFIX` | `PREFIX.ppm`, `PREFIX.wav` and `PREFIX.edges`, in the SDL host's formats, `PREFIX.json`, `screenText()`'s answer (§10), and `PREFIX.scene.json`, `scene()`'s (§13). |
+| `--dump-every N` | also `PREFIX-NNNNNN.ppm`, `.json` and `.scene.json` every N frames. |
 | `--vfs-list` | every file on the disk after the run, in the SDL host's spelling. |
 | `--vfs-get PATH` | one file read back after the run, as size and SHA-256, never bytes (#273). Repeatable. |
 | `--save-layer` | which of the disk's files are the player's (#208, §6), in the SDL host's spelling: the table beside the edition line, the files it names after the run. |
@@ -1328,7 +1362,7 @@ which adds a state hash: the `amberfolio: stop ...` lines should be
 identical field for field. Trap: `frames=` disagreeing and nothing else
 means the machines were not powered on the same way, `reset()` blanking and
 republishing the frame and advancing the generation counter. Both hosts
-pull the line, `wired_machine`'s constructor and `ensureMachine()` in
+pull the line, `wired_machine`'s constructor (`hosts/sdl/src/wiring.cpp`) and `ensureMachine()` in
 `app.mjs`. Procedure: `docs/first-light.md`, then `docs/playable.md`.
 
 ---
@@ -1371,8 +1405,6 @@ on the GOG copy, `\POOLRAD\SAVE` and `\POOLRAD` on the Steam copy.
 | `CHARLIST.TXT` | saves | roster | no | the characters in no party, shared by every slot |
 | `AFMAP<S>.DAT` | saves | sidecar | no | **ours**: the automap's exploration, as slot `<S>` was written |
 | `AFSEEN<S>.DAT` | saves | sidecar | no | **ours**: the journal's read log, as slot `<S>` was written |
-| `AFMAP.DAT` | saves | sidecar | no | **ours**: the working exploration table |
-| `AFSEEN.DAT` | saves | sidecar | no | **ours**: the working read log |
 | `POOL.CFG` | start | config | no | the program's settings — **a game file** |
 | `<NAME>.CHA` | saves | character | no | a character kept under a name the player chose |
 | `<NAME>.ITM` | saves | character | no | what that character carries |
@@ -1481,7 +1513,7 @@ beside the edition line, because it is a fact about the program; and,
 after the run, the disk read against it.
 
 ```
-amberfolio: save-layer 13 row(s) slots=ABCDEFGHIJ members=8
+amberfolio: save-layer 11 row(s) slots=ABCDEFGHIJ members=8
 amberfolio: save-layer \SAVE\SAVGAM<S>.DAT slot required - the saved game; ...
 ...
 amberfolio: save-layer file \SAVE\SAVGAMF.DAT slot slot=F
@@ -1609,11 +1641,13 @@ through `af_machine_post_key` and carries `latched_after` into the next
 commit. Nothing new crosses the boundary — the BIOS cannot tell a key
 committed on a painted keyboard from a key struck on a real one.
 
-**There is no key repeat.** A finger held on a painted key is one
-keystroke. Nothing in this machine repeats a key — there is no IRQ 1 and
-no typematic timer — so a repeat would have to be invented by a host, and
-a host inventing input is the same fault as a host inventing a port's
-answer.
+**There is no key repeat on the painted keyboard.** A finger held on a
+painted key is one keystroke. The machine has no IRQ 1 and no typematic
+timer, so a repeat of a *painted* key would have to be invented by a host,
+and a host inventing input is the same fault as a host inventing a port's
+answer. A held *physical* key is another matter: its repeat is the
+keyboard's own, and both hosts post it (§2, "A held physical key repeats on
+both hosts").
 
 **A modifier latches; everything else taps.** A finger cannot hold Shift
 and press A, so Shift, Ctrl and Alt stay down when committed and come up
@@ -1709,9 +1743,9 @@ hosts. None of them is decoration.
 | waits for | the document the row is gated on, or `-` |
 
 **`state` distinguishes the two claims an enabled seam can make.** The
-difference is `seam_status::armed`: an address was computed out of the
-seam's fact table, or the module it lives in is not resident yet
-(`seams.md` §4). A panel that showed both as "on" would hide the
+difference is `seam_status::armed`: at least one of the seam's points
+can act, or no module its points live in is resident yet (`seams.md`
+§4). A panel that showed both as "on" would hide the
 commonest reason an enhancement does nothing yet.
 
 **`fired` is a number and never a tick** (#131, #163). A seam that armed
@@ -1727,7 +1761,7 @@ can act on, which is the complaint the issue was filed over.
 
 **`waits for` reads `-` on every row in this build**, and that is
 correct rather than unfinished: since #290 no seam is gated on a
-document (`seam_definition::gate`), the code-wheel bypass having become
+document (`seam_definition::gate`), the code-wheel seam having become
 a question a person answers. The column was carried through the ABI from
 #171 and rendered nowhere until now. §9's document control is what
 lights it, and it needed no change to a column or a row here — the rows
@@ -1773,7 +1807,7 @@ enhancement — remembering it would leave the seam on for the next person
 who ran the script. A click or a Return **in a panel** is nobody but a
 player, and it is the only gesture either host has that cannot be
 anything else. So the desktop panel writes `.seams` and nothing else
-about the run (`remember_panel_seams()` in `main.cpp` — only the seams,
+about the run (`remember_panel_seams()` in `launch_config.cpp` — only the seams,
 because `config_of()` would also write down this run's `--speed` and
 `--scale`), and the page writes its `seams` key. `--no-config` says so
 and writes nothing.
@@ -1796,7 +1830,8 @@ check.
   recording's seams are its own).
 - **The right mouse button opens and closes it**, on the middle button's
   own argument (#377): this machine has no mouse, so no mouse button is a
-  control the game can ever want back.
+  control the game can ever want back. A second press turns it into the
+  key card (§11).
 - The left button picks a row and toggles it. The panel is asked before
   the on-screen keyboard, because the two overlays can be over the same
   pixel and a click belongs to the one in front; a click on no row falls
@@ -1870,7 +1905,7 @@ cannot open. Both say that instead.
 
 ### Nothing waits on a document today, and both hosts say so
 
-Since #290 no seam in this build is gated: the code-wheel bypass, the one
+Since #290 no seam in this build is gated: the code-wheel seam, the one
 that was, waits for a person to answer the program's own challenge
 instead (#291, §8). So every real document a player shows this build gets
 `nothing in this build waits on the …`, and that is the honest current
@@ -1926,3 +1961,382 @@ The matching is on the bytes and never on the name — a document a player
 renamed still matches, and a file called `wheel.pdf` that is something
 else is reported with its hash — which is `host::match_edition()`'s rule
 one artifact over (§5).
+
+## 10. Screen text
+
+What the program has on the screen now, read back as characters: a host
+that cannot look at a picture — a screen reader, an assistant playing
+for a player, a test that wants to say what a screen *says* — asks the
+core rather than rasterizing a font of its own
+(`core/include/amberfolio/machine/screen_text.h`).
+
+### How it reads
+
+The frame is cut into the 8x8 grid the program's text lies on, 40
+columns by 25 rows, and each cell is matched against the program's own
+font, read out of its memory at call time through the data-segment far
+pointer the automap's zone label follows (`docs/seams.md` §10). A cell
+of exactly two colours is text when one of them, as the ink, draws a
+glyph exactly; a cell of one colour is a blank; anything else is not
+text. A cell that does not read is read again with its column 0 and row 7
+blanked out, where a selection block's margin lies (`docs/seams.md` §10),
+and that reading counts only when it is one character or a blank. Nothing about the font is stored or shipped.
+
+- **Upper case only.** The font is sixty-four glyphs indexed by the
+  character upper-cased, so that is what comes back.
+- **In whichever face is on.** With a text face drawing
+  (`docs/enhancements.md`, `machine/text_face.h`), a cell is matched
+  against the program's table with the face's glyphs written over it,
+  then against the program's own for text drawn before the switch. The
+  answer is the same characters either way: on the real game, 48 stills
+  from the credits to the character sheet read back identically with
+  either face on and with none.
+- **The colours are information.** A menu's shortcut letter is a
+  different ink from the rest of its word, a highlighted list item is the
+  whole item in another ink, and the Modify screen's stat being changed
+  is in its own ink: each is a run of its own. None of them is drawn any
+  other way.
+- **No guesses.** A bitmap that is two characters' reads as neither
+  (U+FFFD on the page). Artwork can still happen to be exactly a glyph
+  in two colours — a portrait has produced a lone `^` — so a run of one
+  character in the middle of a picture is worth a second look.
+- **Per program.** The font's location is a fact about a binary, like a
+  seam's addresses. A program this build has no location for answers
+  `wrong_binary`; one that has not installed its font yet, `no_font`;
+  no program at all, `no_program`.
+- **Measured, not assumed.** The grid was checked on every screen from
+  the credits through character creation to the party menu and Modify;
+  no text in the program is off it. The machine's own BIOS font was
+  tried as a second table and matched nothing the program's had not, so
+  it is not consulted.
+
+It is a read, like the framebuffer: taken between runs, computed on the
+spot, not machine state, in no hash and no recording.
+
+### The two doors
+
+- **The page:** `Machine.screenText()` in `hosts/web/page/host.mjs`
+  answers `{ rows: [{ y, runs: [{ x, text, fg, bg }] }] }`, `x` and `y`
+  in cells, `fg` and `bg` palette indices; or `{ rows: null, reason }`.
+  A run is text in one pair of colours; a single blank is a space inside
+  a run, two end it. `screenTextRows()` is the grouping, exported on its
+  own. Under it, `af_machine_screen_text` (ABI 2.3) fills a caller's
+  buffer with three bytes a cell — character, ink, paper — and names the
+  reason.
+- **The desktop:** `--dump` writes `PREFIX.txt` beside `PREFIX.ppm`, and
+  `--dump-every` a `.txt` beside each still: a `screen-text REASON`
+  line, then per row a `text`, an `ink` and a `paper` line, `#` for a
+  cell that is not text and `%` for an ambiguous one
+  (`hosts/sdl/src/screen_text_dump.h`). `tools/drive.mjs` writes the
+  page's answer as `.json` beside its stills, and the two hosts agree on
+  every still of the same run.
+
+### The check
+
+`tests/core/machine/screen_text_test.cpp` holds the matcher and the
+lookup down in CI with this project's own glyphs laid out as the
+program lays its font out. `tests/visual/text-create.leg` holds eight
+screens of leg 0 — the main menu, the four creation lists, the name
+prompt over the rolled character, the party menu and Modify — to the
+digests of the program's own `.txt` output, over a copy of the disk
+(`scripts/visual-legs.py`'s `text` line).
+
+## 11. The key card (#427)
+
+The game's keys, by context, readable from either shell without leaving
+the game. The controls are undiscoverable rather than missing: a list
+steps on Home and End, a bar's highlight on `,` and `.`, and the 3D view
+walks on the arrows, and nothing on the screen says so.
+
+**One table, two readers.** The card is data in `hosts/common`
+(`amberfolio/host/key_card.h`, `src/key_card.cpp`): contexts, each a list
+of rows of *keys*, *what they do* and, for a seam's key, the seam. Neither
+shell keeps a second copy, so a change to the card is a change to that
+file.
+
+| host | where | how it reads the table |
+| --- | --- | --- |
+| desktop | the toggle panel's second view: the right mouse button steps hidden, seams, card, hidden. Up and Down, or a click, turn the page; one context to a page | `host::key_card_for()` over the seam engine (`src/key_card_view.*`) |
+| page | the *the game's keys* box, under the seam list | `Machine`-less `readKeyCard()` over `af_web_key_card_json` (ABI 3.1), filtered by `visibleKeyCard()`, both in `page/host.mjs` |
+
+Both are drawn by the shell and never into the game's screen. The page
+redraws the card when the set of seams that are on changes; the desktop
+builds it at every paint.
+
+**Beside it, the controls page.** `page/controls.html`, linked from the
+box, lists every controls improvement by screen, the enhancement each one
+needs and what each trades (#448), and the one look, the selection as a
+yellow block (#453, #483); every one is the single `modern-controls` seam (#473), and the page
+says so in its legend. It is the dev page's furniture, served with it and
+not released, like `index.html`; the keys per screen stay the card's.
+
+**A seam's keys show only while it is on.** A row names a seam id, and a
+context left with no row to show is not shown. Adding a seam's keys is one
+line in `key_card.cpp`, in the context where the key is pressed.
+`tests/key_card_test.cpp` holds every named seam to `all_seams()`, so a
+row for a seam that was renamed or never merged is a red test; the four
+seams that take a key today (automap, journal, Encamp Fix and
+`modern-controls`) are pinned there as the floor. `modern-controls` has a
+row in every context where one of its six pieces takes a key or draws a
+selection, shown while it is on. Each
+shell has its own context for the keys it takes for itself (the desktop's
+are in §2's table); the page has none, because it takes none.
+
+**The keypad is not needed.** In every bar the program reads in raw mode
+(the 3D view, the wilderness, pick-lists, combat's move, Modify) the
+digits `8 2 4 6` act as Up, Down, Left, Right, `7 1` as Home and End and
+`9 3` as PgUp and PgDn, whether typed on the keypad or on the number
+row. The card says so once, under every context, and adds that with
+`modern-controls` on walking is a mode the party's bar starts with `Move`
+and ends with `Exit`, and the number row's `1` to `8` pick a party member at
+the main menu (the keypad's digits keep their meaning; the seam tells them
+apart by scan code).
+
+**How each row was checked.** Driven under SDL's dummy drivers with
+`--press`, reading the screen text and the stills beside them
+(`docs/playable.md`): the 3D view's four moves and the party-member
+cursor, on both the arrows and the number row; the wilderness's four moves
+and the same cursor (Tab does nothing there); a bar's capital letter,
+`,` and `.` (watching `0x6B2B`), Y and N with Return ignored at a Yes/No
+question, Return ignored at the exploring and camp bars, Esc leaving
+camp; a list's Home, End, Return, Esc and wrap, with Up, Down and a
+too-short list's PgUp and PgDn doing nothing; the member picker's Home,
+End, Return and Esc; combat's Move with all four arrows and two diagonals
+on the number row, Esc, Aim with N, P, M, arrows and E, Quick, and Done's
+second bar; Modify's Up, Down, Left, Right, `6`, `4`, `K` keeping, Esc and
+`E` restoring, and Return doing nothing; a name's Backspace, Esc
+accepting, Return and lower case shown as capitals; Tab, the camp bar's F
+and the Notes log's N, Up, Down, Return, N, P and Esc with those seams on;
+the main menu's capital letters and Home and End, and, with the seam on,
+Up, Down and Return there (at the party-setup screen and at a training
+hall); and, with `modern-controls` on, a name's arrows, Home, End and
+function keys typing nothing (the name prompt at creation and the
+code-word challenge).
+
+**Rows that rest on two readings, not a drive.** A list's PgUp and PgDn
+(no list in the shipped saves is longer than its window; the routine
+that pages and the bar's NEXT and PREV letters agree); moving into an
+enemy attacking (the routine, and the prompt's own *Move/Attack*); T in
+Aim (the routine, and TARGET appearing on the bar when one is in range);
+E in the member picker and in Modify (the routines, and the bar's EXIT);
+and the desktop's own keys (§2's table and
+`keymap.cpp`). A row that a drive contradicted was fixed before it was
+written: Return does not step Modify's rows, though one routine reads as
+if it does.
+
+## 12. A line of text, being read (#504)
+
+Whether the program is reading a line of text right now: a new character's
+name, a script's free-text answer, a script's number prompt, or the code
+word at the copy-protection challenge. All four go through the program's
+one line editor (`docs/seams.md` §10, "The edit keys"). A page that paints
+a keyboard of its own polls this once a frame, puts the keyboard up when it
+turns true and takes it down when it turns false, and never works the same
+thing out from the screen.
+
+| call | answers |
+|---|---|
+| `af_machine_text_entry(box)` | `AF_TEXT_ENTRY_READING` (1), `AF_TEXT_ENTRY_NOT_READING` (0), or `AF_TEXT_ENTRY_UNKNOWN` (2) |
+| `Machine.textEntry()` (`page/host.mjs`) | `true`, `false`, or `null` for unknown |
+
+- **Where it comes from.** The `text-entry` piece of `modern-controls`
+  notes the editor's first instruction and its one return
+  (`core/src/machine/seam_text_entry.cpp`, `machine/text_entry.h`).
+  Reading runs from the entry until the line is accepted with Return or
+  abandoned with Esc. A caller that asks again, after a number that was not
+  one, enters again.
+- **Unknown, and not "no", while nothing watches.** With `modern-controls`
+  off or unavailable, or no program loaded, the answer is unknown: telling
+  a page "not reading" would be a guess.
+- **Observation.** It is kept in one of the seam's own words. It is not
+  machine state, it is in no hash and no serialization, and a replay
+  rebuilds it. It is dropped when the seam is turned on again or the
+  machine is reset, so a page never reads a crossing whose other half
+  nobody saw.
+- **The desktop host** prints the state the run ended in, beside the seam
+  lines: `amberfolio: text-entry reading` or `text-entry not-reading`, and
+  nothing while it is unknown.
+
+## 13. Where the party is (#520, #521, #523)
+
+What a sighted player takes from the 3D view, the automap panel, the
+overland window and the combat grid, as data: the party's square and
+facing, what is on each face around it, the squares it can see, the map it
+has explored, the terrain of the travel window, and in a fight who stands
+where, how far each is from whoever is acting, and where the aim cursor
+is. Screen text (§10) carries the menus; this
+carries the places, which are not text. A screen reader turns it into
+"door ahead, wall on the left"; an assistant walks from it instead of from
+screenshots.
+
+| call | answers |
+|---|---|
+| `af_machine_scene_json(box, out, cap)` | the scene as JSON, `null` while nothing knows; the length without the NUL, so ask with a null `out` first |
+| `Machine.scene()` (`page/host.mjs`) | the parsed object, or `null` |
+
+The interior screen (game mode 4, the sixteen-by-sixteen grid):
+
+```json
+{"screen":"explore","disk":3,"area":0,"zone":"NEW PHLAN",
+ "x":4,"y":13,"facing":"west",
+ "around":{"ahead":"wall","right":"open","behind":"wall","left":"wall"},
+ "view":[{"x":4,"y":13,"north":"open","east":"wall","south":"wall","west":"wall"},
+         {"x":4,"y":12,"north":"door","east":"wall","south":"open","west":"wall"}],
+ "map":[ ...the same shape, every square the automap has revealed... ]}
+```
+
+The overland (game mode 3, view kinds 2 to 4):
+
+```json
+{"screen":"travel","disk":6,"area":25,"zone":"WILDERNESS",
+ "x":2,"y":29,"facing":"west",
+ "window":{"x":0,"y":27,"rows":[[{"terrain":2,"move":"open"}, ...5], ...5]}}
+```
+
+A fight (game mode 5, the tactical grid):
+
+```json
+{"screen":"combat","disk":6,"area":25,"zone":"WILDERNESS",
+ "turn":0,"waiting":true,"nearest":2,
+ "aim":{"mode":"target","x":25,"y":12,"under":2,"range":2,"target":true},
+ "combatants":[
+   {"name":"HULK","side":"party","player":true,"standing":true,"status":"okay",
+    "x":27,"y":13,"width":1,"height":1,"hp":51,"ac":10},
+   {"name":"MULE","side":"party","player":true,"standing":true,"status":"okay",
+    "x":28,"y":13,"width":1,"height":1,"range":1,"hp":82,"ac":7},
+   {"name":"TIGER","side":"enemy","player":false,"standing":true,
+    "status":"okay","x":25,"y":12,"width":1,"height":1,"range":2}],
+ "window":{"x":24,"y":10,
+           "rows":[[{"terrain":23,"move":"open","cost":1}, ...7], ...7]}}
+```
+
+- **Coordinates.** x grows east and y south. A square of the grid is 0 to
+  15 each way; an overland position is a column 0 to 15 and a row 0 to
+  35 of the area. They are the numbers the program's status line prints.
+- **`zone`** is the name the automap's panel prints (`AREA <n>` where its
+  table has none), without the panel's soft breaks.
+- **A face** is `open` (nothing there), `wall`, `opening` (a way through
+  drawn in the wall that no rule calls a door: an arch), `door`, or
+  `shut` (a shut door: the program asks before the party goes through).
+  Doors are the automap panel's own rule (`docs/seams.md` §10, "Doors"),
+  in one function both of them call (`core/src/machine/automap_faces.h`),
+  so a player who hears "door" and one who sees a yellow leaf are given
+  one answer. A border recorded on one side only is read from the side
+  that has it, as the panel does.
+- **`around`** is the party's own square turned to its facing.
+- **`view`** is what the 3D view draws: the party's square first, then,
+  nearest first, the squares ahead and beside it that sight reaches by the
+  automap's reveal rule. Sight stops at any face, a doorway included.
+- **`map`** is every square the automap has revealed on this map, row by
+  row, which is what its panel draws. **`null` while the automap seam is
+  off**, because then nothing records where the party has been: null is
+  "not recorded", and `[]` is "nothing explored yet".
+- **`window`** is the travel view's 5x5 window, rows from the top, cells
+  west to east. `x` and `y` are its top-left cell where the program puts
+  it, clamped at the map's edges exactly as the program clamps it; against
+  the edge of an area's band the window shows the neighbouring band, so a
+  column can be below 0 or above 15. `terrain` is the program's own number
+  for a cell, the byte its move step tests, and two cells with the same
+  number are the same terrain. `move` is what that step does with it:
+  `open`, `blocked` (never), or `river` (only for a party that can cross
+  one).
+- **A fight has no one square for the party**, so it has no top-level
+  `x`, `y` or `facing`: each figure has its own. The grid is 50 columns by
+  25 rows, x east and y south, and the screen shows a 7x7 `window` of it
+  whose top-left is `x`,`y`, scrolled where the program scrolls it.
+- **`combatants`** are the figures in the program's own order, the party's
+  first. **The party's own are listed wherever they are**, because a player
+  knows where their people are; **an enemy only while any square of it is
+  in the window**, because that is all the screen shows of one. `side` is
+  `party` or `enemy` as the program keeps it, so a charmed figure has
+  changed sides. `player` says the player gives its orders: false for a
+  monster, a charmed party member, and one handed to the computer with
+  QUICK. `x`,`y` is a figure's top-left square and `width`/`height` how
+  many it covers: a large figure covers two each way. A fallen party
+  member is `standing: false` with the status the sheet prints
+  (`unconscious`, `dying`, `dead`, ...) and lies where it fell; a fallen
+  enemy leaves the grid and the list. A figure with no square has no `x`.
+- **`hp` and `ac` where the screen prints them**: every party member's,
+  and an enemy's only while it is the one acting, whose sheet the panel
+  shows. `ac` is the number the sheet prints, negative included.
+- **`turn`** is an index into `combatants`, `null` between turns, and
+  **`waiting`** is true while the program waits for the player's orders,
+  which is only ever on a figure the player commands.
+- **`range`** is how far a figure is from the acting one by the aim bar's
+  own measure: the longer of the two distances and half the shorter,
+  rounded down (`scene_range` in `machine/scene.h`), nearest square to
+  nearest square for a large figure. It is the number the bar prints for a
+  figure nothing hides; the bar itself offers only figures in sight. Absent
+  on the acting figure, and on every figure between turns.
+- **`nearest`** is the index of the standing figure nearest the acting one
+  on the other side from it: on a party member's turn the nearest listed
+  enemy, on a monster's the nearest party member. The first listed wins a
+  tie. `null` between turns and when no such figure is listed.
+- **The window's `rows`** are the ground under each square: `terrain` the
+  program's own number, `move` `open` with the movement it `cost`s, or
+  `blocked` (no figure ever steps there), or `edge` (off the grid: a step
+  there is a step out of the fight, and the program asks whether to flee).
+  A figure standing on a square is in `combatants`, not in the ground.
+- **`aim`** is the aim bar while it waits for a key (Aim on the combat
+  bar, or a spell's target):
+  - `mode` is `target` (Next and Prev step through the figures in sight,
+    nearest first, beginning with the acting figure itself at range 0) or
+    `manual` (a cursor the arrows move square by square);
+  - `x`,`y` is the cursor's square: the target's top-left square, or the
+    manual cursor's own;
+  - `under` is the index of the figure whose sheet the panel shows: the
+    target, or in manual the figure on the cursor's square (a fallen party
+    member's body included) when it is in sight. `null` when the panel
+    shows no one, or someone not listed (a target outside the window);
+  - `range` is the number the bar prints after `RANGE =`, `null` when it
+    prints none (manual with the cursor out of sight, or a spell's aim
+    from target to target);
+  - `target` is whether the bar offers Target.
+
+  **`null` while the bar is not waiting for a key**, which includes the
+  moment between two keys while the cursor moves and the bar is redrawn.
+  **Absent while `modern-controls` is off**: the program keeps all of it on
+  the aiming routine's stack, and only that seam's `aim-watch` piece notes
+  where (`docs/seams.md` §10), so absent is "not known" and `null` is "not
+  aiming". Every site build turns the seam on.
+- **A step ahead of the picture, for a moment.** The program moves a
+  figure, or scrolls the window, in its back buffer first and copies that
+  to the screen when it has drawn everything; between the two the read
+  already says where the figure went.
+- **Null while nothing knows**: a null handle, no program, a program this
+  build has no facts for, a scripted move between areas, and every screen
+  none of the shapes covers — the menus, a shop, the camp, the banner
+  after a fight. A host meets a `screen` it does not know as it meets
+  `null`.
+- **Where the party stands, not what covers the view.** An encounter's
+  picture over the travel window, or a vendor's portrait in the 3D view,
+  leaves the mode where it was and the party where it was, and the scene
+  still answers; screen text says what is being asked.
+- **A read.** Out of RAM, between `af_machine_run_until` slices, like the
+  screen text: nothing the program can see moves, nothing is kept, and it
+  is in no hash and no recording. A page that never asks pays nothing.
+  The facts are the automap's and the explored overlay's
+  (`docs/explored-overlay.md` §2), restated for this read's own binary in
+  `core/src/machine/scene.cpp`, with the move step's terrain classes
+  (overlay 14 rel `0x0818`).
+- **The tactical grid's facts**, each read by the fight's setup or round
+  loop and by its drawing. The figures: far pointers to their records at
+  `0x65B9 + 4·slot`, one-based, and their squares at `0x5F27 + 4·slot`
+  (column, row, the slot's number, its shape: 0 off the grid, 1 one
+  square, 2 with the one below, 3 with the one east, 4 two by two); slot
+  0's shape byte, `0x5F2A`, is the number of slots. The acting figure: a
+  far pointer at `0x5D92`. A record: a Pascal name of up to fifteen
+  letters at `+0`, the status at `+0x10C` (the sheet's scale, okay to
+  gone), in the fight at `+0x10D`, the side at `+0x10E` (0 the party's),
+  the computer commanding it at `+0x10F`, sixty less the printed armour
+  class at `+0x111`, the current hit points at `+0x11B`. The fallen: a
+  count at `0x6715` and seven bytes each from `0x66D6` (the record's far
+  pointer, column, row, the ground covered). The fight's block: a far
+  pointer at `0x6716`; the drawn window's top-left at `+2`/`+3`; the
+  ground from `+7`, fifty bytes a row. A ground number's cost is the first
+  of four bytes from `0x2744`: `0xFF` blocks, and ground 0 is off the
+  grid.
+- **The aim bar's facts** are in `docs/seams.md` §10 ("Aim watch") and
+  `core/src/machine/seam_aim_watch.cpp`: overlay 13's two key waits, the
+  frame each keeps the cursor, the panel's record and the range in.
+- **Both hosts' `--dump`** write it beside each still as `.scene.json`.

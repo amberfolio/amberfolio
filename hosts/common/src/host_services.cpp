@@ -30,13 +30,9 @@ void host_services::serve(machine::machine& box,
   seen.argument = argument;
   seen.at = box.time();
 
-  // And the consumers. The sidecars beside the save (M5-E2c #173, #351)
-  // are off unless a host asked for them, so on every run that has not
-  // this is a branch and nothing else.
-  if (which == machine::seam_host_service::automap_update) {
-    slots_.changed();
-    return;
-  }
+  // And the consumers. `automap_update` has none beyond the record above:
+  // the exploration reaches a file only when the program saves a slot
+  // (`slot_store.h`).
 
   // A person answered the code-wheel challenge (M6-C1b, #292). What the
   // seam latched lives as long as the machine; this is where it starts
@@ -61,10 +57,6 @@ void host_services::serve(machine::machine& box,
   if (which == machine::seam_host_service::journal_seen) {
     if (journal_ != nullptr) {
       journal_->set_seen(box.journal().seen());
-      // And on to the sidecar beside the save this playthrough belongs
-      // to (#351), which is where a log outlives a *run* rather than a
-      // machine. A no-op unless a host asked for sidecars.
-      slots_.journal_changed();
     }
     box.journal().set_seen_changed(false);
     return;

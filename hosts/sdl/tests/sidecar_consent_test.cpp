@@ -121,8 +121,8 @@ TEST(SidecarConsent, TheQuestionNamesTheFilesAndWhereTheyLand) {
   }
   // The names and not a directory: which folder the saves are in is the
   // copy's own to say (`machine::read_save_directory`, #397).
-  EXPECT_THAT(whole, ::testing::HasSubstr("AFMAP.DAT"));
-  EXPECT_THAT(whole, ::testing::HasSubstr("AFSEEN.DAT"));
+  EXPECT_THAT(whole, ::testing::HasSubstr("AFMAPA.DAT"));
+  EXPECT_THAT(whole, ::testing::HasSubstr("AFSEENA.DAT"));
   EXPECT_THAT(whole, ::testing::HasSubstr("the folder your saves are in"));
   EXPECT_THAT(whole, ::testing::HasSubstr("your game directory"));
   EXPECT_THAT(whole, ::testing::HasSubstr("until there is something to put"));

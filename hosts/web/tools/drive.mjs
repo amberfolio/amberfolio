@@ -717,9 +717,8 @@ export async function drive(opts) {
   machine.setTrace(opts.trace);
 
   // And the sidecars beside the save (M5-E2c #173, #351), after the files
-  // are in — turning it on reads the working exploration table off them —
-  // and before the program runs, so a panel opened in the first seconds of
-  // a run already has the last one's map in it.
+  // are in — turning it on reads where the copy saves off them — and
+  // before the program runs, so the first load it makes is watched.
   if (opts.saveSidecars) {
     machine.saveSidecars(true);
     say('amberfolio: save-sidecars on');
@@ -830,7 +829,7 @@ export async function drive(opts) {
 
   // And the *read log* into the machine, which the dev page does at the
   // same point (app.mjs) and the desktop host does in the same place
-  // (hosts/sdl/src/main.cpp): after the store and the files are in, and
+  // (hosts/sdl/src/journal_host.cpp): after the store and the files are in, and
   // before a seam can be enabled.
   //
   // Outside the branch above and unconditional, in the desktop host's
@@ -915,7 +914,7 @@ export async function drive(opts) {
   // --- The edge list, written as the run makes it (#148) ----------------
   //
   // `--dump`'s third file, and the SDL host's third file byte for byte
-  // (hosts/sdl/src/main.cpp says why it exists): the PPM is the frame,
+  // (hosts/sdl/src/edge_dump.h says why it exists): the PPM is the frame,
   // the WAV is one *rendering* of the sound, and this is the sound in the
   // units the machine works in — "at tick T the output became high".
   //
@@ -1323,7 +1322,7 @@ function reportSeams(machine) {
 }
 
 /// What each enabled seam actually *did*, one line each, in the words the
-/// SDL host ends a run with (hosts/sdl/src/main.cpp) — `seam <id> armed
+/// SDL host ends a run with (hosts/sdl/src/seam_host.cpp) — `seam <id> armed
 /// fired=N`, singular, and distinct from the `seams` listing above.
 ///
 /// The listing says an address was computed out of a fact table; this
@@ -1364,6 +1363,18 @@ function writeFrame(machine, path, announce) {
   writeFileSync(
     path,
     encodePpm(width, height, machine.framebufferView(), machine.paletteView()),
+  );
+  // What the still says, beside it: `Machine.screenText()`'s answer, as
+  // the SDL host writes its own `.txt` beside each of its stills.
+  writeFileSync(
+    path.replace(/\.ppm$/, '.json'),
+    `${JSON.stringify(machine.screenText())}\n`,
+  );
+  // And where the party is (#520): `Machine.scene()`, `null` off the
+  // screens it describes.
+  writeFileSync(
+    path.replace(/\.ppm$/, '.scene.json'),
+    `${JSON.stringify(machine.scene())}\n`,
   );
   if (announce) {
     say(`amberfolio: dump frame=${path} generation=${machine.frameGeneration()}`);

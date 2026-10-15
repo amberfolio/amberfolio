@@ -14,9 +14,17 @@
 
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
+#include <span>
+#include <string_view>
+
+#include "amberfolio/machine/scene.h"
 #include "amberfolio/machine/seam.h"
 
 namespace amberfolio::machine {
+
+class machine;
 
 /// PLAN.md §5 item 1, in the form M3 needed (seam_code_wheel.cpp).
 [[nodiscard]] const seam_definition& code_wheel_seam() noexcept;
@@ -33,9 +41,126 @@ namespace amberfolio::machine {
 /// PLAN.md §5 item 5, the explored overlay (seam_explored.cpp).
 [[nodiscard]] const seam_definition& explored_seam() noexcept;
 
+/// The controls, six pieces in one seam (seam_modern_controls.cpp, #473):
+/// the up and down arrows in the pick-lists, Left, Right, Return and Esc at
+/// a command bar, a cursor on the main menu, the number row's heroes, a
+/// selection as a yellow block, and the line editor's extended keys. Each piece
+/// keeps its logic and its facts in a source of its own and hands the
+/// registration the points it owns.
+[[nodiscard]] const seam_definition& modern_controls_seam() noexcept;
+
+/// `modern-controls`' id, and the one question another seam asks about it:
+/// is it on. The journal's reader draws and answers bars of its own, which
+/// the program's menu-bar routine never sees, and takes the same keys and
+/// colours when this is on (seam_journal.cpp, #471).
+inline constexpr std::string_view modern_controls_id = "modern-controls";
+[[nodiscard]] bool modern_controls_on(const machine& box) noexcept;
+
+/// Walking that does not wait for the footstep's click
+/// (seam_quick_steps.cpp).
+[[nodiscard]] const seam_definition& quick_steps_seam() noexcept;
+
+/// The pieces' points, in the order the registration offers them at an
+/// address two of them share: the pick-lists' arrows, the bars' keys, the
+/// main menu's cursor, the heroes' numbers, the line editor, the
+/// selection's colours (the order the six seams were registered in), and
+/// the party bar's move mode last.
+/// The counts are what the registration sizes its table from; each source
+/// holds a `static_assert` that its own table is that long.
+inline constexpr std::size_t list_arrows_point_count = 3;
+inline constexpr std::size_t bar_keys_point_count = 1;
+inline constexpr std::size_t menu_cursor_point_count = 2;
+inline constexpr std::size_t hero_keys_point_count = 5;
+inline constexpr std::size_t edit_keys_point_count = 1;
+inline constexpr std::size_t select_yellow_point_count = 12;
+inline constexpr std::size_t move_mode_point_count = 5;
+inline constexpr std::size_t text_entry_point_count = 2;
+inline constexpr std::size_t aim_watch_point_count = 5;
+
+/// The seam's own word `text-entry` notes the line editor in: one while the
+/// program is inside it. `move-mode` holds words 0 to 4.
+inline constexpr unsigned text_entry_scratch = 5;
+
+/// The seam's own words `aim-watch` notes the aim bar in: which way it is
+/// aiming (a `scene_aim_mode`, none while it is not waiting for a key), the
+/// stack segment and BP of the routine that waits, and two flags it
+/// decided before the wait (`aim_offered`, `aim_range_shown`).
+inline constexpr unsigned aim_mode_scratch = 6;
+inline constexpr unsigned aim_segment_scratch = 7;
+inline constexpr unsigned aim_frame_scratch = 8;
+inline constexpr unsigned aim_flags_scratch = 9;
+inline constexpr std::uint16_t aim_offered = 1;
+inline constexpr std::uint16_t aim_range_shown = 2;
+
+/// The up and down arrows in the pick-lists, and the selected party member
+/// at the bars where Home and End step it (seam_list_arrows.cpp, #423).
+[[nodiscard]] std::span<const seam_point> list_arrows_points() noexcept;
+
+/// Left and Right step a command bar's highlight, Enter takes it, and Esc
+/// answers No at a Yes/No question (seam_bar_keys.cpp, #425, #438).
+[[nodiscard]] std::span<const seam_point> bar_keys_points() noexcept;
+
+/// Up and Down move a cursor over the main menu, and Return takes it
+/// (seam_menu_cursor.cpp, #434).
+[[nodiscard]] std::span<const seam_point> menu_cursor_points() noexcept;
+
+/// The number row's 1 to 8 select a party member, and the party list shows
+/// each member's number (seam_hero_keys.cpp, #439).
+[[nodiscard]] std::span<const seam_point> hero_keys_points() noexcept;
+
+/// An extended key never types a letter in the line editor
+/// (seam_edit_keys.cpp, #455).
+[[nodiscard]] std::span<const seam_point> edit_keys_points() noexcept;
+
+/// Every selection the player can move as a yellow block, a command's key
+/// letter as a white one (seam_select_yellow.cpp, #453, #483).
+[[nodiscard]] std::span<const seam_point> select_yellow_points() noexcept;
+
+/// The mark a seam sets in the high half of the colour word it hands the
+/// program's string routine when what it draws is a selection: the main
+/// menu's cursor row, the journal's listing row and its bar's lit word. The
+/// routine reads the low byte, and `select-yellow` draws a marked string
+/// as a block (#483).
+inline constexpr std::uint16_t selection_mark = 0x8000;
+
+/// On the party's own bar, walking is a mode: `Move` starts it, `Exit` ends
+/// it, and between the two Left and Right step the bar (seam_move_mode.cpp,
+/// #479). Last at the key read, so every other piece has passed first.
+[[nodiscard]] std::span<const seam_point> move_mode_points() noexcept;
+
+/// The line editor's entry and return, noted so a host can tell when the
+/// program is reading a line of text (seam_text_entry.cpp, #504). Its
+/// points are at addresses no other piece has.
+[[nodiscard]] std::span<const seam_point> text_entry_points() noexcept;
+
+/// The combat aim bar's two key waits, noted so the scene can say where the
+/// cursor is (seam_aim_watch.cpp, #523). After `text-entry`: its points are
+/// at addresses no other piece has.
+[[nodiscard]] std::span<const seam_point> aim_watch_points() noexcept;
+
+/// The aim bar as `aim-watch` last noted it, into `out`; false, and `out`
+/// untouched, while `modern-controls` is off, which is "nothing is
+/// watching" and not "not aiming".
+[[nodiscard]] bool aim_watch_now(const machine& box,
+                                 scene_aim_frame& out) noexcept;
+
+/// A character the roster names and the save directory does not hold is
+/// left off the Add list (seam_roster_fix.cpp). A built-in fix, not a
+/// listed seam: `built_in_fixes()`, not `all_seams()`.
+[[nodiscard]] const seam_definition& roster_fix_seam() noexcept;
+
+/// The sound driver never hooks the timer over its own hook, which a click
+/// quick steps did not wait for leaves it about to do (seam_timer_fix.cpp).
+/// A built-in fix, like the roster's.
+[[nodiscard]] const seam_definition& timer_fix_seam() noexcept;
+
 /// PLAN.md §5 item 6, the debug cheats (seam_cheats.cpp).
 [[nodiscard]] const seam_definition& cheat_invulnerable_seam() noexcept;
 [[nodiscard]] const seam_definition& cheat_kill_all_seam() noexcept;
 [[nodiscard]] const seam_definition& cheat_wound_party_seam() noexcept;
+
+/// The text faces, alternatives in one group (seam_font.cpp, text_face.h).
+[[nodiscard]] const seam_definition& font_sans_seam() noexcept;
+[[nodiscard]] const seam_definition& font_chisel_seam() noexcept;
 
 }  // namespace amberfolio::machine

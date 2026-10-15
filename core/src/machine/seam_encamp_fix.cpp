@@ -172,8 +172,18 @@
 // — there is no moment at which the player is a cure down — and is why
 // this handler needs no memory of what it has spent.
 //
+// **And the cures come back to be cast again** (#490). Once nothing is
+// ready, a party that is still hurt and holds cures pending with somebody
+// who can cast them rests only as long as the memorizing — no days dialled,
+// so the program's own wrapper sizes it — and the camp menu's next pass
+// presses the Fix again: cast what came back, rest, cast, until nobody is
+// hurt. A cure heals more than a day's rest does, so a party a fight left
+// low is whole in a day or two of the game's time rather than a month, and
+// the loadout promise above holds at every instant of it.
+//
 // **The days are the deficit plus one — and zero when there is no
-// deficit.** The heal tick counts iterations in a counter the camp screen
+// deficit** — for the rest that waits the wounds out, when no cure can come
+// back. The heal tick counts iterations in a counter the camp screen
 // zeroes on entry and the rest does *not* reset between rests, so a
 // second rest in one camp session starts part-way through a day and would
 // come up one hit point short. A day of slack costs the player nothing
@@ -283,6 +293,9 @@
 //     cures so the rests were spent on healing magic;
 //   * and in at least one title it **made room** by forgetting ready
 //     spells that were not cures.
+//
+// Its cycle, rest for the memorizing and cast what came back, this one has
+// had since #490, over the cures the party already held.
 //
 // The first is refused by the promise above rather than by taste. A seam
 // that memorized cures into the player's slots would owe them their own
@@ -574,16 +587,29 @@ constexpr std::uint8_t pick_key_ascii = 'S';
 
 // --- The program's own routines this seam calls (#188) ---------------------
 //
-// Offsets from the image base, except the last, which is in the same
-// overlay this seam's points are in. Each was read off the routine itself,
-// and what each cleans up is part of the fact: the program's routines are
-// far and pop their own arguments.
+// Offsets from the image base, except the cast driver's, which is a
+// segment and an offset of its own, and the slot sort's, which is in the
+// same overlay this seam's points are in. Each was read off the routine
+// itself, and what each cleans up is part of the fact: the program's
+// routines are far and pop their own arguments.
 
-/// The generic cast driver, through the resident thunk that loads its
+/// The generic cast driver, through the resident stub that loads its
 /// overlay — never the overlay address, which would be a call into code
 /// that may not be in memory. Takes a far out-flag, an announce flag, a
 /// skip-abort flag and the spell id; cleans ten bytes.
-constexpr std::uint16_t image_cast_driver = 0x0999;
+///
+/// **Called at the stub's own segment, and that is the whole of #526.**
+/// The overlay manager's trap reads the stub record at `CS:0`, so an
+/// entry works only at the paragraph its record begins at: here the
+/// record at image `0x0960` and its sixth entry, `0x39` into it. Called
+/// as image base `:0999` the entry still runs while the overlay is in
+/// memory, because it is then a far jump; once the manager has evicted
+/// the overlay it is a trap again, and the manager took the image's
+/// first bytes for a record, patched "entries" across its own stub table
+/// and the machine returned into what was left. The program's own CAST
+/// leaves the arena so that the frame drawn before the cast evicts it.
+constexpr std::uint16_t cast_driver_stub_paragraph = 0x0096;
+constexpr std::uint16_t cast_driver_entry = 0x0039;
 
 /// The border and the clear the program's own cast screen draws before it
 /// casts, so that what the player sees is what that screen shows. The
@@ -847,7 +873,8 @@ enum class run_state : std::uint8_t {
 /// thing the machine does not hold (#189).
 constexpr unsigned scratch_rest_is_ours = 1;
 
-/// How many cures one command may spend before this seam stops trying.
+/// How many cures the command may spend between two rests before this seam
+/// stops trying.
 ///
 /// **A backstop and not the design.** Every cast spends a ready cure, so
 /// the loop ends on its own; this is what stops a cast the program
@@ -855,6 +882,24 @@ constexpr unsigned scratch_rest_is_ours = 1;
 /// again at every arrival for ever. Two a member for a party of six is
 /// past any real loadout.
 constexpr std::uint16_t max_casts = 16;
+
+/// The cures spent since the command began or last rested, which the
+/// backstop above is read against; `scratch_casts` keeps the whole
+/// command's count for the report.
+constexpr unsigned scratch_casts_since_rest = 6;
+
+/// The cure cycles the command has run (#490), and in the top bit whether
+/// the rest it has asked for is one: a rest only as long as the memorizing,
+/// after which the camp menu presses the Fix again to cast what came back.
+constexpr unsigned scratch_cycles = 7;
+constexpr std::uint16_t cycle_rest = 0x8000;
+
+/// How many cure cycles one command runs before it rests the deficit out
+/// instead. **A backstop and not the design**: every cycle casts what the
+/// rest memorized, so a wounded party is whole after a handful; this is
+/// what stops a cast the program refuses from being memorized and refused
+/// again for ever.
+constexpr std::uint16_t max_cycles = 24;
 
 /// How many records a roster walk will follow before giving up. A party
 /// is six with room for hangers-on; sixteen is several times that and is
@@ -918,6 +963,11 @@ constexpr unsigned fix_item_length = 4;
 /// the one letter this seam had to be sure the camp loop does not already
 /// use. It compares against six letters and this is not one of them.
 constexpr std::uint8_t fix_key_ascii = 'F';
+
+/// The Fix's own key on the keyboard, the scan code for F, posted when the
+/// camp menu comes back from a cure cycle's rest to press the command again
+/// (#490).
+constexpr std::uint8_t fix_key_scancode = 0x21;
 
 /// The key the camp bar and the rest screen both take for Rest, as INT 16h
 /// hands it back: the scan code for R and its character. The program
@@ -1284,6 +1334,10 @@ struct roster_reading {
   /// whether anybody could cast one now.
   unsigned ready_cures{0};
   unsigned pending_cures{0};
+  /// The same two, counted only for members who can act: the cures a rest
+  /// can turn into casts (#490).
+  unsigned castable_ready_cures{0};
+  unsigned castable_pending_cures{0};
   /// Whether anybody who can act knows a cure at all, book flag rather
   /// than memorized — the difference between a party that can do
   /// something about it and one that cannot.
@@ -1409,10 +1463,16 @@ struct roster_reading {
         if (is_heal_spell(static_cast<std::uint8_t>(slot & ~spell_pending))) {
           ++who.pending_cures;
           ++out.pending_cures;
+          if (who.can_act) {
+            ++out.castable_pending_cures;
+          }
         }
       } else if (is_heal_spell(slot)) {
         ++who.ready_cures;
         ++out.ready_cures;
+        if (who.can_act) {
+          ++out.castable_ready_cures;
+        }
       }
     }
 
@@ -1703,15 +1763,28 @@ struct clock_reading {
 /// healed nobody says so rather than printing a zero. A rest of a day or
 /// more prints its days, which it could not until #269 found where the
 /// program keeps them.
-[[nodiscard]] report_line summary_line(unsigned restored, unsigned casts,
-                                       unsigned minutes) {
+/// The widest a line drawn from `report_name_column` can be and stay
+/// inside the box: to the panel's own right edge. A line past it runs over
+/// the frame and is cut off by the screen.
+constexpr unsigned report_line_width =
+    cast_region_right - report_name_column + 1;
+
+/// How much of the summary a line says, from the whole sentence down to
+/// the hit points alone: the first that fits the box is the one drawn. A
+/// command that ran cure cycles (#490) casts in the tens and rests for days,
+/// and the whole sentence then runs past the frame.
+enum class summary_shape : std::uint8_t { whole, terse, no_spells, bare };
+
+[[nodiscard]] report_line summary_as(summary_shape shape, unsigned restored,
+                                     unsigned casts, unsigned minutes) {
+  const bool terse = shape == summary_shape::terse;
   report_line line;
   if (restored != 0) {
     line.add(std::string_view{"Healed "});
     line.add_number(restored);
     line.add(std::string_view{" HP"});
-    if (casts != 0) {
-      line.add(std::string_view{" with "});
+    if (casts != 0 && (shape == summary_shape::whole || terse)) {
+      line.add(terse ? std::string_view{", "} : std::string_view{" with "});
       line.add_number(casts);
       line.add(casts == 1 ? std::string_view{" spell"}
                           : std::string_view{" spells"});
@@ -1719,13 +1792,13 @@ struct clock_reading {
   } else {
     line.add(std::string_view{"No hit points restored"});
   }
-  if (minutes != 0) {
+  if (minutes != 0 && shape != summary_shape::bare) {
     // The program's own notation for a rest, which is the notation the
     // player has just watched count down: the rest screen writes
     // `REST TIME: DD:HH:MM` and leaves the days field off nothing. So a
     // rest that crossed a day says days first and pads the hours, and one
     // that did not keeps the two fields it always had.
-    line.add(std::string_view{" in "});
+    line.add(terse ? std::string_view{", "} : std::string_view{" in "});
     const unsigned days = minutes / minutes_in_a_day;
     const unsigned time_of_day = minutes % minutes_in_a_day;
     if (days != 0) {
@@ -1741,6 +1814,18 @@ struct clock_reading {
   line.add(std::string_view{"."});
   line.seal();
   return line;
+}
+
+[[nodiscard]] report_line summary_line(unsigned restored, unsigned casts,
+                                       unsigned minutes) {
+  for (const summary_shape shape :
+       {summary_shape::whole, summary_shape::terse, summary_shape::no_spells}) {
+    const report_line line = summary_as(shape, restored, casts, minutes);
+    if (line.length() <= report_line_width) {
+      return line;
+    }
+  }
+  return summary_as(summary_shape::bare, restored, casts, minutes);
 }
 
 /// One call to the program's own string drawer, at a cell. The frame is
@@ -2093,8 +2178,47 @@ struct clock_reading {
   // seam tried and failed to draw on every pass of the menu from here on.
   ctx.set_scratch(scratch_state, as_word(run_state::idle));
   ctx.set_scratch(scratch_casts, 0);
+  ctx.set_scratch(scratch_casts_since_rest, 0);
+  ctx.set_scratch(scratch_cycles, 0);
   return draw_the_report(cpu, ctx, ds, party, outcome, restored, casts,
                          minutes);
+}
+
+/// After a cure cycle's rest (#490): if somebody is still hurt and the rest
+/// gave somebody who can cast a cure, the command goes on — the Fix's
+/// letter posted for the bar about to be drawn, so the next arrival at
+/// point 2 casts what came back. True when it went on, and then there is no
+/// report to draw: the command is running again.
+///
+/// Anything else ends the cycle and the command is reported as any rest
+/// is: a party the rest left whole is healed, and one it did not is a rest
+/// that stopped short — which is what a rest the player ended early, with
+/// the cures still pending, is.
+[[nodiscard]] bool go_on_after_a_cure_rest(machine& box, seam_context& ctx,
+                                           std::uint16_t ds) {
+  const std::uint16_t cycles = ctx.scratch(scratch_cycles);
+  if ((cycles & cycle_rest) == 0 ||
+      ctx.scratch(scratch_state) != as_word(run_state::resting) ||
+      ctx.scratch(scratch_rest_is_ours) != 0) {
+    // Not a cycle's rest, or one that has not happened yet: the camp loop
+    // goes round once between the Rest key and the rest command reading it.
+    return false;
+  }
+  const auto count = static_cast<std::uint16_t>(cycles & ~cycle_rest);
+  ctx.set_scratch(scratch_cycles, count);
+  cpu::processor& cpu = box.processor();
+  const roster_reading party = read_roster(cpu, ds);
+  if (!party.ended || party.worst_deficit == 0 ||
+      party.castable_ready_cures == 0 || !keyboard_buffer_empty(cpu)) {
+    return false;
+  }
+  if (!ctx.inject_keystroke(fix_key_scancode, fix_key_ascii)) {
+    return false;
+  }
+  ctx.set_scratch(scratch_state, as_word(run_state::running));
+  ctx.set_scratch(scratch_cycles, static_cast<std::uint16_t>(count + 1));
+  ctx.set_scratch(scratch_casts_since_rest, 0);
+  return true;
 }
 
 // --- The points ------------------------------------------------------------
@@ -2122,8 +2246,10 @@ void offer_the_fix(machine& box, seam_context& ctx) {
   // why this report needs no bar of its own.
   //
   // The batch re-offers this point when it is done (§3), and by then the
-  // state is idle, so the arrival after it splices as usual.
-  if (draw_a_report_if_one_is_owed(box, ctx, ds, run_state::idle)) {
+  // state is idle, so the arrival after it splices as usual. A cure cycle
+  // whose rest is over goes on instead of reporting (#490).
+  if (!go_on_after_a_cure_rest(box, ctx, ds) &&
+      draw_a_report_if_one_is_owed(box, ctx, ds, run_state::idle)) {
     return;
   }
   if (!splice_in(cpu, ds)) {
@@ -2162,7 +2288,7 @@ void offer_the_fix(machine& box, seam_context& ctx) {
 [[nodiscard]] bool cast_one_cure(machine& box, seam_context& ctx,
                                  std::uint16_t ds,
                                  const roster_reading& party) {
-  if (ctx.scratch(scratch_casts) >= max_casts ||
+  if (ctx.scratch(scratch_casts_since_rest) >= max_casts ||
       !casting_allowed(box.processor(), ds)) {
     return false;
   }
@@ -2245,12 +2371,17 @@ void offer_the_fix(machine& box, seam_context& ctx) {
                        nothing) &&
       ctx.call_program(image, image_frame_border, border) &&
       ctx.call_program(image, image_clear_region, clear) &&
-      ctx.call_program(image, image_cast_driver, cast);
+      ctx.call_program(
+          static_cast<std::uint16_t>(image + cast_driver_stub_paragraph),
+          cast_driver_entry, cast);
   if (!queued) {
     return false;
   }
   ctx.set_scratch(scratch_casts,
                   static_cast<std::uint16_t>(ctx.scratch(scratch_casts) + 1));
+  ctx.set_scratch(
+      scratch_casts_since_rest,
+      static_cast<std::uint16_t>(ctx.scratch(scratch_casts_since_rest) + 1));
   return true;
 }
 
@@ -2316,6 +2447,8 @@ void take_the_answer(machine& box, seam_context& ctx) {
                         : clock_unreadable);
     ctx.set_scratch(scratch_days_before, began.day);
     ctx.set_scratch(scratch_casts, 0);
+    ctx.set_scratch(scratch_casts_since_rest, 0);
+    ctx.set_scratch(scratch_cycles, 0);
   }
   if (!keyboard_buffer_empty(cpu)) {
     // **This is where the player stops it.** The Fix decides one act per
@@ -2368,11 +2501,26 @@ void take_the_answer(machine& box, seam_context& ctx) {
     return;
   }
 
+  // **A cure cycle, when cures are coming back** (#490). Somebody is hurt,
+  // and somebody who can cast is holding cures pending — the ones this
+  // command queued back as it spent them, or ones the player queued — so
+  // the rest is only as long as the memorizing: no days dialled, which
+  // leaves the duration the program's own wrapper computes, and the camp
+  // menu presses the Fix again when it comes back. A rest that only waits
+  // out the wounds heals one point a day; a cure heals more than that.
+  const auto cycles =
+      static_cast<std::uint16_t>(ctx.scratch(scratch_cycles) & ~cycle_rest);
+  const bool cure_cycle = party.worst_deficit != 0 &&
+                          party.castable_pending_cures != 0 &&
+                          casting_allowed(cpu, ds) && cycles < max_cycles;
+  ctx.set_scratch(scratch_cycles, static_cast<std::uint16_t>(
+                                      cycles | (cure_cycle ? cycle_rest : 0)));
+
   // The word the rest screen's own daYs-then-Inc writes, written once to
   // where that many presses would have left it. Zero is a real answer: it
   // leaves the duration the program's own wrapper computed, which is the
   // rest the player's own Rest key would have given them.
-  const std::uint16_t days = days_to_dial(party);
+  const std::uint16_t days = cure_cycle ? 0 : days_to_dial(party);
   cpu.write_word(ds, data_rest_days, days);
   // The rest that is about to happen is this seam's, and point 3 reads
   // that here rather than guessing it from the clock.

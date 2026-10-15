@@ -103,6 +103,8 @@ constexpr std::uint16_t area_offset = 0x0040;
 /// them back.
 constexpr std::uint8_t fix_letter = 'F';
 constexpr std::uint16_t rest_keystroke = (std::uint16_t{0x13} << 8U) | 'R';
+/// The Fix's own key, posted when a cure cycle's rest is over (#490).
+constexpr std::uint16_t fix_keystroke = (std::uint16_t{0x21} << 8U) | 'F';
 
 /// Where the test puts things. Records live in a segment of their own so
 /// that a wrong segment register shows up as a wrong answer, and the
@@ -196,6 +198,18 @@ constexpr std::uint16_t border_right_seen = 0x701E;
 constexpr std::uint16_t border_bottom_seen = 0x7020;
 constexpr std::uint16_t border_style_seen = 0x7022;
 constexpr std::uint16_t frames_before_border_seen = 0x7024;
+
+/// The cast's batch (#526): the slot sort in the module, the clear, and
+/// the cast driver's stub entry, which keeps the CS it was entered with.
+/// The overlay manager's trap reads the stub record at `CS:0`, so that
+/// CS is the fact; the entry's flat address is the same either way.
+constexpr std::uint16_t module_sort_spell_slots = 0x0824;
+constexpr std::uint16_t image_clear_region = 0x4047;
+constexpr std::uint16_t clear_region_cleans = 0x08;
+constexpr std::uint16_t cast_stub_paragraph = 0x0096;
+constexpr std::uint16_t cast_stub_entry = 0x0039;
+constexpr std::uint16_t cast_driver_cleans = 0x0A;
+constexpr std::uint16_t cast_cs_seen = 0x7026;
 /// Where the knot is: the panel frame's top edge row, one above the
 /// panel's first row, and the column the viewport box's right edge is on.
 constexpr std::uint16_t knot_row = 0x10;
@@ -666,6 +680,29 @@ struct rig {
     put_byte(data_segment, changed_byte, interrupted ? 1 : 0);
   }
 
+  /// The cast's routines, each a `retf` that cleans what it is handed,
+  /// the stub entry keeping its CS first: `mov ax, cs / mov [cast_cs_seen],
+  /// ax / retf 0Ah`.
+  void cast_routines() const {
+    put_byte(overlay_segment, module_sort_spell_slots, 0xCB);  // retf
+    put_byte(image_load_segment, image_clear_region, 0xCA);
+    put_word(image_load_segment,
+             static_cast<std::uint16_t>(image_clear_region + 1),
+             clear_region_cleans);
+    const auto stub =
+        static_cast<std::uint16_t>(image_load_segment + cast_stub_paragraph);
+    std::uint16_t put = cast_stub_entry;
+    for (const std::uint8_t byte :
+         {std::uint8_t{0x8C}, std::uint8_t{0xC8}, std::uint8_t{0xA3},
+          static_cast<std::uint8_t>(cast_cs_seen & 0xFFU),
+          static_cast<std::uint8_t>(cast_cs_seen >> 8U), std::uint8_t{0xCA},
+          static_cast<std::uint8_t>(cast_driver_cleans & 0xFFU),
+          static_cast<std::uint8_t>(cast_driver_cleans >> 8U)}) {
+      put_byte(stub, put++, byte);
+    }
+    put_word(data_segment, cast_cs_seen, 0);
+  }
+
   /// Steps until a batch the last arrival queued has run itself out. The
   /// bound is a bound and not a measurement: the routines above are two
   /// instructions each, so a report is a couple of dozen steps and this
@@ -1129,6 +1166,25 @@ TEST(SeamEncampFix, SpendsAReadyCureOnTheWorstWoundedMember) {
       << "no rest is asked for while there is still a cure to spend";
 }
 
+/// Called at the image base, the entry ran only while the driver's
+/// overlay was in memory; once evicted, the manager took the image's
+/// first bytes for the stub record and wrote over its own stub table
+/// (#526).
+TEST(SeamEncampFix, CallsTheCastDriverAtItsStubsOwnSegment) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.drawing_routines();
+  r.cast_routines();
+  r.party(party_with_a_healer(2));
+
+  r.one_menu_pass(fix_letter);
+  r.run_the_calls();
+
+  EXPECT_EQ(r.word_at(data_segment, cast_cs_seen),
+            image_load_segment + cast_stub_paragraph);
+}
+
 TEST(SeamEncampFix, QueuesTheCureBackBeforeItSpendsIt) {
   const rig r;
   r.arm();
@@ -1146,11 +1202,12 @@ TEST(SeamEncampFix, QueuesTheCureBackBeforeItSpendsIt) {
       << "the replacement is queued before the original is spent";
 }
 
-TEST(SeamEncampFix, RestsRatherThanCastingWhatNobodyHoldsReady) {
+TEST(SeamEncampFix, RestsOnlyForTheMemorizingWhenCuresAreComingBack) {
+  // Cures queued for memorization are held and not castable, but a rest
+  // turns them into casts (#490): the rest is the memorizing, no days.
   const rig r;
   r.arm();
   r.camp();
-  // Cures queued for memorization are held and not castable.
   r.party({{.status = status_unhurt, .hit_points = 15, .most_hit_points = 17},
            {.status = status_unhurt,
             .hit_points = 30,
@@ -1159,10 +1216,156 @@ TEST(SeamEncampFix, RestsRatherThanCastingWhatNobodyHoldsReady) {
 
   r.one_menu_pass(fix_letter);
 
-  EXPECT_EQ(r.word_at(data_segment, data_rest_days), 3u)
-      << "two down plus the day of slack";
+  EXPECT_EQ(r.word_at(data_segment, data_rest_days), 0u)
+      << "the program's own memorization time, and not the deficit's days";
   EXPECT_EQ(r.first_key(), rest_keystroke);
   EXPECT_EQ(r.word_at(data_segment, data_cast_anchor), 0u);
+}
+
+/// A cure cycle's rest, as the program runs it: the rest command reads the
+/// Rest key, the seam presses the rest screen's own, and the rest
+/// memorizes the pending cures of member `nth` (`count` of them, from slot
+/// `first`).
+void a_cure_rest(const rig& r, unsigned nth, unsigned first, unsigned count) {
+  r.drain_keys();
+  r.step_at(point_rest_entry);
+  r.drain_keys();
+  for (unsigned slot = first; slot < first + count; ++slot) {
+    r.put_byte(record_segment,
+               static_cast<std::uint16_t>(r.member_offset(nth) +
+                                          rec_spell_slots + slot),
+               cure_light_wounds);
+  }
+}
+
+TEST(SeamEncampFix, PressesTheFixAgainWhenACureRestIsOver) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.drawing_routines();
+  r.party({{.status = status_unhurt, .hit_points = 5, .most_hit_points = 17},
+           {.status = status_unhurt,
+            .hit_points = 30,
+            .most_hit_points = 30,
+            .pending_cures = 2}});
+
+  r.one_menu_pass(fix_letter);
+  a_cure_rest(r, 1, 0, 2);
+  r.step_at(point_before_input);
+
+  EXPECT_EQ(r.keys_waiting(), 1u);
+  EXPECT_EQ(r.first_key(), fix_keystroke)
+      << "the command goes on: the Fix pressed for the bar going out";
+  EXPECT_EQ(r.frames_drawn(), 0u) << "and nothing to report yet";
+  EXPECT_EQ(r.bar(), fixed_bar);
+
+  // The bar answers with the Fix, and the cure the rest gave back is cast.
+  r.drain_keys();
+  r.step_at(point_after_input, fix_letter);
+  EXPECT_EQ(r.word_at(data_segment, data_cast_anchor), r.member_offset(0));
+  EXPECT_EQ(r.first_key(), pick_keystroke);
+}
+
+TEST(SeamEncampFix, ReportsHealedWhenACureRestLeftThePartyWhole) {
+  // The rest's own healing closed the gap while the cures were memorized:
+  // nothing left to cast, and the command is over.
+  const rig r;
+  r.arm();
+  r.camp();
+  r.drawing_routines();
+  r.party({{.status = status_unhurt, .hit_points = 11, .most_hit_points = 12},
+           {.status = status_unhurt,
+            .hit_points = 30,
+            .most_hit_points = 30,
+            .pending_cures = 1}});
+
+  r.one_menu_pass(fix_letter);
+  ASSERT_EQ(r.word_at(data_segment, data_rest_days), 0u) << "a cure cycle";
+  a_cure_rest(r, 1, 0, 1);
+  r.put_byte(record_segment,
+             static_cast<std::uint16_t>(r.member_offset(0) + rec_hit_points),
+             12);
+  r.step_at(point_before_input);
+  r.run_the_calls();
+
+  EXPECT_EQ(r.keys_waiting(), 0u) << "the Fix is not pressed again";
+  EXPECT_EQ(r.frames_drawn(), 1u);
+  EXPECT_EQ(r.title(), "Fix: Party Healed");
+}
+
+TEST(SeamEncampFix, ReportsARestStoppedShortWhenTheCuresAreStillPending) {
+  // The player ended the cure cycle's rest before the memorizing: nothing
+  // came back to cast, and the command is reported as any short rest is.
+  const rig r;
+  r.arm();
+  r.camp();
+  r.drawing_routines();
+  r.party({{.status = status_unhurt, .hit_points = 5, .most_hit_points = 17},
+           {.status = status_unhurt,
+            .hit_points = 30,
+            .most_hit_points = 30,
+            .pending_cures = 2}});
+
+  r.one_menu_pass(fix_letter);
+  a_cure_rest(r, 1, 0, 0);
+  r.step_at(point_before_input);
+  r.run_the_calls();
+
+  EXPECT_EQ(r.frames_drawn(), 1u);
+  EXPECT_EQ(r.title(), "Fix: Rest Stopped");
+}
+
+TEST(SeamEncampFix, RestsTheWoundsOutWhenNoCureCanComeBack) {
+  // The cures are pending with somebody who cannot act, or in an area that
+  // refuses casting: a rest gives nobody a cure to cast, so it is the
+  // deficit's days, as before #490.
+  {
+    const rig r;
+    r.arm();
+    r.camp();
+    r.party({{.status = status_unhurt, .hit_points = 15, .most_hit_points = 17},
+             {.status = status_unhurt,
+              .hit_points = 30,
+              .most_hit_points = 30,
+              .pending_cures = 3,
+              .can_act = false}});
+    r.one_menu_pass(fix_letter);
+    EXPECT_EQ(r.word_at(data_segment, data_rest_days), 3u);
+  }
+  {
+    const rig r;
+    r.arm();
+    r.camp();
+    r.area(false);
+    r.party({{.status = status_unhurt, .hit_points = 15, .most_hit_points = 17},
+             {.status = status_unhurt,
+              .hit_points = 30,
+              .most_hit_points = 30,
+              .pending_cures = 3}});
+    r.one_menu_pass(fix_letter);
+    EXPECT_EQ(r.word_at(data_segment, data_rest_days), 3u);
+  }
+}
+
+TEST(SeamEncampFix, DoesNotGoOnWhenThePlayerHasTypedAKey) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.drawing_routines();
+  r.party({{.status = status_unhurt, .hit_points = 5, .most_hit_points = 17},
+           {.status = status_unhurt,
+            .hit_points = 30,
+            .most_hit_points = 30,
+            .pending_cures = 2}});
+
+  r.one_menu_pass(fix_letter);
+  a_cure_rest(r, 1, 0, 2);
+  ASSERT_TRUE(r.pc().inject_keystroke(0x1E41));
+  r.step_at(point_before_input);
+  r.run_the_calls();
+
+  EXPECT_EQ(r.frames_drawn(), 1u) << "the command is reported instead";
+  EXPECT_EQ(r.keys_waiting(), 1u) << "and the player's key is left waiting";
 }
 
 TEST(SeamEncampFix, RestsRatherThanCastingWhereTheAreaRefusesIt) {
@@ -1397,7 +1600,8 @@ TEST(SeamEncampFix, DoesNothingWhenItIsOff) {
 
   r.one_menu_pass(fix_letter);
 
-  EXPECT_FALSE(r.pc().seams().armed());
+  // Its own row: the built-in fixes are armed with the program.
+  EXPECT_FALSE(r.pc().seams().status("encamp-fix").armed);
   EXPECT_EQ(r.bar(), plain_bar);
   EXPECT_EQ(r.prompt(), plain_prompt);
   EXPECT_EQ(r.word_at(data_segment, data_rest_days), 0u);

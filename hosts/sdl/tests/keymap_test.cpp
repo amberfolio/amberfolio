@@ -29,8 +29,9 @@
 //      producer and this says so.
 //
 //   2. Soundness. Every SDL key the host maps produces a code core's
-//      table has an entry for. A host that posted a code the BIOS calls
-//      `unmapped` would be a keystroke that vanishes.
+//      table has an entry for, or a cursor-pad code core names. A host
+//      that posted a code the BIOS calls `unmapped` would be a keystroke
+//      that vanishes.
 //
 //   3. Legends agree. SDL names a key by what is printed on the keycap,
 //      and for the printable keys that name is one character — and core's
@@ -54,6 +55,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "amberfolio/machine/keyboard.h"
@@ -61,7 +63,9 @@
 namespace amberfolio::sdl {
 namespace {
 
+using machine::xt_keyboard::cursor_pad_of;
 using machine::xt_keyboard::key_kind;
+using machine::xt_keyboard::keypad_of_cursor_pad;
 using machine::xt_keyboard::table_size;
 using machine::xt_keyboard::xt_table;
 
@@ -109,7 +113,7 @@ TEST(SdlKeymap, ReachesEveryMakeCodeTheBoardHas) {
   std::array<bool, table_size> reachable{};
   for (const SDL_Scancode code : all_scancodes()) {
     const std::uint8_t make = xt_scancode(code);
-    if (make != 0) {
+    if (make != 0 && make < table_size) {
       reachable[make] = true;
     }
   }
@@ -137,6 +141,9 @@ TEST(SdlKeymap, PostsNothingTheBiosHasNoEntryFor) {
     const std::uint8_t make = xt_scancode(code);
     if (make == 0) {
       continue;
+    }
+    if (keypad_of_cursor_pad(make) != 0) {
+      continue;  // the cursor pad, checked against its twins below
     }
     EXPECT_GE(make, first_make_code) << "for SDL key '" << legend(code) << "'";
     EXPECT_LE(make, last_make_code) << "for SDL key '" << legend(code) << "'";
@@ -190,6 +197,9 @@ TEST(SdlKeymap, TheKeysWhoseLegendIsAWord) {
   EXPECT_EQ(unshifted_char(xt_scancode(SDL_SCANCODE_ESCAPE)), '\x1B');
   EXPECT_EQ(unshifted_char(xt_scancode(SDL_SCANCODE_TAB)), '\t');
   EXPECT_EQ(unshifted_char(xt_scancode(SDL_SCANCODE_RETURN)), '\r');
+  // The keypad's Enter is the same Enter (the 83-key board has one).
+  EXPECT_EQ(xt_scancode(SDL_SCANCODE_KP_ENTER),
+            xt_scancode(SDL_SCANCODE_RETURN));
   EXPECT_EQ(unshifted_char(xt_scancode(SDL_SCANCODE_BACKSPACE)), '\b');
   EXPECT_EQ(unshifted_char(xt_scancode(SDL_SCANCODE_SPACE)), ' ');
 
@@ -215,22 +225,27 @@ TEST(SdlKeymap, TheKeysWhoseLegendIsAWord) {
     EXPECT_EQ(make, 0x3B + i);
   }
 
-  // The arrow cluster and the keypad are the same keys on this board:
-  // an 83-key XT has no dedicated arrows, so a modern keyboard's arrow
-  // and its keypad twin are two ways to press one key and must post the
-  // same code. That they *are* the same code is what stops claim 1 from
-  // demanding twice the coverage the board has.
-  EXPECT_EQ(xt_scancode(SDL_SCANCODE_UP), xt_scancode(SDL_SCANCODE_KP_8));
-  EXPECT_EQ(xt_scancode(SDL_SCANCODE_DOWN), xt_scancode(SDL_SCANCODE_KP_2));
-  EXPECT_EQ(xt_scancode(SDL_SCANCODE_LEFT), xt_scancode(SDL_SCANCODE_KP_4));
-  EXPECT_EQ(xt_scancode(SDL_SCANCODE_RIGHT), xt_scancode(SDL_SCANCODE_KP_6));
-  EXPECT_EQ(xt_scancode(SDL_SCANCODE_HOME), xt_scancode(SDL_SCANCODE_KP_7));
-  EXPECT_EQ(xt_scancode(SDL_SCANCODE_END), xt_scancode(SDL_SCANCODE_KP_1));
-  EXPECT_EQ(xt_scancode(SDL_SCANCODE_PAGEUP), xt_scancode(SDL_SCANCODE_KP_9));
-  EXPECT_EQ(xt_scancode(SDL_SCANCODE_PAGEDOWN), xt_scancode(SDL_SCANCODE_KP_3));
-  EXPECT_EQ(xt_scancode(SDL_SCANCODE_INSERT), xt_scancode(SDL_SCANCODE_KP_0));
-  EXPECT_EQ(xt_scancode(SDL_SCANCODE_DELETE),
-            xt_scancode(SDL_SCANCODE_KP_PERIOD));
+  // The cursor pad is the keypad's twin plus 20h (#517): its own codes,
+  // so Num Lock never turns an arrow into a digit, each one the keypad key
+  // whose navigation legend it carries.
+  constexpr std::array<std::pair<SDL_Scancode, SDL_Scancode>, 10> twins = {{
+      {SDL_SCANCODE_UP, SDL_SCANCODE_KP_8},
+      {SDL_SCANCODE_DOWN, SDL_SCANCODE_KP_2},
+      {SDL_SCANCODE_LEFT, SDL_SCANCODE_KP_4},
+      {SDL_SCANCODE_RIGHT, SDL_SCANCODE_KP_6},
+      {SDL_SCANCODE_HOME, SDL_SCANCODE_KP_7},
+      {SDL_SCANCODE_END, SDL_SCANCODE_KP_1},
+      {SDL_SCANCODE_PAGEUP, SDL_SCANCODE_KP_9},
+      {SDL_SCANCODE_PAGEDOWN, SDL_SCANCODE_KP_3},
+      {SDL_SCANCODE_INSERT, SDL_SCANCODE_KP_0},
+      {SDL_SCANCODE_DELETE, SDL_SCANCODE_KP_PERIOD},
+  }};
+  for (const auto& [cursor, keypad] : twins) {
+    EXPECT_EQ(xt_scancode(cursor), cursor_pad_of(xt_scancode(keypad)))
+        << "for SDL key '" << legend(cursor) << "'";
+    EXPECT_NE(xt_scancode(cursor), 0)
+        << "for SDL key '" << legend(cursor) << "'";
+  }
 }
 
 TEST(SdlKeymap, SaysNothingForKeysTheBoardDoesNotHave) {
@@ -246,7 +261,6 @@ TEST(SdlKeymap, SaysNothingForKeysTheBoardDoesNotHave) {
   // break that, and this is where it would be caught.
   EXPECT_EQ(xt_scancode(SDL_SCANCODE_F11), 0);
   EXPECT_EQ(xt_scancode(SDL_SCANCODE_F12), 0);
-  EXPECT_EQ(xt_scancode(SDL_SCANCODE_KP_ENTER), 0);
   EXPECT_EQ(xt_scancode(SDL_SCANCODE_KP_DIVIDE), 0);
   EXPECT_EQ(xt_scancode(SDL_SCANCODE_UNKNOWN), 0);
 }

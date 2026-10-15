@@ -28,7 +28,8 @@
 //     the hash of the same run on a machine that was never asked about
 //     seams at all — the engine is not consulted, so it cannot differ;
 //   * a disabled seam's breakpoint is never consulted: `dispatch()` is
-//     reached only when `armed()`, and only enabled seams arm points;
+//     reached only when `armed()` and `wants()`, and only enabled seams
+//     arm points;
 //   * seam state is configuration, not machine state: `reset()` clears
 //     it, the serialization omits it, and a replay records it as an
 //     initial condition (PLAN.md §4) rather than as something the machine
@@ -265,9 +266,10 @@
 // overlaid code the module names the read that loads it — which file,
 // which offset, how many bytes, optionally which digest (overlay.h) — and
 // the engine arms the point only while the tracker says that read is
-// resident, at the address it landed. A module that is not resident
-// leaves the seam enabled but inert, with `seam_reason::module_not_resident`
-// for anyone who asks why.
+// resident, at the address it landed. A point whose module is not
+// resident does nothing; a seam none of whose modules is resident is
+// enabled but inert, with `seam_reason::module_not_resident` for anyone
+// who asks why. One module in memory is enough for `armed` (#477).
 //
 // **Where the program says where a module is, that is what is used.**
 // An overlay manager that shuffles modules around an arena has to keep
@@ -301,25 +303,51 @@
 //
 // `machine::step()` tests one `bool`. Nothing is scanned, nothing is
 // hashed, no address is compared: `armed()` is false and the branch is
-// not taken. When a seam *is* on, the check is a linear scan of at most
-// `max_points` physical addresses, which is a handful of compares on a
-// path that is already an interpreted instruction away from anything
-// that matters — the same argument port_map.h makes for scanning its
-// claims.
+// not taken.
 //
-// A point resolved from the program's load-segment word costs one more
-// thing on that scan: a two-byte read of RAM. It is behind a test that
-// throws away fifteen steps in sixteen for free — a load segment is a
-// paragraph, so a point can only be *here* if `at` and the point's
-// offset agree in their low four bits — and it happens only for a seam
-// that is on and only for the points that name such a word.
+// When a seam *is* on, the step is asked one more question, inline,
+// before the engine is called at all: `wants(at)`. The engine keeps a
+// filter derived from the armed table, and a step at an address no point
+// can be at — nearly every step — costs a bit test, a mask test and a
+// bool, not a call and a walk over `max_points` entries.
 //
-// A point with no address (`seam_point::at_every_step`) costs one bool
-// on that scan — its seam's latch — and everything past it happens only
+// The filter is **a superset of what `dispatch()` acts at, never less**,
+// and `dispatch()` is the loop it always was: a `true` only means "go and
+// look", so which points are reached, at which steps, in which order,
+// and what batches and latches do, is exactly what it would be with no
+// filter. The argument is one clause per kind of point, each the
+// negation of a `continue` in `dispatch()`:
+//
+//   * an address point in a module that stays put: the point matters at
+//     its own physical address and nowhere else. One bit per address,
+//     folded to its low sixteen (so an address 64 KiB away with the same
+//     low bits is a visit that finds nothing; never the other way);
+//   * a point with no address: it matters while its seam's latch is set.
+//     `latched_` is that, rebuilt wherever a latch moves (`pull()`, the
+//     arrival that serves one, and every `arm_all()`);
+//   * a point resolved from the program's load-segment word: the program
+//     rewrites that word whenever it likes and tells nobody, so **no
+//     answer derived from it is kept**. What is kept is only what is a
+//     property of the table: the point's offset, and so the low four
+//     bits `at` must have to match (a load segment is a paragraph). Those
+//     points are bucketed by that nibble, and a step reads the word for
+//     the entries of its own nibble — the same read of the same bytes at
+//     the same boundary `dispatch()` would do — and compares;
+//   * while a batch of calls is outstanding the engine is wanted at every
+//     step, because it drives the batch (`armed()`'s own reason).
+//
+// A seam that is off arms no point, so there is nothing in the filter to
+// ask about it; `rebuild_filter()` runs at the end of `arm_all()`, which
+// every enable, disable and overlay read ends in, and in `clear()`.
+// `tests/core/machine/seam_test.cpp` ("SeamFilter") holds the filter to
+// what `dispatch()` does at every address it sweeps, including a module
+// that moves with no rearm.
+//
+// A point with no address (`seam_point::at_every_step`) costs one bool in
+// that filter — its seam's latch — and everything past it happens only
 // while somebody's pull is outstanding. That is the whole of what it
-// costs a run in which nobody pulled, and it is the same bool the
-// address points already test one line later, so an enabled-and-unpulled
-// trigger is exactly the machine it was before #163. A run with a pull
+// costs a run in which nobody pulled, so an enabled-and-unpulled trigger
+// is exactly the machine it was before #163. A run with a pull
 // outstanding pays a guard per step until the guard holds, by design:
 // the guard is what the point has instead of an address.
 
@@ -378,7 +406,19 @@ struct edition;
 /// the version moves: a stale definition read as ungated would be a
 /// possession gate silently not applied, which is the one failure a gate
 /// has (PLAN.md §5).
-inline constexpr std::uint16_t seam_schema_version = 5;
+///
+/// 6: a definition may name a **group** (`seam_definition::group`), and
+/// then enabling it disables every other seam in that group. A definition
+/// written before this version means "no group"; the version moves
+/// because a stale definition read that way could be on beside a seam it
+/// was written to replace.
+///
+/// 7: a point may say `inside_calls`, and then it is also offered while
+/// another seam's batch of calls is running (#419). A definition written
+/// before this version means "never inside a batch", which is what every
+/// point meant then; the field decides *when* a handler runs, which is
+/// not a thing to infer.
+inline constexpr std::uint16_t seam_schema_version = 7;
 
 /// What runs when execution reaches an armed interception point. Native
 /// C++, called from outside the emulated machine — see this file's top
@@ -423,6 +463,26 @@ struct seam_point {
   /// is the honest reading of "now" at a step boundary: the first step
   /// at which acting is provably safe.
   bool at_every_step{false};
+
+  /// This point is **also offered while a batch of calls is running**
+  /// (`seam_context::call_program`, #419) — any seam's, its own included.
+  ///
+  /// Every other point is not: inside a batch the machine is in the
+  /// program's code at a seam's request, which no point's facts
+  /// describe. Some facts do describe it. The font seams' point is an
+  /// instruction in the glyph blitter, and the blitter is the blitter
+  /// whoever called it; a journal page drawn through the program's own
+  /// string routine is drawn through it too, and a face that skipped it
+  /// would letter the game in one face and the journal in another.
+  ///
+  /// A handler run there **edits registers and nothing else of the
+  /// program's**, and may not start a batch of its own: `call_program`
+  /// and `place_bytes` answer false inside one, because the batch that
+  /// is running owns the stack frame they would build on. Only for an
+  /// address point in a module that stays put, on a seam that is not a
+  /// trigger, which is all the one user needs: anywhere else the field is
+  /// not honoured, and the unit suite checks `all_seams()` for it.
+  bool inside_calls{false};
 };
 
 /// A seam, as a fact table: what it is, what it applies to, and where it
@@ -458,7 +518,7 @@ struct seam_definition {
 
   /// The document the player must hold for this seam to do anything
   /// (PLAN.md §5, #171), or `document_kind::none` for a seam that is not
-  /// gated. **No seam in this build names one.** The code-wheel bypass
+  /// gated. **No seam in this build names one.** The code-wheel seam
   /// did, on the wheel itself (#115), until the releases sold today
   /// turned out to ship a code generator application rather than a PDF
   /// of it (#290): what it waits for now is a person answering the
@@ -480,8 +540,20 @@ struct seam_definition {
   /// path that arms a gated seam without a satisfied gate, because the
   /// gate is tested where residency is tested and both answers are
   /// computed by the one function `status()` and `arm_all()` share
-  /// (`modules_resident`'s own argument, applied again).
+  /// (`some_module_resident`'s own argument, applied again).
   document_kind gate{document_kind::none};
+
+  /// Seams that are **alternatives** share a group, and at most one of
+  /// them is on: `seam_engine::enable()` disables the others first, each
+  /// with its own `disabled` event. Empty, the default, is no group.
+  ///
+  /// For seams that answer the same question differently — the text
+  /// faces (text_face.h) each swap the same glyph fetch, and two of them
+  /// on at once would leave the lettering to whichever handler the engine
+  /// happened to offer the point to last. A host shows them as the seams
+  /// they are; turning one on turns its sibling off everywhere at once,
+  /// the panel, a config file and a replay's preamble alike.
+  std::string_view group{};
 
   /// The schema this definition was written against — `seam_schema_version`
   /// at the time. Spelled in the definition rather than assumed, so the
@@ -492,6 +564,20 @@ struct seam_definition {
 /// Every seam this build carries. Registered into every engine at
 /// construction; a host or a test may add more (`seam_engine::add`).
 [[nodiscard]] std::span<const seam_definition> all_seams();
+
+/// The fixes this build carries: seams in every respect but two. **They
+/// are on whenever the program they name is loaded**, and **nothing lists
+/// or toggles them**: `count()`, `status(index)`, `enabled_id()` and
+/// `find()` pass over them, and `enable()`, `disable()` and `pull()` answer
+/// `unknown_seam`, so no panel, config file, flag or recording names one.
+///
+/// For a way the program fails that no player could want: there is no
+/// state of a fix worth choosing, so there is no choice to offer.
+/// Everything else a seam owes, a fix owes too, the `identical` claim
+/// above all: a fix that is reached and finds nothing to fix leaves the
+/// machine as it was, which is what keeps every recording in
+/// `tests/sessions/` verifying with it on (docs/seams.md §7).
+[[nodiscard]] std::span<const seam_definition> built_in_fixes();
 
 /// Why `seam_engine::enable()` or `disable()` refused, or why an enabled
 /// seam is not armed.
@@ -506,8 +592,9 @@ enum class seam_reason : std::uint8_t {
   wrong_binary,
   /// The definition was written against another schema version.
   schema_mismatch,
-  /// The seam is on, but the module one of its points lives in is not
-  /// resident, so nothing is armed (overlay.h).
+  /// The seam is on, but none of the modules its points live in is
+  /// resident, so no point can act (overlay.h). A seam with one module in
+  /// memory and another out is armed: its points in the first act (#477).
   module_not_resident,
   /// The seam is on, and the document it is gated on has not been
   /// presented (`seam_definition::gate`, document.h, #171). Nothing is
@@ -577,8 +664,9 @@ struct seam_status {
   /// Why it is unavailable, or why an enabled seam is not armed. `none`
   /// for a seam that is off, or on and armed.
   seam_reason reason{seam_reason::none};
-  /// Whether any of its points is armed right now. On-and-unarmed is a
-  /// seam waiting for its module.
+  /// Whether any of its points can act right now: the gate is open and
+  /// at least one module its points name is resident (#477). On and
+  /// unarmed is a seam waiting for a module or a document.
   bool armed{false};
 
   /// How many times one of its handlers has actually **acted** since it
@@ -929,8 +1017,9 @@ class seam_context {
   /// program can read it from, and nowhere permanent.
   ///
   /// False, and nothing written, if the batch has no room left or the
-  /// stack has not got the space — a seam that cannot say what it wanted
-  /// to say declines, like any other unmet precondition.
+  /// stack has not got the space, or this handler is running inside a
+  /// batch already — a seam that cannot say what it wanted to say
+  /// declines, like any other unmet precondition.
   bool place_bytes(std::span<const std::uint8_t> bytes, std::uint16_t& segment,
                    std::uint16_t& offset);
 
@@ -944,7 +1033,8 @@ class seam_context {
   /// why a batch rather than a call.
   ///
   /// False, and nothing queued, if the batch is full or `words` is longer
-  /// than a call may be.
+  /// than a call may be, or if this handler is running inside a batch
+  /// already (`seam_point::inside_calls`).
   bool call_program(std::uint16_t segment, std::uint16_t offset,
                     std::span<const std::uint16_t> words);
 
@@ -972,13 +1062,14 @@ class seam_context {
   friend class seam_engine;
   seam_context(machine& box, seam_engine& engine, std::string_view id,
                std::uint32_t at, std::uint32_t module_base,
-               std::uint32_t image_base) noexcept
+               std::uint32_t image_base, bool inside_batch = false) noexcept
       : box_(&box),
         engine_(&engine),
         id_(id),
         at_(at),
         module_base_(module_base),
-        image_base_(image_base) {}
+        image_base_(image_base),
+        inside_batch_(inside_batch) {}
 
   machine* box_;
   seam_engine* engine_;
@@ -986,6 +1077,9 @@ class seam_context {
   std::uint32_t at_;
   std::uint32_t module_base_;
   std::uint32_t image_base_;
+  /// Run at an `inside_calls` point while a batch is running: the batch
+  /// owns the stack, and `call_program`/`place_bytes` answer false.
+  bool inside_batch_;
   /// Whether `decline()` was called during this one visit. Read by
   /// `seam_engine::dispatch()` to decide whether a trigger's latch was
   /// spent.
@@ -1000,9 +1094,9 @@ class seam_context {
 class seam_engine {
  public:
   /// Definitions the registry holds. The v1 seam set is six (PLAN.md §5)
-  /// plus the cheats' two, and a test registers a dozen-odd of its own
-  /// beside them; twenty-four leaves room for the fast-follow fixes
-  /// without making this a data structure.
+  /// plus the cheats' two and the two text faces, and a test registers a
+  /// dozen-odd of its own beside them; forty leaves room for the
+  /// fast-follow fixes without making this a data structure.
   ///
   /// It was sixteen, which the seam suite's own set reached exactly when
   /// M5-D1 added a thirteenth (#169), and M5-D3 two more behind it
@@ -1010,11 +1104,17 @@ class seam_engine {
   /// next definition*, which in a test rig
   /// is a seam quietly missing rather than a build that stops. The
   /// headroom is not for the seams this build carries; it is so that
-  /// adding one is never that.
-  static constexpr std::size_t max_seams = 24;
+  /// adding one is never that. It was twenty-four until the text faces
+  /// made the seam suite's rig twenty-five, and thirty-two until the
+  /// selection colour and the edit keys made it thirty-three.
+  static constexpr std::size_t max_seams = 40;
 
-  /// Points armed at once, across every enabled seam.
-  static constexpr std::size_t max_points = 32;
+  /// Points armed at once, across every enabled seam. Thirty-two was
+  /// what the build's seams needed until the keys' seams: with every seam
+  /// on there were thirty-four points (the journal alone has ten), and the
+  /// last one a player switched on was refused with `too_many_points`.
+  /// Sixty-four lasted until the aim bar's watch made it sixty-seven.
+  static constexpr std::size_t max_points = 96;
 
   /// What a batch of calls into the program may hold (#188). A report is
   /// a framed box and a handful of lines, so twelve calls of eight words
@@ -1024,11 +1124,12 @@ class seam_engine {
   static constexpr std::size_t max_call_words = 8;
   static constexpr std::size_t max_call_bytes = 256;
 
-  /// Words of its own a seam may keep between arrivals (#189). Eight is
-  /// what the Encamp Fix's report needs — what it spent, what it
-  /// restored, when it started — and small enough that a seam reaching
-  /// for a ninth is a seam that should be reading the machine instead.
-  static constexpr unsigned scratch_words = 8;
+  /// Words of its own a seam may keep between arrivals (#189). Twelve is
+  /// what `modern-controls`' pieces need between them — the move mode's
+  /// five, the line editor's one and the aim bar's four — and small
+  /// enough that a seam reaching for more is a seam that should be
+  /// reading the machine instead.
+  static constexpr unsigned scratch_words = 12;
 
   /// How many step boundaries a batch may take before the engine decides
   /// the call is not coming back.
@@ -1061,15 +1162,23 @@ class seam_engine {
   /// registry is full or the id is already taken.
   bool add(const seam_definition& seam) noexcept;
 
-  [[nodiscard]] std::size_t count() const noexcept { return registered_; }
+  /// How many seams are listed: every registered one but the fixes.
+  [[nodiscard]] std::size_t count() const noexcept {
+    return registered_ - fixes_;
+  }
 
   /// Where `id` stands — off, on, unavailable, and why. `index` is a
-  /// position in the registry, `count()` of them.
+  /// position in the listing, `count()` of them.
   [[nodiscard]] seam_status status(std::size_t index) const noexcept;
   [[nodiscard]] seam_status status(std::string_view id) const noexcept;
 
-  /// The definition behind `id`, or null.
+  /// The definition behind a listed `id`, or null.
   [[nodiscard]] const seam_definition* find(std::string_view id) const noexcept;
+
+  /// Where a built-in fix stands (`built_in_fixes()`): the row `status()`
+  /// gives a listed seam, for the tests and diagnostics that have to be
+  /// able to ask. Empty for any other id.
+  [[nodiscard]] seam_status fix_status(std::string_view id) const noexcept;
 
   // --- The program ------------------------------------------------------
 
@@ -1122,6 +1231,7 @@ class seam_engine {
 
   /// Turn everything off. `machine::reset()` calls this — an enabled seam
   /// is a setting about a program, and a reset machine has no program.
+  /// An outstanding batch goes too, and its snapshot is not restored.
   void clear() noexcept;
 
   /// Pull `id`'s trigger: the next arrival at one of its points runs its
@@ -1170,8 +1280,27 @@ class seam_engine {
     return armed_ != 0 || call_.active;
   }
 
+  /// Whether `dispatch(box, at)` can do anything at all at this step
+  /// boundary: the filter `machine::step()` asks, after `armed()`, so
+  /// that a step at an address no point is at costs a test of two
+  /// words and not a call and a scan of the table. "The cost when it is
+  /// off" says why it is exact, and `seam_filter_test.cpp` pins it.
+  ///
+  /// A **superset** of what runs, never less: a `true` is permission to
+  /// go and look (`dispatch` still decides, with the same loop it has
+  /// always had), and a `false` is a proof that every point in that loop
+  /// would have `continue`d — no handler, no `reached`, no register read.
+  /// So the points reached, the steps they are reached at and the order
+  /// they run in are those of the machine that has no filter.
+  [[nodiscard]] bool wants(std::uint32_t at) const noexcept {
+    return call_.active || latched_ ||
+           ((fixed_[(at & fixed_mask) >> 6U] >> (at & 63U)) & 1U) != 0 ||
+           (((anchored_nibbles_ >> (at & 15U)) & 1U) != 0 && anchored_hit(at));
+  }
+
   /// Run whatever is armed at `at`, if anything. Called from
-  /// `machine::step()` at the boundary, only when `armed()`.
+  /// `machine::step()` at the boundary, when `armed()` and `wants(at)`.
+  /// Complete on its own: a caller that skips `wants` only pays more.
   void dispatch(machine& box, std::uint32_t at);
 
   /// The overlay table changed (overlay.h): re-evaluate every enabled
@@ -1251,6 +1380,13 @@ class seam_engine {
   // *Which* copy this is, is not asked here. A host keys what it
   // remembers by the program's fingerprint (#292), and the seam refuses
   // any binary its own fingerprints do not name.
+
+  /// One of seam `id`'s own words (`seam_context::scratch`), read from
+  /// outside: zero for an unknown id or a slot past the end. For the one
+  /// piece of core that reports what a seam noted, `text_entry_now()`
+  /// (machine/text_entry.h); a host asks that, never this.
+  [[nodiscard]] std::uint16_t scratch(std::string_view id,
+                                      unsigned word) const noexcept;
 
   /// Whether the code-wheel challenge has been answered on this machine
   /// — set by a host from what it remembered, before the run, or by the
@@ -1368,6 +1504,8 @@ class seam_engine {
     /// `seam_point::at_every_step`: this point has no address and is
     /// offered at every step boundary while its seam's latch is set.
     bool at_every_step{false};
+    /// `seam_point::inside_calls`: also offered while a batch runs.
+    bool inside_calls{false};
   };
 
   /// One queued call: where, and the words to push before it.
@@ -1426,13 +1564,40 @@ class seam_engine {
   /// Put the machine back and drop the batch, with a line saying why.
   void abandon_batch(machine& box, seam_reason why) noexcept;
 
+  /// Run the `inside_calls` points armed at `at`, while a batch is
+  /// running and no other point may be offered.
+  void offer_inside_calls(machine& box, std::uint32_t at);
+
   /// The word at `address`, or zero if it is not wholly inside the RAM
   /// the engine was handed. Zero is the same answer as "the module is
   /// not loaded", which is the fail-closed direction for a fact table
   /// that names an offset the machine does not have.
-  [[nodiscard]] std::uint16_t word_at(std::uint32_t address) const noexcept;
+  [[nodiscard]] std::uint16_t word_at(std::uint32_t address) const noexcept {
+    if (address + 1 >= ram_.size()) {
+      return 0;
+    }
+    return static_cast<std::uint16_t>(
+        static_cast<unsigned>(ram_[address]) |
+        (static_cast<unsigned>(ram_[address + 1]) << 8U));
+  }
 
+  /// Any registered seam's slot, fixes included, or `max_seams`.
   [[nodiscard]] std::size_t index_of(std::string_view id) const noexcept;
+
+  /// A listed seam's slot, or `max_seams` for a fix or an unknown id: the
+  /// lookup behind every door a host can reach.
+  [[nodiscard]] std::size_t listed_index_of(std::string_view id) const noexcept;
+
+  /// The fixes take the first `fixes_` slots.
+  [[nodiscard]] bool is_fix(std::size_t index) const noexcept {
+    return index < fixes_;
+  }
+
+  /// `status()`'s row for the seam in slot `index`.
+  [[nodiscard]] seam_status slot_status(std::size_t index) const noexcept;
+
+  /// Turn on the seam in slot `index`, once the checks are made.
+  seam_error enable_slot(std::size_t index);
 
   /// Whether `seam` names the loaded program's digest.
   [[nodiscard]] bool applies(const seam_definition& seam) const noexcept;
@@ -1440,8 +1605,8 @@ class seam_engine {
   /// Why `seam` is not armable right now, or `none` if it is: the gate
   /// first, then the modules.
   ///
-  /// One function, and one order, for the same reason `modules_resident`
-  /// is one function: `status()` answers a host asking right now and
+  /// One function, and one order, for the same reason
+  /// `some_module_resident` is one function: `status()` answers a host asking right now and
   /// `arm_all()` decides whether a transition is worth a line, and the
   /// two must never be able to disagree about why a seam is inert. The
   /// gate comes first because it is the condition a *person* can do
@@ -1451,15 +1616,23 @@ class seam_engine {
   [[nodiscard]] seam_reason blocking_reason(
       const seam_definition& seam) const noexcept;
 
-  /// Whether every module `seam`'s points live in is in memory *now* —
-  /// asked of the program's own record where there is one, and of the
-  /// tracker otherwise. The resident image always is.
+  /// Whether `module` is in memory *now* — asked of the program's own
+  /// record where there is one, and of the tracker otherwise. The
+  /// resident image always is.
+  [[nodiscard]] bool module_resident(const seam_module& module) const noexcept;
+
+  /// Whether at least one module `seam`'s points live in is resident, so
+  /// that at least one of its points can act (#477). Any and not every,
+  /// because `dispatch()` offers each point on its own: a seam with
+  /// points in three overlays acts in whichever of them is loaded, and
+  /// `armed` is a claim about what a player can rely on. A seam with no
+  /// points needs nothing, so is never missing a module.
   ///
   /// One function for both callers on purpose: `status()` answers a host
   /// asking right now, `arm_all()` decides whether a transition is worth
   /// a line, and the two must never be able to disagree about what
   /// resident means.
-  [[nodiscard]] bool modules_resident(
+  [[nodiscard]] bool some_module_resident(
       const seam_definition& seam) const noexcept;
 
   /// Rebuild the armed table from the enabled slots against `overlays`.
@@ -1475,10 +1648,73 @@ class seam_engine {
 
   std::array<slot, max_seams> slots_{};
   std::size_t registered_{};
+  /// How many of the first slots are built-in fixes.
+  std::size_t fixes_{};
   std::size_t enabled_{};
 
   std::array<armed_point, max_points> points_{};
   std::size_t armed_{};
+
+  // --- The step filter (`wants`) ------------------------------------------
+  //
+  // Derived from `points_` and the latches, never the other way, and
+  // rebuilt by `rebuild_filter()` wherever either changes: `arm_all()`
+  // (every enable, disable and overlay read), `clear()`, and the two
+  // places a latch moves, `pull()` and the arrival that serves one.
+  // Configuration like the table itself: not machine state, never
+  // serialized.
+
+  /// How many low bits of a physical address the fixed-point bitset
+  /// keeps. It is a *folded* test, so an address in another 64 KiB of the
+  /// space with the same low sixteen bits is a false positive that only
+  /// costs a trip through `dispatch` — which then compares full
+  /// addresses, as it always did.
+  static constexpr std::uint32_t fixed_mask = 0xFFFFU;
+
+  /// One bit per folded address a point with a fixed address is on.
+  std::array<std::uint64_t, (fixed_mask + 1U) / 64U> fixed_{};
+
+  /// Bit n set when a point resolved through a load-segment word has an
+  /// offset whose low four bits are n. Such a point can only be at `at`
+  /// if `at` agrees with the offset in those four bits (a load segment
+  /// is a paragraph), so a clear bit is a proof, and it needs no read of
+  /// RAM.
+  std::uint16_t anchored_nibbles_{};
+
+  /// A point with no address has a latched seam: somebody's pull is
+  /// outstanding, so `dispatch` has to offer it this step.
+  bool latched_{false};
+
+  struct anchored_entry {
+    std::uint32_t anchor{};
+    std::uint32_t offset{};
+  };
+  /// The load-segment points that run a handler, compact and sorted by
+  /// the low four bits of their offset: the entries for nibble n are
+  /// `anchored_[anchored_from_[n]` up to `anchored_from_[n + 1]`.
+  std::array<anchored_entry, max_points> anchored_{};
+  std::array<std::uint8_t, 17> anchored_from_{};
+
+  void rebuild_filter() noexcept;
+
+  /// Whether any load-segment point is at `at` *now*, by the program's
+  /// own record, read this instant — the test `dispatch` makes, for the
+  /// points that have one, and no other. Only the points whose offset
+  /// agrees with `at` in its low four bits are looked at, which is
+  /// about one in sixteen of them, and each costs one read of RAM.
+  [[nodiscard]] bool anchored_hit(std::uint32_t at) const noexcept {
+    const std::uint32_t nibble = at & 0x0FU;
+    for (std::size_t i = anchored_from_[nibble];
+         i < anchored_from_[nibble + 1U]; ++i) {
+      const anchored_entry& entry = anchored_[i];
+      const std::uint16_t segment = word_at(entry.anchor);
+      if (segment != 0 &&
+          static_cast<std::uint32_t>(segment) * 16U + entry.offset == at) {
+        return true;
+      }
+    }
+    return false;
+  }
 
   sha256_digest digest_{};
   const edition* edition_{nullptr};

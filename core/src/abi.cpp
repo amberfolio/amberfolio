@@ -41,10 +41,13 @@
 #include "amberfolio/machine/replay.h"
 #include "amberfolio/machine/report.h"
 #include "amberfolio/machine/save_layer.h"
+#include "amberfolio/machine/scene.h"
 #include "amberfolio/machine/screen_keyboard.h"
+#include "amberfolio/machine/screen_text.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/speaker.h"
 #include "amberfolio/machine/tandy_sound.h"
+#include "amberfolio/machine/text_entry.h"
 #include "amberfolio/machine/vfs.h"
 #include "amberfolio/sha256.h"
 #include "amberfolio/version.h"
@@ -828,6 +831,36 @@ double af_machine_frame_generation(const af_machine* handle) {
                         : static_cast<double>(box->display().generation());
 }
 
+uint32_t af_screen_text_columns(void) {
+  return amberfolio::machine::text_columns;
+}
+
+uint32_t af_screen_text_rows(void) { return amberfolio::machine::text_rows; }
+
+uint32_t af_machine_screen_text(const af_machine* handle, uint8_t* out,
+                                uint32_t size, char* why, uint32_t why_max) {
+  const machine* box = box_of(handle);
+  if (box == nullptr) {
+    return AF_NO_MACHINE;
+  }
+  constexpr std::size_t needed =
+      amberfolio::machine::text_cells * AF_SCREEN_TEXT_CELL_BYTES;
+  if (out == nullptr || size < needed) {
+    return AF_INVALID;
+  }
+  amberfolio::machine::text_grid grid{};
+  const std::string_view said = amberfolio::machine::screen_text_trouble_name(
+      amberfolio::machine::read_screen_text(*box, grid));
+  const std::span<std::uint8_t> cells(out, needed);
+  for (std::size_t i = 0; i < grid.size(); ++i) {
+    cells[i * AF_SCREEN_TEXT_CELL_BYTES] = grid[i].code;
+    cells[(i * AF_SCREEN_TEXT_CELL_BYTES) + 1] = grid[i].ink;
+    cells[(i * AF_SCREEN_TEXT_CELL_BYTES) + 2] = grid[i].paper;
+  }
+  (void)copy_out(std::span<const char>(said.data(), said.size()), why, why_max);
+  return AF_OK;
+}
+
 uint32_t af_machine_render_audio(af_machine* handle, float* out,
                                  uint32_t frames, uint32_t sample_rate) {
   machine* box = box_of(handle);
@@ -1562,6 +1595,34 @@ uint32_t af_machine_set_code_wheel_answered(af_machine* handle, int answered) {
   }
   box->seams().set_code_wheel_answered(answered != 0);
   return AF_OK;
+}
+
+uint32_t af_machine_text_entry(const af_machine* handle) {
+  const machine* box = box_of(handle);
+  if (box == nullptr) {
+    return AF_TEXT_ENTRY_UNKNOWN;
+  }
+  using amberfolio::machine::text_entry;
+  switch (amberfolio::machine::text_entry_now(*box)) {
+    case text_entry::not_reading:
+      return AF_TEXT_ENTRY_NOT_READING;
+    case text_entry::reading:
+      return AF_TEXT_ENTRY_READING;
+    case text_entry::unknown:
+      break;
+  }
+  return AF_TEXT_ENTRY_UNKNOWN;
+}
+
+uint32_t af_machine_scene_json(const af_machine* handle, char* out,
+                               uint32_t cap) {
+  amberfolio::machine::scene now{};
+  if (const machine* box = box_of(handle); box != nullptr) {
+    (void)amberfolio::machine::read_scene(*box, now);
+  }
+  const std::span<char> into =
+      out == nullptr ? std::span<char>{} : std::span<char>(out, cap);
+  return static_cast<uint32_t>(amberfolio::machine::scene_json(now, into));
 }
 
 uint32_t af_machine_document_count(const af_machine* handle) {

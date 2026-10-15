@@ -32,7 +32,7 @@
 // where there is no directory to open — the page's VFS is the only
 // filesystem there is. The second is that the DOS path semantics are
 // core's alone (#146): a host that built its own path would be a second
-// opinion about what `\SAVE\AFMAP.DAT` means.
+// opinion about what `\SAVE\AFMAPA.DAT` means.
 //
 //
 // Which directory is the save directory (#397)
@@ -91,22 +91,27 @@
 // in two places: one fog table shared between them paints each with the
 // other's streets, and one read log shared between them tells each that
 // it has already been sent somewhere it has never been. So each sidecar
-// comes in two kinds of file, which is the proven design's own
-// arrangement carried over:
+// is a file per save slot, and nothing else:
 //
-//   * `AFMAP.DAT`, `AFSEEN.DAT` — the working tables.
-//     Written whenever the thing they hold moves, so a session that ends
-//     without saving has still kept what it walked and what it was told;
-//   * `AFMAP<L>.DAT`, `AFSEEN<L>.DAT` — a snapshot per save
-//     slot. Written when the program writes slot `L`, and read back
-//     **over** the working table when the program reads it — over it even
-//     when there is no snapshot there, because an empty map and an empty
-//     log are the truth about a playthrough nobody recorded one for.
+//   * `AFMAP<L>.DAT`, `AFSEEN<L>.DAT` — written when the program writes
+//     slot `L`, and read back **over** what the machine holds when the
+//     program reads it — over it even when there is no file there,
+//     because an empty map and an empty log are the truth about a
+//     playthrough nobody recorded one for.
+//
+// **There is no file that follows the machine between saves.** Every run
+// starts at the program's main menu with no party in it, and the only two
+// ways out of that menu are a load, which replaces the tables with the
+// slot's own, and a new party, whose tables are empty. A file read back
+// at startup would be overwritten by the first and wrong for the second
+// — a new party would walk into the last one's map. What a session
+// explores and does not save is lost with the session, exactly as the
+// party's own progress is.
 //
 // **A file appears only when there is something to put in it** (#385).
 // A sidecar with no records in it is its header and nothing else, and a
 // save made by a party that has walked nowhere and been cited nothing
-// would otherwise put three eight-byte files into somebody's save directory —
+// would otherwise put two eight-byte files into somebody's save directory —
 // a directory of theirs, changed by this build, saying nothing. So a
 // header-only sidecar is written only *over* a file that is already
 // there, never as a new one, which is what the host asking permission
@@ -179,23 +184,6 @@ class machine;
 
 namespace amberfolio::host {
 
-/// The two working tables, as leaves of the save directory.
-///
-/// Eight-three, and prefixed so that nothing this project writes can
-/// collide with anything the program ships or anything another
-/// enhancement of somebody else's has left there.
-///
-/// Spelled in core rather than here since #208, which is where the save
-/// layer is stated as a table a host can read: these two files are rows
-/// in it, because a page splitting its filesystem in two has to put them
-/// on the playthrough's side. Aliases and not copies — a name written
-/// down twice is a name that can differ in one of the two places
-/// (`machine/save_layer.h`).
-inline constexpr std::string_view slot_store_automap_working =
-    machine::save_layer_automap_working;
-inline constexpr std::string_view slot_store_journal_working =
-    machine::save_layer_journal_working;
-
 /// The largest the exploration sidecar can be: the header plus every
 /// record the store can hold. A fixed buffer, because a host has no
 /// business heap-allocating per write on a path the seam reaches from a
@@ -238,10 +226,9 @@ enum class slot_trouble : std::uint8_t {
 
 /// The playthrough's sidecars, on both hosts.
 ///
-/// Held by whoever built it, handed to `host_services` so the seams'
-/// `automap_update` and `journal_seen` reach it, and shown the DOS
-/// layer's file events so it can tell a save from a load. Off until
-/// `enable()`.
+/// Held by whoever built it, reached through `host_services`, and shown
+/// the DOS layer's file events so it can tell a save from a load. Off
+/// until `enable()`.
 class slot_store {
  public:
   slot_store() = default;
@@ -263,38 +250,19 @@ class slot_store {
     return journal_;
   }
 
-  /// The machine to persist for, and the first read: the working
-  /// exploration table, if there is one, into `box.automap()`. Called
-  /// once, when a host has a machine with a filesystem attached **and its
-  /// current directory set**: this is where the save directory is read
-  /// (this file's "Which directory is the save directory"), and a copy
-  /// that does not say leaves this reading and writing nothing.
+  /// The machine to persist for. Called once, when a host has a machine
+  /// with a filesystem attached **and its current directory set**: this
+  /// is where the save directory is read (this file's "Which directory is
+  /// the save directory"), and a copy that does not say leaves this
+  /// reading and writing nothing.
   ///
-  /// **The read log is not read here**, and that is the one asymmetry in
-  /// this object. The exploration table is read into the machine, which
-  /// exists by now; the log is read into the *journal store*, which a
-  /// host has not filled from its own per-user file yet — and that file
-  /// is parsed wholesale, so a log put there first would be thrown away
-  /// by the parse that follows. `read_journal_log()` is the second half,
-  /// called once a host has its store.
+  /// Reads nothing into the machine — a run starts with no party, and
+  /// the first load is what fills the tables. It does take away the two
+  /// files an earlier build kept between saves (`AFMAP.DAT`,
+  /// `AFSEEN.DAT`), which were read back at startup and handed a new
+  /// party the last one's map; they are this project's own, and a
+  /// player who asked for sidecars asked for this build's.
   void attach(machine::machine& box);
-
-  /// The slot's read log, over whatever the per-user store held.
-  ///
-  /// Called after the journal store has been read from wherever a host
-  /// keeps it and before `restore_journal_log()` puts it in the machine.
-  /// A no-op while this is off, with no journal store set, or before
-  /// `attach()`.
-  void read_journal_log();
-
-  /// The seam says the exploration moved. Writes the working table.
-  void changed();
-
-  /// The seam says the read log moved. Writes the working log — and only
-  /// if the store agrees it moved (`journal_store::log_changed()`), which
-  /// is what keeps a save from rewriting a file that is already right and
-  /// lets a load refresh one through this same call.
-  void journal_changed();
 
   /// One naming call the DOS layer resolved. Save-slot traffic is the
   /// only thing this looks for; everything else is ignored.
@@ -332,6 +300,7 @@ class slot_store {
   // --- what happened, for the host's end-of-run line and for tests ----
 
   /// How many sidecar files were written and read, both kinds together.
+  /// The retired files `attach()` takes away are not counted.
   /// A host prints one line about this object and these are its two
   /// numbers; which of the two files a write was is not something a
   /// player has a use for.

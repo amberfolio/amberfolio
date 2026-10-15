@@ -10,15 +10,34 @@ Windows/macOS/Linux (64-bit) and WebAssembly. v1 targets Pool of
 Radiance. **PLAN.md is the plan of record**: scope, architecture,
 milestones and settled decisions live there. Don't re-litigate them.
 
-**Status.** M0–M6 are done and `v0.8.0` is the current tag, an interim
+**Status.** M0–M6 are done and `v0.15.3` is the current tag, an interim
 one inside M7 (the GOG/Steam release boots, saves and reads its journal
-as sold: #396–#398; every copy plays Tandy sound: #404, #407). The game boots, plays end to end, all six v1 enhancements work and toggle
+as sold: #396–#398; every copy plays Tandy sound: #404, #407; a host can read the
+screen as text; the sidecars are one pair per save slot and nothing
+between saves: #413; the lettering can be a bold sans or a chisel
+face, two alternatives in one seam group, the journal included: #417,
+#419; one `modern-controls` seam gives every list, bar, prompt and the
+roster the keys a player reaches for first, with a key card and a
+controls page beside it, walking a mode on the party's bar, and every
+selection a yellow block with a margin rather than a colour: #423–#509;
+the Encamp Fix casts the cures its rests memorize: #490; a roster name
+whose file is gone is left off the Add list by a built-in fix: #506; a
+host can ask whether the game is reading a line of text: #504; a
+`quick-steps` seam lets turns, and the step after a step, go on
+without waiting for the footstep's click: #510, and a built-in fix
+keeps the sound driver from hooking the timer twice behind it: #512;
+a reset or an exit closes every file the program left open: #514; a
+host can read where the party is and what is around it, in a fight
+as well, the aim cursor and each figure's range included: #520, #521,
+#523; the Fix casts through its stub's own segment, and a reset drops
+a seam's unfinished call: #526, #527). The game boots, plays end to end, all six v1 enhancements work and toggle
 independently on both hosts, and a player reaches all of it from the
 shells: onboarding, a config file, a toggle panel, a document control and
 the on-screen keyboard. The current milestone is **M7** (1.0: release
 engineering, binaries, the docs refresh).
-Native controller support — a seam, not a key mapping — is **M8**, the
-first milestone past 1.0 (#372). Open issues are the
+Controller support is the site's: a pad driving real keys, which
+`modern-controls` turns into selection (#372, #379 and #210 closed). Open
+issues are the
 complete list of known gaps; docs describe what *is*, not what is owed.
 
 **No test in this repository runs the game, and none ever will.** The
@@ -37,7 +56,11 @@ needs no disk.
 - **Fidelity invariant.** Every seam is off by default. Nothing outside
   the seam engine mutates machine state. With all seams off the machine
   is a plain machine, and that is a test, not a sentence. Seam state is
-  configuration, not machine state.
+  configuration, not machine state. The one exception is a **built-in
+  fix** (`built_in_fixes()`, `docs/seams.md` §7): on with its program,
+  listed and toggled nowhere, and only for a failure no player could
+  want. It must leave the machine untouched wherever it finds nothing to
+  fix, which every session verifying with it on is the test of.
 - **Log, don't fake.** An unimplemented service, register or port is a
   loud log line and a clean stop, never a guessed answer. `docs/machine.md`
   §5 has the third option, a notice, and when it applies.

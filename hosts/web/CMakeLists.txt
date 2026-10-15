@@ -87,6 +87,10 @@ set(_amberfolio_web_export_names
   _af_machine_stop_report
   _af_machine_trace_report
   _af_machine_framebuffer
+  # The screen read back as text, in the program's own font.
+  _af_screen_text_columns
+  _af_screen_text_rows
+  _af_machine_screen_text
   _af_machine_palette
   _af_machine_frame_generation
   _af_machine_render_audio
@@ -151,6 +155,8 @@ set(_amberfolio_web_export_names
   _af_machine_document_kind_at
   _af_machine_code_wheel_answered
   _af_machine_set_code_wheel_answered
+  _af_machine_text_entry
+  _af_machine_scene_json
   _af_machine_save_layer_slots
   _af_machine_save_layer_members
   _af_machine_save_layer_count
@@ -208,6 +214,9 @@ set(_amberfolio_web_export_names
   _af_web_attach_host_services
   _af_web_host_service_at
   _af_web_save_sidecars
+  # The key card (#427): the game's keys by context, as JSON for the page.
+  # Machine-less, like the on-screen keyboard's tables above.
+  _af_web_key_card_json
   # The M5-E3 (#174) journal ingestion. The loop is inverted here --
   # tesseract.js is on the far side of this boundary and is
   # asynchronous, so the page asks for one entry's pixels, recognizes
@@ -263,8 +272,6 @@ set(_amberfolio_web_export_names
   _af_web_journal_store_changed
   _af_web_journal_store_clear_changed
   _af_web_journal_seen_restore
-  _af_web_journal_log_write
-  _af_web_journal_log_read
   _af_web_journal_cite_all
   _af_web_journal_store_clear
   _af_web_journal_store_fingerprint
@@ -351,6 +358,9 @@ set(_amberfolio_web_files
   "${CMAKE_CURRENT_SOURCE_DIR}/page/documents.mjs"
   "${CMAKE_CURRENT_SOURCE_DIR}/page/sidecars.mjs"
   "${CMAKE_CURRENT_SOURCE_DIR}/page/editions.mjs"
+  # Every controls improvement, by screen (#448): the dev page links it from
+  # its key card box. Not released, like index.html.
+  "${CMAKE_CURRENT_SOURCE_DIR}/page/controls.html"
   # The edition table itself (#207), placed rather than compiled in: a
   # page renders the checklist while the module is still downloading, so
   # it has to be a file the page can fetch. It is the same file

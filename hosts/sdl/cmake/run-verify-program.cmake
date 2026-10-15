@@ -87,7 +87,8 @@ if(EXTRA)
 endif()
 
 execute_process(
-  COMMAND "${HOST}" "${DISK}" "${PROGRAM}" --scale 2 --verify --press "${PRESS}"
+  COMMAND "${HOST}" "${DISK}" "${PROGRAM}" --no-config --scale 2 --verify
+    --press "${PRESS}"
     ${stills} ${extra}
   RESULT_VARIABLE code
   OUTPUT_VARIABLE out

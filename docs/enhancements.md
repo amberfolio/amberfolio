@@ -6,12 +6,15 @@ What this emulator adds to the game, as a player meets it. `docs/seams.md`
 is the mechanism and the house style for writing another.
 
 **Every enhancement is off by default**, and with all of them off the
-machine is a plain machine (`docs/seams.md` §7 is the test). **Nothing is
+machine is a plain machine (`docs/seams.md` §7 is the test). The
+exceptions are **fixes** for ways the game breaks that nobody could want
+(the roster fix and the timer fix, below): they are always on and there
+is nothing to turn. **Nothing is
 injected into the game**: a seam is native C++ that stops the program at
 an address, reads or writes memory, and lets it continue. The program on
 the disk and every file the game owns are never modified.
 
-## The code-wheel bypass
+## Answer the code wheel once
 
 **What it does.** The game asks you to look up a word on the code wheel
 before it starts. **It asks you once.** The first time, the challenge
@@ -38,24 +41,68 @@ build gets past the wheel without a person having answered it once.
 ## The Encamp Fix
 
 **What it does.** Puts a **`FIX`** command on the camp screen's own bar.
-Press its letter and the party rests as long as it needs: the cures it
-already carries are cast through the game's own cast driver (one queued
-back for each spent), then the game's own rest is dialled to the days the
-wounded still need. A framed report, drawn by the game in its own font,
-says what happened; a rest the game interrupts reports `Fix:
-Interrupted!` and does not retry.
+Press its letter and the party heals as fast as its cures allow: the cures
+it already carries are cast through the game's own cast driver (one queued
+back for each spent), then the party rests only as long as memorizing
+those cures takes, and the Fix casts them again when the rest is over —
+cast, rest, cast, until nobody is hurt. A party that can bring no cure
+back rests the days the wounded still need instead. A framed report, drawn
+by the game in its own font, says what happened over the whole command; a
+rest the game interrupts reports `Fix: Interrupted!` and does not retry.
 
 **How you turn it on.** `--seam encamp-fix`.
 
-**With nobody holding a cure ready** — the ordinary state of a party
-after a hard fight — the rest is the whole of the healing, and the
-report says so: hit points, the days it took, and no spell. The rest is
-then as long as the worst wound, so in an area the game rolls wandering
-monsters for it is likely to be interrupted before it finishes.
+**With cures to cast**, a party a fight left low is healed in a day or two of
+the game's time, where resting it out took a month: a cleric's five cures
+come back every five hours or so, and each one heals more than a day's
+rest does.
+
+**With nobody holding a cure at all** — or nobody able to cast the ones
+held, or an area that refuses spells — the rest is the whole of the
+healing, and the report says so: hit points, the days it took, and no
+spell. The rest is then as long as the worst wound, so in an area the game
+rolls wandering monsters for it is likely to be interrupted before it
+finishes.
 
 **What it will not do.** Write hit points, mend the wound statuses a
 fight leaves that resting cannot mend, or memorize a cure into a slot
 that was empty to begin with.
+
+## The roster fix (always on)
+
+**What it does.** Leaves a character off the **Add** list when the
+roster names it and its file is not in the save directory. The game lets
+the two drift apart by itself: loading a saved game takes the files of
+the party it restores out of the save directory, and the roster is only
+tidied the next time the game writes it, so a name can outlive its file.
+Without the fix, picking such a name asks for the save disk and waits for
+ever, and the only way out is to close the game. With it, the name is
+simply not on the list, and when you leave Add the game writes the roster
+back without it.
+
+**How you turn it on.** You do not: it is built in, on in every run, and
+in no panel, config file or flag.
+
+**What it will not do.** Touch a name that has its file, or one already
+in the party; create, move or delete any character's file. A roster whose
+files are all there is left exactly as the game built it.
+
+## The timer fix (always on)
+
+**What it does.** Keeps the game's sound driver from hooking the PC's
+timer a second time over its own hook. Quick steps lets a footstep's
+click play on with the timer still hooked, and without this fix the next
+sound would hook it again: from then on every sound played thirteen
+times slower, a monster's death for five or six seconds, until the game
+was restarted.
+
+**How you turn it on.** You do not: it is built in, on in every run, and
+in no panel, config file or flag. It stays on when quick steps is turned
+off, which is when a hook quick steps left behind still needs it.
+
+**What it will not do.** Anything in a game that quick steps has not
+touched: there, the driver always unhooks the timer before it hooks it
+again, and the fix finds nothing to do.
 
 ## The automap
 
@@ -70,9 +117,11 @@ after the journal has used the same cells.
 **How you turn it on.** `--seam automap`. To keep the map between runs,
 `--save-sidecars` on the desktop or `saveSidecars(true)` on the page
 (`af_web_save_sidecars`; `hosts/web/tools/drive.mjs` is the reference
-caller), which writes `\SAVE\AFMAP.DAT` beside the game's saves, with a
-snapshot per save slot — and the journal's read log beside it, on the one
-flag. The sidecars are off unless asked, because a file appearing in your
+caller), which writes `\SAVE\AFMAP<L>.DAT` beside the game's saves each
+time the game saves slot `L` and reads it back when you load that slot —
+and the journal's read log beside it, on the one flag. A new game starts
+with an empty map, and what you explore without saving goes with the
+session. The sidecars are off unless asked, because a file appearing in your
 game directory changes it: **the desktop asks you before your first run
 and the page asks in a panel**, once each, and remembers what you said
 (`docs/hosts.md` §2b). Neither file appears until there is something to
@@ -158,6 +207,347 @@ log stays filled until the store's `seen` lines are removed.
 **What it will not do.** Open an entry the game has not sent you to. The
 log is what the story has told you to read, and the reader shows the log;
 to read the rest of a journal, `--cite-all-journal`.
+
+## Modern controls
+
+**What it does.** One switch for the keys and the colours a later game would
+have. The game was made for a keyboard of its day: it takes a command by its
+first letter, steps a list with Home and End, lights a selection white from
+end to end, and types an arrow's letter into a name. With `modern-controls`
+on:
+
+- the **arrows** step the pick-lists and the selected party member, as Home
+  and End do (the list arrows);
+- **Left and Right step a command bar's highlight, Enter takes the lit
+  command and Esc answers No** (the bar keys);
+- the **main menu has a cursor** (the menu cursor);
+- at the main menu, the number row's **1 to 8 select a party member**, and
+  the party list shows each number (the hero keys);
+- **walking is a mode** on the party's own bar: `Move` starts it and `Exit`
+  ends it, and until then Left and Right step the bar; `Area` is gone, the
+  automap being the overhead view (the move mode);
+- the arrows and the function keys **type nothing at a text prompt** (the
+  edit keys);
+- **every selection is a yellow block**, its letters cut out of it, and a
+  command's key letter a white one (the selection block).
+
+**How you turn it on.** `--seam modern-controls`, or the toggle in the panel.
+It is one setting: the game's own keys and colours, or all of this. Each
+part is described below, with where it works and what it leaves alone.
+
+**When it shows.** The menu's cursor from the first frame the menu is drawn,
+the main menu's numbers, the party's bar with `Move` and the blocks at the
+next thing the game draws, and
+each key where the part that takes it says. The panel reads `on armed` from
+the start; a part whose screen the game has not loaded yet (the pick-lists'
+and command bars', the main menu's and Modify's) waits for it, and the rest
+work meanwhile.
+
+### The list arrows
+
+**What it does.** The up and down arrows step the highlight in the game's
+pick-lists, as Home and End already do. A list that ignored the arrows (at
+character creation, in the spell and item lists, and in every other list
+the game builds with its one list routine) now follows them, one row a
+press, wrapping and skipping its headings as it does for Home and End.
+The party-member picker (who a spell is cast on, who an item is traded
+to) steps the same way. Keypad 8 and 2 come along, as 7 and 1 always did.
+
+**At camp and the other bars.** Home and End step the selected party
+member at the camp bar, its Magic and Alter bars, the post-combat
+treasure bars, the shops, the temples and the game's yes/no style script
+prompts; any other key put the selection back on the first member. With
+the seam on, **Up and Down step the member too**, as Home and End do. On
+the party-order screen, with a member picked up, they move it up and down
+the order. **The keypad's 8 and 2 do the same** with Num Lock on, at the
+same bars: 8 steps back and 2 steps forward. The number row's 8 and 2 are
+not touched, and are what the game makes of them.
+
+**At a door.** The bar at a locked or stuck door, camp's Portraits and
+Monsters bar and the save slot bar throw the arrows away, because the game
+reads them with its bar in a mode that has no Home or End either. With the
+seam on, Up and Down step the selected member there too, by the same rule
+(Up from the first goes to the last, Down from the last stays), and the
+party list is drawn again by the game's own routine.
+
+**Where it works.** Inside a pick-list or the party-member picker, and at
+the bars named above. Everywhere else the arrows are the game's own: in
+the 3D view, the wilderness and combat they move the party, in the rest
+time menu they raise and lower the time, in the stat editor they pick a
+score, and at the main menu they are the menu cursor's. The seam names the bars it
+steps; it does not guess.
+
+**What it will not do.** Change the Yes/No prompt or the ability-score
+screen, step the member from the keypad's 8 and 2 at the adventuring bars
+(they walk and turn the party there, as the arrows do), or make a held key
+repeat (the hosts drop OS key repeats, `docs/hosts.md`).
+
+### The bar keys
+
+**What it does.** Makes the game's command bars answer the keys a player
+reaches for first. **Left and Right step the highlight** along a bar, as
+`,` and `.` always did, wherever the game would otherwise throw them away.
+**Enter takes the highlighted command**, as if you had typed its letter,
+at nearly every bar that would have ignored it, and at the rest-time menu.
+**Esc answers
+No** at a Yes/No question. The bar, its highlight and its commands stay the
+game's own; nothing is drawn.
+
+**Where Enter works.** The game hands Enter back to whoever called the
+bar, and each caller does as it likes with it; this seam takes it at the
+callers that ask again, and leaves the ones that use it. At the Yes/No
+prompt the highlight starts on `No`, so Enter answers No; Left steps it to
+`Yes` first. The same goes for a question an event script asks, such as the
+arena master's *do you duel?*: whatever is highlighted is what Enter answers.
+A script's *press Enter to continue* is the game's own: Enter already
+continues it. These take the command under the highlight: the camp bar
+and its Magic, Alter and game-speed bars and Alter's portraits and monsters
+bar; the adventuring bar (in menu mode, `Move` among its commands, and while
+walking, its one `Exit`); the portrait bar at character creation (`Head Body
+Keep`); the shops' and temples' bars and the temple's appraisal; combat's
+command, Done and game-speed bars; the View bar; the post-combat treasure
+and Take bars; the load-game and save-game slot bars (Return writes the
+lit slot, as its letter does); and a locked or stuck door's bar (where the
+game would take Return as no choice). A command the other seams add,
+the Encamp Fix's `Fix` and the journal's `Notes`, is taken the same way,
+and so are the bars of the Notes screen itself (below).
+**The rest-time menu** is the one place the game used Enter for itself (it
+meant Rest) and the seam takes it instead: it follows the highlight, which
+opens on whichever word the camp bar's `Rest` left it on, `Mins`, so Left
+and Right to `Rest` first.
+
+**Where Left and Right work.** On every bar but the few that use the
+arrows themselves. Those keep them: the adventuring bar, where they turn
+and move the party; combat's move and aim cursors; the stat editor, where
+they lower and raise a score; and two press-Enter prompts after a
+fight. At the camp bar and its Magic and Alter bars the
+game used an arrow only to put the selected party member back on the
+first, and nobody presses an arrow for that; with the seam on they step
+the highlight instead, and Home and End still step the member.
+
+**Where Esc answers No.** At the Yes/No prompt (quit to DOS, keep this
+character, and the others that use it) and at an event script's two-answer
+question, *Yes* and *No*. Anywhere else Esc does what the game does with it.
+
+**What it changes.** Two bars the game lets an arrow act on by accident,
+because its scan code is also a letter. At the post-combat Take bar Right
+used to take Money (`M`), and at the temple's keep-or-sell prompt Left used
+to keep the gem (`K`). With the seam on both step the highlight like any
+bar, and the letters still work. And one by decision: the game's rest-time
+menu picks its days, hours or minutes field on Left and Right, and with
+the seam on they step the highlight instead, as at any other bar. `Y`, `H`
+and `M` still pick the field. At combat's aim bar (`NEXT PREV MANUAL
+TARGET CENTER EXIT`) Enter takes the lit command; the game's own Enter there
+repeated the last Next or Prev, by accident. At a character's Items list
+(View, Items) Enter takes the lit command for the lit item, `Ready` until
+Left or Right moves it; the game's own Enter there did nothing. At the
+party-member picker (`Trade to?`, `Cast spell on whom`) Enter takes the lit
+command too: on `Exit` it leaves, where the game's own Enter chose the
+member. The picker opens on whatever the last bar left lit, so after
+View's `Trade` it often opens on `Exit`.
+
+**What it will not do.** Make Enter confirm a row in the pick-lists (it
+already does, at every list but Items), or take a command where the game
+gives Enter a meaning of its own: the pick-lists, the party-order screen,
+combat's move and its aim cursor, the temple's keep-or-sell (where it
+sells), the press-Enter notices, the icon editor. One bar drops Enter and
+is left alone on purpose, because a stray Return there would do harm: the
+stat editor (its `Exit` discards the edit). Make a held
+key repeat (`docs/hosts.md`) or step the pick-lists and the selected member
+with the up and down arrows (the list arrows, above).
+
+### The menu cursor
+
+**What it does.** Gives the main menu a cursor. The main menu is the
+party-setup screen at the start of the game (Create, Add, Load, Exit and,
+once there is a party, Drop, Modify, View, Remove, Save, Begin), and the
+same menu again at a training hall, where Train is on. The game has no
+highlight there: a command is taken only by its first letter. With the seam
+on, a cursor is on the first command as soon as the menu is drawn, **Up and
+Down** move it over the commands the menu shows, skipping none that is shown
+and wrapping at both ends, and **Return** takes the command under it, as if
+you had typed its letter. The cursor is the game's own string routine's, as a
+pick-list lights a row: the command's first letter a white block and the
+rest of the row a yellow one.
+
+**Visible from the start.** The cursor is on the first command whenever the
+menu is drawn, so the first press moves it: Down, Down is the third command
+shown. Taking a command, by its letter or by Return, ends in the game
+redrawing its menu, and the cursor is on the first command again. A player
+who only types letters still sees the cursor, which is the one way this
+seam changes the menu without a key.
+
+**What it will not do.** Move the party member: Home and End still do that
+at this menu. Remember where the cursor was after a command, or follow the
+bar's own highlight, which is not where the menu left it. Work at any other
+screen: the pick-lists are the list arrows' and the horizontal bars are the
+bar keys'. A press made while the cursor is still being drawn is kept and
+used (the game draws a glyph at a time, so a move takes about a tenth of a
+second of the game's time).
+
+### The hero keys
+
+**What it does.** Pick a party member with one key at the main menu (the
+title screen's, and a training hall's). **The number row's `1` to `8`
+select that member**, and the party list there shows each member's number
+in white in front of the name: `1 FIGHTER1`. The game's own cursor does
+the selecting, so the list redraws as it does for Home and End.
+
+**Everywhere else** Up and Down select the member (the list arrows at
+camp, the shops, the temple, a script's menus, the treasure bars and the
+doors; the move mode at the party's own bar), so the number row does what
+the game has it do: what the keypad does. `9` and `0` are always the
+game's. A digit with no member behind it does nothing.
+
+**Where it does not work.** Every screen but the main menu, as above. With
+the journal reader up, `1` to `8` are its keys, as every key is.
+
+### The move mode
+
+**What it does.** Makes walking a mode, as the later games in the series
+did, so the exploring bar can be stepped with the arrows that walk. You
+arrive at the party's bar with **`Move` lit**, in the place `Area` had (in
+the wilderness, in front of `Cast`). There, Left and Right step the
+highlight, Up and Down select the member before or after, Enter takes the
+lit command, and the bar's letters are the game's; a letter that is not on
+the bar does nothing. With the map open over the party list, Up and Down
+do nothing. **`M`, or Enter on `Move`,
+starts walking**: the bar reads `Exit` alone, and the arrows, the keypad
+and the number row walk and turn as the game has them do. **Enter, Esc or
+`E` stop walking** and light `Move` again. A fight, camp, a shop, a
+script's question, View or any other screen with a bar of its own also
+brings you back to the bar with `Move` lit; the steps you take, what
+happens on a square and a locked door's question do not.
+
+**What it changes.** `Area`, the game's overhead view, is gone: the
+automap (Tab) is the overhead view, and with the automap off there is
+none. While walking, the letters do nothing, `Notes` among them; the
+walking bar is `EXIT` alone, lit as any selection is: `E` a white block and
+the rest a yellow one.
+
+**Where it does not work.** Only the party's own bar has modes. Combat's
+movement and aim, and Modify, keep their arrows.
+
+### The selection block
+
+**What it does.** Draws every selection you can move as a block of yellow
+with its letters cut out of it in black, and a command's key letter as a
+white block. Today the game lights a selection white from end to end, so the
+capital letter that is the key disappears into it; and a selection told
+apart by colour alone is lost to a player who cannot tell the colours apart.
+A block is a shape, and reads whatever colours you see. With the seam on:
+
+- **A command bar's highlighted word** (the adventuring bar, the camp bar,
+  Magic, Alter, the shops, the temple, a script's menus, the save slots and
+  every Yes/No question) is a yellow block with its key letter a white one.
+  Only the word is lit, or the whole phrase of a script's option (`Tell the
+  truth?`): on a bar whose keys are not the first letters of its words,
+  like the icon editor's top bar, the game's own highlight runs on into
+  part of the next word, and the seam lights the word that holds the key.
+  A bar of one command is what Enter takes, and is lit too: a prompt with
+  only one choice, such as `PRESS <ENTER>/<RETURN> TO CONTINUE`, is one
+  yellow block, its `P` included, and the walking bar's `EXIT` is lit as a
+  word is, its `E` a white block. The `Exit` under a pick-list is not lit: Enter
+  there takes the list's row.
+- **A pick-list's highlighted row** (race, class, spells, shops, coins, the
+  list of characters to add) is a yellow block.
+- **The selected party member's name** in the party list is a yellow block,
+  in the 3D view, in camp, in the party-member picker and on the main menu.
+  A number the hero keys draw in front of it stays white on black.
+- **Modify's selected score**, which was light magenta, is a yellow block,
+  hit points included.
+- **The menu cursor's row** on the main menu is a yellow block with its
+  first letter a white one, and, with `journal` on, the Notes list's cursor
+  row is a yellow block across the row. The lit command on the Notes
+  screen's bar is a yellow block with its letter a white one, a lone
+  `EXIT` included.
+- **A bar the game hands its colours the wrong way round** (the portrait
+  screen's HEAD, BODY and KEEP bar, the temple's "pay for cure" and the
+  detect-magic confirmations) is drawn like every other bar: key letters
+  white, the rest of each word green. Without the seam they are white
+  where the others are green, and green where they are white.
+
+A block has a margin of one pixel all round, so its letters do not touch
+its edges: the game's and the faces' letters leave a column on their left
+and a row beneath, and the seam paints the top and the right in the cells
+beside the block, only over black, and takes them back when the selection
+moves. The lettering cut out of a block is the game's, or the face's when
+`font-sans` or `font-chisel` is on. It is a look and has no key.
+
+**When it shows.** At the next selection the game draws. A selection
+already on the screen when you switch it keeps its look until the game
+draws it again, which on most screens is the next key you press.
+
+**What it will not do.** Mark anything that is not a selection among
+text: the icon editor's cell cursor, the combat grid's cursor and the
+hit-point colour of a hurt character are the game's own.
+
+### The edit keys
+
+**What it does.** The arrows, Home, End, the page keys, Insert, Delete and
+the function keys stop typing letters where the game asks for text. Without
+it, pressing Right while naming a character types an `M`, Up an `H`, Down a
+`P` and Left a `K`; Home types `G` and End `O`. With it they do nothing.
+Typing, Backspace, Return and Esc are as they were, and so is every other
+screen: the arrows still walk, turn and step the lists.
+
+**Where it works.** Every place the game reads a line of text: a new
+character's name, a script's free-text question, a script's number prompt
+(where a stray letter made the game ask again) and the code word at the
+copy-protection challenge. They share one routine in the game, so they are
+one setting.
+
+**What it changes.** An Alt chord and the function keys type nothing at those
+prompts either. The View > Drop money amount is the game's own and takes
+digits only, so an arrow was never wrong there.
+
+## Quick steps
+
+**What it does.** Turning, and the next step, stop waiting for the
+footstep. The game holds everything still for a tenth of a second while
+each click plays: before the view turns, and both before and after the
+view moves on a step forward. With quick steps on, a turn's click plays
+while the view turns, six frames after the key instead of eleven at the
+386 setting, and a step's second click plays while the game takes your
+next key. A step's first wait stays, because it is what spaces the
+step's two clicks the way the game always had them.
+
+**How you turn it on.** `--seam quick-steps`, or its toggle in the panel.
+
+**What it will not do.** Make anything else faster. Every other sound
+waits as it always did, and the time the game spends drawing the view is
+its own.
+
+## The text faces
+
+**What they do.** Redraw the game's lettering in a face of your choice,
+in place of its own, everywhere it puts text on the screen: menus,
+the character sheet, the message panel, the journal reader. Two faces,
+both drawn for this project on the game's own eight-by-eight grid:
+**`font-sans`**, a plain bold sans with two-pixel strokes and a slashed
+zero, and **`font-chisel`**, the same face with every stroke cut at an
+angle as if by a broad pen. Each letter sits in its cell where the game's
+own do, a blank column on its left and a blank row beneath, so a
+selection's block keeps its margin. Only the letters, the digits and the
+punctuation change. The frame pieces, the blocks and the runes the game
+keeps in the same table stay its own, and the game still draws only
+capitals, because that is all it asks for.
+
+**How you turn one on.** `--seam font-sans` or `--seam font-chisel`; a
+toggle each in the panel. They are alternatives: turning one on turns the
+other off.
+
+**When it shows.** At the next character the game draws. Text already on
+the screen keeps the face it was drawn in until the game draws it again,
+which on most screens is the next key you press.
+
+**What else follows it.** Screen text (`docs/hosts.md` §10) reads the
+screen in whichever face is on, and the automap's zone label is lettered
+in it.
+
+**What it will not do.** Touch the game's own font: the seam changes each
+row of a glyph as the game reads it, so off is the game's own lettering
+again.
 
 ## The debug cheats
 

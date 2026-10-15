@@ -228,22 +228,23 @@ TEST(SaveLayerMatch, PrefersTheMemberRowOverTheCharacterOne) {
 }
 
 TEST(SaveLayerMatch, KnowsThisBuildsOwnSidecars) {
-  const save_layer_row working =
-      match("SAVE\\" + std::string(save_layer_automap_working));
-  ASSERT_NE(working.file, nullptr);
-  EXPECT_EQ(working.file->kind, save_file_kind::sidecar);
-  EXPECT_EQ(working.slot, 0);
-
-  const save_layer_row log =
-      match("SAVE\\" + std::string(save_layer_journal_working));
-  ASSERT_NE(log.file, nullptr);
-  EXPECT_EQ(log.file->kind, save_file_kind::sidecar);
-  EXPECT_EQ(log.slot, 0);
-
   const save_layer_row snapshot = match("SAVE\\AFMAPB.DAT");
   ASSERT_NE(snapshot.file, nullptr);
   EXPECT_EQ(snapshot.file->kind, save_file_kind::sidecar);
   EXPECT_EQ(snapshot.slot, 'B');
+
+  const save_layer_row log = match("SAVE\\AFSEENC.DAT");
+  ASSERT_NE(log.file, nullptr);
+  EXPECT_EQ(log.file->kind, save_file_kind::sidecar);
+  EXPECT_EQ(log.slot, 'C');
+}
+
+TEST(SaveLayerMatch, ClaimsNoSidecarThatFollowsTheMachineRatherThanASlot) {
+  // An earlier build kept `AFMAP.DAT` and `AFSEEN.DAT` between saves and
+  // handed a new party the last one's map. Nothing writes them now, and a
+  // table that still claimed them would keep them for a player for ever.
+  EXPECT_EQ(match("SAVE\\AFMAP.DAT").file, nullptr);
+  EXPECT_EQ(match("SAVE\\AFSEEN.DAT").file, nullptr);
 }
 
 TEST(SaveLayerMatch, SaysTheConfigurationFileIsTheProgramsAndNotAPlayers) {

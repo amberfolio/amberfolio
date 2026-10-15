@@ -218,6 +218,33 @@ TEST(keyboard_buffer, dequeues_in_order_and_wraps_around_the_buffer) {
   }
 }
 
+TEST(keyboard_buffer, a_held_key_repeating_is_a_keystroke_for_every_make) {
+  const rig r;
+  load_read_loop(r, 4);
+
+  // The keyboard's own typematic: one make, then the same make again for
+  // as long as the key is held, then the break (platform.h's
+  // `key_action::down` is "went down, or is repeating"). Each make is a
+  // keystroke -- that is what scrolls a list while End is held -- and the
+  // break adds none. Nothing between the makes tells them apart.
+  r.pc().post_key(sc_a, key_action::down);
+  r.pc().post_key(sc_a, key_action::down);
+  r.pc().post_key(sc_a, key_action::down);
+  r.pc().post_key(sc_a, key_action::down);
+  r.pc().post_key(sc_a, key_action::up);
+  // A fifth read would find nothing and block, so a halt below says the
+  // four repeats were four keystrokes and the break was not a fifth.
+  r.run_until([&] { return r.pc().processor().halted(); });
+
+  ASSERT_TRUE(r.pc().processor().halted());
+  for (std::uint16_t i = 0; i < 4; ++i) {
+    EXPECT_EQ(r.code_byte(static_cast<std::uint16_t>(0x0100 + i)), 'a')
+        << "slot " << i;
+  }
+  EXPECT_EQ(r.bda_word(bda::keyboard_buffer_head),
+            r.bda_word(bda::keyboard_buffer_tail));
+}
+
 TEST(keyboard_buffer, a_full_buffer_drops_the_newest_keystrokes) {
   const rig r;
   load_read_loop(r, 20);
@@ -404,6 +431,75 @@ TEST(keyboard_shift_flags, num_lock_picks_digit_over_navigation) {
 
   ASSERT_TRUE(r.pc().processor().halted());
   EXPECT_EQ(r.regs()[cpu::reg16::ax] & 0xFFu, '1');
+}
+
+// --- The cursor pad (#517) -------------------------------------------------
+
+TEST(keyboard_cursor_pad, is_each_navigation_key_of_the_keypad_plus_20h) {
+  constexpr std::array<std::uint8_t, 10> navigation{
+      0x47, 0x48, 0x49, 0x4B, 0x4D, 0x4F, 0x50, 0x51, 0x52, 0x53};
+  for (const std::uint8_t keypad : navigation) {
+    const auto cursor = static_cast<std::uint8_t>(keypad + 0x20u);
+    EXPECT_EQ(xt_keyboard::cursor_pad_of(keypad), cursor);
+    EXPECT_EQ(xt_keyboard::keypad_of_cursor_pad(cursor), keypad);
+    EXPECT_EQ(xt_keyboard::keypad_of_cursor_pad(keypad), 0);
+  }
+  // The centre key has no navigation legend; minus and plus are not Num
+  // Lock keys.
+  constexpr std::array<std::uint8_t, 3> no_twin{0x4A, 0x4C, 0x4E};
+  for (const std::uint8_t keypad : no_twin) {
+    EXPECT_EQ(xt_keyboard::cursor_pad_of(keypad), 0);
+    EXPECT_EQ(xt_keyboard::keypad_of_cursor_pad(
+                  static_cast<std::uint8_t>(keypad + 0x20u)),
+              0);
+  }
+  EXPECT_EQ(xt_keyboard::keypad_of_cursor_pad(0x1E), 0);
+  EXPECT_EQ(xt_keyboard::keypad_of_cursor_pad(0x7F), 0);
+}
+
+TEST(keyboard_cursor_pad, an_arrow_is_navigation_with_num_lock_on) {
+  const rig r;
+
+  r.program({0xB4, 0x00, 0xCD, 0x16, 0xF4});
+  r.pc().post_key(sc_num_lock, key_action::down);
+  r.pc().post_key(0x68, key_action::down);  // the cursor pad's Up
+  r.run_until([&] { return r.pc().processor().halted(); });
+
+  ASSERT_TRUE(r.pc().processor().halted());
+  EXPECT_EQ(r.bda_byte(bda::keyboard_shift_flags) & xt_keyboard::num_lock_mask,
+            xt_keyboard::num_lock_mask);
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x4800u);
+}
+
+TEST(keyboard_cursor_pad, an_arrow_is_navigation_with_shift_held) {
+  const rig r;
+
+  r.program({0xB4, 0x00, 0xCD, 0x16, 0xF4});
+  r.pc().post_key(sc_left_shift, key_action::down);
+  r.pc().post_key(0x6F, key_action::down);  // the cursor pad's End
+  r.run_until([&] { return r.pc().processor().halted(); });
+
+  ASSERT_TRUE(r.pc().processor().halted());
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x4F00u);
+}
+
+TEST(keyboard_cursor_pad,
+     reads_the_word_its_keypad_twin_reads_with_num_lock_off) {
+  const rig r;
+
+  r.program({0xF4});
+  r.pc().post_key(0x48, key_action::down);
+  r.pc().post_key(0x48, key_action::up);
+  r.pc().post_key(0x68, key_action::down);
+  r.pc().post_key(0x68, key_action::up);    // a break is no keystroke
+  r.pc().post_key(0x6C, key_action::down);  // no twin: nothing at all
+  r.pc().step();
+
+  const std::uint16_t head = r.bda_word(bda::keyboard_buffer_head);
+  const auto second = static_cast<std::uint16_t>(head + 2u);
+  EXPECT_EQ(r.bda_word(bda::keyboard_buffer_tail), head + 4u);
+  EXPECT_EQ(r.bda_word(head), 0x4800u);
+  EXPECT_EQ(r.bda_word(second), 0x4800u);
 }
 
 // --- The blocking read: idle, not a lie about time -------------------------

@@ -42,7 +42,7 @@
 // of the ones that changed state, because a gated seam a player has not
 // turned on yet is still a row that document is for. **Today it is
 // always none**: since #290 no seam in this build is gated, the
-// code-wheel bypass having become a question a person answers (#291), so
+// code-wheel seam having become a question a person answers (#291), so
 // both hosts say "nothing in this build waits on the code wheel" and
 // that is the honest current answer rather than a feature that does not
 // work. The mechanism is exercised over a stood-up gated seam in

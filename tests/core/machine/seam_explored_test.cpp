@@ -689,6 +689,33 @@ TEST(ExploredOverlay, NothingIsDrawnWhileSomebodyElseAsksThePlayer) {
   EXPECT_EQ(pixels_covered(r), covered);
 }
 
+TEST(ExploredOverlay, TheFogComesBackWithThePartysBarAfterAnEncounter) {
+  // What a party that flees an encounter on the overworld saw: the
+  // program redraws the window while the encounter's own question is
+  // still the bar, then puts the party's bar back and waits for a key —
+  // with no present after it. The party has not moved and nothing was
+  // revealed, so a poll that trusted what it drew before the encounter
+  // left the whole window clear until the next step.
+  const rig r;
+  r.enable();
+  r.travelling(3, 32);
+  r.poll(4);
+  r.fill();
+  r.present();
+  const std::size_t covered = pixels_covered(r);
+  ASSERT_GT(covered, 0u) << "it was drawing a moment ago";
+
+  r.somebody_else_asks();
+  r.poll(2);
+  r.fill();
+  r.present();
+  ASSERT_EQ(pixels_covered(r), 0u) << "the encounter's screen is its own";
+
+  r.put_up_the_bar(rig::dgroup(), data_menu_area_view);
+  r.poll(1);
+  EXPECT_EQ(pixels_covered(r), covered);
+}
+
 TEST(ExploredOverlay, NothingIsDrawnWhileTheAreaIsShownInTheInteriorView) {
   const rig r;
   r.enable();

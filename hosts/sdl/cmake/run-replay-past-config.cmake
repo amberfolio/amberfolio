@@ -75,9 +75,11 @@ if(err MATCHES "amberfolio: speed ")
   message(FATAL_ERROR
     "a config changed the speed during a replay.\nstderr: ${err}")
 endif()
-if(EXISTS "${DISK}/SAVE/AFMAP.DAT")
+file(GLOB sidecars "${DISK}/SAVE/AFMAP*.DAT" "${DISK}/SAVE/AFSEEN*.DAT")
+if(sidecars)
   message(FATAL_ERROR
-    "a config's save-sidecars wrote into ${DISK}, which is committed")
+    "a config's save-sidecars wrote into ${DISK}, which is committed: "
+    "${sidecars}")
 endif()
 
 message(STATUS

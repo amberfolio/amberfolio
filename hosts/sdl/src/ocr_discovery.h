@@ -13,7 +13,7 @@
 //
 //   1. **Beside the binary.** A packaged build that ships an engine puts
 //      it there, and a player's copy must not depend on a path from the
-//      machine it was built on — `linked_tessdata_path()` in `main.cpp`
+//      machine it was built on — `linked_tessdata_path()` in `journal_host.cpp`
 //      already makes the same call for the same reason.
 //   2. **Each directory of `PATH`, in order.** The player's own install,
 //      wherever their platform's packaging put it. In order, because
@@ -36,7 +36,7 @@
 // -----------------------------------
 //
 // It builds the **list of places**, in order, and stops there. Whether a
-// file at one of them exists is `main.cpp`'s question, asked of the
+// file at one of them exists is `journal_host.cpp`'s question, asked of the
 // filesystem — which is what lets the list itself be checked without an
 // engine installed, on a runner that has none, and without this unit
 // growing an opinion about what "executable" means on three platforms.

@@ -139,17 +139,14 @@
 // exactly as they did: `set_seen` puts them in, `restore_journal_log`
 // hands them to the machine, `seen()` reads them back. What changed is
 // where a host *keeps* them between runs, which is why `serialize()` no
-// longer writes them and `changed()` no longer rises for them
-// (`log_changed()` does instead). Nothing above the store moved.
+// longer writes them and `changed()` no longer rises for them. Nothing
+// above the store moved.
 //
 // **A version 4 store's `seen` lines are still read**, into exactly the
-// same rows, and are then this run's working log: it is the one list the
-// player accumulated before slots existed, and the first save writes it
-// to a slot while the first load replaces it. That is the working
-// table's own semantics next door, applied to the one migration there
-// will ever be. Written back, the file is version 5 and the lines are
-// gone — which is the point, and is not a loss, because by then they are
-// in `\SAVE\AFSEEN.DAT` for anyone who asked for one.
+// same rows: it is the one list the player accumulated before slots
+// existed, and the first save writes it to a slot while the first load
+// replaces it. That is the one migration there will ever be. Written
+// back, the file is version 5 and the lines are gone.
 //
 // The version is the first token of the first line so that a store from a
 // later format is refused by a build that would misread it, which is the
@@ -408,8 +405,6 @@ class journal_store {
   /// log and reads nothing, for the same reason `automap_state::
   /// forget_records()` exists — an empty log is the truth about a
   /// playthrough nobody recorded one for.
-  ///
-  /// Raises `log_changed()` only if there was something to forget.
   void forget_seen();
 
   // --- the log's sidecar (#351) ----------------------------------------
@@ -432,27 +427,7 @@ class journal_store {
   /// are not one this build knows how to read, and then the log is left
   /// exactly as it was — a file that is not ours is a reason to say so,
   /// not a reason to forget what a player was told.
-  ///
-  /// Raises `log_changed()` on success, because the rows in hand are now
-  /// a different list from the one a host last wrote out. That is one
-  /// redundant write of a file whose bytes were just read, and it is
-  /// worth it: the alternative is a load whose log is only on disk under
-  /// the slot it came from, and a working table that still holds the
-  /// previous party's.
   [[nodiscard]] bool read_log_sidecar(std::span<const std::uint8_t> in);
-
-  /// The same bytes as one line of text, and back.
-  ///
-  /// For a browser, which has no directory to put a sidecar in and keeps
-  /// what it keeps in a key-value drawer of strings (M5-E3f). Base64 of
-  /// exactly `write_log_sidecar`'s bytes, so the two hosts keep one
-  /// format and a log written by either is a log the other would read —
-  /// the same arrangement a picture record already has (§11).
-  ///
-  /// `parse_log` answers false on anything `read_log_sidecar` would
-  /// refuse and on text that is not base64, and leaves the log alone.
-  [[nodiscard]] std::string serialize_log() const;
-  [[nodiscard]] bool parse_log(std::string_view text);
 
   /// Whether this store has moved since a host last wrote it out.
   ///
@@ -473,8 +448,8 @@ class journal_store {
   /// **`set_seen()` no longer does** (#351). The log is not in this
   /// file any more, so a citation that raised this flag would have a host
   /// rewrite a player's whole transcription to record something that is
-  /// not in it. `log_changed()` below is the log's own flag, and the two
-  /// hosts write two different files off the two of them.
+  /// not in it. The log is written only when the program saves a slot
+  /// (`slot_store.h`), and needs no flag of its own.
   ///
   /// **`parse()` is the exception**, and deliberately: a store read in
   /// from a file or a browser's drawer came *from* a host, which
@@ -486,15 +461,6 @@ class journal_store {
   /// lose a correction made between the read and the write.
   [[nodiscard]] bool changed() const noexcept { return changed_; }
   void clear_changed() noexcept { changed_ = false; }
-
-  /// Whether the read log has moved since a host last wrote it out
-  /// (#351), on `changed()`'s own three terms: raised by `set_seen`,
-  /// `forget_seen`, `read_log_sidecar` and `clear`; not raised by
-  /// `parse()`, whose rows came from a host in the first place; lowered
-  /// only by the caller, which alone knows whether the bytes reached a
-  /// disk.
-  [[nodiscard]] bool log_changed() const noexcept { return log_changed_; }
-  void clear_log_changed() noexcept { log_changed_ = false; }
 
   /// The SHA-256 of `serialize()`.
   ///
@@ -523,7 +489,6 @@ class journal_store {
   /// of what was written first.
   std::vector<machine::journal_seen_row> seen_;
   bool changed_{false};
-  bool log_changed_{false};
 };
 
 /// A store's read log, into the machine the reader draws it from.

@@ -60,7 +60,11 @@ std::uint8_t xt_scancode(SDL_Scancode code) noexcept {
       return 0x1A;
     case SDL_SCANCODE_RIGHTBRACKET:
       return 0x1B;
+    // The numeric keypad's Enter, which an 83-key board does not have, is
+    // folded onto the one Enter it does: a player who presses it means
+    // Enter.
     case SDL_SCANCODE_RETURN:
+    case SDL_SCANCODE_KP_ENTER:
       return 0x1C;
     case SDL_SCANCODE_LCTRL:
       return 0x1D;
@@ -144,39 +148,34 @@ std::uint8_t xt_scancode(SDL_Scancode code) noexcept {
       return 0x45;
     case SDL_SCANCODE_SCROLLLOCK:
       return 0x46;
+    // The cursor pad: a 101-key board's own arrows, Home/End, Page and
+    // Insert/Delete, each its keypad twin's code plus 20h (keyboard.h's
+    // `cursor_pad_of`, #517), so Num Lock, which a player turns on to type
+    // amounts on the keypad, never makes the arrows type digits.
     case SDL_SCANCODE_HOME:
-      return 0x47;
+      return 0x67;
     case SDL_SCANCODE_UP:
-      return 0x48;
+      return 0x68;
     case SDL_SCANCODE_PAGEUP:
-      return 0x49;
+      return 0x69;
     case SDL_SCANCODE_LEFT:
-      return 0x4B;
+      return 0x6B;
     case SDL_SCANCODE_RIGHT:
-      return 0x4D;
+      return 0x6D;
     case SDL_SCANCODE_END:
-      return 0x4F;
+      return 0x6F;
     case SDL_SCANCODE_DOWN:
-      return 0x50;
+      return 0x70;
     case SDL_SCANCODE_PAGEDOWN:
-      return 0x51;
+      return 0x71;
     case SDL_SCANCODE_INSERT:
-      return 0x52;
+      return 0x72;
     case SDL_SCANCODE_DELETE:
-      return 0x53;
+      return 0x73;
 
-    // The numeric keypad, which on an 83-key board is the *same* keys as
-    // the cluster above: this keyboard has no dedicated arrows, no
-    // dedicated Home, no dedicated Insert. Num Lock is what decides
-    // whether 48h means "8" or "up", and it decides it inside the BIOS
-    // (keyboard.h), not here.
-    //
-    // So a modern keyboard's two keys map to one code, and both are
-    // mapped, because a player who reaches for the keypad on a game
-    // whose movement keys *are* the keypad should not find it dead. The
-    // three codes below that the cluster above cannot reach at all --
-    // 37h, 4Ah and 4Eh, the pad's own *, - and +, and 4Ch, its centre --
-    // have no other key to arrive from.
+    // The numeric keypad, which on an 83-key board is the only place the
+    // navigation legends are: Num Lock decides whether 48h means "8" or
+    // "up", and it decides it inside the BIOS (keyboard.h), not here.
     case SDL_SCANCODE_KP_MULTIPLY:
       return 0x37;
     case SDL_SCANCODE_KP_7:

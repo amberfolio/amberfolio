@@ -214,5 +214,33 @@ if [ "${#covered[@]}" -eq 0 ]; then
   exit 1
 fi
 
-"$CLANG_TIDY" -p "$work/one-config" --quiet "${covered[@]}"
-echo "check-tidy: OK (${#covered[@]} files, clang-tidy $got, db $build)"
+# One clang-tidy per processor, each over every Nth file. The files are
+# independent, and one process over all of them was most of CI's slowest
+# job. Each process writes to its own log, printed whole in order
+# afterwards, so two files' findings never interleave line by line.
+# TIDY_JOBS overrides the width.
+jobs="${TIDY_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)}"
+if [ "$jobs" -gt "${#covered[@]}" ]; then
+  jobs=${#covered[@]}
+fi
+pids=()
+for ((j = 0; j < jobs; j++)); do
+  share=()
+  for ((i = j; i < ${#covered[@]}; i += jobs)); do
+    share+=("${covered[i]}")
+  done
+  "$CLANG_TIDY" -p "$work/one-config" --quiet "${share[@]}"     > "$work/tidy.$j.log" 2>&1 &
+  pids+=("$!")
+done
+failed=0
+for ((j = 0; j < jobs; j++)); do
+  if ! wait "${pids[j]}"; then
+    failed=1
+  fi
+  cat "$work/tidy.$j.log"
+done
+if [ "$failed" -ne 0 ]; then
+  echo "check-tidy: findings above" >&2
+  exit 1
+fi
+echo "check-tidy: OK (${#covered[@]} files, $jobs at a time, clang-tidy $got, db $build)"

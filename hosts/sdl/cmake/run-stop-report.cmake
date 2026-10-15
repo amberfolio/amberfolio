@@ -32,7 +32,7 @@ endif()
 # --- 1. The refusal ----------------------------------------------------
 
 execute_process(
-  COMMAND "${HOST}" "${DISK}" STOPPER.EXE --headless -- TAIL
+  COMMAND "${HOST}" --no-config "${DISK}" STOPPER.EXE --headless -- TAIL
   RESULT_VARIABLE code
   OUTPUT_VARIABLE out
   ERROR_VARIABLE err)
@@ -97,7 +97,7 @@ endif()
 # a real hang takes, produced deterministically and in six steps.
 
 execute_process(
-  COMMAND "${HOST}" "${DISK}" HELLO.EXE --headless --steps 3 --trace
+  COMMAND "${HOST}" --no-config "${DISK}" HELLO.EXE --headless --steps 3 --trace
   RESULT_VARIABLE budget_code
   OUTPUT_VARIABLE budget_out
   ERROR_VARIABLE budget_err)
@@ -135,7 +135,7 @@ endif()
 file(REMOVE "${OUT}.ppm")
 
 execute_process(
-  COMMAND "${HOST}" "${DISK}" HELLO.EXE --headless --dump "${OUT}"
+  COMMAND "${HOST}" --no-config "${DISK}" HELLO.EXE --headless --dump "${OUT}"
   RESULT_VARIABLE dump_code
   OUTPUT_VARIABLE dump_out
   ERROR_VARIABLE dump_err)
@@ -178,7 +178,7 @@ endif()
 # the two above it are made of.
 
 execute_process(
-  COMMAND "${HOST}" "${DISK}" HELLO.EXE --headless --dump-every 60
+  COMMAND "${HOST}" --no-config "${DISK}" HELLO.EXE --headless --dump-every 60
   RESULT_VARIABLE lonely_code
   ERROR_VARIABLE lonely_err)
 

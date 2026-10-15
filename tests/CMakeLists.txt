@@ -60,13 +60,30 @@ add_executable(amberfolio-core-tests
   core/machine/report_test.cpp
   core/machine/save_layer_test.cpp
   core/machine/scheduler_test.cpp
+  core/machine/scene_test.cpp
   core/machine/screen_keyboard_test.cpp
+  core/machine/screen_text_test.cpp
   core/machine/seam_automap_test.cpp
+  core/machine/seam_bar_keys_test.cpp
+  core/machine/seam_hero_keys_test.cpp
+  core/machine/seam_move_mode_test.cpp
+  core/machine/seam_select_yellow_test.cpp
+  core/machine/selection_margin_test.cpp
+  core/machine/seam_edit_keys_test.cpp
+  core/machine/seam_quick_steps_test.cpp
+  core/machine/seam_text_entry_test.cpp
+  core/machine/seam_aim_watch_test.cpp
   core/machine/seam_explored_test.cpp
+  core/machine/seam_font_test.cpp
   core/machine/seam_call_test.cpp
   core/machine/seam_cheats_test.cpp
   core/machine/seam_encamp_test.cpp
   core/machine/seam_journal_test.cpp
+  core/machine/seam_list_arrows_test.cpp
+  core/machine/seam_menu_cursor_test.cpp
+  core/machine/seam_roster_fix_test.cpp
+  core/machine/seam_timer_fix_test.cpp
+  core/machine/seam_modern_controls_test.cpp
   core/machine/seam_test.cpp
   core/machine/service_floor_test.cpp
   core/machine/session_test.cpp

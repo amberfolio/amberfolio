@@ -184,7 +184,7 @@ bool seam_context::call_host(seam_host_service which, std::uint32_t argument) {
 
 bool seam_context::place_bytes(std::span<const std::uint8_t> bytes,
                                std::uint16_t& segment, std::uint16_t& offset) {
-  if (bytes.empty()) {
+  if (bytes.empty() || inside_batch_) {
     return false;
   }
   engine_->open_batch(*box_, id_);
@@ -215,7 +215,7 @@ bool seam_context::place_bytes(std::span<const std::uint8_t> bytes,
 
 bool seam_context::call_program(std::uint16_t segment, std::uint16_t offset,
                                 std::span<const std::uint16_t> words) {
-  if (words.size() > seam_engine::max_call_words) {
+  if (words.size() > seam_engine::max_call_words || inside_batch_) {
     return false;
   }
   engine_->open_batch(*box_, id_);
@@ -250,6 +250,15 @@ void seam_context::set_scratch(unsigned slot, std::uint16_t value) noexcept {
   engine_->slots_[at].scratch[slot] = value;
 }
 
+std::uint16_t seam_engine::scratch(std::string_view id,
+                                   unsigned word) const noexcept {
+  const std::size_t at = index_of(id);
+  if (at == max_seams || word >= scratch_words) {
+    return 0;
+  }
+  return slots_[at].scratch[word];
+}
+
 void seam_context::decline(seam_reason why) {
   declined_ = true;
   engine_->note_decline(id_, why);
@@ -258,6 +267,12 @@ void seam_context::decline(seam_reason why) {
 // --- seam_engine -------------------------------------------------------------
 
 seam_engine::seam_engine(diagnostics* log) noexcept : log_(log) {
+  // The fixes first, so that they are the first slots and a listed index
+  // is a slot index less `fixes_`.
+  for (const seam_definition& seam : built_in_fixes()) {
+    static_cast<void>(add(seam));
+  }
+  fixes_ = registered_;
   for (const seam_definition& seam : all_seams()) {
     // The build's own table cannot overflow the registry or repeat an id
     // — that would be a mistake in this tree, caught by the unit suite
@@ -284,8 +299,13 @@ std::size_t seam_engine::index_of(std::string_view id) const noexcept {
   return max_seams;
 }
 
-const seam_definition* seam_engine::find(std::string_view id) const noexcept {
+std::size_t seam_engine::listed_index_of(std::string_view id) const noexcept {
   const std::size_t index = index_of(id);
+  return is_fix(index) ? max_seams : index;
+}
+
+const seam_definition* seam_engine::find(std::string_view id) const noexcept {
+  const std::size_t index = listed_index_of(id);
   return index == max_seams ? nullptr : slots_[index].seam;
 }
 
@@ -301,22 +321,30 @@ bool seam_engine::applies(const seam_definition& seam) const noexcept {
   return false;
 }
 
-bool seam_engine::modules_resident(const seam_definition& seam) const noexcept {
+bool seam_engine::module_resident(const seam_module& module) const noexcept {
+  if (module.is_resident_image()) {
+    return true;
+  }
+  if (module.has_load_segment()) {
+    return word_at(image_base() + module.load_segment_at) != 0;
+  }
+  return overlays_ != nullptr && overlays_->resident(module) != nullptr;
+}
+
+bool seam_engine::some_module_resident(
+    const seam_definition& seam) const noexcept {
+  // Any, not every (#477): `dispatch` offers each point on its own, so a
+  // seam with one module in memory acts there while another is out, and
+  // a status that called it inert would be calling a working seam broken.
+  if (seam.points.empty()) {
+    return true;  // Nothing is needed, so nothing is missing.
+  }
   for (const seam_point& point : seam.points) {
-    if (point.module.is_resident_image()) {
-      continue;
-    }
-    if (point.module.has_load_segment()) {
-      if (word_at(image_base() + point.module.load_segment_at) == 0) {
-        return false;
-      }
-      continue;
-    }
-    if (overlays_ == nullptr || overlays_->resident(point.module) == nullptr) {
-      return false;
+    if (module_resident(point.module)) {
+      return true;
     }
   }
-  return true;
+  return false;
 }
 
 seam_reason seam_engine::blocking_reason(
@@ -326,7 +354,7 @@ seam_reason seam_engine::blocking_reason(
   if (!holds_document(seam.gate)) {
     return seam_reason::document_not_presented;
   }
-  if (!modules_resident(seam)) {
+  if (!some_module_resident(seam)) {
     return seam_reason::module_not_resident;
   }
   return seam_reason::none;
@@ -397,6 +425,15 @@ const document_edition* seam_engine::document_at(
 }
 
 seam_status seam_engine::status(std::size_t index) const noexcept {
+  return index >= count() ? seam_status{} : slot_status(index + fixes_);
+}
+
+seam_status seam_engine::fix_status(std::string_view id) const noexcept {
+  const std::size_t index = index_of(id);
+  return is_fix(index) ? slot_status(index) : seam_status{};
+}
+
+seam_status seam_engine::slot_status(std::size_t index) const noexcept {
   if (index >= registered_) {
     return {};
   }
@@ -448,7 +485,8 @@ seam_status seam_engine::status(std::size_t index) const noexcept {
 }
 
 seam_status seam_engine::status(std::string_view id) const noexcept {
-  return status(index_of(id));
+  const std::size_t index = listed_index_of(id);
+  return index == max_seams ? seam_status{} : slot_status(index);
 }
 
 void seam_engine::loaded(const sha256_digest& digest,
@@ -458,6 +496,14 @@ void seam_engine::loaded(const sha256_digest& digest,
   edition_ = find_edition(digest);
   image_segment_ = image_segment;
   have_program_ = true;
+  // The fixes come on with the program they name, and nothing turns them
+  // off but the next program.
+  for (std::size_t i = 0; i < fixes_; ++i) {
+    if (slots_[i].seam->schema == seam_schema_version &&
+        applies(*slots_[i].seam)) {
+      static_cast<void>(enable_slot(i));
+    }
+  }
 }
 
 bool seam_engine::identify(filesystem& fs, const dos_path& path,
@@ -485,6 +531,7 @@ void seam_engine::clear() noexcept {
   enabled_ = 0;
   points_ = {};
   armed_ = 0;
+  rebuild_filter();
   have_program_ = false;
   edition_ = nullptr;
   // The host-service record goes with them (#169): it is bookkeeping
@@ -493,6 +540,11 @@ void seam_engine::clear() noexcept {
   // device does — `set_host()` is a wiring decision and `clear()` is not.
   host_calls_ = {};
   host_arguments_ = {};
+  // And so does a batch, with nothing put back (#527). Its snapshot is
+  // the registers of a run that is over; restoring it onto the next boot
+  // is what made a stopped Encamp Fix draw its box from a fresh DGROUP,
+  // or wander into a loop on the loading screen.
+  call_ = call_batch{};
 }
 
 std::uint64_t seam_engine::host_calls(seam_host_service which) const noexcept {
@@ -504,10 +556,16 @@ std::uint32_t seam_engine::host_argument(
   return host_arguments_[static_cast<std::size_t>(which)];
 }
 
-std::size_t seam_engine::enabled_count() const noexcept { return enabled_; }
+std::size_t seam_engine::enabled_count() const noexcept {
+  std::size_t listed = 0;
+  for (std::size_t i = fixes_; i < registered_; ++i) {
+    listed += slots_[i].enabled ? 1U : 0U;
+  }
+  return listed;
+}
 
 std::string_view seam_engine::enabled_id(std::size_t nth) const noexcept {
-  for (std::size_t i = 0; i < registered_; ++i) {
+  for (std::size_t i = fixes_; i < registered_; ++i) {
     if (!slots_[i].enabled) {
       continue;
     }
@@ -520,7 +578,7 @@ std::string_view seam_engine::enabled_id(std::size_t nth) const noexcept {
 }
 
 seam_error seam_engine::enable(std::string_view id) {
-  const std::size_t index = index_of(id);
+  const std::size_t index = listed_index_of(id);
   if (index == max_seams) {
     report(id, seam_event_kind::refused, seam_reason::unknown_seam);
     return seam_reason::unknown_seam;
@@ -538,21 +596,40 @@ seam_error seam_engine::enable(std::string_view id) {
     report(id, seam_event_kind::refused, seam_reason::wrong_binary);
     return seam_reason::wrong_binary;
   }
+  return enable_slot(index);
+}
+
+seam_error seam_engine::enable_slot(std::size_t index) {
+  slot& s = slots_[index];
+  const std::string_view id = s.seam->id;
   if (s.enabled) {
     return seam_reason::none;
   }
 
   // Room, before anything is changed: a seam that would not fit is
-  // refused whole rather than half-armed.
+  // refused whole rather than half-armed. A sibling in its group is about
+  // to make room of its own, so its points are not counted.
+  const auto sibling = [&s](const slot& other) {
+    return !s.seam->group.empty() && &other != &s &&
+           other.seam->group == s.seam->group;
+  };
   std::size_t wanted = s.seam->points.size();
   for (std::size_t i = 0; i < registered_; ++i) {
-    if (slots_[i].enabled) {
+    if (slots_[i].enabled && !sibling(slots_[i])) {
       wanted += slots_[i].seam->points.size();
     }
   }
   if (wanted > max_points) {
     report(id, seam_event_kind::refused, seam_reason::too_many_points);
     return seam_reason::too_many_points;
+  }
+
+  // Alternatives: the sibling goes off first, through the one door a
+  // seam goes off by, so it says so and its points come down with it.
+  for (std::size_t i = 0; i < registered_; ++i) {
+    if (slots_[i].enabled && sibling(slots_[i])) {
+      static_cast<void>(disable(slots_[i].seam->id));
+    }
   }
 
   s.enabled = true;
@@ -570,7 +647,7 @@ seam_error seam_engine::enable(std::string_view id) {
 }
 
 seam_error seam_engine::disable(std::string_view id) {
-  const std::size_t index = index_of(id);
+  const std::size_t index = listed_index_of(id);
   if (index == max_seams) {
     report(id, seam_event_kind::refused, seam_reason::unknown_seam);
     return seam_reason::unknown_seam;
@@ -593,7 +670,7 @@ seam_error seam_engine::disable(std::string_view id) {
 }
 
 seam_error seam_engine::pull(std::string_view id, ticks now) {
-  const std::size_t index = index_of(id);
+  const std::size_t index = listed_index_of(id);
   if (index == max_seams) {
     report(id, seam_event_kind::refused, seam_reason::unknown_seam);
     return seam_reason::unknown_seam;
@@ -615,12 +692,13 @@ seam_error seam_engine::pull(std::string_view id, ticks now) {
   }
   s.waiting = true;
   s.pulled_at = now;
+  rebuild_filter();
   report(id, seam_event_kind::pulled, seam_reason::none);
   return seam_reason::none;
 }
 
 bool seam_engine::waiting(std::string_view id) const noexcept {
-  const std::size_t index = index_of(id);
+  const std::size_t index = listed_index_of(id);
   return index != max_seams && slots_[index].waiting;
 }
 
@@ -680,17 +758,23 @@ void seam_engine::arm_all(const overlay_tracker* overlays) {
       // guard is what keeps that a property of the table rather than a
       // belief about the caller.
       if (armed_ < max_points) {
-        points_[armed_] = {// A point with no address gets none: `at` is
-                           // never compared for it, and a plausible-looking
-                           // number in a field nothing reads is the kind of
-                           // fact this tree does not keep.
-                           .at = point.at_every_step ? 0 : base + point.offset,
-                           .module_base = base,
-                           .anchor = anchor,
-                           .offset = point.offset,
-                           .run = point.run,
-                           .owner = i,
-                           .at_every_step = point.at_every_step};
+        points_[armed_] = {
+            // A point with no address gets none: `at` is
+            // never compared for it, and a plausible-looking
+            // number in a field nothing reads is the kind of
+            // fact this tree does not keep.
+            .at = point.at_every_step ? 0 : base + point.offset,
+            .module_base = base,
+            .anchor = anchor,
+            .offset = point.offset,
+            .run = point.run,
+            .owner = i,
+            .at_every_step = point.at_every_step,
+            // Honoured only where seam.h says it is: an
+            // address point in a module that stays put,
+            // on a seam no latch gates.
+            .inside_calls = point.inside_calls && !point.at_every_step &&
+                            anchor == no_load_segment && !s.seam->trigger};
         ++armed_;
       }
     }
@@ -708,15 +792,73 @@ void seam_engine::arm_all(const overlay_tracker* overlays) {
              s.reason);
     }
   }
+  rebuild_filter();
 }
 
-std::uint16_t seam_engine::word_at(std::uint32_t address) const noexcept {
-  if (address + 1 >= ram_.size()) {
-    return 0;
+void seam_engine::rebuild_filter() noexcept {
+  // What `dispatch` would have to do something about at an address, said
+  // as a test that costs less than the scan. Every clause below is the
+  // negation of one of the `continue`s at the top of that scan's body,
+  // and the argument that nothing is lost is the argument that each
+  // `continue` is covered:
+  //
+  //   * a point with no handler: skipped, as in `dispatch`;
+  //   * an address point at a fixed address: `point.at != at` is the
+  //     `continue`, so the point matters at exactly its own address, and
+  //     that address's bit (folded, which can only add a visit) is set;
+  //   * a point with no address: the `continue` is "its seam's latch is
+  //     down". `latched_` is the or of those latches over the points the
+  //     table holds, and is rebuilt wherever one moves;
+  //   * a point resolved through a load-segment word: the `continue`s are
+  //     "`at` and the offset disagree in their low four bits" and then
+  //     "the word, read now, says elsewhere". The first is a property of
+  //     the table, so it is a mask and a bucket here: the entries are
+  //     kept sorted by that nibble, so a step looks at the ones that can
+  //     be here and none of the rest. The second is a property of RAM,
+  //     which the program rewrites without telling anybody, so it is
+  //     **not** cached: `anchored_hit()` reads the word at the step, as
+  //     `dispatch` does, for the entries in the bucket, and nothing is
+  //     remembered between steps. That is the only place the filter
+  //     looks at the machine, and it looks at the same bytes, at the
+  //     same moment, and applies the same test `dispatch` would.
+  fixed_ = {};
+  anchored_nibbles_ = 0;
+  anchored_from_ = {};
+  latched_ = false;
+  std::array<std::uint8_t, 16> bucket_size{};
+  for (std::size_t i = 0; i < armed_; ++i) {
+    const armed_point& point = points_[i];
+    if (point.run == nullptr) {
+      continue;
+    }
+    if (point.at_every_step) {
+      latched_ = latched_ || slots_[point.owner].waiting;
+    } else if (point.anchor != no_load_segment) {
+      const std::uint32_t nibble = point.offset & 0x0FU;
+      anchored_nibbles_ =
+          static_cast<std::uint16_t>(anchored_nibbles_ | (1U << nibble));
+      ++bucket_size[nibble];
+    } else {
+      const std::uint32_t folded = point.at & fixed_mask;
+      fixed_[folded >> 6U] |= std::uint64_t{1} << (folded & 63U);
+    }
   }
-  return static_cast<std::uint16_t>(
-      static_cast<unsigned>(ram_[address]) |
-      (static_cast<unsigned>(ram_[address + 1]) << 8U));
+  // Counting sort of the anchored points by nibble, stable.
+  for (std::size_t n = 0; n < 16; ++n) {
+    anchored_from_[n + 1U] =
+        static_cast<std::uint8_t>(anchored_from_[n] + bucket_size[n]);
+  }
+  std::array<std::uint8_t, 16> next{};
+  for (std::size_t i = 0; i < armed_; ++i) {
+    const armed_point& point = points_[i];
+    if (point.run == nullptr || point.at_every_step ||
+        point.anchor == no_load_segment) {
+      continue;
+    }
+    const std::uint32_t nibble = point.offset & 0x0FU;
+    anchored_[anchored_from_[nibble] + next[nibble]++] = {
+        .anchor = point.anchor, .offset = point.offset};
+  }
 }
 
 void seam_engine::open_batch(machine& box, std::string_view id) noexcept {
@@ -779,6 +921,26 @@ void seam_engine::abandon_batch(machine& box, seam_reason why) noexcept {
   report(id, seam_event_kind::inert, why);
 }
 
+void seam_engine::offer_inside_calls(machine& box, std::uint32_t at) {
+  // The points whose facts hold inside the program's code whoever called
+  // it (seam.h's `inside_calls`), and only those. Their handlers edit
+  // registers; a context made here refuses to start a batch.
+  for (std::size_t i = 0; i < armed_; ++i) {
+    const armed_point& point = points_[i];
+    if (!point.inside_calls || point.run == nullptr || point.at != at) {
+      continue;
+    }
+    slot& owner = slots_[point.owner];
+    ++owner.reached;
+    seam_context ctx(box, *this, owner.seam->id, at, point.module_base,
+                     image_base(), true);
+    point.run(box, ctx);
+    if (!ctx.declined_) {
+      ++owner.fired;
+    }
+  }
+}
+
 void seam_engine::dispatch(machine& box, std::uint32_t at) {
   if (call_.active) {
     // A batch is running, and while it is the engine does one thing.
@@ -788,6 +950,9 @@ void seam_engine::dispatch(machine& box, std::uint32_t at) {
     if (!call_.running ||
         at != cpu::physical_address(service::stub_segment,
                                     service::call_return_offset)) {
+      if (call_.running) {
+        offer_inside_calls(box, at);
+      }
       if (call_.running && ++call_.steps > max_call_steps) {
         // The call is not coming back. That is a fact table naming an
         // address that is not a routine, and the one thing it must not
@@ -908,6 +1073,7 @@ void seam_engine::dispatch(machine& box, std::uint32_t at) {
       // Served. A handler that declined did not act, so its pull is
       // still outstanding and waits for a point that is the point.
       owner.waiting = false;
+      rebuild_filter();
       owner.waited = box.time() >= owner.pulled_at
                          ? box.time() - owner.pulled_at
                          : ticks{};
@@ -934,6 +1100,13 @@ void seam_engine::note_decline(std::string_view id, seam_reason why) noexcept {
 
 void seam_engine::report(std::string_view id, seam_event_kind kind,
                          seam_reason reason) noexcept {
+  // A fix's comings and goings are not a host's to print: it is on with
+  // its program, and saying so at every load and every overlay swap
+  // would be a line about nothing anybody chose. What it declines is a
+  // fact table meeting a machine it does not describe, and is said.
+  if (is_fix(index_of(id)) && reason != seam_reason::point_not_recognized) {
+    return;
+  }
   if (log_ != nullptr) {
     log_->report(seam_event{.id = id, .kind = kind, .reason = reason});
   }

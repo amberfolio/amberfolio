@@ -120,6 +120,8 @@ import {
   wallClockFields,
   MAX_CATCH_UP_SECONDS,
   readScreenKeyboard,
+  readKeyCard,
+  visibleKeyCard,
   commitKey,
   commitScancode,
   latchOf,
@@ -130,6 +132,8 @@ import {
   AF_NAV_RIGHT,
   AF_LATCH_LEFT_SHIFT,
   AF_LATCH_CTRL,
+  screenTextRows,
+  SCREEN_TEXT_CELL_BYTES,
 } from './host.mjs';
 import {
   encodePpm,
@@ -198,6 +202,10 @@ const EXPECTED_EXPORTS = [
   '_af_machine_stop_report',
   '_af_machine_trace_report',
   '_af_machine_framebuffer',
+  // The screen read back as text (machine/screen_text.h).
+  '_af_screen_text_columns',
+  '_af_screen_text_rows',
+  '_af_machine_screen_text',
   '_af_machine_palette',
   '_af_machine_frame_generation',
   '_af_machine_render_audio',
@@ -266,6 +274,8 @@ const EXPECTED_EXPORTS = [
   '_af_machine_document_kind_at',
   '_af_machine_code_wheel_answered',
   '_af_machine_set_code_wheel_answered',
+  '_af_machine_text_entry',
+  '_af_machine_scene_json',
   '_af_machine_save_layer_slots',
   '_af_machine_save_layer_members',
   '_af_machine_save_layer_count',
@@ -319,6 +329,8 @@ const EXPECTED_EXPORTS = [
   '_af_web_attach_host_services',
   '_af_web_host_service_at',
   '_af_web_save_sidecars',
+  // The key card (#427): the game's keys by context, as JSON.
+  '_af_web_key_card_json',
   // The M5-E3 (#174) journal ingestion, and the synthetic document the
   // check below drives it with.
   '_af_web_journal_ingest',
@@ -361,8 +373,6 @@ const EXPECTED_EXPORTS = [
   '_af_web_journal_store_changed',
   '_af_web_journal_store_clear_changed',
   '_af_web_journal_seen_restore',
-  '_af_web_journal_log_write',
-  '_af_web_journal_log_read',
   '_af_web_journal_cite_all',
   '_af_web_journal_store_clear',
   '_af_web_journal_store_fingerprint',
@@ -731,6 +741,79 @@ if (missing.length === 0) {
   }
 }
 
+// --- The key card (#427) ----------------------------------------------
+//
+// The table is `hosts/common`'s and `key_card_test.cpp` holds its shape.
+// What is checked here is the crossing and the page's half: the JSON comes
+// out of linear memory whole, every row says something, every seam a row
+// names is a seam this module carries, and the rule that shows a seam's
+// rows only while the seam is on does so — which is the rule the desktop
+// host applies in C++ to the same table.
+
+if (missing.length === 0) {
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+  const card = readKeyCard(module);
+  check(card.contexts.length > 0, 'the key card came across with no contexts');
+  check(typeof card.legend === 'string' && card.legend !== '', 'the key card has no legend');
+  const seen = new Set();
+  let rows = 0;
+  for (const context of card.contexts) {
+    check(!seen.has(context.id), `the key card names ${context.id} twice`);
+    seen.add(context.id);
+    check(
+      ['both', 'desktop', 'page'].includes(context.shell),
+      `${context.id} is for the shell ${JSON.stringify(context.shell)}`,
+    );
+    check(context.title !== '' && context.rows.length > 0, `${context.id} has no title or no rows`);
+    for (const row of context.rows) {
+      rows += 1;
+      check(
+        row.keys !== '' && row.does !== '' && typeof row.seam === 'string',
+        `a row of ${context.id} is missing a word: ${JSON.stringify(row)}`,
+      );
+    }
+  }
+
+  // The seams a row names are ones this module carries.
+  const machine = new Machine(module);
+  check(machine.attachReferenceDevices() === AF_OK, 'attaching the reference devices failed');
+  machine.reset();
+  const carried = new Set(machine.seamList().map((seam) => seam.id));
+  machine.destroy();
+  for (const context of card.contexts) {
+    for (const row of context.rows) {
+      check(
+        row.seam === '' || carried.has(row.seam),
+        `the key card names the seam ${row.seam}, which this module does not carry`,
+      );
+    }
+  }
+
+  // With nothing on, the card is the program as it is: no seam's row and
+  // no context made of nothing else, and none of the desktop's own.
+  const none = visibleKeyCard(card, 'page', () => false);
+  check(
+    none.every((context) => context.rows.every((row) => row.seam === '')),
+    'a seam row was shown with every seam off',
+  );
+  check(!none.some((context) => context.id === 'journal'), 'the journal context showed with the seam off');
+  check(!none.some((context) => context.shell === 'desktop'), "the desktop's keys were shown to the page");
+  // Turn one on and its rows and only its rows arrive.
+  const journal = visibleKeyCard(card, 'page', (id) => id === 'journal');
+  check(journal.some((context) => context.id === 'journal'), 'the journal context did not show with the seam on');
+  check(
+    journal.every((context) => context.rows.every((row) => row.seam === '' || row.seam === 'journal')),
+    "another seam's row was shown with only the journal on",
+  );
+  check(
+    visibleKeyCard(card, 'desktop', () => true).some((context) => context.id === 'desktop'),
+    "the desktop's own keys were not shown to the desktop",
+  );
+  console.log(`smoke: key card of ${card.contexts.length} contexts and ${rows} rows`);
+}
+
 // --- The machine ------------------------------------------------------
 //
 // Everything past here needs the exports, so it is skipped if any are
@@ -872,6 +955,64 @@ if (missing.length === 0) {
   }
 
   console.log('smoke: the machine ran a frame and every interface answered');
+}
+
+// --- Screen text (machine/screen_text.h) --------------------------------
+//
+// The matcher is the core's, and tests/core holds it down. What is here is
+// the page's half: that a machine with nothing to read says why, and that
+// the cells become the rows and runs a reader is handed.
+if (missing.length === 0) {
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+
+  const machine = new Machine(module);
+  const none = machine.screenText();
+  check(
+    none.rows === null && none.reason === 'no_program',
+    `screenText() on a machine with no program answered ${JSON.stringify(none)}`,
+  );
+  machine.destroy();
+
+  // One row of forty cells: a white shortcut letter, the rest of its word
+  // in green, one blank, a second word, two blanks, a third word, then a
+  // cell that is not text and one whose bitmap is two characters'.
+  const columns = 40;
+  const cells = new Uint8Array(columns * 2 * SCREEN_TEXT_CELL_BYTES);
+  const put = (x, y, code, fg, bg) => {
+    const at = (y * columns + x) * SCREEN_TEXT_CELL_BYTES;
+    cells.set([code, fg, bg], at);
+  };
+  for (let x = 0; x < columns; x += 1) {
+    put(x, 0, 0x20, 0, 0);
+    put(x, 1, 0x20, 0, 0);
+  }
+  // A blank is ink on ink, as the core reports it: one colour, no glyph.
+  [...'CREATE NEW'].forEach((ch, i) => {
+    if (ch !== ' ') put(1 + i, 1, ch.charCodeAt(0), i === 0 ? 15 : 10, 0);
+  });
+  [...'BOB'].forEach((ch, i) => put(13 + i, 1, ch.charCodeAt(0), 10, 0));
+  put(17, 1, 0x00, 0, 0);
+  put(18, 1, 0x01, 10, 0);
+  const rows = screenTextRows(cells, columns, 2);
+  const want = [
+    {
+      y: 1,
+      runs: [
+        { x: 1, text: 'C', fg: 15, bg: 0 },
+        { x: 2, text: 'REATE NEW', fg: 10, bg: 0 },
+        { x: 13, text: 'BOB', fg: 10, bg: 0 },
+        { x: 18, text: '�', fg: 10, bg: 0 },
+      ],
+    },
+  ];
+  check(
+    JSON.stringify(rows) === JSON.stringify(want),
+    `screenTextRows() answered ${JSON.stringify(rows)}`,
+  );
+
+  console.log('smoke: screen text says why there is none, and groups runs');
 }
 
 // --- The M2-H2 demo program ---------------------------------------------
@@ -1511,6 +1652,84 @@ if (missing.length === 0) {
       'DOS path, and the file the program wrote was listed, read back and ' +
       'removed',
   );
+
+  machine.destroy();
+}
+
+// --- A reset closes what the program had open (#514) --------------------
+//
+// A player rerolling by resetting and loading again: every reset used to
+// leave the program's open files open on the filesystem, which has
+// sixteen slots, and after fifteen of them nothing could be read off the
+// disk — not by the game, not by the page. A program of our own opens a
+// file and spins; it is reset and loaded again three times as often as
+// there are slots, and the disk must still load, hash and read.
+
+if (missing.length === 0) {
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+
+  const machine = new Machine(module);
+  check(
+    machine.attachReferenceDevices() === AF_OK,
+    'attaching the reference devices failed',
+  );
+  machine.reset();
+
+  // DS=CS; open `A.DAT` read-only; spin, holding it open.
+  const name = 'A.DAT';
+  const nameAt = 12;
+  const code = [
+    0x0e, //                   PUSH CS
+    0x1f, //                   POP  DS
+    0xb8, 0x00, 0x3d, //       MOV  AX, 3D00h  ; open, read-only
+    0xba, nameAt, 0x00, //     MOV  DX, name
+    0xcd, 0x21, //             INT  21h
+    0xeb, 0xfe, //             JMP  $
+  ];
+  check(
+    code.length === nameAt,
+    `the holding program is ${code.length} bytes, not the ${nameAt} its name was placed after`,
+  );
+  const image = new Uint8Array(nameAt + name.length + 1);
+  image.set(code, 0);
+  for (let i = 0; i < name.length; ++i) image[nameAt + i] = name.charCodeAt(i);
+
+  check(machine.vfsPut('HOLDOPEN.EXE', makeMzImage(image)) === AF_OK, 'putting HOLDOPEN.EXE failed');
+  check(machine.vfsPut(name, new Uint8Array([1, 2, 3])) === AF_OK, `putting ${name} failed`);
+  check(
+    machine.vfsPut('SAVE/SAVGAMA.DAT', new Uint8Array([9, 9, 9])) === AF_OK,
+    'putting SAVE/SAVGAMA.DAT failed',
+  );
+
+  const tenth = Math.floor(machine.ticksPerSecond() / 10);
+  const runs = 48;
+  const before = problems.length;
+  for (let run = 0; run < runs; ++run) {
+    if (run > 0) machine.reset();
+    const loaded = machine.loadFromVfs('HOLDOPEN.EXE');
+    if (loaded !== AF_OK) {
+      problems.push(`reset ${run}: the program would not load (error ${machine.loadError()})`);
+      break;
+    }
+    machine.runUntil(machine.time() + tenth);
+    if (machine.vfsFingerprint('SAVE/SAVGAMA.DAT') === null) {
+      problems.push(`reset ${run}: a file on the disk could no longer be hashed`);
+      break;
+    }
+    if (machine.vfsGet('SAVE/SAVGAMA.DAT')?.length !== 3) {
+      problems.push(`reset ${run}: a file on the disk could no longer be read`);
+      break;
+    }
+  }
+
+  if (problems.length === before) {
+    console.log(
+      `smoke: a program holding a file open was reset ${runs} times and the ` +
+        'disk still loaded, hashed and read',
+    );
+  }
 
   machine.destroy();
 }
@@ -2168,7 +2387,7 @@ if (missing.length === 0) {
   // (#163's argument, one field over).
   //
   // **No seam in this build is gated**, and that is the answer since
-  // #290: the code-wheel bypass was the one that was, on a PDF of the
+  // #290: the code-wheel seam was the one that was, on a PDF of the
   // wheel, and the releases sold today ship a code generator application
   // instead of that file — so it waits for a person answering the
   // program's own challenge instead (#291). The door is unchanged, and
@@ -2414,6 +2633,14 @@ if (missing.length === 0) {
     'a machine claimed the challenge was answered before it was told anything',
   );
   check(!machine.codeWheelApply(), 'a machine with no program was told something');
+  check(
+    machine.textEntry() === null,
+    'a machine with no program said whether it was reading a line of text',
+  );
+  check(
+    machine.scene() === null,
+    'a machine with no program said where the party is',
+  );
 
   const ptr = module._af_web_probe_program_bytes();
   const size = module._af_web_probe_program_size();
@@ -3034,8 +3261,8 @@ if (missing.length === 0) {
   // makes true, which is the sentence the two have to keep in step.
   const whole = sidecarQuestion().join(' ');
   for (const wanted of [
-    'AFMAP.DAT',
-    'AFSEEN.DAT',
+    'AFMAPA.DAT',
+    'AFSEENA.DAT',
     'the folder your saved games are in',
     'until there is something to put in it',
     'remembers what you answer',
@@ -3067,22 +3294,26 @@ if (missing.length === 0) {
     if (!condition) problems.push(message);
   };
 
-  // On an 83-key board the cursor keys *are* the keypad, so these share
-  // their scancodes — which is what a real XT keyboard does, not an
-  // approximation.
+  // The cursor pad is its keypad twin plus 0x20 (#517), so Num Lock,
+  // which reaches only the keypad, never turns an arrow into a digit.
   const expected = {
-    ArrowUp: 0x48,
-    ArrowDown: 0x50,
-    ArrowLeft: 0x4b,
-    ArrowRight: 0x4d,
-    Home: 0x47,
-    End: 0x4f,
-    PageUp: 0x49,
-    PageDown: 0x51,
-    Insert: 0x52,
-    Delete: 0x53,
+    ArrowUp: 0x68,
+    ArrowDown: 0x70,
+    ArrowLeft: 0x6b,
+    ArrowRight: 0x6d,
+    Home: 0x67,
+    End: 0x6f,
+    PageUp: 0x69,
+    PageDown: 0x71,
+    Insert: 0x72,
+    Delete: 0x73,
+    Numpad8: 0x48,
+    Numpad2: 0x50,
+    Numpad7: 0x47,
+    NumpadDecimal: 0x53,
     Escape: 0x01,
     Enter: 0x1c,
+    NumpadEnter: 0x1c,
     F1: 0x3b,
     F10: 0x44,
   };
@@ -3783,8 +4014,8 @@ if (missing.length === 0 && sessions !== null) {
     a: 0x1e,
     Enter: 0x1c,
     Return: 0x1c,
-    ArrowUp: 0x48,
-    Up: 0x48,
+    ArrowUp: 0x68,
+    Up: 0x68,
     Numpad5: 0x4c,
     'Keypad 5': 0x4c,
     Digit7: 0x08,
@@ -4401,8 +4632,6 @@ if (missing.length === 0 && sessions !== null) {
     forgetStore,
     clearStore,
     restoreSeen,
-    serializeLog,
-    readLog,
     citeAllJournal,
     storeChanged,
     clearStoreChanged,
@@ -5003,10 +5232,9 @@ if (missing.length === 0 && sessions !== null) {
     // four `seen` lines into the store, Entry 1 first. The ordering is
     // held down in C++ (`JournalCiteAll` in
     // `hosts/common/tests/journal_store_test.cpp`); what is checked here
-    // is the door and the write: that it raises the store's flag, so a
-    // page that keeps the store keeps this, and that twice is four rows
-    // and not eight. The store is emptied again at the end, because the
-    // checks below expect it empty.
+    // is the door: that it answers four, twice, and that it leaves the
+    // text's flag alone. The store is emptied again at the end, because
+    // the checks below expect it empty.
     check(
       citeAllJournal(module, 0) === 0,
       'citing into no machine claimed to have cited something',
@@ -5028,32 +5256,20 @@ if (missing.length === 0 && sessions !== null) {
       'citing raised the *text* flag, so a page would rewrite a transcription',
     );
 
-    // Where the rows actually landed since #351: the read log, which has
-    // its own drawer because it is a fact about a playthrough and the
-    // text beside it is a fact about the player's document. The store's
-    // own serialization no longer carries a word of it.
+    // Where the rows actually landed since #351: the read log, which is a
+    // fact about a playthrough and goes beside a slot the program saves;
+    // the text beside it is a fact about the player's document. The
+    // store's own serialization no longer carries a word of it. The row
+    // order and the fields are held down in C++ (`JournalCiteAll`,
+    // `JournalStore` in `hosts/common/tests/journal_store_test.cpp`),
+    // because the log is not readable across this ABI.
     check(
       !serializeStore(module).includes('\nseen '),
       'the store still carries the read log in its own file',
     );
-    const log = serializeLog(module);
-    check(log.length > 0, 'the read log serialized to nothing after four citations');
     check(
-      citeAllJournal(module, box.handle) === 4 && serializeLog(module) === log,
-      'citing everything twice changed the log',
-    );
-
-    // And it round-trips: base64 in, base64 out, and rubbish refused with
-    // what a player was told left alone. The row order and the fields are
-    // held down in C++ (`JournalCiteAll`, `JournalStore` in
-    // `hosts/common/tests/journal_store_test.cpp`), because the log is
-    // not readable across this ABI.
-    check(readLog(module, log) === 1, 'a read log this module wrote was refused');
-    check(serializeLog(module) === log, 'a read log did not survive its own round trip');
-    check(readLog(module, 'not a log at all') === 0, 'rubbish was taken as a read log');
-    check(
-      serializeLog(module) === log,
-      'a refused read log did not leave the log alone',
+      citeAllJournal(module, box.handle) === 4,
+      'citing everything twice cited a different number of rows',
     );
 
     clearStore(module);
@@ -5202,32 +5418,11 @@ if (missing.length === 0 && sessions !== null) {
       'scanned entry 2 6\nsecond\n' +
       'seen entry 1 9 6 21 53 1\n';
 
-    // The log as `journal_store::write_log_sidecar` writes it
-    // (`hosts/common/src/journal_store.cpp`): `AFS`, a version, a row
-    // count and a record size, then eight bytes a row with the read flag
-    // last.
-    const rowsOf = (base64) => {
-      const bytes = Buffer.from(base64, 'base64');
-      check(
-        bytes.length >= 8 &&
-          String.fromCharCode(bytes[0], bytes[1], bytes[2]) === 'AFS',
-        'the read log did not serialize to a sidecar',
-      );
-      const count = bytes[4] | (bytes[5] << 8);
-      const stride = bytes[6] | (bytes[7] << 8);
-      const rows = [];
-      for (let i = 0; i < count; ++i) {
-        const at = 8 + i * stride;
-        rows.push({
-          number: bytes[at + 1] | (bytes[at + 2] << 8),
-          read: bytes[at + 7] !== 0,
-        });
-      }
-      return rows;
-    };
-
-    // Without the restore: the machine's log starts empty, so citing
-    // everything files both entries unread.
+    // Without the restore: the machine's log starts empty, and citing
+    // everything files both entries. Which rows come back read, and in
+    // what order, is `restore_journal_log`'s and is held down in C++
+    // (`hosts/common/tests/journal_store_test.cpp`): the log is not
+    // readable across this ABI, so what is checked here is the facade.
     const cold = new Machine(module);
     check(
       cold.attachReferenceDevices() === AF_OK,
@@ -5239,16 +5434,9 @@ if (missing.length === 0 && sessions !== null) {
       citeAllJournal(module, cold.handle) === 2,
       'citing the kept store cited the wrong number of rows',
     );
-    const without = rowsOf(serializeLog(module));
-    check(
-      without.length === 2 && !without[0].read && !without[1].read,
-      'a machine nobody restored a log into came up with a row already read',
-    );
     cold.destroy();
 
-    // With it, through the facade and nothing else: the `seen` line's row
-    // is in the reader's log before the cite, so the cite re-dates it and
-    // leaves it read.
+    // With it, through the facade and nothing else.
     const warm = new Machine(module);
     check(
       warm.attachReferenceDevices() === AF_OK,
@@ -5272,19 +5460,6 @@ if (missing.length === 0 && sessions !== null) {
     check(
       citeAllJournal(module, warm.handle) === 2,
       'citing after a restore cited the wrong number of rows',
-    );
-    const restored = rowsOf(serializeLog(module));
-    check(
-      restored.length === 2,
-      `restoring through the facade left ${restored.length} rows, wanted 2`,
-    );
-    check(
-      restored[0].number === 1 && restored[0].read,
-      "the `seen` line restored through the facade is not in the reader's log",
-    );
-    check(
-      restored[1].number === 2 && !restored[1].read,
-      'a row nobody had read came back read',
     );
     warm.destroy();
     clearStore(module);

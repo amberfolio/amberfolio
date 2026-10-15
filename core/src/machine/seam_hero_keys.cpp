@@ -1,0 +1,650 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// The hero-keys piece of `modern-controls` (seam_modern_controls.cpp): the
+// number row's 1 to 8 select a party member, and the party list shows each
+// member's number (#439).
+//
+//
+// What the program does, stated as facts
+// --------------------------------------
+//
+// All of it addresses, offsets and key codes. Not one byte of the program
+// is reproduced here.
+//
+// **The party is a linked list of records, and one far pointer names the
+// selected member.** The head is a far pointer in the data segment
+// (`data_party_head`), each record holds the next member's far pointer at
+// `record_next`, and the selected member is another far pointer
+// (`data_current`). The program changes the selection through one resident
+// routine, the party cursor: **on `G` it steps back** (from the head it
+// wraps to the tail, from anyone else it goes to the member whose next is
+// the current one), **on `O` it steps forward** (the tail stays where it
+// is), and **on any other key it goes to the head**. The callers then
+// redraw the party list from the selected member.
+//
+// **A caller reaches the cursor with a raw key.** The menu-bar routine
+// (overlay 25, `0x03BD`) has a raw mode, and in it the extended keys come
+// back as their scan codes, `0x47` (Home) as `G` and `0x4F` (End) as `O`,
+// and the characters `1` to `9` come back translated through a table in
+// the data segment into the movement letters the keypad's layout implies
+// (`7` as `G`, `1` as `O`, `8` as `H`, and so on). The callers named
+// below hand `G` and `O` to the cursor and redraw. The program cannot
+// tell the number row from the keypad, because it reads the character;
+// the BIOS ring carries the scan code as well, which is the whole of how
+// this seam can: the number row is scan `0x02` to `0x09` for `1` to `8`,
+// the keypad's digits with NumLock on are scan `0x47` to `0x51`.
+//
+// **The party list is drawn by one resident routine** (the roster
+// drawer), whose frame is a fact the seam leans on: the column the names
+// start at (a byte, one for the main menu and `0x11` beside the viewport),
+// the row it is on (a byte, four for the first member and one more each),
+// and the far pointer to the record being drawn. For each member it clears
+// the row from that column to `0x26`, draws the name there, and then draws
+// the armour class and the hit points in columns of their own (from `0x20`
+// and `0x24`, right-aligned). A name is at most fifteen characters, so in
+// the column beside the viewport it fills `0x11` to `0x1F`. Above the list
+// the drawer draws a heading, `Name` at the names' column and `AC  HP` at
+// column `0x21` (one string: the armour class heading is its first two
+// characters and the hit points' its last two), from a copy it makes in its
+// own frame, on row two.
+//
+//
+// What the seam does
+// ------------------
+//
+// **Keys: one point, at the call into the key-read routine inside the
+// menu-bar routine** (overlay 25 `0x0572`, the point `bar-keys` is at
+// too; the two do not meet, since each looks at its own keys). A
+// number-row digit `1` to `8` at the head of the BIOS ring, from a caller
+// in the table below, selects that member by **driving the program's own
+// cursor**: the handler puts the selection on the target's successor (or
+// on the head, for the last member and for a party of one) and rewrites
+// the keystroke to Home. The caller reads Home as `G`, hands it to the
+// cursor, and the cursor steps back onto the target, and the caller
+// redraws the party list. Nothing is drawn here, and the selection is
+// written only to a place the program would have put it itself.
+//
+// A digit with no member behind it is rewritten to the key the program
+// throws away (`seam_key_read.h`): the routine goes back to waiting where
+// it was. `9` and `0`, the keypad's digits, and every caller not in the
+// table are left alone. The caller is identified by the routine's far
+// return address, overlay-qualified, as `bar-keys` identifies its own.
+//
+// **At a bar that is not raw** (#469). The door bars, camp's Portraits and
+// Monsters bar and the save slot bar are callers of the same routine with
+// raw mode off, and their screen shows the party list. The routine throws
+// Home away for them, so there is no caller to drive. The seam does what
+// the caller would have done: it puts the target in the selected-member
+// pointer and calls the roster drawer itself, through the engine's call
+// batch, and answers the key with the one the program throws away. That
+// step, the party list it reads the target out of and the table of those
+// callers are shared with `list-arrows` (seam_party_select.h). A digit that
+// is one of the bar's own command letters stays the bar's: the bar string
+// in the routine's frame is read for it.
+//
+// **Display: two points in the roster drawer**, both `inside_calls`, since
+// the automap and the journal give the roster back through a batch of the
+// program's own calls. They share one state, the column byte of the
+// drawer's frame, which the program reads for nothing between the two:
+//
+//   * after the row has been cleared and before the name is drawn, the
+//     column goes up by two, and the member's number is drawn at the old
+//     column in white by the program's own glyph routine, called by hand
+//     with its far return aimed at this very point (the point is reached
+//     again, finds the column already moved, and lets the program go on).
+//     The name is then drawn two columns to the right by the program's
+//     own routines, in the status colour it would have had;
+//   * after the name and before the armour class, a name that now ends
+//     past column `0x20` has its tail cleared, columns `0x21` up to its
+//     end, by the program's own clear routine, called the same way; then
+//     the column goes back.
+//     **The column is left as the program had it** at every other arrival.
+//
+// **What a long name keeps.** Beside the viewport the name field is
+// columns `0x13` to `0x20` now, fourteen, so a name of fifteen characters
+// shows its first fourteen. The armour class is right-aligned in `0x21` to
+// `0x23` now, so a name that ends at `0x20` has no neighbour on its right.
+// On the main menu, where the names start at column one, there is room for
+// every name in full.
+//
+// Everything drawn is drawn by the program's own routines, so the faces
+// (`font-sans`, `font-chisel`) letter the numbers as they letter the names.
+//
+// **Checks the frames are the frames.** The key handler refuses a party
+// list it cannot read (a pointer outside conventional memory, a ninth
+// member, no data segment where the facts put it). The roster handlers
+// refuse a column or row the facts do not allow. A handler that refuses
+// declines and touches nothing.
+//
+//
+// The fidelity claim (docs/seams.md §8.5)
+// ---------------------------------------
+//
+// On, the roster is changed from the first time it is drawn with a member
+// in it: the seam is seen as soon as there is a party list to see, so its
+// pair is a `contrast`, not an `identical`. With no digit pressed the
+// machine differs from the seam-off run only by what the roster drawer
+// does (the display, and the drawer's own frame while it runs).
+//
+//
+// What it is not yet, at the point of definition (docs/seams.md §8.5)
+// -------------------------------------------------------------------
+//
+// The party-order screen is not a caller: with a member picked up, Home
+// and End move the member instead of the selection, and the seam cannot
+// tell which state it is in. Left out, too, are the combat screens and the
+// pick-lists, whose digits are real, the Yes/No prompt (one routine for
+// every screen, with and without a party list) and the load slot bar, the
+// icon editor and the View bar (docs/seams.md §10 has each).
+
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <span>
+#include <string_view>
+
+#include "amberfolio/cpu/address.h"
+#include "amberfolio/cpu/processor.h"
+#include "amberfolio/cpu/registers.h"
+#include "amberfolio/machine/journal.h"
+#include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/memory_map.h"
+#include "amberfolio/machine/overlay.h"
+#include "amberfolio/machine/seam.h"
+#include "amberfolio/machine/service_floor.h"
+#include "seam_builtin.h"
+#include "seam_key_read.h"
+#include "seam_menu_bar.h"
+#include "seam_party_select.h"
+
+namespace amberfolio::machine {
+namespace {
+
+// --- The module the menu-bar routine lives in ------------------------------
+
+/// The same module, word and point `bar-keys` and `list-arrows` use; the
+/// facts and their checks are documented there (docs/seams.md §10).
+constexpr std::uint32_t menu_load_segment_at = 0x3C60;
+
+constexpr seam_module menu_module{
+    .file = "GAME.OVR",
+    .file_offset = 182479,
+    .length = 4682,
+    .digest =
+        "175454bc2f527dd6757c89eaa50a6cdd27a9cf5d3aaa197b33a140f5b09a3901",
+    .load_segment_at = menu_load_segment_at};
+
+/// In the menu-bar routine: the call into the key-read routine, reached
+/// only when a key is waiting. Offset from the module's start.
+constexpr std::uint32_t key_read_call = 0x0572;
+
+/// Above BP in the routine's frame: the caller's return address.
+constexpr std::uint16_t frame_return_ip = 2;
+constexpr std::uint16_t frame_return_cs = 4;
+
+// --- The data segment and the party ----------------------------------------
+
+// The party list, the selected-member pointer and the cursor's rule are
+// shared with `list-arrows`, which selects at the same bars (#469).
+using party_select::data_current;
+using party_select::far_pointer;
+using party_select::is_record;
+using party_select::max_party;
+using party_select::party;
+using party_select::read_party;
+using party_select::read_pointer;
+using party_select::write_pointer;
+
+/// The program's one-byte pushback slot for an extended key's second half.
+constexpr std::uint16_t data_key_pushback = 0x8501;
+
+// --- The callers that hand Home and End to the party cursor ----------------
+
+/// A caller of the menu-bar routine, named by the word the program keeps its
+/// module's load segment in and the offset of the instruction after its
+/// call.
+struct hero_caller {
+  std::uint32_t load_segment_at;
+  std::uint16_t return_offset;
+};
+
+/// The word the program's overlay manager keeps overlay 16's load segment
+/// in (`bar-keys`' table has it too).
+constexpr std::uint32_t main_menu_load_segment_at = 0x790;  // overlay 16
+
+/// The one caller: the main menu, the title screen's and every other. At
+/// every other bar with a party list, Up and Down select (`list-arrows`,
+/// and on the party's own bar `move-mode`), so the number row is the
+/// program's keypad layout again there (#479).
+constexpr std::array<hero_caller, 1> hero_callers{{
+    {.load_segment_at = main_menu_load_segment_at, .return_offset = 0x02FD},
+}};
+
+// --- The keys, as the BIOS ring holds them: scan code high, character low --
+
+/// Home: scan `0x47`, no character. The caller reads it as `G`.
+constexpr std::uint16_t key_home = 0x4700;
+
+/// The scan code of the number row's `1`; the digits count up from it.
+constexpr std::uint8_t number_row_scan_of_one = 0x02;
+
+/// The member the number-row key `key` names, one to eight, or zero when
+/// it is not one: the character and the scan code both have to be the
+/// number row's, so the keypad's digits with NumLock on (scan `0x47` to
+/// `0x51`) are not.
+[[nodiscard]] constexpr unsigned hero_of(std::uint16_t key) noexcept {
+  const auto character = static_cast<std::uint8_t>(key & 0xFFU);
+  const auto scan = static_cast<std::uint8_t>(key >> 8U);
+  if (character < '1' || character > '1' + max_party - 1U) {
+    return 0;
+  }
+  const unsigned digit = character - '1' + 1U;
+  return scan == number_row_scan_of_one + digit - 1U ? digit : 0U;
+}
+
+// --- The callers -----------------------------------------------------------
+
+/// The segment the program says `at` is loaded at now; zero while it is
+/// not loaded.
+[[nodiscard]] std::uint16_t loaded_at(cpu::processor& cpu,
+                                      const seam_context& ctx,
+                                      std::uint32_t at) {
+  return cpu.read_word(static_cast<std::uint16_t>(ctx.image_base() >> 4U),
+                       static_cast<std::uint16_t>(at));
+}
+
+/// Whether this call of the menu-bar routine came from a caller in the
+/// table.
+[[nodiscard]] bool called_from_a_hero_caller(cpu::processor& cpu,
+                                             const seam_context& ctx) {
+  cpu::registers& regs = cpu.regs();
+  const std::uint16_t ss = regs[cpu::sreg::ss];
+  const std::uint16_t bp = regs[cpu::reg16::bp];
+  const std::uint16_t ip =
+      cpu.read_word(ss, static_cast<std::uint16_t>(bp + frame_return_ip));
+  const std::uint16_t cs =
+      cpu.read_word(ss, static_cast<std::uint16_t>(bp + frame_return_cs));
+
+  return std::ranges::any_of(hero_callers, [&](const hero_caller& caller) {
+    if (ip != caller.return_offset) {
+      return false;
+    }
+    const std::uint16_t segment = loaded_at(cpu, ctx, caller.load_segment_at);
+    return segment != 0 && segment == cs;
+  });
+}
+
+// --- Keys ------------------------------------------------------------------
+
+/// The program is about to read the key at the head of the ring.
+void at_key_read(machine& box, seam_context& ctx) {
+  cpu::processor& cpu = box.processor();
+  cpu::registers& regs = cpu.regs();
+
+  const std::uint16_t head =
+      cpu.read_word(bda::segment, bda::keyboard_buffer_head);
+  if (head == cpu.read_word(bda::segment, bda::keyboard_buffer_tail)) {
+    // Empty: the poll was answered from the pushback slot.
+    return;
+  }
+  const std::uint16_t key = cpu.read_word(bda::segment, head);
+  const unsigned hero = hero_of(key);
+  if (hero == 0) {
+    return;
+  }
+  if (box.journal().reader_open()) {
+    // The reader takes every key at the poll; one that got past it is the
+    // reader's, not the bar's.
+    return;
+  }
+  const std::uint16_t ds = regs[cpu::sreg::ds];
+  if (cpu.read_byte(ds, data_key_pushback) != 0) {
+    // The head of the ring is not the key about to be read.
+    return;
+  }
+  if (!called_from_a_hero_caller(cpu, ctx)) {
+    return;
+  }
+  if (!party_select::is_the_data_segment(ctx, ds)) {
+    // Not the data segment the facts put the party in.
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+
+  const party members = read_party(cpu, ds);
+  if (!members.readable) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  const std::uint16_t ring_slot = head;
+  if (hero > members.size) {
+    // Nobody is there: the routine goes back to waiting.
+    party_select::answer_with_the_ignored_key(cpu, ring_slot);
+    return;
+  }
+
+  // The cursor's `G` goes to the member whose next is the current one, and
+  // from the head it wraps to the tail. So: the target's successor, or the
+  // head when the target is the last (or the only) member. The cursor
+  // then lands on the target by its own rule and the caller redraws.
+  const far_pointer from =
+      hero == members.size ? members.member[0] : members.member[hero];
+  write_pointer(cpu, ds, data_current, from);
+  cpu.write_word(bda::segment, ring_slot, key_home);
+}
+
+// --- The roster drawer ------------------------------------------------------
+
+/// The roster drawer's frame: below BP, the column its names start at (a
+/// byte), the row it is on (a byte) and the far pointer to the record being
+/// drawn (offset then segment).
+constexpr std::uint16_t local_column = 5;
+constexpr std::uint16_t local_row = 6;
+constexpr std::uint16_t local_member = 4;
+
+/// The columns the names start at: beside the viewport, and on the main
+/// menu.
+constexpr std::uint8_t column_beside_viewport = 0x11;
+constexpr std::uint8_t column_main_menu = 0x01;
+
+/// The first member's row, and how many rows the drawer can be on.
+constexpr std::uint8_t first_row = 4;
+
+/// How far the name moves right: the number and one blank column.
+constexpr std::uint8_t name_shift = 2;
+
+/// The last column a name may reach: the armour class's first column,
+/// which only an armour class of -10 or lower draws in, after the name.
+constexpr unsigned last_name_column = 0x20;
+/// The first column a name is cut from, and the rightmost of the row.
+constexpr std::uint8_t first_cut_column = 0x21;
+constexpr std::uint8_t last_row_column = 0x26;
+
+/// The routines the seam asks the program to run, as the paragraph they
+/// were linked at (a routine reaches its own literals through CS, so it
+/// works only there: docs/seams.md §8.4) and the offset in it. Both are
+/// far, and clean their own arguments.
+///
+/// The glyph blitter takes six words, pushed first to last: column, row,
+/// colour, a count of one, the character, and a one that folds the
+/// character to upper case. The clear takes four, left, top, right and
+/// bottom, the order the roster drawer pushes them in.
+constexpr std::uint16_t glyph_paragraph = 0x709;
+constexpr std::uint16_t glyph_offset = 0x01DF;
+constexpr std::uint16_t clear_paragraph = 0x3F1;
+constexpr std::uint16_t clear_offset = 0x0137;
+
+/// White, in the program's palette: the colour the program draws the
+/// selected member's name in.
+constexpr std::uint16_t colour_white = 0x000F;
+
+/// In the roster drawer, the instruction after the call that clears a
+/// member's row: the name is drawn next, down one of two paths.
+constexpr std::uint32_t row_cleared = 0x138F;
+/// In the roster drawer, where the two paths meet, before the armour class
+/// is drawn.
+constexpr std::uint32_t name_drawn = 0x13CB;
+
+/// In the roster drawer (image offsets: the drawer's own `0x086F` is `0x140F`
+/// here, its `0x07BA` is `0x135A`), the push of the armour class column, with
+/// the column (`0x20` to `0x22`) in AX.
+constexpr std::uint32_t ac_column_pushed = 0x140F;
+/// In the roster drawer, after the heading's `AC  HP` has been copied into
+/// the drawer's frame and before it is drawn.
+constexpr std::uint32_t heading_copied = 0x135A;
+
+/// The heading's copy in the drawer's frame: below BP, a length-prefixed
+/// string. The heading is drawn on row two.
+constexpr std::uint16_t local_heading = 0x0E;
+constexpr std::uint8_t heading_row = 2;
+/// The heading's shape, checked rather than its text (which stays the
+/// program's): six characters, two of them, a gap of two spaces, two more.
+/// The armour class's heading is the first two, the hit points' the last.
+constexpr std::uint8_t heading_length = 6;
+
+/// The armour class's column as the drawer computes it, and the one it is
+/// given: one to the right.
+constexpr std::uint16_t first_ac_column = 0x20;
+constexpr std::uint16_t last_ac_column = 0x22;
+
+/// What the drawer's frame says at one of the points.
+struct roster_frame {
+  std::uint16_t ss{};
+  std::uint16_t bp{};
+  std::uint8_t column{};
+  std::uint8_t row{};
+  far_pointer member{};
+};
+
+[[nodiscard]] std::uint16_t below(const roster_frame& frame,
+                                  std::uint16_t distance) noexcept {
+  return static_cast<std::uint16_t>(frame.bp - distance);
+}
+
+/// The drawer's frame, or false if it is not one these facts describe.
+[[nodiscard]] bool read_roster_frame(cpu::processor& cpu, roster_frame& frame) {
+  cpu::registers& regs = cpu.regs();
+  frame.ss = regs[cpu::sreg::ss];
+  frame.bp = regs[cpu::reg16::bp];
+  frame.column = cpu.read_byte(frame.ss, below(frame, local_column));
+  frame.row = cpu.read_byte(frame.ss, below(frame, local_row));
+  frame.member = read_pointer(cpu, frame.ss, below(frame, local_member));
+  return frame.row >= first_row && frame.row < first_row + max_party &&
+         is_record(frame.member);
+}
+
+/// Whether `column` is the one the drawer starts the main menu's names at:
+/// the only list the numbers are drawn on (#479).
+[[nodiscard]] constexpr bool is_original(std::uint8_t column) noexcept {
+  return column == column_main_menu;
+}
+
+void push_word(cpu::processor& cpu, std::uint16_t value) {
+  cpu::registers& regs = cpu.regs();
+  regs[cpu::reg16::sp] = static_cast<std::uint16_t>(regs[cpu::reg16::sp] - 2U);
+  cpu.write_word(regs[cpu::sreg::ss], regs[cpu::reg16::sp], value);
+}
+
+/// Run the program's own routine at `paragraph:offset` with `words` as its
+/// arguments, first the deepest, **and come back to the instruction the
+/// machine is on**: the far return pushed is this point itself, which is
+/// reached again when the routine has gone, with its arguments cleaned up
+/// by the routine and everything it clobbered dead (both points are at a
+/// call's arguments, and the program loads what it needs afterwards).
+///
+/// This is what the engine's own batch does for a handler that is not
+/// inside another batch, and it is done by hand here because the roster is
+/// drawn inside the automap's and the journal's batches, which a handler
+/// may not start one in (seam.h, `seam_point::inside_calls`).
+void call_and_return_here(machine& box, seam_context& ctx,
+                          std::span<const std::uint16_t> words,
+                          std::uint16_t paragraph, std::uint16_t offset) {
+  cpu::processor& cpu = box.processor();
+  cpu::registers& regs = cpu.regs();
+  const std::uint16_t return_cs = regs[cpu::sreg::cs];
+  const std::uint16_t return_ip = regs.ip;
+  for (const std::uint16_t word : words) {
+    push_word(cpu, word);
+  }
+  push_word(cpu, return_cs);
+  push_word(cpu, return_ip);
+  ctx.redirect(static_cast<std::uint16_t>((ctx.image_base() >> 4U) + paragraph),
+               offset);
+}
+
+/// The roster drawer has cleared a member's row, and the name is next.
+void at_row_cleared(machine& box, seam_context& ctx) {
+  cpu::processor& cpu = box.processor();
+  roster_frame frame;
+  if (!read_roster_frame(cpu, frame)) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  if (frame.column == column_beside_viewport) {
+    return;  // the party list beside the viewport is the program's own.
+  }
+  if (!is_original(frame.column)) {
+    if (is_original(static_cast<std::uint8_t>(frame.column - name_shift))) {
+      // Reached again: the number has been drawn, and the program goes on
+      // with the name two columns over.
+      return;
+    }
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+
+  // The name moves right, which the program does for both of its paths
+  // because both read this byte; it is put back at the next point.
+  cpu.write_byte(frame.ss, below(frame, local_column),
+                 static_cast<std::uint8_t>(frame.column + name_shift));
+
+  const unsigned hero = frame.row - first_row + 1U;
+  const std::array<std::uint16_t, 6> glyph{
+      frame.column,
+      frame.row,
+      colour_white,
+      1,
+      static_cast<std::uint16_t>('0' + hero),
+      1};
+  call_and_return_here(box, ctx, glyph, glyph_paragraph, glyph_offset);
+}
+
+/// The name is drawn, and the armour class is next.
+void at_name_drawn(machine& box, seam_context& ctx) {
+  cpu::processor& cpu = box.processor();
+  roster_frame frame;
+  if (!read_roster_frame(cpu, frame)) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  const auto put_column = [&](unsigned column) {
+    cpu.write_byte(frame.ss, below(frame, local_column),
+                   static_cast<std::uint8_t>(column));
+  };
+
+  if (frame.column == column_beside_viewport || is_original(frame.column)) {
+    // Nothing moved the name: nothing to put back.
+    return;
+  }
+  if (is_original(static_cast<std::uint8_t>(frame.column + 1U - name_shift))) {
+    // Reached again after the cut: put the column back as it was.
+    put_column(frame.column - 1U);
+    return;
+  }
+  if (!is_original(static_cast<std::uint8_t>(frame.column - name_shift))) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+
+  // The name has been drawn from `frame.column`. If it ends past the column
+  // it ended at before, its tail is cleared; the cut is the program's own
+  // clear, and this point is reached again after it.
+  const unsigned length =
+      cpu.read_byte(frame.member.segment, frame.member.offset);
+  const unsigned end = frame.column + length - 1U;
+  if (length != 0 && end > last_name_column) {
+    put_column(frame.column - 1U);
+    const std::array<std::uint16_t, 4> clear{
+        first_cut_column, frame.row,
+        static_cast<std::uint16_t>(std::min<unsigned>(end, last_row_column)),
+        frame.row};
+    call_and_return_here(box, ctx, clear, clear_paragraph, clear_offset);
+    return;
+  }
+  put_column(frame.column - name_shift);
+}
+
+/// The drawer is about to push the armour class value's column.
+void at_ac_column(machine& box, seam_context& ctx) {
+  cpu::processor& cpu = box.processor();
+  roster_frame frame;
+  if (!read_roster_frame(cpu, frame)) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  if (frame.column == column_beside_viewport) {
+    return;
+  }
+  if (!is_original(frame.column)) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  cpu::registers& regs = cpu.regs();
+  const std::uint16_t column = regs[cpu::reg16::ax];
+  if (column < first_ac_column || column > last_ac_column) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  regs[cpu::reg16::ax] = static_cast<std::uint16_t>(column + 1U);
+}
+
+/// The drawer has made its copy of the heading and is about to draw it.
+void at_heading_copied(machine& box, seam_context& ctx) {
+  cpu::processor& cpu = box.processor();
+  cpu::registers& regs = cpu.regs();
+  const std::uint16_t ss = regs[cpu::sreg::ss];
+  const std::uint16_t bp = regs[cpu::reg16::bp];
+  const auto at = [&](std::uint16_t distance) {
+    return static_cast<std::uint16_t>(bp - distance);
+  };
+  const std::uint8_t column = cpu.read_byte(ss, at(local_column));
+  if (cpu.read_byte(ss, at(local_row)) == heading_row &&
+      column == column_beside_viewport) {
+    return;
+  }
+  if (cpu.read_byte(ss, at(local_row)) != heading_row || !is_original(column)) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  const auto heading_at = [&](std::uint16_t i) {
+    return static_cast<std::uint16_t>(at(local_heading) + i);
+  };
+  const auto read = [&](std::uint16_t i) {
+    return cpu.read_byte(ss, heading_at(i));
+  };
+  // Characters 1-2 and 5-6 printed, 3-4 the gap. A copy already moved has a
+  // space first, and is not this shape.
+  if (read(0) != heading_length || read(1) == ' ' || read(2) == ' ' ||
+      read(3) != ' ' || read(4) != ' ' || read(5) == ' ' || read(6) == ' ') {
+    // Not the heading these facts describe, or already moved.
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  // The armour class's two characters one column right, into the gap's
+  // first space; the hit points' stay where they are.
+  const std::uint8_t first = read(1);
+  const std::uint8_t second = read(2);
+  cpu.write_byte(ss, heading_at(1), ' ');
+  cpu.write_byte(ss, heading_at(2), first);
+  cpu.write_byte(ss, heading_at(3), second);
+}
+
+// --- The definition --------------------------------------------------------
+
+constexpr std::array<seam_point, 5> hero_keys_point_table{
+    {{.module = menu_module, .offset = key_read_call, .run = &at_key_read},
+     {.module = resident_image,
+      .offset = row_cleared,
+      .run = &at_row_cleared,
+      .inside_calls = true},
+     {.module = resident_image,
+      .offset = name_drawn,
+      .run = &at_name_drawn,
+      .inside_calls = true},
+     {.module = resident_image,
+      .offset = ac_column_pushed,
+      .run = &at_ac_column,
+      .inside_calls = true},
+     {.module = resident_image,
+      .offset = heading_copied,
+      .run = &at_heading_copied,
+      .inside_calls = true}}};
+static_assert(hero_keys_point_table.size() == hero_keys_point_count);
+
+}  // namespace
+
+std::span<const seam_point> hero_keys_points() noexcept {
+  return hero_keys_point_table;
+}
+
+}  // namespace amberfolio::machine

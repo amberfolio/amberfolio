@@ -114,6 +114,24 @@ constexpr std::uint16_t key_keypad_prev_member = 0x4737;  // '7'
 constexpr std::uint16_t key_end = 0x4F00;
 constexpr std::uint16_t key_home = 0x4700;
 
+/// Keys the party's bar answers with the same cursor step and roster
+/// redraw, though no player means them as a command: every other extended
+/// key that is not a move, and the keypad's odd digits.
+constexpr std::uint16_t key_page_up = 0x4900;
+constexpr std::uint16_t key_page_down = 0x5100;
+constexpr std::uint16_t key_keypad_centre = 0x4C00;  // 5, Num Lock off
+constexpr std::uint16_t key_keypad_five = 0x4C35;    // 5, Num Lock on
+constexpr std::uint16_t key_keypad_nine = 0x4939;
+constexpr std::uint16_t key_f2 = 0x3C00;
+
+/// Keys the bar has its own answer for, which the panel never takes.
+constexpr std::uint16_t key_up = 0x4800;
+constexpr std::uint16_t key_left = 0x4B00;
+constexpr std::uint16_t key_right = 0x4D00;
+constexpr std::uint16_t key_down = 0x5000;
+constexpr std::uint16_t key_keypad_eight = 0x4838;
+constexpr std::uint16_t key_letter_s = 0x1F73;
+
 /// What the seam hands the program's blocking read back when it has taken
 /// the key that read was going to be answered with (#266, seam_key_read.h):
 /// the scan code and character of `-`, which the program throws away.
@@ -1705,6 +1723,36 @@ TEST(AutomapBar, OnlyThePartysOwnTwoBarsAreThePartys) {
   EXPECT_FALSE(r.map_state().at_command_bar());
 }
 
+TEST(AutomapBar, TheAdventuringLoopsOwnCallIsThePartysWhateverBarItHands) {
+  // `modern-controls`' move mode hands the adventuring loop's two calls a
+  // copy of the bar on the stack (#479). The call site, the far return
+  // address on top of the stack at the thunk, still says whose bar it is:
+  // the instruction after the city's call or the wilderness's, in the
+  // segment the overlay manager's word for overlay 14 names.
+  const rig r;
+  r.enable();
+  constexpr std::uint16_t sp = 0x0400;
+  constexpr std::uint16_t adventure_word = 0x730;
+  constexpr std::uint16_t adventure_segment = 0x6400;
+  r.put_word(image_load_segment, adventure_word, adventure_segment);
+  const auto ask_from = [&](std::uint16_t ip, std::uint16_t cs) {
+    r.put_word(rig::dgroup(), sp, ip);
+    r.put_word(rig::dgroup(), static_cast<std::uint16_t>(sp + 2), cs);
+    r.put_up_the_bar(rig::dgroup(), 0x03F0);
+  };
+  ask_from(0x09D5, adventure_segment);
+  EXPECT_TRUE(r.map_state().at_command_bar()) << "the city's call";
+  ask_from(0x0C45, adventure_segment);
+  EXPECT_TRUE(r.map_state().at_command_bar()) << "the wilderness's";
+  ask_from(0x09D5, 0x1234);
+  EXPECT_FALSE(r.map_state().at_command_bar()) << "not the module's segment";
+  ask_from(0x09D6, adventure_segment);
+  EXPECT_FALSE(r.map_state().at_command_bar()) << "nor its call";
+  r.put_word(image_load_segment, adventure_word, 0);
+  ask_from(0x09D5, 0);
+  EXPECT_FALSE(r.map_state().at_command_bar()) << "nor while it is out";
+}
+
 TEST(AutomapPanel, SomebodyElseAskingTakesThePanelWithIt) {
   // A vendor's question is the case this is for: it leaves the mode at
   // "adventuring", draws in the viewport and on the message row, and
@@ -1724,8 +1772,9 @@ TEST(AutomapPanel, SomebodyElseAskingTakesThePanelWithIt) {
   r.somebody_else_asks();
   r.stand_on(r.point(0));
   r.pc().step();
-  EXPECT_FALSE(r.map_state().panel_open()) << "nobody had to press Tab";
-  EXPECT_FALSE(r.map_state().panel_on_screen());
+  EXPECT_FALSE(r.map_state().panel_on_screen()) << "nobody had to press Tab";
+  EXPECT_TRUE(r.map_state().panel_open())
+      << "the program's question is not the player's Tab";
 
   for (int i = 0; i < 40; ++i) {
     r.pc().step();
@@ -1733,6 +1782,61 @@ TEST(AutomapPanel, SomebodyElseAskingTakesThePanelWithIt) {
   EXPECT_EQ(r.word_at(rig::dgroup(), roster_witness),
             static_cast<std::uint16_t>(image_load_segment + roster_paragraph))
       << "and the roster is back under the question";
+
+  // The program keeps polling while the player answers; the map must not
+  // come back over the question.
+  r.poll(3);
+  EXPECT_FALSE(r.map_state().panel_on_screen());
+}
+
+TEST(AutomapPanel, TheMapComesBackWhenThePartysBarDoes) {
+  // The maintainer's report: the panel up, a wandering encounter's
+  // `COMBAT WAIT FLEE PARLAY`, a successful flee, and the party back on
+  // its own bar with no map. The encounter's prompt is somebody else's
+  // bar; the flee puts the party's own back.
+  rig r;
+  r.attach_video();
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  r.poll(4);
+  r.type(key_tab);
+  r.poll(2);
+  ASSERT_TRUE(r.map_state().panel_on_screen());
+  install_the_programs_repaint(r);
+
+  r.somebody_else_asks();
+  r.stand_on(r.point(0));
+  r.pc().step();
+  for (int i = 0; i < 40; ++i) {
+    r.pc().step();
+  }
+  ASSERT_FALSE(r.map_state().panel_on_screen());
+
+  r.put_up_the_bar(rig::dgroup(), data_menu_3d_view);
+  r.poll(1);
+  EXPECT_TRUE(r.map_state().panel_open());
+  EXPECT_TRUE(r.map_state().panel_on_screen())
+      << "drawn again with no Tab pressed";
+
+  // And it is still the player's to put away.
+  r.type(key_tab);
+  r.stand_on(r.point(0));
+  r.pc().step();
+  EXPECT_FALSE(r.map_state().panel_open());
+}
+
+TEST(AutomapPanel, AMapPutAwayBeforeTheQuestionStaysAway) {
+  rig r;
+  r.attach_video();
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  r.poll(4);
+  r.somebody_else_asks();
+  r.poll(2);
+  r.put_up_the_bar(rig::dgroup(), data_menu_3d_view);
+  r.poll(2);
+  EXPECT_FALSE(r.map_state().panel_open());
+  EXPECT_FALSE(r.map_state().panel_on_screen());
 }
 
 TEST(AutomapPanel, SomethingThatTookTheCellsIsLeftToPutThemBack) {
@@ -1793,7 +1897,9 @@ TEST(AutomapHotkey, AwayFromThePartysBarTabIsNotThisSeamsKey) {
 
 TEST(AutomapHotkey, TheRosterCursorKeysAreThePanelsWhileItIsUp) {
   for (const std::uint16_t key :
-       {key_keypad_next_member, key_keypad_prev_member, key_end, key_home}) {
+       {key_keypad_next_member, key_keypad_prev_member, key_end, key_home,
+        key_page_up, key_page_down, key_keypad_centre, key_keypad_five,
+        key_keypad_nine, key_f2}) {
     const rig r;
     r.enable();
     r.adventuring(7, 5, lane_north);
@@ -1807,6 +1913,23 @@ TEST(AutomapHotkey, TheRosterCursorKeysAreThePanelsWhileItIsUp) {
         << "the whole visible effect of keystroke " << key
         << " is a repaint of the cells the panel is on";
     EXPECT_TRUE(r.map_state().panel_open()) << "and it is still up";
+  }
+}
+
+TEST(AutomapHotkey, AMoveOrACommandIsNeverThePanels) {
+  for (const std::uint16_t key : {key_up, key_left, key_right, key_down,
+                                  key_keypad_eight, key_letter_s}) {
+    const rig r;
+    r.enable();
+    r.adventuring(7, 5, lane_north);
+    r.type(key_tab);
+    r.poll(1);
+    ASSERT_TRUE(r.map_state().panel_open());
+
+    r.type(key);
+    r.poll(1);
+    EXPECT_EQ(r.keys_waiting(), 1u)
+        << "keystroke " << key << " is a command the bar answers itself";
   }
 }
 

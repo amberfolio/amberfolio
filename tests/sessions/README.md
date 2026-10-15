@@ -80,7 +80,46 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `quiet-cheats` | same | + all three cheats | `identical quiet` | none pulled |
 | `quiet-explored` | same | + explored | `identical quiet` | the overworld never shown; the points are reached half a million times |
 | `quiet-journal` | same | + journal | **`contrast quiet`** | 76 of 90 identical: `Notes` goes on the party's bar the moment the bar is drawn, in `cpu`, `ram`, `devices`, `display`, `audio`. The enhancement, not a leak; `identical` is not loosened to fit |
-| `quiet-all` | same | every seam | `identical quiet-journal` | eight seams armed, none triggered, no more machine than the journal alone |
+| `quiet-font-sans` | same | + font-sans | **`contrast quiet`** | 1 of 90 identical: a face is seen from the credits' first text on, in `devices` and `display` only. The two agree again while the title's art covers every page |
+| `quiet-font-chisel` | same | + font-chisel | **`contrast quiet`** | the same, in the other face |
+| `quiet-all` | same | every seam that draws nothing until used: the journal, the automap, the Encamp Fix, the explored overlay and the three cheats | `identical quiet-journal` | eight seams armed, the code word's among them, none triggered, no more machine than the journal alone: all 90 checkpoints. Left out, each with a pair of its own: the faces, which are alternatives and seen from the first text, and `modern-controls`, which draws on sight (below) |
+| `quiet-all-on-sight` | same | + modern-controls | **`contrast quiet-all`** | 58 of 90 identical, divergent from tick 147,668,400, the first frame the main menu is drawn in (the cursor is the first thing that moves; the highlights and the party's bar, `Move` in `Area`'s place, follow). What it adds is the one seam beside every other: its seven pieces, which read the same keys at the same bars and draw beside each other, beside the journal that redraws the bar and asks whether the controls are on |
+| `roster-add` | external, the shipped slots with a roster naming one character whose file is not there | code-wheel (and the roster fix, which is built in) | | (A)dd from the main menu and Exit: the stranded name is not on the list, and the roster the run ends with names only the character whose file is there. 69 checkpoints |
+| `quiet-modern-controls` | same | + modern-controls | **`contrast quiet`** | 58 of 90 identical, divergent from tick 147,668,400, the first frame the main menu is drawn in: the cursor first, then the party's bar in menu mode, `Move` lit and the selected name a yellow block. `quiet`'s four movement keys move nobody: the two Ups and the last select the member before (from the first, the last), and the Right steps the highlight to `Cast`; the party stays at 4,12 (#479). The enhancement, not a leak: three pieces draw on sight, so the pair is a `contrast` and there is no `identical` for the seam |
+| `list-keys` | shipped slots | code-wheel | | character creation by Home and End: an elf, a woman, a magic-user, to the rolled sheet. 84 checkpoints |
+| `list-down` | same | code-wheel | | the same script with Down and Up where `list-keys` presses End and Home: the program drops them and the character is the first row of every list |
+| `list-down-arrows` | same | + modern-controls | **`contrast list-down`** | 58 of 84 identical, divergent from tick 147,668,400, the first frame the main menu is drawn in; the highlight moves at each Down and Up and the character is the one `list-keys` makes where the baseline's is the first row of every list |
+| `camp-roster` | same | code-wheel | | slot C, `ENCAMP`, then End, End and Home at the camp bar: the party cursor steps the selected member to the second, the third and back to the second. 94 checkpoints |
+| `camp-down` | same | code-wheel | | slot C, `ENCAMP`, End, then Down, Down and Up at the camp bar: the program hands each arrow to the party cursor, which puts the selection back on the first member. 96 checkpoints |
+| `camp-down-arrows` | same | + modern-controls | **`contrast camp-down`** | 58 of 96 identical, divergent from tick 147,668,400, the first frame the main menu is drawn in; the first Down is read at the camp bar and written as End, and the selection steps to the third, fourth and third member where the seam-off run holds the first |
+| `camp-pad` | same | code-wheel | | slot C, `ENCAMP`, End, Num Lock, then the keypad's 2, 2 and 8 at the camp bar: the program translates each digit into a letter the party cursor does not know and puts the selection back on the first member. 96 checkpoints |
+| `camp-pad-arrows` | same | + modern-controls | **`contrast camp-pad`** | 58 of 96 identical, divergent from tick 147,668,400, the first frame the main menu is drawn in; the first keypad 2 is read at the camp bar and written as the keypad's 1, which the program's table turns into End, and the selection steps to the third, fourth and third member where the seam-off run holds the first |
+| `bar-enter` | shipped slots | code-wheel | | slot C, `ENCAMP`, `.` to step the highlight to ALTER, and Return at the camp bar, which the program ignores. 93 checkpoints |
+| `bar-enter-keys` | same | + modern-controls | **`contrast bar-enter`** | 58 of 93 identical, divergent from tick 147,668,400, the first frame the main menu is drawn in; the Return takes ALTER, and its sub-bar is up where the seam-off run shows the camp bar |
+| `bar-camp` | same | code-wheel | | slot C, `ENCAMP`, a Right at the camp bar, which the program hands to the party cursor, and Return, which it ignores. 93 checkpoints |
+| `bar-camp-keys` | same | + modern-controls | **`contrast bar-camp`** | 58 of 93 identical, divergent from tick 147,668,400, the first frame the main menu is drawn in; the Right steps the highlight to ALTER and the Return takes it, and its sub-bar is up where the seam-off run shows the camp bar |
+| `bar-yn` | same | code-wheel | | slot C's camp, `SAVE`, a Right at the slot bar, Escape, and Return at the quit prompt that follows: the program drops the Right and the Return. 100 checkpoints |
+| `bar-yn-keys` | same | + modern-controls | **`contrast bar-yn`** | 58 of 100 identical, divergent from tick 147,668,400, the first frame the main menu is drawn in; the Right steps the slot bar's highlight, and the Return answers the prompt `No` |
+| `bar-portrait` | shipped slots | code-wheel | | character creation to the portrait bar (`HEAD BODY KEEP`), a `.` that steps the highlight to BODY, and a Return, which the program drops. 89 checkpoints |
+| `bar-portrait-keys` | same | + modern-controls | **`contrast bar-portrait`** | 58 of 89 identical, divergent from tick 147,668,400, the first frame the main menu is drawn in; the Return takes BODY and the body is the next one. The portrait bar is in the Enter table (#459) |
+| `menu-letters` | shipped slots | code-wheel | | the main menu by letters only: `A`, `A` adds the first character, `E` back to the menu, `V` the view screen, Escape. 77 checkpoints |
+| `menu-letters-cursor` | same | + modern-controls | **`contrast menu-letters`** | the same keys with the seam on and no Up, Down or Return pressed at the menu: 58 of 77 identical, divergent from tick 147,668,400, the first frame the main menu is drawn in (the cursor is on the first command from the start, #453) |
+| `menu-down` | same | code-wheel | | the main menu with no party, then Down, Down and Return, which the program drops: the menu has no cursor. 70 checkpoints |
+| `menu-down-cursor` | same | + modern-controls | **`contrast menu-down`** | 58 of 70 identical, divergent from tick 147,668,400, the first frame the main menu is drawn in: the cursor is on Create, moves to Add and Load, and the Return takes it, so the slot prompt is up where the seam-off run shows the plain menu |
+| `list-keys-yellow` | same | + modern-controls | **`contrast list-keys`** | 58 of 84 identical, divergent from tick 147,668,400, the first frame the main menu is drawn in, and the highlighted row of each pick-list is a yellow block where the baseline's is white. Each list's `Exit` bar below it has one command letter and stays white beside the yellow row (#460) |
+| `move-walk` | same | code-wheel | | slot A, then Return, Up, Up, Escape, Right, Right, Return and Escape at the adventuring bar: the program ignores the Returns and Escapes, walks one square (the second Up is into a wall) and turns twice, to 4,13 N. 96 checkpoints |
+| `move-walk-mode` | same | + modern-controls | **`contrast move-walk`** | 58 of 96 identical, divergent from tick 147,668,400, the first frame the main menu is drawn in. At the party's bar `Move` is lit; Return starts walking and the bar is `Exit` alone, the Up walks to 4,13 S, Escape is `Exit` and `Move` is lit again, the two Rights step to `View` and Return opens it (#479) |
+| `door-pick` | same | + modern-controls |  | slot C loaded and the cave walked to a locked door (sixteen moves and a seventeenth into it), whose bar is not raw: a 9, a Right and two Lefts are thrown away and the first member stays selected. A Return before the walk, which the program ignores and `modern-controls` takes as the lit `Move` (#479), so the walk is made in walking mode. 143 checkpoints |
+| `door-pick-3` | same | + modern-controls | **`contrast door-pick`** | the same script with a 3, a Down and two Ups at the same ticks: 126 of 143 identical, divergent from tick 268,507,888. The 3 is the program's and selects nobody; the Down selects the second member, an Up the first and the next Up the last, and the party list is drawn again by the program's own routine each time. Both halves have the seam on |
+| `bar-esc` | same | code-wheel | | slot C's camp, `SAVE`, Escape out of the slot bar, and Escape at the quit prompt that follows, which the program ignores. 99 checkpoints |
+| `bar-esc-keys` | same | + modern-controls | **`contrast bar-esc`** | 58 of 99 identical, divergent from tick 147,668,400, the first frame the main menu is drawn in; the second Escape answers the prompt `No` and the camp bar is back |
+| `bar-script` | same | code-wheel | | slot A walked to the arena master's question (the status row reads 7,1): `.` steps the highlight to `NO`, then Return and Escape, which the program ignores because the script did not allow Enter. A Return before the walk, which the program ignores too, is `bar-script-keys`' way into walking mode (#479). 165 checkpoints. |
+| `bar-script-keys` | same | + modern-controls | **`contrast bar-script`** | 58 of 165 identical, divergent from tick 147,668,400, the first frame the main menu is drawn in; the first Return takes `Move` and the walk is made in walking mode, Return answers `No`, and Escape answers `No` to the partner question that follows. The press-Enter notice before the question, which allows Enter, is the program's own |
+| `name-letters` | shipped slots | code-wheel | | character creation to the name prompt by the first row of every list, and the name BOB typed in letters and taken with Return: leg 0's creation. 84 checkpoints |
+| `name-arrows` | same | code-wheel | | the same creation with a Right, an Up, a Down and a Left among the letters of the name: the program's line editor types each arrow's scan code, and the name is BMOHBPK. 88 checkpoints |
+| `name-arrows-edit` | same | + modern-controls | **`contrast name-arrows`** | 58 of 88 identical, divergent from tick 147,668,400, the first frame the main menu is drawn in; the arrows type nothing and the name is BOB where the baseline's is BMOHBPK |
+| `menu-letters-quick` | same | + quick-steps | `identical menu-letters` | the party menu clicks no footstep: the seam's point is reached at each sound the program starts and acts at none. All 77 checkpoints |
+| `walk-quick` | same | + quick-steps | **`contrast walk`** | 81 of 190 identical, divergent from tick 197,905,488, the first footstep whose wait is skipped. `fired=26`, and the party still ends at the armourer, `8,11 E 03:18` |
 
 ## The matrix, by seam
 
@@ -88,12 +127,27 @@ frame that carries an input is checkpointed whatever the cadence says.
 | --- | --- | --- |
 | `code-wheel` | every game session but the boot pair: the challenge is answered before the run and the seam steps over the boot's call to the check | `boot-wheel`, on and unanswered: it watches 144 times and triggers nothing |
 | `encamp-fix` | `camp-fix` | `quiet-encamp` |
+| `roster-fix` (built in, always on) | `roster-add` | none can exist: there is no off. Every other session verifies with it on, `party` reaching it twice |
+| `timer-fix` (built in, always on) | `walk-quick`, at every sound after a skipped wait | none can exist: there is no off. Every session without quick steps verifies with it on: the driver's vector is the BIOS's at every install |
 | `automap` | `walk-map` | `quiet-automap` |
 | `journal` | `reader`, `notes`, `cite` | `quiet-journal` (a `contrast`) |
 | `explored` | `wild-trail` | `quiet-explored` |
 | the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party` | `quiet-cheats` |
+| `modern-controls` | `list-down-arrows`, `camp-down-arrows`, `camp-pad-arrows`, `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys`, `bar-esc-keys`, `bar-script-keys`, `bar-portrait-keys`, `menu-down-cursor`, `move-walk-mode`, `door-pick-3`, `list-keys-yellow`, `name-arrows-edit` (each a `contrast`; `door-pick-3` has the seam on at both ends and differs by its keys) | none can exist: three of its pieces draw on sight, so `quiet-modern-controls`, `menu-letters-cursor` and `quiet-all-on-sight` are `contrast`s too (the pair is a `contrast`, as the faces' is) |
+| `quick-steps` | `walk-quick` | `menu-letters-quick`. Not in `quiet-all`: `quiet`'s movement keys click |
+| `font-sans`, `font-chisel` | `quiet-font-sans`, `quiet-font-chisel` (on is exercised: text is drawn from the first screen) | none can exist; the pair is a `contrast` |
 
-Subsets: `quiet-all` (all on), `subset-map-reader` (two seams wanting the
+**`modern-controls` is in `quiet-all-on-sight` and not in `quiet-all`.**
+`quiet-all` is the claim that seams which draw nothing until used add
+nothing to an idle machine, and `identical quiet-journal` is the test of it.
+`modern-controls` carries the menu's cursor, the roster's numbers on the
+main menu, the party bar's `Move` and the highlights' blocks, which draw as
+soon as there is something to draw on, so
+it cannot be in an `identical` run; it is added in `quiet-all-on-sight`,
+which is a `contrast` against `quiet-all`.
+
+Subsets: `quiet-all` (all on but the faces and `modern-controls`),
+`quiet-all-on-sight` (that, with `modern-controls`), `subset-map-reader` (two seams wanting the
 same pixels), `camp-fix` (the Fix with a cheat), `wild-trail` (explored
 without automap; they share a store).
 
@@ -163,11 +217,11 @@ Only when the machine it describes legitimately changes:
 - `recording_format_oldest_read` is bumped (a format retired; bumping
   `recording_format_version` alone does not, see `docs/replay.md` §7);
 - the reference device set's **attach order** changes
-  (`hosts/sdl/src/main.cpp`, `core/src/abi.cpp`'s `reference_devices`,
+  (`hosts/sdl/src/wiring.cpp`, `core/src/abi.cpp`'s `reference_devices`,
   `tests/programs/machine_harness.cpp` move together);
 - what `machine::reset()` leaves behind changes;
 - a seam is added after the session was made and the session claims to
-  carry them all (`quiet-all`);
+  carry them all (`quiet-all`, `quiet-all-on-sight`);
 - a seam the session turns on legitimately changes what it does. The
   test: the change was chosen, argued on an issue, and visible in the
   seam's source, never that a red line went green.

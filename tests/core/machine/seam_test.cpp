@@ -124,6 +124,19 @@ constexpr seam_definition edit_seam{.id = "test-edit",
                                     .fingerprints = claimed_binaries,
                                     .points = edit_points};
 
+/// Two alternatives (`seam_definition::group`): the same point, and at
+/// most one of them on.
+constexpr seam_definition first_choice{.id = "test-choice-a",
+                                       .about = "one of two alternatives",
+                                       .fingerprints = claimed_binaries,
+                                       .points = edit_points,
+                                       .group = "test-choice"};
+constexpr seam_definition second_choice{.id = "test-choice-b",
+                                        .about = "the other alternative",
+                                        .fingerprints = claimed_binaries,
+                                        .points = edit_points,
+                                        .group = "test-choice"};
+
 constexpr std::array<seam_point, 1> key_points{
     {{.module = resident_image, .offset = key_offset, .run = &post_k}}};
 constexpr seam_definition key_seam{.id = "test-key",
@@ -260,6 +273,17 @@ constexpr seam_definition moved_seam{.id = "test-moving-overlay",
                                      .fingerprints = claimed_binaries,
                                      .points = moved_points};
 
+/// Points in two modules: the resident image's edit and the moving
+/// module's host call (#477). Each acts on its own, so the seam is armed
+/// while either module is in memory.
+constexpr std::array<seam_point, 2> split_points{
+    {{.module = resident_image, .offset = edit_offset, .run = &edit_ax},
+     {.module = moved_module, .offset = 0x0002, .run = &ask_host}}};
+constexpr seam_definition split_seam{.id = "test-split",
+                                     .about = "lives in two modules",
+                                     .fingerprints = claimed_binaries,
+                                     .points = split_points};
+
 /// One in the resident image, so that the host-service record can be
 /// exercised without an overlay in the way (#169). Same handler, at the
 /// first instruction of whatever program a test places.
@@ -340,9 +364,12 @@ struct rig {
     EXPECT_TRUE(box->seams().add(ovl_seam));
     EXPECT_TRUE(box->seams().add(wrong_seam));
     EXPECT_TRUE(box->seams().add(moved_seam));
+    EXPECT_TRUE(box->seams().add(split_seam));
     EXPECT_TRUE(box->seams().add(host_seam));
     EXPECT_TRUE(box->seams().add(gated_seam));
     EXPECT_TRUE(box->seams().add(journal_gated_seam));
+    EXPECT_TRUE(box->seams().add(first_choice));
+    EXPECT_TRUE(box->seams().add(second_choice));
     EXPECT_TRUE(box->seams().add_document(claimed_document));
     box->seams().loaded(claimed_digest(), image_load_segment);
   }
@@ -443,8 +470,11 @@ TEST(SeamRegistry, RefusesMoreThanItHasRoomFor) {
       ++taken;
     }
   }
-  EXPECT_EQ(taken + all_seams().size(), seam_engine::max_seams);
-  EXPECT_EQ(box->seams().count(), seam_engine::max_seams);
+  // The built-in fixes take room too, and are not listed.
+  EXPECT_EQ(taken + all_seams().size() + built_in_fixes().size(),
+            seam_engine::max_seams);
+  EXPECT_EQ(box->seams().count(),
+            seam_engine::max_seams - built_in_fixes().size());
 }
 
 // --- What enable() refuses -------------------------------------------------
@@ -1209,9 +1239,13 @@ TEST(SeamGate, APresentedDocumentIsConfigurationAndSurvivesAReset) {
 TEST(SeamGate, ADefinitionWithAGateNamesTheCurrentSchema) {
   // The version moved for this field (seam.h): a definition written
   // before schema 5 read as ungated would be a possession gate silently
-  // not applied, which is the one failure a gate has.
-  EXPECT_EQ(seam_schema_version, 5);
+  // not applied, which is the one failure a gate has. It moved again for
+  // the group (schema 6), and again for `inside_calls` (schema 7).
+  EXPECT_EQ(seam_schema_version, 7);
   for (const seam_definition& seam : all_seams()) {
+    EXPECT_EQ(seam.schema, seam_schema_version) << seam.id;
+  }
+  for (const seam_definition& seam : built_in_fixes()) {
     EXPECT_EQ(seam.schema, seam_schema_version) << seam.id;
   }
 }
@@ -1711,6 +1745,37 @@ TEST(SeamMovingOverlay, IsInertWhileTheProgramSaysTheModuleIsNotLoaded) {
   EXPECT_EQ(r.pc().seams().status("test-moving-overlay").fired, 0u);
 }
 
+TEST(SeamMovingOverlay, ASeamWithOneModuleOutIsArmedAndActsInTheOther) {
+  // #477: the panel called a seam inert while its points in the module
+  // that was resident were in the table and acting. `armed` is what a
+  // player can rely on, and here that is the resident image's point.
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("test-split"), seam_reason::none);
+  counting_host host;
+  r.pc().seams().set_host(&host);
+  r.manager_says_module_at(0);
+
+  const seam_status row = r.pc().seams().status("test-split");
+  EXPECT_TRUE(row.armed);
+  EXPECT_EQ(row.reason, seam_reason::none);
+  EXPECT_EQ(r.events(seam_event_kind::inert), 0u);
+
+  r.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xF4});
+  r.pc().step();  // MOV
+  r.pc().step();  // the image's point fires, then NOP
+  EXPECT_EQ(edit_hits, 1u);
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x2222);
+
+  // And the point in the module that is out still does nothing.
+  r.pc().memory().ram()[cpu::physical_address(0x3000, 2)] = 0xF4;
+  r.pc().processor().resume();
+  r.regs()[cpu::sreg::cs] = 0x3000;
+  r.regs().ip = 2;
+  r.pc().step();
+  EXPECT_EQ(host_calls, 0u);
+  EXPECT_EQ(r.pc().seams().status("test-split").fired, 1u);
+}
+
 TEST(SeamMovingOverlay, ArmsWithoutAReadWhenTheProgramSaysItIsThere) {
   // A manager may answer a call from a copy it already holds, and then
   // there is no read at all. Nothing would call `rearm()`, so a point
@@ -2041,5 +2106,238 @@ TEST(SeamCodeWheel, AnAnsweredChallengeWithEverySeamOffChangesNothing) {
 
   EXPECT_EQ(plain_hash.whole, hash_state(answered.pc()).whole);
 }
+}  // namespace
+}  // namespace amberfolio::machine
+
+namespace amberfolio::machine {
+namespace {
+
+// --- Alternatives (seam_definition::group) ----------------------------------
+
+TEST(SeamGroup, EnablingOneAlternativeDisablesTheOther) {
+  const rig r;
+  seam_engine& seams = r.pc().seams();
+  ASSERT_EQ(seams.enable("test-choice-a"), seam_reason::none);
+  EXPECT_EQ(seams.status("test-choice-a").state, seam_state::on);
+
+  ASSERT_EQ(seams.enable("test-choice-b"), seam_reason::none);
+  EXPECT_EQ(seams.status("test-choice-a").state, seam_state::off);
+  EXPECT_EQ(seams.status("test-choice-b").state, seam_state::on);
+  EXPECT_TRUE(seams.status("test-choice-b").armed);
+}
+
+TEST(SeamGroup, AnAlternativeLeavesSeamsOutsideItsGroupAlone) {
+  const rig r;
+  seam_engine& seams = r.pc().seams();
+  ASSERT_EQ(seams.enable("test-key"), seam_reason::none);
+  ASSERT_EQ(seams.enable("test-choice-a"), seam_reason::none);
+  ASSERT_EQ(seams.enable("test-choice-b"), seam_reason::none);
+  EXPECT_EQ(seams.status("test-key").state, seam_state::on);
+}
+
+TEST(SeamGroup, TheAlternativeThatIsOnIsTheOneThatRuns) {
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("test-choice-a"), seam_reason::none);
+  ASSERT_EQ(r.pc().seams().enable("test-choice-b"), seam_reason::none);
+  r.program_at(0, {0x90, 0x90, 0x90, 0xF4});
+  for (int i = 0; i < 4; ++i) {
+    r.pc().step();
+  }
+  // One handler at the point, not two: the sibling's came down with it.
+  EXPECT_EQ(edit_hits, 1U);
+  EXPECT_EQ(r.pc().seams().status("test-choice-b").fired, 1U);
+  EXPECT_EQ(r.pc().seams().status("test-choice-a").fired, 0U);
+}
+
+TEST(SeamGroup, TheBuiltInFacesAreAlternatives) {
+  const seam_definition* sans = nullptr;
+  const seam_definition* chisel = nullptr;
+  for (const seam_definition& seam : all_seams()) {
+    if (seam.id == "font-sans") {
+      sans = &seam;
+    }
+    if (seam.id == "font-chisel") {
+      chisel = &seam;
+    }
+  }
+  ASSERT_NE(sans, nullptr);
+  ASSERT_NE(chisel, nullptr);
+  EXPECT_FALSE(sans->group.empty());
+  EXPECT_EQ(sans->group, chisel->group);
+}
+
+}  // namespace
+}  // namespace amberfolio::machine
+
+namespace amberfolio::machine {
+namespace {
+
+// --- The step filter (seam.h, `wants`) ---------------------------------------
+//
+// `machine::step()` asks `wants(at)` and calls `dispatch` only when it is
+// true, so the filter has to be exact in the direction that matters: it
+// may say yes to a step nothing happens at (a visit that costs a scan),
+// and must never say no to one where `dispatch` would have done anything.
+// What each of these pins is one of the ways that could go wrong.
+
+/// What `dispatch` has done so far, as the sum of the two things it
+/// counts.
+[[nodiscard]] std::uint64_t acts(const seam_engine& seams) {
+  std::uint64_t total = 0;
+  for (std::size_t i = 0; i < seams.count(); ++i) {
+    const seam_status row = seams.status(i);
+    total += row.fired + row.reached;
+  }
+  return total;
+}
+
+[[nodiscard]] std::uint32_t image_at(std::uint32_t offset) {
+  return cpu::physical_address(image_load_segment, 0) + offset;
+}
+
+TEST(SeamFilter, NothingArmedWantsNothing) {
+  const rig r;
+  EXPECT_FALSE(r.pc().seams().armed());
+  EXPECT_FALSE(r.pc().seams().wants(image_at(edit_offset)));
+}
+
+TEST(SeamFilter, WantsAFixedPointsAddressAndNoOtherInItsNeighbourhood) {
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("test-edit"), seam_reason::none);
+  const seam_engine& seams = r.pc().seams();
+
+  EXPECT_TRUE(seams.wants(image_at(edit_offset)));
+  for (std::uint32_t offset = 0; offset < 0x40; ++offset) {
+    if (offset != edit_offset) {
+      EXPECT_FALSE(seams.wants(image_at(offset))) << offset;
+    }
+  }
+  EXPECT_FALSE(seams.wants(0));
+  EXPECT_FALSE(seams.wants(0xFFFFF));
+}
+
+TEST(SeamFilter, ADisabledSeamsPointIsNotWanted) {
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("test-edit"), seam_reason::none);
+  ASSERT_EQ(r.pc().seams().enable("test-key"), seam_reason::none);
+  ASSERT_EQ(r.pc().seams().disable("test-edit"), seam_reason::none);
+  const seam_engine& seams = r.pc().seams();
+
+  EXPECT_FALSE(seams.wants(image_at(edit_offset)))
+      << "the point came down with its seam";
+  EXPECT_TRUE(seams.wants(image_at(key_offset))) << "and a sibling's did not";
+
+  ASSERT_EQ(r.pc().seams().disable("test-key"), seam_reason::none);
+  EXPECT_FALSE(seams.armed());
+  EXPECT_FALSE(seams.wants(image_at(key_offset)));
+}
+
+TEST(SeamFilter, AResetMachineWantsNothing) {
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("test-edit"), seam_reason::none);
+  r.pc().reset();
+  EXPECT_FALSE(r.pc().seams().wants(image_at(edit_offset)));
+}
+
+TEST(SeamFilter, AMovedModulesPointFollowsTheWordWithoutARearm) {
+  // The word is rewritten and nothing is told: no read, no enable, no
+  // `rearm()`. A filter built from the word's value at some earlier
+  // moment would be wrong from here on, so the answer has to come from
+  // the word as it is now.
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("test-moving-overlay"), seam_reason::none);
+  const seam_engine& seams = r.pc().seams();
+  const std::uint32_t in_3000 = cpu::physical_address(0x3000, 2);
+  const std::uint32_t in_3400 = cpu::physical_address(0x3400, 2);
+
+  r.manager_says_module_at(0);
+  EXPECT_FALSE(seams.wants(in_3000)) << "zero is not loaded";
+  EXPECT_FALSE(seams.wants(in_3400));
+
+  r.manager_says_module_at(0x3000);
+  EXPECT_TRUE(seams.wants(in_3000));
+  EXPECT_FALSE(seams.wants(in_3400));
+  EXPECT_FALSE(seams.wants(in_3000 + 1)) << "right paragraph, wrong offset";
+  EXPECT_FALSE(seams.wants(in_3000 + 0x10)) << "right nibble, wrong paragraph";
+
+  r.manager_says_module_at(0x3400);
+  EXPECT_FALSE(seams.wants(in_3000));
+  EXPECT_TRUE(seams.wants(in_3400));
+
+  r.manager_says_module_at(0);
+  EXPECT_FALSE(seams.wants(in_3400));
+}
+
+TEST(SeamFilter, ALatchedPointWantsEveryStepUntilItIsServed) {
+  const rig r;
+  r.program_at(0, {0x90, 0x90, 0xF4});
+  ASSERT_EQ(r.pc().seams().enable("test-pull"), seam_reason::none);
+  seam_engine& seams = r.pc().seams();
+  const std::uint32_t anywhere = image_at(0x1234);
+
+  EXPECT_FALSE(seams.wants(anywhere)) << "nobody has pulled";
+  ASSERT_EQ(seams.pull("test-pull", r.pc().time()), seam_reason::none);
+  EXPECT_TRUE(seams.wants(anywhere));
+  EXPECT_TRUE(seams.wants(0));
+
+  r.pc().step();  // offered at once, and served
+  EXPECT_FALSE(seams.waiting("test-pull"));
+  EXPECT_FALSE(seams.wants(anywhere)) << "the latch went down with the run";
+
+  ASSERT_EQ(seams.pull("test-pull", r.pc().time()), seam_reason::none);
+  ASSERT_TRUE(seams.wants(anywhere));
+  ASSERT_EQ(seams.disable("test-pull"), seam_reason::none);
+  EXPECT_FALSE(seams.wants(anywhere)) << "and a pull dies with its seam";
+}
+
+TEST(SeamFilter, APointOnATriggerIsStillWantedWithTheLatchDown) {
+  // `reached` counts arrivals whether or not anybody pulled, so the
+  // filter must let that arrival through even though nothing will run.
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("test-trigger"), seam_reason::none);
+  EXPECT_TRUE(r.pc().seams().wants(image_at(edit_offset)));
+}
+
+TEST(SeamFilter, AgreesWithWhatDispatchDoesAtEveryAddressItIsAskedAbout) {
+  // The oracle: ask `dispatch` itself, over every address at the points
+  // and beside them, with every kind of point armed, and hold the filter
+  // to what the loop did.
+  const rig r;
+  seam_engine& seams = r.pc().seams();
+  for (const std::string_view id :
+       {"test-edit", "test-key", "test-trigger", "test-moving-overlay",
+        "test-overlay", "test-pull-untriggered"}) {
+    ASSERT_EQ(seams.enable(id), seam_reason::none) << id;
+  }
+  // Segments chosen so that no two fixed points share their low sixteen
+  // address bits, which the filter folds (a false positive the equality
+  // below would otherwise have to excuse).
+  r.load_overlay(0x2100);
+  r.manager_says_module_at(0x3000);
+
+  std::size_t acted_at = 0;
+  const auto sweep = [&](std::uint32_t first, std::uint32_t last) {
+    for (std::uint32_t at = first; at < last; ++at) {
+      const bool wanted = seams.wants(at);
+      const std::uint64_t before = acts(seams);
+      seams.dispatch(*r.box, at);
+      const bool acted = acts(seams) != before;
+      EXPECT_TRUE(wanted || !acted) << "refused a step it would act at: " << at;
+      EXPECT_EQ(wanted, acted) << "said yes to one it would not: " << at;
+      acted_at += acted ? 1U : 0U;
+    }
+  };
+  sweep(image_at(0), image_at(0x40));
+  sweep(cpu::physical_address(0x2100, 0), cpu::physical_address(0x2100, 0x20));
+  sweep(cpu::physical_address(0x3000, 0), cpu::physical_address(0x3000, 0x20));
+  sweep(cpu::physical_address(0x3400, 0), cpu::physical_address(0x3400, 0x20));
+  EXPECT_GE(acted_at, 4U) << "the sweep has to have found the points";
+
+  // Move the module and sweep again: still exact.
+  r.manager_says_module_at(0x3400);
+  sweep(cpu::physical_address(0x3000, 0), cpu::physical_address(0x3000, 0x20));
+  sweep(cpu::physical_address(0x3400, 0), cpu::physical_address(0x3400, 0x20));
+}
+
 }  // namespace
 }  // namespace amberfolio::machine

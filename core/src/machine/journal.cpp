@@ -588,6 +588,8 @@ void journal_state::clear() noexcept {
   page_count_ = 0;
   from_list_ = false;
   bar_live_ = false;
+  bar_word_ = 0;
+  bar_focus_ = false;
   seen_count_ = 0;
   seen_changed_ = false;
   list_cursor_ = 0;
@@ -775,6 +777,10 @@ void journal_state::set_reader(journal_reader_mode mode) noexcept {
     return;
   }
   mode_ = mode;
+  // A screen's bar starts on its first word, and the listing's is not yet
+  // taken up (#471).
+  bar_word_ = 0;
+  bar_focus_ = false;
   // Whatever is on the planes is not what this mode wants there, and
   // whatever a full-screen paint had got through is not this mode's
   // either (#305): the listing and a page are drawn into the same box.

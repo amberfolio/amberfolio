@@ -418,8 +418,34 @@ uint32_t af_version(void);
 ///     `af_machine_save_layer_*` family is behaviour and not surface — its
 ///     rows now follow the directory the copy's own configuration file
 ///     names, and a copy that names none has no layer.
-#define AF_ABI_VERSION_MAJOR 2u
-#define AF_ABI_VERSION_MINOR 2u
+///   * **2.3** — three added entry points and nothing changed:
+///     `af_machine_screen_text`, `af_screen_text_columns` and
+///     `af_screen_text_rows`, the text on the screen read back in the
+///     program's own font. Minor: a host that never asks is unaffected.
+///   * **3.0** — #413, two entry points removed from the web host's own
+///     surface and nothing added: `af_web_journal_log_write` and
+///     `af_web_journal_log_read`, whose only caller was the dev page's
+///     working-log drawer. The working sidecars (`AFMAP.DAT`,
+///     `AFSEEN.DAT`) are gone with it: the explored map and the read log
+///     ride each slot's own pair, and nothing is kept between saves.
+///     Major, because a removal is by the rule 2.0 paid for. What moved
+///     under the `af_machine_save_layer_*` family is behaviour and not
+///     surface — two fewer rows — and turning sidecars on now removes the
+///     two retired files rather than reading them.
+///   * **3.1** — #427, one added entry point on the web host's own surface
+///     and nothing changed: `af_web_key_card_json`, the game's keys by
+///     context as one JSON string, the table the desktop host paints from
+///     the same source. Minor, and machine-less: a host that never asks is
+///     unaffected.
+///   * **3.2** — #504, one added entry point and nothing changed:
+///     `af_machine_text_entry`, whether the program is reading a line of
+///     text right now, with its three answers `AF_TEXT_ENTRY_*`. Minor: a
+///     host that never asks is unaffected.
+///   * **3.3** — #520, one added entry point and nothing changed:
+///     `af_machine_scene_json`, where the party is and what is around it
+///     as one JSON string. Minor: a host that never asks is unaffected.
+#define AF_ABI_VERSION_MAJOR 3u
+#define AF_ABI_VERSION_MINOR 3u
 
 // --- Facts about the machine ------------------------------------------
 //
@@ -481,8 +507,9 @@ uint32_t af_machine_attach_reference_devices(af_machine* box);
 
 /// The RESET line (machine::reset). Clears any stop, puts the virtual
 /// clock back to zero, blanks the frame, restarts the audio timeline, and
-/// throws away queued input and undrained console output. RAM keeps what
-/// it held, exactly as a warm boot does.
+/// throws away queued input and undrained console output. Every file the
+/// program had open is closed; the disk keeps every byte written to it.
+/// RAM keeps what it held, exactly as a warm boot does.
 uint32_t af_machine_reset(af_machine* box);
 
 /// Run until the virtual clock reaches `tick`, or until the machine
@@ -523,7 +550,7 @@ double af_machine_steps(const af_machine* box);
 /// One switch for both halves because they are one facility: the live
 /// stream and the ring dumped at the end are asked for together or not at
 /// all, which is what the SDL host's `--trace` does with the same two
-/// things (hosts/sdl/src/main.cpp). A host that wanted only one of them
+/// things (hosts/sdl/src/run_reports.cpp). A host that wanted only one of them
 /// would be asking a question no boot log has ever needed the answer to.
 ///
 /// A setting, not state — it survives `af_machine_reset`, exactly as the
@@ -627,6 +654,36 @@ const uint8_t* af_machine_palette(const af_machine* box);
 /// (platform.h).
 double af_machine_frame_generation(const af_machine* box);
 
+// --- Screen text ------------------------------------------------------
+//
+// What the program has on the screen now, read back as characters by
+// matching the frame against the glyphs it was drawn with
+// (`machine/screen_text.h`). A read, like the framebuffer: taken between
+// `af_machine_run_until` slices, it changes nothing, is not machine
+// state, and is in no hash and no recording.
+
+/// The text grid: 40 columns by 25 rows of 8x8 cells.
+uint32_t af_screen_text_columns(void);
+uint32_t af_screen_text_rows(void);
+
+/// Bytes a cell takes in `af_machine_screen_text`'s `out`: the character
+/// as ASCII (0x20-0x5F), then the ink and the paper as palette indices.
+/// A character of 0x00 is a cell that is not text; 0x01 is one whose
+/// bitmap is more than one character's, and so is not read as any.
+#define AF_SCREEN_TEXT_CELL_BYTES 3u
+
+/// Read the screen into `out`, `columns * rows * AF_SCREEN_TEXT_CELL_BYTES`
+/// bytes row-major, and say into `why` — NUL-terminated, 32 bytes is
+/// enough — `none` when there is text, or why there is none: `no_program`,
+/// `wrong_binary` (a program this build has no font location for) or
+/// `no_font` (the program has not installed its font yet). Every cell is
+/// 0x00 unless `why` says `none`.
+///
+/// `AF_OK`; `AF_NO_MACHINE` for a null handle; `AF_INVALID`, and nothing
+/// written, for a null or short `out`.
+uint32_t af_machine_screen_text(const af_machine* box, uint8_t* out,
+                                uint32_t size, char* why, uint32_t why_max);
+
 // --- Audio pull -------------------------------------------------------
 
 /// Fill `out` with `frames` mono float samples at `sample_rate`, from the
@@ -713,7 +770,10 @@ double af_machine_audio_edges_pending(const af_machine* box);
 /// Inject a key event, stamped at the machine's current virtual time.
 ///
 /// `scancode` is an XT (set 1) make code, 1-0x53, **without** the 0x80
-/// release bit; `down` is AF_KEY_DOWN or AF_KEY_UP. Nothing else crosses:
+/// release bit, or a cursor-pad key (a dedicated arrow, Home/End, Page or
+/// Insert/Delete) as its keypad code plus 0x20, 0x67-0x73, which Num Lock
+/// does not reach (machine/keyboard.h, #517); `down` is AF_KEY_DOWN or
+/// AF_KEY_UP. Nothing else crosses:
 /// no ASCII, no modifier mask. Translation and shift state live in core
 /// with M2-D8 (#53), because programs of the era read the shift byte out
 /// of the BIOS data area directly and it therefore has to be in the
@@ -1374,7 +1434,7 @@ uint32_t af_machine_set_entry(af_machine* box, uint32_t cs, uint32_t ip,
 // --- Document gates (M5-D3, #171) --------------------------------------
 //
 // PLAN.md §5 gates two enhancements on a document the player holds — the
-// code-wheel bypass on the code wheel, the journal on the journal — and
+// code-wheel seam on the code wheel, the journal on the journal — and
 // the rule is exact: "a possession gate: it demonstrates the player holds
 // the document, no more". So what crosses this boundary is bytes, once,
 // and what comes back is a fingerprint and a name.
@@ -1389,7 +1449,7 @@ uint32_t af_machine_set_entry(af_machine* box, uint32_t cs, uint32_t ip,
 // `document_not_presented`. It is not refused — the seam took, and the
 // player has not shown the thing PLAN.md §5 requires them to hold.
 //
-// **No seam in this build is gated** (#290). The code-wheel bypass was,
+// **No seam in this build is gated** (#290). The code-wheel seam was,
 // on a PDF of the wheel, until the releases sold today turned out to
 // ship a code generator application instead of one; it asks a person to
 // answer the challenge once now (#291). The door stays, and the journal
@@ -1476,6 +1536,49 @@ uint32_t af_machine_code_wheel_answered(const af_machine* box);
 /// Say so, or unsay it. `AF_OK`, or `AF_NO_MACHINE` for a null handle.
 uint32_t af_machine_set_code_wheel_answered(af_machine* box, int answered);
 
+// --- A line of text, being read (#504) --------------------------------
+//
+// Whether the program is inside its line editor: a new character's name, a
+// script's free-text answer, a script's number prompt, or the code word at
+// the copy-protection challenge. A host that paints a keyboard of its own
+// polls this once a frame, puts the keyboard up when it reads one and takes
+// it down when it reads zero, and never guesses either from the screen.
+//
+// It is **observation**, noted by `modern-controls` at the editor's entry
+// and its return (`machine/text_entry.h`): not machine state, not in the
+// state hash, rebuilt by a replay. With that seam off nothing watches, and
+// the answer says so rather than guessing "not reading".
+
+/// The program is not inside its line editor.
+#define AF_TEXT_ENTRY_NOT_READING 0u
+/// The program is inside its line editor, until the line is accepted or
+/// abandoned.
+#define AF_TEXT_ENTRY_READING 1u
+/// Nothing is watching: `modern-controls` is off or unavailable, no program
+/// is loaded, or the handle is null.
+#define AF_TEXT_ENTRY_UNKNOWN 2u
+
+/// One of the three above, as of the last step boundary.
+uint32_t af_machine_text_entry(const af_machine* box);
+
+// --- The scene (#520) -------------------------------------------------
+//
+// Where the party is and what is around it, as data: on the interior
+// screen its square, its facing, the faces of the squares the 3D view
+// draws and of every square the automap has revealed; on the overland its
+// column and row and the 5x5 window's terrain; in a fight the figures, whose
+// turn it is and the tactical window's ground (#521) (`machine/scene.h`,
+// `docs/hosts.md` §13 has the shape). A read, like the screen text: taken
+// between `af_machine_run_until` slices, out of RAM, it changes nothing
+// and is in no hash and no recording.
+
+/// The scene as JSON into `out`, NUL-terminated when `cap` is more than
+/// its length; `null` (the four letters) when nothing knows: a null
+/// handle, no program, a program this build has no facts for, or a screen
+/// the scene does not describe. Answers the length without the NUL
+/// whether it fitted or not, so a host asks with a null `out` first.
+uint32_t af_machine_scene_json(const af_machine* box, char* out, uint32_t cap);
+
 /// What document seam `index` is gated on, as a name a host shows
 /// (`machine::document_kind_name`) — `code wheel`, `journal`, or `no
 /// document` for a seam with no gate, which is every seam in this build
@@ -1554,8 +1657,8 @@ int32_t af_machine_save_layer_required_at(const af_machine* box,
 uint32_t af_machine_save_layer_row_of(const af_machine* box, const char* path);
 
 /// Which slot `path` belongs to, as the letter's own character code, or
-/// zero for a path that is in no slot — a roster file, a sidecar's
-/// working table, a game file.
+/// zero for a path that is in no slot — a roster file, a character kept
+/// under a name, a game file.
 uint32_t af_machine_save_layer_slot_of(const af_machine* box, const char* path);
 
 /// Which party member `path` is the record of, 1 to

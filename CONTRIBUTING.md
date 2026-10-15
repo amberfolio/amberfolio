@@ -80,7 +80,10 @@ PLAN.md §4 and §5 state it; in a diff it means:
   idle equals the hash on a build with no engine; a disabled seam's
   breakpoint is never consulted; seam state, an outstanding pull
   included, is configuration and not machine state.
-  `tests/core/machine/seam_test.cpp` asserts all three.
+  `tests/core/machine/seam_test.cpp` asserts all three. The exception is
+  a built-in fix (`docs/seams.md` §7): on with its program and listed
+  nowhere, for a failure no player could want, and untouching wherever
+  it finds nothing to fix.
 - **An observation is not part of the run.** A trace ring, an edge log
   or a diagnostics sink must not move a state hash.
 - **Log, don't fake.** An unimplemented service, register or port is a
@@ -99,12 +102,13 @@ what `identical` means to fit.
 
 ## Checks and gates
 
-Six scripted checks gate every push. CI runs exactly these scripts:
+Seven scripted checks gate every push. CI runs exactly these scripts:
 
 ```sh
 bash scripts/check-clean.sh      # content guard: every commit, index, worktree, strays
 bash scripts/check-dco.sh        # every non-merge commit carries a sign-off
 bash scripts/check-host-time.sh  # nothing under core/ reads the host's clock
+bash scripts/check-host-tests.sh # every desktop host test says --no-config or --config
 bash scripts/check-format.sh     # clang-format over tracked C++
 bash scripts/check-tidy.sh       # clang-tidy; needs a configured build tree
 bash scripts/check-shell.sh      # shellcheck over scripts/
@@ -138,7 +142,10 @@ Every milestone from M3 on gets a **0.x pre-release** tag (PLAN.md §7).
   exactly (`af_version` reports it across the ABI and the wasm smoke test
   asserts it).
 - The version bump happens in the closeout pull request, so the tagged
-  commit is the first that reports the new version.
+  commit is the first that reports the new version. For a patch release
+  that pull request is the fix itself: the bump and the status lines ride
+  with it, and the tag goes on its merge, so there is no second CI round
+  for a pull request that only changes a number.
 - The tag's message is one paragraph on what the milestone means and what
   it does not; it becomes the release notes.
 - **Nothing is ever retagged**, and **assets are never republished under

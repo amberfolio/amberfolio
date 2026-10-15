@@ -32,6 +32,12 @@ namespace {
 constexpr std::string_view slot_stem = "SAVGAM";
 constexpr std::string_view slot_extension = ".DAT";
 
+/// The two files this store kept between saves until it stopped: one
+/// exploration table and one read log, each following the machine rather
+/// than a slot. `attach()` takes them away.
+constexpr std::array<std::string_view, 2> retired_working_files{"AFMAP.DAT",
+                                                                "AFSEEN.DAT"};
+
 /// The whole of one component's text, as characters. A `dos_name` is
 /// already canonical and upper-cased, so nothing here folds case.
 [[nodiscard]] std::string_view text_of(const machine::dos_name& name) noexcept {
@@ -95,9 +101,9 @@ char slot_store::slot_of(const machine::dos_path& path) const noexcept {
 }
 
 machine::dos_path slot_store::automap_slot_path(char letter) const noexcept {
-  // `AFMAP<L>.DAT`: the working table's name with the letter spliced in,
-  // which keeps every one of these files sorting together in a directory
-  // listing beside the saves they belong to.
+  // `AFMAP<L>.DAT`: a stem of this project's own with the slot letter
+  // after it, which keeps every one of these files sorting together in a
+  // directory listing beside the saves they belong to.
   const std::array<char, 12> leaf{'A',    'F', 'M', 'A', 'P',
                                   letter, '.', 'D', 'A', 'T'};
   return in_save_directory({leaf.data(), 10});
@@ -135,32 +141,19 @@ void slot_store::attach(machine::machine& box) {
   }
   save_directory_ = saves.directory;
   located_ = true;
-  read_automap_from(in_save_directory(slot_store_automap_working));
-}
 
-void slot_store::read_journal_log() {
-  if (!live() || journal_ == nullptr) {
-    return;
+  // The files an earlier build kept between saves (slot_store.h). Read
+  // back at startup they handed a new party the last one's map, and
+  // nothing reads them now; left where they are, a browser would find
+  // them in its save layer's directory and name them as files nobody
+  // claims. Only ours, only by name, and only because a player asked
+  // this build to keep files there.
+  for (const std::string_view retired : retired_working_files) {
+    const machine::dos_path path = in_save_directory(retired);
+    if (!path.is_root() && fs->exists(path)) {
+      (void)fs->unlink(path);
+    }
   }
-  read_journal_from(in_save_directory(slot_store_journal_working));
-}
-
-void slot_store::changed() {
-  if (!live()) {
-    return;
-  }
-  write_automap_to(in_save_directory(slot_store_automap_working));
-}
-
-void slot_store::journal_changed() {
-  if (!live() || journal_ == nullptr || !journal_->log_changed()) {
-    return;
-  }
-  write_journal_to(in_save_directory(slot_store_journal_working));
-  // Down, because the bytes are on the disk now. The flag is what stops
-  // this being written again by the save that follows a citation, and
-  // what lets a load refresh the working file through this same call.
-  journal_->clear_log_changed();
 }
 
 void slot_store::saw(const machine::file_event& event) {
@@ -197,10 +190,7 @@ void slot_store::saw(const machine::file_event& event) {
       }
       slot_ = letter;
       if (saving) {
-        // The working tables follow the save, and the slot gets its own
-        // snapshot of each.
-        changed();
-        journal_changed();
+        // The slot gets its own snapshot of each.
         write_automap_to(automap_slot_path(letter));
         if (journal_ != nullptr) {
           // Written even when the log is empty, which is eight bytes of
@@ -221,18 +211,9 @@ void slot_store::saw(const machine::file_event& event) {
         // seen and cite entries it has never been sent to.
         box_->automap().forget_records();
         read_automap_from(automap_slot_path(letter));
-        // And the working table follows, so that it holds what this
-        // machine now holds. Without this a run that loaded a slot and
-        // then stopped without exploring anything would leave the
-        // *previous* party's table as the working one, and the next run
-        // would start by reading it back in.
-        changed();
         if (journal_ != nullptr) {
           journal_->forget_seen();
           read_journal_from(journal_slot_path(letter));
-          // The log's working file, for the same reason — and through
-          // the flag, which both of the two lines above raise.
-          journal_changed();
           // And into the machine the reader draws from, which is the one
           // step the exploration does not need: the automap seam reads
           // `box.automap()` itself, while the journal's log is *copied*

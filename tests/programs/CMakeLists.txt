@@ -31,6 +31,7 @@ add_library(amberfolio-programs STATIC
   harness.cpp
   machine_harness.cpp
   machine_programs.cpp
+  select_yellow_program.cpp
   programs.cpp)
 add_library(amberfolio::programs ALIAS amberfolio-programs)
 

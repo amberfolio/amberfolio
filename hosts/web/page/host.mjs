@@ -145,7 +145,7 @@ export const HOST_SERVICES = [
 ];
 
 /// What one enabled seam did, as the desktop host says it at the end of a
-/// run (hosts/sdl/src/main.cpp): `armed fired=N`, or `inert fired=N`, and
+/// run (hosts/sdl/src/seam_host.cpp): `armed fired=N`, or `inert fired=N`, and
 /// the sentence that names the failure when an armed seam fired nothing.
 ///
 /// Here rather than in either caller because both hosts have to say it
@@ -257,6 +257,64 @@ export const AF_TRACE_REPORT_CAPACITY = 32768;
 
 /// Unpack af_version()'s 0x00MMmmpp. The one place JS knows the packing;
 /// keep it in step with AF_VERSION_* in core/include/amberfolio/abi.h.
+/// Bytes a cell takes in the screen-text buffer: the character, then the
+/// ink, then the paper (abi.h's `AF_SCREEN_TEXT_CELL_BYTES`).
+export const SCREEN_TEXT_CELL_BYTES = 3;
+
+/// The screen-text buffer as rows of runs, which is the shape a reader
+/// wants: `[{ y, runs: [{ x, text, fg, bg }] }]`, `x` and `y` in cells
+/// (eight pixels each), `fg` and `bg` palette indices.
+///
+/// A run is text drawn in one pair of colours, so a letter drawn in a
+/// different ink from its word — a menu's shortcut letter — is a run of
+/// its own, and that is the point. A blank cell is a space inside a run
+/// on the same paper; two blanks together, or a cell that is not text,
+/// end it, so things that are apart on the screen are apart here.
+/// A cell whose bitmap is more than one character's reads as U+FFFD.
+/// Rows with no text are left out.
+export function screenTextRows(cells, columns, rows) {
+  const out = [];
+  for (let y = 0; y < rows; y += 1) {
+    const runs = [];
+    let run = null;
+    let blanks = 0;
+    const close = () => {
+      if (run !== null) {
+        run.text = run.text.trimEnd();
+        runs.push(run);
+      }
+      run = null;
+      blanks = 0;
+    };
+    for (let x = 0; x < columns; x += 1) {
+      const at = (y * columns + x) * SCREEN_TEXT_CELL_BYTES;
+      const code = cells[at];
+      const fg = cells[at + 1];
+      const bg = cells[at + 2];
+      if (code === 0) {
+        close();
+      } else if (code === 0x20) {
+        if (run === null) continue;
+        if (fg !== run.bg || blanks === 1) {
+          close();
+          continue;
+        }
+        blanks += 1;
+        run.text += ' ';
+      } else {
+        const text = code === 1 ? '�' : String.fromCharCode(code);
+        if (run !== null && (run.fg !== fg || run.bg !== bg)) close();
+        if (run === null) run = { x, text: '', fg, bg };
+        blanks = 0;
+        run.text += text;
+      }
+    }
+    close();
+    if (runs.length !== 0) out.push({ y, runs });
+  }
+  return out;
+}
+
 export function unpackVersion(packed) {
   return {
     major: (packed >>> 16) & 0xff,
@@ -450,6 +508,45 @@ export class Machine {
     return this.module.HEAPU8.subarray(ptr, ptr + entries * 3);
   }
 
+  /// The text on the screen now, read back in the program's own font
+  /// (`machine/screen_text.h`): `{ rows }`, grouped by `screenTextRows()`
+  /// below, or `{ rows: null, reason }` when there is none to read —
+  /// `no_program`, `wrong_binary` (a program this build has no font
+  /// location for) or `no_font` (the program has not installed it yet).
+  ///
+  /// A read, like `framebufferView()`: taken between `runUntil()` calls,
+  /// computed on the spot, and nothing about the machine changes.
+  screenText() {
+    const columns = this.module._af_screen_text_columns();
+    const rows = this.module._af_screen_text_rows();
+    const size = columns * rows * SCREEN_TEXT_CELL_BYTES;
+    const whyMax = 32;
+    const scratch = this.module._malloc(size + whyMax);
+    if (scratch === 0) {
+      throw new Error('out of wasm heap while reading the screen text');
+    }
+    try {
+      const status = this.module._af_machine_screen_text(
+        this.handle,
+        scratch,
+        size,
+        scratch + size,
+        whyMax,
+      );
+      if (status !== AF_OK) return { rows: null, reason: 'no_machine' };
+      const heap = this.module.HEAPU8;
+      let end = scratch + size;
+      while (end < scratch + size + whyMax && heap[end] !== 0) end += 1;
+      const reason = String.fromCharCode(...heap.subarray(scratch + size, end));
+      if (reason !== 'none') return { rows: null, reason };
+      return {
+        rows: screenTextRows(heap.slice(scratch, scratch + size), columns, rows),
+      };
+    } finally {
+      this.module._free(scratch);
+    }
+  }
+
   /// Copy `bytes` into the machine's RAM at physical `address`. Answers
   /// an AF_* status.
   writeMemory(address, bytes) {
@@ -507,8 +604,8 @@ export class Machine {
     return this.module._af_machine_set_entry(this.handle, cs, ip, ss, sp);
   }
 
-  /// Post an XT make/break scancode (0x01-0x53, keyboard.h), stamped at
-  /// the machine's current virtual time.
+  /// Post an XT make/break scancode (0x01-0x53, or a cursor-pad key's
+  /// 0x67-0x73, keyboard.h), stamped at the machine's current virtual time.
   postKey(scancode, down) {
     return this.module._af_machine_post_key(
       this.handle,
@@ -1184,7 +1281,7 @@ export class Machine {
         pulledAt: this.module._af_machine_seam_pulled_at(this.handle, i),
         // What document this seam is gated on, in core's words (#171).
         // `no document` for every seam in this build since #290: the
-        // code-wheel bypass was the one gate, and it waits for a person
+        // code-wheel seam was the one gate, and it waits for a person
         // answering the challenge now rather than for a PDF (#291).
         gate: this.#text((out, max) => this.module._af_machine_seam_gate(this.handle, i, out, max), 64) ?? '',
       });
@@ -1205,16 +1302,15 @@ export class Machine {
 
   /// Keep this playthrough's progress beside its saves, in this module's
   /// own filesystem (M5-E2c #173, #351) — the same object and the same
-  /// two files the desktop host's `--save-sidecars` writes: what the
-  /// automap has explored, and which journal entries the game has cited.
+  /// files the desktop host's `--save-sidecars` writes, one pair per saved
+  /// game: what the automap has explored, and which journal entries the
+  /// game has cited.
   ///
   /// **Call it once the files are in and before the program is loaded**:
-  /// turning it on reads the working exploration table off the
-  /// filesystem, and an empty filesystem has nothing to give it. The read
-  /// log comes back through `journalSeenRestore()`, which is called later
-  /// because the store it goes into is the page's. Off unless a caller
-  /// asks, because writing into a filesystem somebody dropped a game into
-  /// is not something to do unasked.
+  /// turning it on reads where the copy saves off the filesystem, and it
+  /// has to be watching before the program loads a slot. Off unless a
+  /// caller asks, because writing into a filesystem somebody dropped a
+  /// game into is not something to do unasked.
   saveSidecars(on) {
     return this.module._af_web_save_sidecars(this.handle, on ? 1 : 0);
   }
@@ -1285,17 +1381,12 @@ export class Machine {
   /// one of them. The text reaches the reader through the host-service
   /// pointer, which is the module's; the log — what the game has cited
   /// and which of it this player has opened — lives in the machine, and
-  /// this is what puts it there. Without it a browser forgets every `*`
-  /// on reload while a terminal does not.
+  /// this is what puts it there (#237).
   ///
   /// **Call it after `journalStoreRead()`**, on the machine the reader
   /// will run in: the rows come out of the store, so a store that has
   /// not been read back yet has none to give. Twice is harmless — a log
   /// that already holds a row does not gain a second copy of it.
-  ///
-  /// It also picks up the log's sidecar beside the save, when
-  /// `saveSidecars()` asked for one; that is why it is called after the
-  /// files are in.
   ///
   /// `AF_OK`, or `AF_NO_MACHINE` for a machine that has been destroyed.
   journalSeenRestore() {
@@ -1430,6 +1521,51 @@ export class Machine {
   /// keeps the answer between visits is #292.
   codeWheelAnswered() {
     return this.module._af_machine_code_wheel_answered(this.handle) !== 0;
+  }
+
+  /// Whether the program is reading a line of text right now (#504): true
+  /// from the line editor's first instruction until its return, false
+  /// outside it, and **null when nothing is watching** — `modern-controls`
+  /// off or unavailable, or no program loaded. A page that paints its own
+  /// keyboard asks once a frame and puts it up on true; it must not guess
+  /// the same thing from the screen.
+  textEntry() {
+    const answer = this.module._af_machine_text_entry(this.handle);
+    if (answer === 1) return true;
+    if (answer === 0) return false;
+    return null;
+  }
+
+  /// Where the party is and what is around it (#520, #521, #523), parsed:
+  /// on the interior screen `{ screen: 'explore', x, y, facing, around,
+  /// view, map, ... }`, on the overland `{ screen: 'travel', x, y, facing,
+  /// window, ... }`, in a fight `{ screen: 'combat', turn, waiting,
+  /// nearest, aim, combatants, window, ... }`, and **null while nothing
+  /// knows** — no program, or a screen no shape covers (a menu, the camp).
+  /// `map` is null while the automap is off, because then nothing records
+  /// where the party has been; `aim` is absent while `modern-controls` is
+  /// off, because then nothing watches the aim bar. `docs/hosts.md` §13
+  /// has every field. A read, so a page that never asks pays nothing.
+  scene() {
+    const needed = this.module._af_machine_scene_json(this.handle, 0, 0);
+    const scratch = this.module._malloc(needed + 1);
+    if (scratch === 0) {
+      throw new Error('out of wasm heap while reading the scene');
+    }
+    try {
+      this.module._af_machine_scene_json(this.handle, scratch, needed + 1);
+      // Plain printable ASCII: the core writes nothing else. In chunks,
+      // because a whole explored map is past what some engines take in
+      // one spread call (`#report`).
+      const bytes = this.module.HEAPU8.subarray(scratch, scratch + needed);
+      let text = '';
+      for (let i = 0; i < bytes.length; i += 4096) {
+        text += String.fromCharCode(...bytes.subarray(i, i + 4096));
+      }
+      return JSON.parse(text);
+    } finally {
+      this.module._free(scratch);
+    }
   }
 
   setCodeWheelAnswered(answered) {
@@ -1767,18 +1903,17 @@ export function loadDemoProgram(machine) {
 // left/right distinction exists in hardware for them, unlike Shift, which
 // genuinely has two. Both browser variants of Ctrl and Alt therefore map
 // to the same single scancode; there is nothing else it could mean on
-// this machine. Keys the 83-key board never had (F11/F12, a numpad
-// Enter, a right Ctrl/Alt as distinct keys) are simply absent — the same
+// this machine. The numpad's Enter is folded onto the one Enter the board
+// has, for the same reason. Keys the 83-key board never had (F11/F12, a
+// right Ctrl/Alt as distinct keys) are simply absent — the same
 // "not modelled, not guessed" gap keyboard.h documents.
 //
-// The arrow, Home/End, Page and Insert/Delete rows are the same keys as
-// the numeric keypad, and that is not an approximation: on an 83-key
-// board there *is* no separate cursor pad, and a program reads 48h for
-// "up" whether the player pressed Numpad8 or the arrow a later keyboard
-// added. Mapping them onto the same scancodes is what a real XT keyboard
-// does; leaving them out, which is what this table did until M3-F2
-// (#84), is what made a keyboard-driven game unplayable in a browser
-// while the desktop host had had them since M2-H1.
+// The arrow, Home/End, Page and Insert/Delete keys are the one thing a
+// 101-key board adds that is mapped: the cursor pad, each key its keypad
+// twin's code plus 0x20 (keyboard.h's `cursor_pad_of`, #517). A program
+// still reads 48h for "up" from either, but Num Lock, which a player
+// turns on to type amounts on the keypad, reaches only the keypad, so the
+// arrows keep moving while it is on.
 export const XT_SCANCODES = Object.freeze({
   Escape: 0x01,
   Digit1: 0x02,
@@ -1808,6 +1943,7 @@ export const XT_SCANCODES = Object.freeze({
   BracketLeft: 0x1a,
   BracketRight: 0x1b,
   Enter: 0x1c,
+  NumpadEnter: 0x1c,
   ControlLeft: 0x1d,
   ControlRight: 0x1d,
   KeyA: 0x1e,
@@ -1866,18 +2002,18 @@ export const XT_SCANCODES = Object.freeze({
   Numpad0: 0x52,
   NumpadDecimal: 0x53,
 
-  // The cursor pad, onto the keypad codes it shares with an 83-key
-  // board — see the note above.
-  Home: 0x47,
-  ArrowUp: 0x48,
-  PageUp: 0x49,
-  ArrowLeft: 0x4b,
-  ArrowRight: 0x4d,
-  End: 0x4f,
-  ArrowDown: 0x50,
-  PageDown: 0x51,
-  Insert: 0x52,
-  Delete: 0x53,
+  // The cursor pad, its keypad twin's code plus 0x20 — see the note
+  // above.
+  Home: 0x67,
+  ArrowUp: 0x68,
+  PageUp: 0x69,
+  ArrowLeft: 0x6b,
+  ArrowRight: 0x6d,
+  End: 0x6f,
+  ArrowDown: 0x70,
+  PageDown: 0x71,
+  Insert: 0x72,
+  Delete: 0x73,
 });
 
 /// `KeyboardEvent.code` -> XT scancode, or `undefined` for a key the
@@ -2129,6 +2265,61 @@ export function releaseLatched(module, latched) {
   } finally {
     module._free(scratch);
   }
+}
+
+// --- The key card (#427) ------------------------------------------------
+//
+// The game's keys by context, as data: one table in `hosts/common`
+// (`amberfolio/host/key_card.h`) that the desktop host paints and this
+// page renders, so a change to the card is a change to that table and to
+// no shell. Machine-less, like the keyboard's tables above — a card is
+// not a fact about a loaded program — and plain data: a page that wants
+// the card reads it once with `readKeyCard()` and renders it however it
+// likes.
+//
+// A row may name a seam. It is shown only while that seam is on, which is
+// the page's to decide because it is the page that learns a seam has been
+// switched: `visibleKeyCard()` is that rule, the one `key_card_for()` has
+// in C++, and `tests/smoke.mjs` checks it over the card the module hands
+// out.
+
+/// The whole card, once:
+///
+///   `{ legend, contexts: [{ id, title, shell, rows: [{ keys, does, seam }] }] }`
+///
+/// `shell` is `both` for the game's own keys, and `desktop` or `page` for
+/// the keys one shell takes for itself. `seam` is empty for a row about
+/// the program as it is.
+export function readKeyCard(module) {
+  const needed = module._af_web_key_card_json(0, 0);
+  const scratch = module._malloc(needed + 1);
+  if (scratch === 0) {
+    throw new Error('out of wasm heap while reading the key card');
+  }
+  try {
+    module._af_web_key_card_json(scratch, needed + 1);
+    // Plain printable ASCII, which the unit suite holds the table to.
+    const text = String.fromCharCode(
+      ...module.HEAPU8.subarray(scratch, scratch + needed),
+    );
+    return JSON.parse(text);
+  } finally {
+    module._free(scratch);
+  }
+}
+
+/// The card as one shell shows it: the contexts for `shell` and for
+/// `both`, each with only the rows whose seam `seamIsOn(id)` says is on
+/// or that name none, and no context left with nothing to show. The
+/// rule `key_card_for()` has in C++.
+export function visibleKeyCard(card, shell, seamIsOn) {
+  const contexts = [];
+  for (const context of card.contexts) {
+    if (context.shell !== 'both' && context.shell !== shell) continue;
+    const rows = context.rows.filter((row) => row.seam === '' || seamIsOn(row.seam));
+    if (rows.length !== 0) contexts.push({ ...context, rows });
+  }
+  return contexts;
 }
 
 // --- Console bytes -> text -------------------------------------------------
