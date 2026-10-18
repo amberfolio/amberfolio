@@ -3093,20 +3093,30 @@ image offset `0xA69C`, spins each millisecond out and then `dec dx` at
 `0xA6B7`; nothing is pushed between its entry and there, so its caller's
 far return is at `SS:SP`. A monster walking up to the party is a run of
 script pauses between frames, counted down in the word at `+0x582` of
-the game-state block DGROUP `0x49D6` points at (a far pointer).
+the game-state block DGROUP `0x49D6` points at (a far pointer). And a
+death in a fight is a sound timed by the pause: the routine that takes a
+downed figure off the field (overlay 31, load-segment word `0x3E10`)
+turns the music gate off, starts the death's sound, calls the pause
+(returning to `0x1018`, or `0x0E34` outside a fight), and turns the gate
+back on, which stops the driver and the sound with it.
 
 **Points**, in the resident image:
 
 | point | what the handler does |
 | --- | --- |
-| `0x7E5B`, the pause's `push ax` | raises AX to the setting when the setting is longer, unless the far return in the frame is the script opcode's, in overlay 3's segment now, and the approach's count is not zero: that pause is a beat of the walk-up and keeps the game's length |
-| `0xA6B7`, `Delay`'s `dec dx` | when the far return at `SS:SP` is `0x7E61`'s and a key is waiting in the BIOS buffer, takes the key and sets DX to 1, so the spin ends at this millisecond. Every other `Delay` runs as it did |
+| `0x7E5B`, the pause's `push ax` | raises AX to the setting when the setting is longer, unless the far return in the frame is the death routine's (overlay 31's segment now) or the script opcode's (overlay 3's) while the approach's count is not zero: those pauses are a sound's length and a beat of the walk-up, and keep the game's |
+| `0xA6B7`, `Delay`'s `dec dx` | when the far return at `SS:SP` is `0x7E61`'s, the pause's caller (at `[BP+2]`, which `Delay` leaves alone) is not one of those, and a key is waiting in the BIOS buffer, takes the key and sets DX to 1, so the spin ends at this millisecond. Every other `Delay` runs as it did |
 
 - **The number** is `pause`, in `ms`, 0 to 10,000 in steps of 250,
   initially 1500 (§6). 0 keeps the game's length and only adds the key.
   A game speed whose pause is longer than the number is left alone.
 - **The key is used up.** A key typed ahead during a pause ends it and
   does not go on to answer the next prompt.
+- **Rejected**: lengthening the death routine's pause with the rest. The
+  sound plays out until the gate after the pause stops it, so at 1500 the
+  death sound ran 1.65 s where the game's own run of `fight` gives it
+  0.45 s: an effect the game always cut short, heard whole, which the
+  maintainer heard as a weird change on the first build.
 - **Refuses** a DS that is not the data segment at either point, and a
   BP that is not the routine's frame (`BP == SP` at the `push ax`).
 - **`fired`** counts every millisecond of every `Delay` while the seam is

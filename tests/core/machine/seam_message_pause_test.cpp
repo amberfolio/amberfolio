@@ -52,6 +52,13 @@ constexpr std::uint16_t script_word = 0x200;
 constexpr std::uint16_t script_segment = 0x2D00;
 constexpr std::uint16_t script_return = 0x272B;
 
+/// Overlay 31's load-segment word, the segment the test puts there, and
+/// the death routine's two far returns.
+constexpr std::uint16_t death_word = 0x3E10;
+constexpr std::uint16_t death_segment = 0x2E00;
+constexpr std::uint16_t death_in_a_fight = 0x1018;
+constexpr std::uint16_t death_elsewhere = 0x0E34;
+
 /// The game-state block's far pointer, a block, and the approach's count.
 constexpr std::uint16_t data_state_block = 0x49D6;
 constexpr std::uint16_t block_segment = 0x4000;
@@ -76,6 +83,7 @@ struct rig {
     EXPECT_TRUE(parse_digest(known_editions().front().fingerprint, baseline));
     box->seams().loaded(baseline, image_load_segment);
     put_word(image_load_segment, script_word, script_segment);
+    put_word(image_load_segment, death_word, death_segment);
     put_word(data_segment, data_state_block, block_offset);
     put_word(data_segment, static_cast<std::uint16_t>(data_state_block + 2),
              block_segment);
@@ -150,16 +158,23 @@ struct rig {
     return box->processor().regs()[cpu::reg16::ax];
   }
 
-  /// Stand on `Delay`'s countdown with `dx` milliseconds left and
-  /// `returns_to` (from the image segment) as its far return; answer DX.
+  /// Stand on `Delay`'s countdown with `dx` milliseconds left,
+  /// `returns_to` (from the image segment) as its far return, and the
+  /// pause's own frame six bytes up with its caller's far return in it;
+  /// answer DX.
   [[nodiscard]] std::uint16_t count_down(
       std::uint16_t dx, std::uint16_t returns_to = pause_return,
-      std::uint16_t ds = data_segment) const {
+      std::uint16_t ds = data_segment,
+      std::uint16_t from_segment = other_segment,
+      std::uint16_t from_offset = other_return) const {
     box->memory().ram()[cpu::physical_address(image_load_segment, countdown)] =
         0xF4;
     put_word(stack_segment, frame, returns_to);
     put_word(stack_segment, static_cast<std::uint16_t>(frame + 2),
              image_load_segment);
+    put_word(stack_segment, static_cast<std::uint16_t>(frame + 8), from_offset);
+    put_word(stack_segment, static_cast<std::uint16_t>(frame + 10),
+             from_segment);
     box->processor().reset();
     cpu::registers& r = box->processor().regs();
     r[cpu::sreg::cs] = image_load_segment;
@@ -167,6 +182,7 @@ struct rig {
     r[cpu::sreg::ds] = ds;
     r[cpu::sreg::ss] = stack_segment;
     r[cpu::reg16::sp] = frame;
+    r[cpu::reg16::bp] = static_cast<std::uint16_t>(frame + 6);
     r[cpu::reg16::dx] = dx;
     box->step();
     return box->processor().regs()[cpu::reg16::dx];
@@ -254,6 +270,40 @@ TEST(SeamMessagePause, FollowsTheOverlayManagersWord) {
   r.put_word(image_load_segment, script_word, 0);
   EXPECT_EQ(r.pause(speed_one, 0, script_return), 1500U)
       << "a module that is not loaded has no call sites";
+}
+
+TEST(SeamMessagePause, LeavesADeathsSoundItsLength) {
+  const rig r;
+  r.arm();
+  EXPECT_EQ(r.pause(speed_one, death_segment, death_in_a_fight), speed_one)
+      << "the gate goes back on after it, and that ends the sound";
+  EXPECT_EQ(r.pause(speed_one, death_segment, death_elsewhere), speed_one);
+  r.type(0x1C0D);
+  EXPECT_EQ(r.count_down(900, pause_return, data_segment, death_segment,
+                         death_in_a_fight),
+            900U)
+      << "and a key does not cut it shorter than the game does";
+  EXPECT_EQ(r.keys_waiting(), 1U);
+}
+
+TEST(SeamMessagePause, FindsTheDeathRoutineWhereTheManagerPutIt) {
+  const rig r;
+  r.arm();
+  r.put_word(image_load_segment, death_word, 0x3100);
+  EXPECT_EQ(r.pause(speed_one, death_segment, death_in_a_fight), 1500U)
+      << "overlay 31 is somewhere else, so this is not its code";
+  EXPECT_EQ(r.pause(speed_one, 0x3100, death_in_a_fight), speed_one);
+}
+
+TEST(SeamMessagePause, AKeyDoesNotCutAnApproachBeat) {
+  const rig r;
+  r.arm();
+  r.set_approach(2);
+  r.type(0x1C0D);
+  EXPECT_EQ(r.count_down(900, pause_return, data_segment, script_segment,
+                         script_return),
+            900U);
+  EXPECT_EQ(r.keys_waiting(), 1U);
 }
 
 TEST(SeamMessagePause, DeclinesAnotherDataSegment) {

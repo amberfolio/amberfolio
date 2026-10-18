@@ -57,18 +57,31 @@
 // down. A pause the opcode makes while the count is not zero is a beat
 // of that animation, not a message, and is left at the game's length.
 //
+// **A death's pause is its sound's length.** In a fight, the routine that
+// takes a downed figure off the field (overlay 31, load-segment word
+// `0x3E10`) turns the music gate off, which leaves the sound driver
+// running with nobody waiting on it, starts the death's sound, and calls
+// the pause, returning to `0x1018` (or `0x0E34` outside a fight); after
+// it, the gate goes back on, and that stops the driver and the sound with
+// it. So that pause is how much of the sound is heard: a quarter of a
+// second at game speed 1. Lengthened, the player hears the rest of an
+// effect the game always cut short (heard on the first build). Those
+// two calls are left at the game's length, and a key does not end them.
+//
 //
 // What the seam does
 // ------------------
 //
 // At the `push ax`, it raises AX to the setting when the setting is
 // longer, so `Delay` spins for that many milliseconds, unless the caller
-// is the script's opcode in the middle of an approach. A longer game
-// speed than the setting is left as the player chose it.
+// is the script's opcode in the middle of an approach or a death's sound.
+// A longer game speed than the setting is left as the player chose it.
 //
 // At the `dec dx`, when the far return on the stack is the pause's own,
-// and a key is waiting in the BIOS buffer at 40:1Eh, it takes the key off
-// the buffer and sets DX to one, so the loop ends at this millisecond.
+// its caller is not one of those, and a key is waiting in the BIOS buffer
+// at 40:1Eh, it takes the key off the buffer and sets DX to one, so the
+// loop ends at this millisecond. `Delay` leaves BP alone, so the pause's
+// frame, and its caller's far return, are still at `[BP+2]` there.
 // Any `Delay` the pause did not make, the typing and the music included,
 // runs as it always did.
 //
@@ -125,6 +138,14 @@ constexpr std::uint16_t dgroup_paragraphs = 0xC7C;
 constexpr std::uint16_t script_load_segment_at = 0x200;  // overlay 3
 constexpr std::uint16_t script_return_offset = 0x272B;
 
+/// The death routine's calls: its overlay's load-segment word, from the
+/// image segment, and the offsets the calls return to.
+constexpr std::uint16_t death_load_segment_at = 0x3E10;  // overlay 31
+constexpr std::array<std::uint16_t, 2> death_return_offsets{
+    0x1018,  // in a fight
+    0x0E34,  // anywhere else
+};
+
 /// The far pointer to the game-state block, and the approach's count in
 /// it.
 constexpr std::uint16_t data_state_block = 0x49D6;
@@ -173,6 +194,33 @@ constexpr std::uint16_t pause_initial = 1500;
                                                   state_approach_frames)) != 0;
 }
 
+/// Whether the pause was called by the death routine, whose pause is how
+/// long the death's sound is heard.
+[[nodiscard]] bool death_sound(cpu::processor& cpu, const seam_context& ctx,
+                               std::uint16_t segment, std::uint16_t offset) {
+  const auto image = static_cast<std::uint16_t>(ctx.image_base() >> 4U);
+  const std::uint16_t death = cpu.read_word(image, death_load_segment_at);
+  if (death == 0) {
+    return false;
+  }
+  for (const std::uint16_t site : death_return_offsets) {
+    if (linear(segment, offset) == linear(death, site)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// Whether the pause called from `segment:offset` is not a message's, and
+/// keeps the game's length.
+[[nodiscard]] bool keeps_its_length(cpu::processor& cpu,
+                                    const seam_context& ctx, std::uint16_t ds,
+                                    std::uint16_t segment,
+                                    std::uint16_t offset) {
+  return death_sound(cpu, ctx, segment, offset) ||
+         approach_beat(cpu, ctx, ds, segment, offset);
+}
+
 void lengthen_the_pause(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   cpu::registers& regs = cpu.regs();
@@ -192,7 +240,7 @@ void lengthen_the_pause(machine& box, seam_context& ctx) {
       cpu.read_word(ss, static_cast<std::uint16_t>(bp + frame_return));
   const std::uint16_t return_segment =
       cpu.read_word(ss, static_cast<std::uint16_t>(bp + frame_return + 2));
-  if (approach_beat(cpu, ctx, ds, return_segment, return_offset)) {
+  if (keeps_its_length(cpu, ctx, ds, return_segment, return_offset)) {
     return;
   }
   regs[cpu::reg16::ax] = wanted;
@@ -224,8 +272,17 @@ void end_on_a_key(machine& box, seam_context& ctx) {
     // itself.
     return;
   }
-  if (regs[cpu::sreg::ds] != dgroup_of(ctx)) {
+  const std::uint16_t ds = regs[cpu::sreg::ds];
+  if (ds != dgroup_of(ctx)) {
     ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  const std::uint16_t bp = regs[cpu::reg16::bp];
+  const std::uint16_t caller_offset =
+      cpu.read_word(ss, static_cast<std::uint16_t>(bp + frame_return));
+  const std::uint16_t caller_segment =
+      cpu.read_word(ss, static_cast<std::uint16_t>(bp + frame_return + 2));
+  if (keeps_its_length(cpu, ctx, ds, caller_segment, caller_offset)) {
     return;
   }
   if (cpu.read_word(bda::segment, bda::keyboard_buffer_head) ==

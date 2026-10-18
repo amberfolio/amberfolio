@@ -540,7 +540,8 @@ file. 0 keeps the game's own length and only adds the key.
 **What it will not do.** Slow anything else. The game's own speed
 setting (Encamp, Alter, Speed) slows the walk and every animation with
 the messages; this leaves them alone, and a game speed longer than the
-number is left as you set it. A monster's approach keeps its own beat.
+number is left as you set it. A monster's approach keeps its own beat,
+and so does a death in a fight, whose pause is how long its sound plays.
 A scripted line the script replaces with no pause at all is not
 lengthened, since there is no pause to lengthen.
 
