@@ -31,6 +31,7 @@ TEST(DesktopConfig, ReadsEverySettingItCanHold) {
       "program START.EXE\n"
       "seam automap\n"
       "seam journal\n"
+      "setting message-pause 2000\n"
       "journal-ocr /usr/bin/tesseract\n"
       "volume 75\n"
       "mute on\n"
@@ -51,6 +52,8 @@ TEST(DesktopConfig, ReadsEverySettingItCanHold) {
   // said them at all.
   EXPECT_EQ(config.seams,
             (std::optional<std::vector<std::string>>{{"automap", "journal"}}));
+  EXPECT_EQ(config.settings, (std::optional<std::vector<seam_setting_choice>>{
+                                 {{.seam = "message-pause", .value = 2000}}}));
   EXPECT_EQ(config.journal_ocr, "/usr/bin/tesseract");
   EXPECT_EQ(config.volume_percent, 75U);
   EXPECT_EQ(config.muted, true);
@@ -66,6 +69,8 @@ TEST(DesktopConfig, RoundTrips) {
                          "game-directory D:\\games\\por\n"
                          "program START.EXE\n"
                          "seam explored\n"
+                         "setting message-pause 0\n"
+                         "setting another-seam 65535\n"
                          "volume 0\n"
                          "mute off\n"
                          "speed 386\n"
@@ -78,6 +83,7 @@ TEST(DesktopConfig, RoundTrips) {
   EXPECT_EQ(again.game_directory, config.game_directory);
   EXPECT_EQ(again.program, config.program);
   EXPECT_EQ(again.seams, config.seams);
+  EXPECT_EQ(again.settings, config.settings);
   EXPECT_EQ(again.volume_percent, config.volume_percent);
   EXPECT_EQ(again.muted, config.muted);
   EXPECT_EQ(again.speed, config.speed);
@@ -93,6 +99,7 @@ TEST(DesktopConfig, SaysNothingAboutWhatNobodyChose) {
                   .ok());
 
   EXPECT_FALSE(config.seams.has_value());
+  EXPECT_FALSE(config.settings.has_value());
   EXPECT_FALSE(config.journal_ocr.has_value());
   EXPECT_FALSE(config.volume_percent.has_value());
   // A config that named no engine is the whole of "go and look"
@@ -126,7 +133,7 @@ TEST(DesktopConfig, RefusesAFileThatIsNotOne) {
 TEST(DesktopConfig, RefusesAConfigFromALaterBuild) {
   desktop_config config;
   const config_reading read =
-      config.parse("amberfolio-config 2\ngame-directory /x\n");
+      config.parse("amberfolio-config 3\ngame-directory /x\n");
   EXPECT_EQ(read.why, config_trouble::later_version);
   EXPECT_FALSE(config.game_directory.has_value());
 }
@@ -163,12 +170,36 @@ TEST(DesktopConfig, RefusesValuesThatAreNearlyRight) {
            std::string_view("mute yes"),
            std::string_view("save-sidecars 1"),
            std::string_view("program"),
+           std::string_view("setting message-pause"),
+           std::string_view("setting message-pause 2000ms"),
+           std::string_view("setting message-pause 65536"),
+           std::string_view("setting message-pause  2000"),
+           std::string_view("setting  2000"),
        }) {
     desktop_config config;
     const config_reading read = config.parse(
         std::string("amberfolio-config 1\n") + std::string(line) + "\n");
     EXPECT_FALSE(read.ok()) << line;
   }
+}
+
+TEST(DesktopConfig, RefusesASeamWhoseNumberIsGivenTwice) {
+  // Two answers to one question, and taking either would be the reading
+  // guessing which one was meant.
+  desktop_config config;
+  const config_reading read = config.parse(
+      "amberfolio-config 2\n"
+      "setting message-pause 2000\n"
+      "setting message-pause 500\n");
+  EXPECT_EQ(read.why, config_trouble::bad_value);
+  EXPECT_EQ(read.line, 3U);
+}
+
+TEST(DesktopConfig, StillReadsTheFirstVersion) {
+  // Every 1 is a 2 that names no setting.
+  desktop_config config;
+  ASSERT_TRUE(config.parse("amberfolio-config 1\nspeed at\n").ok());
+  EXPECT_EQ(config.speed, "at");
 }
 
 TEST(DesktopConfig, ReadsAFileSomebodyEditedOnWindows) {
@@ -188,7 +219,7 @@ TEST(DesktopConfig, ReadsAFileSomebodyEditedOnWindows) {
 TEST(DesktopConfig, ForgettingSerializesToAHeaderAlone) {
   const desktop_config nothing;
   EXPECT_TRUE(nothing.empty());
-  EXPECT_EQ(nothing.serialize(), "amberfolio-config 1\n");
+  EXPECT_EQ(nothing.serialize(), "amberfolio-config 2\n");
 
   desktop_config back;
   EXPECT_TRUE(back.parse(nothing.serialize()).ok());

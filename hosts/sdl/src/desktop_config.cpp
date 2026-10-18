@@ -22,6 +22,7 @@ namespace {
 constexpr std::string_view key_game_directory = "game-directory";
 constexpr std::string_view key_program = "program";
 constexpr std::string_view key_seam = "seam";
+constexpr std::string_view key_setting = "setting";
 constexpr std::string_view key_journal_ocr = "journal-ocr";
 constexpr std::string_view key_volume = "volume";
 constexpr std::string_view key_mute = "mute";
@@ -102,6 +103,25 @@ void split_line(std::string_view line, std::string_view& key,
   return true;
 }
 
+/// `ID VALUE`: a seam's id, one space, and a number a `std::uint16_t`
+/// holds (#531). The id is checked for nothing but being there; whether
+/// a seam by that name takes a number, and this one, is the engine's to
+/// say when the run applies it.
+[[nodiscard]] bool take_seam_setting(std::string_view text,
+                                     seam_setting_choice& out) {
+  const std::size_t space = text.find(' ');
+  if (space == 0 || space == std::string_view::npos) {
+    return false;
+  }
+  unsigned value = 0;
+  if (!take_number(text.substr(space + 1), value) || value > 0xFFFFU) {
+    return false;
+  }
+  out.seam = std::string(text.substr(0, space));
+  out.value = static_cast<std::uint16_t>(value);
+  return true;
+}
+
 /// `on` or `off`, and nothing that reads like either without being one.
 [[nodiscard]] bool take_switch(std::string_view text, bool& out) noexcept {
   if (text == "on") {
@@ -141,6 +161,22 @@ void split_line(std::string_view line, std::string_view& key,
       into.seams.emplace();
     }
     into.seams->emplace_back(value);
+  } else if (key == key_setting) {
+    seam_setting_choice choice;
+    if (!take_seam_setting(value, choice)) {
+      return config_trouble::bad_value;
+    }
+    if (!into.settings.has_value()) {
+      into.settings.emplace();
+    }
+    // A seam named twice is two answers to one question, and taking
+    // either would be this reading guessing which one was meant.
+    for (const seam_setting_choice& earlier : *into.settings) {
+      if (earlier.seam == choice.seam) {
+        return config_trouble::bad_value;
+      }
+    }
+    into.settings->push_back(std::move(choice));
   } else if (key == key_journal_ocr) {
     into.journal_ocr = std::string(value);
   } else if (key == key_volume) {
@@ -219,9 +255,10 @@ const char* config_trouble_name(config_trouble why) noexcept {
 
 bool desktop_config::empty() const noexcept {
   return !game_directory.has_value() && !program.has_value() &&
-         !seams.has_value() && !journal_ocr.has_value() &&
-         !volume_percent.has_value() && !muted.has_value() &&
-         !speed.has_value() && !scale.has_value() && !save_sidecars.has_value();
+         !seams.has_value() && !settings.has_value() &&
+         !journal_ocr.has_value() && !volume_percent.has_value() &&
+         !muted.has_value() && !speed.has_value() && !scale.has_value() &&
+         !save_sidecars.has_value();
 }
 
 std::string desktop_config::serialize() const {
@@ -238,6 +275,11 @@ std::string desktop_config::serialize() const {
   if (seams.has_value()) {
     for (const std::string& one : *seams) {
       put(out, key_seam, one);
+    }
+  }
+  if (settings.has_value()) {
+    for (const seam_setting_choice& one : *settings) {
+      put(out, key_setting, one.seam + ' ' + std::to_string(one.value));
     }
   }
   if (journal_ocr.has_value()) {

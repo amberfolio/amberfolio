@@ -62,19 +62,25 @@ static_assert(keyboard_controls.size() == keyboard_control_count);
 /// The keys the panel takes while it is up and the keyboard is not.
 /// `keyboard_control`'s make/break rule applies here for its reason:
 /// the break of a key whose make was taken is taken too.
+///
+/// `step` moves the focus, `toggles` turns the focused seam on or off,
+/// and `adjusts` moves its number (#531). Exactly one of the three is
+/// set on each; the other two are carried and never used, for the reason
+/// the keyboard's two commits carry a direction they never use.
 struct panel_control {
   SDL_Scancode code;
   int step;
   bool toggles;
+  int adjusts;
 };
 
-constexpr std::array<panel_control, 4> panel_controls{{
-    {.code = SDL_SCANCODE_UP, .step = -1, .toggles = false},
-    {.code = SDL_SCANCODE_DOWN, .step = 1, .toggles = false},
-    // The two that toggle carry a step they never use, for the reason
-    // the keyboard's two commits carry a direction they never use.
-    {.code = SDL_SCANCODE_RETURN, .step = 0, .toggles = true},
-    {.code = SDL_SCANCODE_KP_ENTER, .step = 0, .toggles = true},
+constexpr std::array<panel_control, 6> panel_controls{{
+    {.code = SDL_SCANCODE_UP, .step = -1, .toggles = false, .adjusts = 0},
+    {.code = SDL_SCANCODE_DOWN, .step = 1, .toggles = false, .adjusts = 0},
+    {.code = SDL_SCANCODE_RETURN, .step = 0, .toggles = true, .adjusts = 0},
+    {.code = SDL_SCANCODE_KP_ENTER, .step = 0, .toggles = true, .adjusts = 0},
+    {.code = SDL_SCANCODE_LEFT, .step = 0, .toggles = false, .adjusts = -1},
+    {.code = SDL_SCANCODE_RIGHT, .step = 0, .toggles = false, .adjusts = 1},
 }};
 static_assert(panel_controls.size() == panel_control_count);
 
@@ -183,6 +189,43 @@ void overlays::panel_toggle(std::size_t at) {
   remember_panel_seams(opts_, box_.seams());
 }
 
+void overlays::panel_adjust(std::size_t at, int direction) {
+  const std::vector<sdl::panel_row> rows = sdl::panel_rows(box_.seams());
+  if (at >= rows.size()) {
+    return;
+  }
+  // By value, for `panel_toggle()`'s reason.
+  const std::string id = rows[at].id;
+  const machine::seam_definition* seam = box_.seams().find(id);
+  if (seam == nullptr || !seam->setting.present()) {
+    return;
+  }
+  panel_repaint_ = true;
+  if (replaying_) {
+    // A recording's seams are its own initial condition, their numbers
+    // with them (docs/replay.md).
+    std::fprintf(stderr, "amberfolio: a replay's seams are the recording's\n");
+    return;
+  }
+  const std::uint16_t now = box_.seams().setting(id);
+  const std::uint16_t next =
+      sdl::stepped_setting(seam->setting, now, direction);
+  if (next == now) {
+    return;
+  }
+  if (const machine::seam_error why = box_.seams().set_setting(id, next);
+      why != machine::seam_error::none) {
+    std::fprintf(stderr, "amberfolio: setting %s=%u refused (%s)\n", id.c_str(),
+                 static_cast<unsigned>(next), seam_refusal(why));
+    return;
+  }
+  // Said, because the engine logs no edge for a number the way it does
+  // for a toggle; and then, like a toggle, written down.
+  std::fprintf(stderr, "amberfolio: setting %s=%u\n", id.c_str(),
+               static_cast<unsigned>(next));
+  remember_panel_setting(opts_, id, next);
+}
+
 void overlays::panel_move(int step) {
   const std::size_t rows = box_.seams().count();
   panel_repaint_ = true;
@@ -261,13 +304,24 @@ void overlays::mouse_button_down(const SDL_Event& event,
       taken_by_panel = true;
     } else if (sized && panel_shown_) {
       const std::vector<sdl::panel_row> rows = sdl::panel_rows(box_.seams());
-      const std::size_t at = sdl::row_under(
+      const sdl::panel_box fitted =
           sdl::fit_panel(sdl::panel_lines(rows, panel_focus_, document_notice_),
-                         window_width, window_height),
-          rows.size(), event.button.x, event.button.y);
+                         window_width, window_height);
+      const std::size_t at =
+          sdl::row_under(fitted, rows.size(), event.button.x, event.button.y);
       if (at != sdl::panel_no_row) {
         panel_focus_ = at;
-        panel_toggle(at);
+        // A click on the number's cell moves the number (#531); anywhere
+        // else on the row is the toggle it always was.
+        const int direction =
+            rows[at].setting.empty()
+                ? 0
+                : sdl::setting_direction_under(fitted, event.button.x);
+        if (direction != 0) {
+          panel_adjust(at, direction);
+        } else {
+          panel_toggle(at);
+        }
         taken_by_panel = true;
       }
     }
@@ -307,8 +361,8 @@ bool overlays::take_key(const SDL_Event& event) {
   const bool owned =
       control < keyboard_controls.size() &&
       (follows_make ? keyboard_taken_[control] : keyboard_shown_);
-  // And the panel takes up, down and Return while it is up and
-  // the keyboard is not (#383) — asked first, because the same
+  // And the panel takes up, down, left, right and Return while it is
+  // up and the keyboard is not (#383, #531) — asked first, because the same
   // break has to reach whichever overlay took its make.
   const std::size_t picked = panel_control_of(event.key.scancode);
   const bool panel_owned = picked < panel_controls.size() &&
@@ -316,7 +370,18 @@ bool overlays::take_key(const SDL_Event& event) {
                                          : (panel_shown_ && !keyboard_shown_));
   if (panel_owned && down) {
     panel_taken_[picked] = true;
-    if (!event.key.repeat) {
+    if (const int direction = panel_controls[picked].adjusts; direction != 0) {
+      // The one control whose repeats act: holding right walks the
+      // number up, which is what a player holding it expects. On the
+      // key card it turns the page instead, once a press.
+      if (card_shown_) {
+        if (!event.key.repeat) {
+          panel_move(direction);
+        }
+      } else if (panel_focus_ != sdl::panel_no_row) {
+        panel_adjust(panel_focus_, direction);
+      }
+    } else if (!event.key.repeat) {
       if (panel_controls[picked].toggles) {
         if (panel_focus_ != sdl::panel_no_row && !card_shown_) {
           panel_toggle(panel_focus_);
