@@ -16,7 +16,7 @@ library (`tests/sessions/README.md`) be committed.
 Plain text (`machine/replay.h`), one line per fact:
 
 ```
-amberfolio-recording 4 state=2
+amberfolio-recording 5 state=2
 program BOOT.EXE 3f1c…
 tail 202d4649525354 4c49474854
 cwd GAME
@@ -50,7 +50,13 @@ checkpoints, and `end`.
   name the program opens would resolve somewhere else. The program line
   names the program; the host finds it in that directory.
 
-- A `seam` line says the seam was on. A `pull` line says a person pulled
+- A `seam` line says the seam was on, and for a seam that takes a number
+  (`seam_setting`, #531) the number it ran with: `seam message-pause
+  1500`. A replay sets it before the first instruction and refuses one
+  that will not take (`a recorded seam's setting is not the one
+  recorded`). The number is written whether or not it is the seam's
+  initial, so a replay is the run that was made on a build whose initial
+  has since moved. A `pull` line says a person pulled
   its trigger at a tick (#161); it is an input event like a key, and a
   pull the engine refuses on replay is a divergence.
 - A checkpoint is the tick, the step count, the whole-state hash, and
@@ -142,8 +148,9 @@ happened.
 amberfolio ./disk GAME.EXE --replay session.rec
 ```
 
-The recording decides the speed, the seams, the wall seed and every key,
-so `--speed`, `--seam`, `--wall` and `--press` are refused alongside
+The recording decides the speed, the seams and their numbers, the wall
+seed and every key, so `--speed`, `--seam`, `--setting`, `--wall` and
+`--press` are refused alongside
 `--replay`, and `--record` with `--replay` is refused.
 
 The player (`machine::replay_player`) lives in core so both hosts and the
@@ -215,7 +222,7 @@ Two, independent, both on a recording's first line
 (`amberfolio-recording 4 state=2`):
 
 - **`recording_format_version`** (`machine/replay.h`), the line grammar.
-  It is **4** (#397's `cwd` line); 3 was #161's `pull` line and 2 #155's recursing manifest.
+  It is **5** (#531's number on a `seam` line); 4 was #397's `cwd` line, 3 #161's `pull` line and 2 #155's recursing manifest.
 - **`state_format_version`** (`machine/state.h`), the bytes a checkpoint
   hashes. It is **2** (#404's Tandy chip: its registers among the devices,
   its writes counted and digested beside the speaker's edges). A player

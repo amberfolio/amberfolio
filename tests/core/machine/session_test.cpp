@@ -193,15 +193,29 @@ TEST(SessionLibrary, TheRecordingsMadeSinceFormatThreeAreStillRead) {
   }
 }
 
-// And the ones made since format four (#397), which is what the host
-// writes now: the faces' pair, and the two all-on recordings (#446).
+// And the ones made in format four (#397): the faces' pair.
 TEST(SessionLibrary, TheRecordingsMadeSinceFormatFourAreStillRead) {
   for (const std::string_view name :
-       {"quiet-font-sans.rec", "quiet-font-chisel.rec", "quiet-all.rec",
-        "quiet-all-on-sight.rec"}) {
+       {"quiet-font-sans.rec", "quiet-font-chisel.rec"}) {
     const std::string text = read_session_file(name);
     ASSERT_FALSE(text.empty()) << name;
     EXPECT_THAT(text, ::testing::StartsWith("amberfolio-recording 4 state=2\n"))
+        << name;
+  }
+}
+
+// And the ones made since format five (#531), which is what the host
+// writes now, a seam's number on its line: the message-pause pair, and
+// the two all-on recordings, which carry the seam too.
+TEST(SessionLibrary, TheRecordingsMadeSinceFormatFiveCarryTheirNumbers) {
+  for (const std::string_view name :
+       {"quiet-message-pause.rec", "fight-pause.rec", "quiet-all.rec",
+        "quiet-all-on-sight.rec"}) {
+    const std::string text = read_session_file(name);
+    ASSERT_FALSE(text.empty()) << name;
+    EXPECT_THAT(text, ::testing::StartsWith("amberfolio-recording 5 state=2\n"))
+        << name;
+    EXPECT_THAT(text, ::testing::HasSubstr("\nseam message-pause 1500\n"))
         << name;
   }
 }

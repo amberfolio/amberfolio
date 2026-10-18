@@ -1,4 +1,4 @@
-amberfolio-recording 4 state=2
+amberfolio-recording 5 state=2
 program START.EXE d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd
 tail
 speed 1024
@@ -8,6 +8,7 @@ seam automap
 seam journal
 seam explored
 seam modern-controls
+seam message-pause 1500
 seam cheat-invulnerable
 seam cheat-kill-all
 seam cheat-wound-party
