@@ -198,7 +198,11 @@ class filesystem;
 ///
 /// 4 (#397): the preamble may carry `cwd PATH` — the directory the
 /// program was started in, when it was not the root.
-inline constexpr std::uint32_t recording_format_version = 4;
+///
+/// 5 (#533): a `seam` line may carry a number after the id — the value
+/// of the seam's setting (`seam_setting`, machine/seam.h) the run was
+/// made with.
+inline constexpr std::uint32_t recording_format_version = 5;
 
 /// The oldest format a player still **reads**, and the rule: a version is
 /// readable for as long as a recording of it may still exist.
@@ -248,6 +252,10 @@ inline constexpr std::uint32_t recording_format_pull = 3;
 /// ones were all made at the root, and one that carries the line anyway
 /// is refused on the same rule as a `pull`.
 inline constexpr std::uint32_t recording_format_cwd = 4;
+
+/// The first format whose `seam` line may carry a setting's value
+/// (#533). An older one that carries one is refused on the same rule.
+inline constexpr std::uint32_t recording_format_setting = 5;
 
 /// What one line of a recording says.
 enum class replay_line : std::uint8_t {
@@ -357,6 +365,10 @@ struct replay_event {
   /// `seam`, `pull`: the id, `id_length` of it.
   std::array<char, replay_max_id + 1> id{};
   std::size_t id_length{};
+  /// `seam`: the setting's value, when the line carries one (format 5
+  /// and up, #533).
+  bool have_setting{false};
+  std::uint16_t setting{};
 
   /// `wall`, `key`, `pull`, `checkpoint`, `end`: the tick.
   ticks at{};
@@ -441,6 +453,9 @@ struct replay_preamble {
   std::array<std::array<char, replay_max_id + 1>, max_seams> seams{};
   std::array<std::size_t, max_seams> seam_lengths{};
   std::size_t seam_count{};
+  /// Each seam's setting, where its line carried one (#533).
+  std::array<bool, max_seams> seam_has_setting{};
+  std::array<std::uint16_t, max_seams> seam_settings{};
 
   /// One manifest line: a `dir` or a `file`, in the order the walk
   /// produced it (this file's header says what that order is).

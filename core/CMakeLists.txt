@@ -89,6 +89,7 @@ add_library(amberfolio-core STATIC
   src/machine/seam_list_arrows.cpp
   src/machine/seam_menu_cursor.cpp
   src/machine/seam_quick_steps.cpp
+  src/machine/seam_message_pause.cpp
   src/machine/seam_roster_fix.cpp
   src/machine/seam_timer_fix.cpp
   src/machine/seam_modern_controls.cpp

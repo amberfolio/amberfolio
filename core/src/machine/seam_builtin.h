@@ -60,6 +60,10 @@ inline constexpr std::string_view modern_controls_id = "modern-controls";
 /// (seam_quick_steps.cpp).
 [[nodiscard]] const seam_definition& quick_steps_seam() noexcept;
 
+/// A message the program moves on from by itself stays up long enough to
+/// read (seam_message_pause.cpp, #533).
+[[nodiscard]] const seam_definition& message_pause_seam() noexcept;
+
 /// The pieces' points, in the order the registration offers them at an
 /// address two of them share: the pick-lists' arrows, the bars' keys, the
 /// main menu's cursor, the heroes' numbers, the line editor, the

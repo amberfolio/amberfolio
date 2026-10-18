@@ -444,8 +444,13 @@ uint32_t af_version(void);
 ///   * **3.3** — #520, one added entry point and nothing changed:
 ///     `af_machine_scene_json`, where the party is and what is around it
 ///     as one JSON string. Minor: a host that never asks is unaffected.
+///   * **3.4** — #533, four added entry points and nothing changed: a
+///     seam's one number (`machine::seam_setting`), read through
+///     `af_machine_seam_setting_name`, `_setting_limit` and `_setting`,
+///     and set through `af_machine_seam_set_setting`. Minor: a host that
+///     never asks runs every seam at its `initial`.
 #define AF_ABI_VERSION_MAJOR 3u
-#define AF_ABI_VERSION_MINOR 3u
+#define AF_ABI_VERSION_MINOR 4u
 
 // --- Facts about the machine ------------------------------------------
 //
@@ -1296,6 +1301,41 @@ double af_machine_seam_fired(const af_machine* box, uint32_t index);
 /// readable through `af_machine_seam_reason` on that seam.
 uint32_t af_machine_seam_enable(af_machine* box, const char* id);
 uint32_t af_machine_seam_disable(af_machine* box, const char* id);
+
+// --- A seam's number (#533) -----------------------------------------------
+//
+// One number a seam may take from a player (machine/seam.h,
+// `seam_setting`): how long a message waits, for `message-pause`.
+// Configuration like the enable, and kept across `af_machine_reset`, the
+// way a person's choice outlasts the run it was made in.
+
+/// The setting's name (`which` = AF_SEAM_SETTING_NAME) or its unit
+/// (AF_SEAM_SETTING_UNIT) for seam `index`, NUL-terminated into `out`.
+/// Answers the length, or 0 for a seam that takes no number.
+#define AF_SEAM_SETTING_NAME 0u
+#define AF_SEAM_SETTING_UNIT 1u
+uint32_t af_machine_seam_setting_name(const af_machine* box, uint32_t index,
+                                      uint32_t which, char* out, uint32_t max);
+
+/// The setting's bounds for seam `index`: AF_SEAM_SETTING_MINIMUM,
+/// _MAXIMUM, _STEP (how far one press of a panel's arrow moves it) or
+/// _INITIAL (what it is when nobody chose). 0 for a seam with none.
+#define AF_SEAM_SETTING_MINIMUM 0u
+#define AF_SEAM_SETTING_MAXIMUM 1u
+#define AF_SEAM_SETTING_STEP 2u
+#define AF_SEAM_SETTING_INITIAL 3u
+uint32_t af_machine_seam_setting_limit(const af_machine* box, uint32_t index,
+                                       uint32_t which);
+
+/// Seam `index`'s number now: what was set, or its initial. 0 for a seam
+/// with none.
+uint32_t af_machine_seam_setting(const af_machine* box, uint32_t index);
+
+/// Set the number of the seam called `id`, on or off. `AF_OK` if it took;
+/// `AF_INVALID` for no such seam, a seam that takes no number, or a value
+/// outside its bounds — refused, not clamped, and nothing changed.
+uint32_t af_machine_seam_set_setting(af_machine* box, const char* id,
+                                     uint32_t value);
 
 // --- Seam triggers (M4, #161) -------------------------------------------
 //

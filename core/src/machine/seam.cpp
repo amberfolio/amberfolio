@@ -101,6 +101,10 @@ const char* seam_reason_name(seam_reason reason) noexcept {
       return "not_triggered";
     case seam_reason::not_enabled:
       return "not_enabled";
+    case seam_reason::no_setting:
+      return "no_setting";
+    case seam_reason::setting_out_of_range:
+      return "setting_out_of_range";
   }
   return "unknown";
 }
@@ -250,6 +254,10 @@ void seam_context::set_scratch(unsigned slot, std::uint16_t value) noexcept {
   engine_->slots_[at].scratch[slot] = value;
 }
 
+std::uint16_t seam_context::setting() const noexcept {
+  return engine_->setting(id_);
+}
+
 std::uint16_t seam_engine::scratch(std::string_view id,
                                    unsigned word) const noexcept {
   const std::size_t at = index_of(id);
@@ -285,7 +293,7 @@ bool seam_engine::add(const seam_definition& seam) noexcept {
   if (registered_ == max_seams || index_of(seam.id) != max_seams) {
     return false;
   }
-  slots_[registered_] = {.seam = &seam};
+  slots_[registered_] = {.seam = &seam, .setting = seam.setting.initial};
   ++registered_;
   return true;
 }
@@ -694,6 +702,31 @@ seam_error seam_engine::pull(std::string_view id, ticks now) {
   s.pulled_at = now;
   rebuild_filter();
   report(id, seam_event_kind::pulled, seam_reason::none);
+  return seam_reason::none;
+}
+
+std::uint16_t seam_engine::setting(std::string_view id) const noexcept {
+  const std::size_t index = listed_index_of(id);
+  if (index == max_seams || !slots_[index].seam->setting.present()) {
+    return 0;
+  }
+  return slots_[index].setting;
+}
+
+seam_error seam_engine::set_setting(std::string_view id, std::uint16_t value) {
+  const std::size_t index = listed_index_of(id);
+  if (index == max_seams) {
+    return seam_reason::unknown_seam;
+  }
+  slot& s = slots_[index];
+  const seam_setting& setting = s.seam->setting;
+  if (!setting.present()) {
+    return seam_reason::no_setting;
+  }
+  if (value < setting.minimum || value > setting.maximum) {
+    return seam_reason::setting_out_of_range;
+  }
+  s.setting = value;
   return seam_reason::none;
 }
 

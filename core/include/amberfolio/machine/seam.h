@@ -485,6 +485,37 @@ struct seam_point {
   bool inside_calls{false};
 };
 
+/// The one number a seam may take from a player (#533): how long, how
+/// many, how far. Empty `name`, the default, is a seam with none.
+///
+/// **Configuration, like the enable, and more durable than it.** A value
+/// is what a person chose, so `seam_engine::clear()` and `reset()` leave
+/// it where it was, the way they leave an answered code wheel; a machine
+/// with the seam off hashes the same whatever the value; the
+/// serialization never sees it; and a recording writes it beside the
+/// seam it belongs to, so a replay is the run that was recorded even on a
+/// build whose `initial` has since moved (docs/replay.md).
+///
+/// A value outside `minimum`..`maximum` is refused rather than clamped:
+/// a recording or a config file that names one was written against
+/// another table, and quietly moving it would be the reader guessing.
+struct seam_setting {
+  /// What the number is, one or two words for a panel ("pause").
+  std::string_view name{};
+  /// What it counts, for a panel and a key card ("ms").
+  std::string_view unit{};
+  std::uint16_t minimum{};
+  std::uint16_t maximum{};
+  /// How far one press of a panel's arrow moves it.
+  std::uint16_t step{1};
+  /// The value a seam starts with when nobody has chosen one.
+  std::uint16_t initial{};
+
+  [[nodiscard]] constexpr bool present() const noexcept {
+    return !name.empty();
+  }
+};
+
 /// A seam, as a fact table: what it is, what it applies to, and where it
 /// intercepts.
 struct seam_definition {
@@ -554,6 +585,10 @@ struct seam_definition {
   /// they are; turning one on turns its sibling off everywhere at once,
   /// the panel, a config file and a replay's preamble alike.
   std::string_view group{};
+
+  /// The number a player may set, or none (`seam_setting`). A handler
+  /// reads it through `seam_context::setting()`.
+  seam_setting setting{};
 
   /// The schema this definition was written against — `seam_schema_version`
   /// at the time. Spelled in the definition rather than assumed, so the
@@ -640,6 +675,11 @@ enum class seam_reason : std::uint8_t {
   /// at some unrelated later moment, which is exactly the "it did
   /// something and I do not know when" this trigger exists to remove.
   not_enabled,
+  /// A value was given to a seam that takes none (`seam_setting`, #533).
+  no_setting,
+  /// A value outside the seam's `minimum`..`maximum`. Refused, not
+  /// clamped: whoever wrote it was reading another table.
+  setting_out_of_range,
 };
 
 /// Kept as its own name because `enable()` has always answered one and
@@ -1044,6 +1084,11 @@ class seam_context {
   [[nodiscard]] std::uint16_t scratch(unsigned slot) const noexcept;
   void set_scratch(unsigned slot, std::uint16_t value) noexcept;
 
+  /// This seam's number (`seam_definition::setting`, #533): what the
+  /// player chose, or the definition's `initial` if nobody did. Zero for
+  /// a seam that takes none.
+  [[nodiscard]] std::uint16_t setting() const noexcept;
+
   /// "I was reached, and what is here is not what my facts describe."
   ///
   /// A handler calls this instead of acting when a precondition it can
@@ -1251,6 +1296,17 @@ class seam_engine {
   /// never from inside one, and nothing about the latch is machine
   /// state.
   seam_error pull(std::string_view id, ticks now);
+
+  /// The number `id` takes (`seam_setting`, #533): what was set, or the
+  /// definition's `initial`. Zero for an unknown seam or one with none.
+  [[nodiscard]] std::uint16_t setting(std::string_view id) const noexcept;
+
+  /// Set `id`'s number. `seam_reason::none` if it took; `unknown_seam`,
+  /// `no_setting`, or `setting_out_of_range` otherwise, and nothing
+  /// changed. Allowed whether the seam is on or off, and kept across
+  /// `clear()`: a person's choice outlives the run it was made in.
+  /// Configuration, like `enable()`: never from inside a run.
+  seam_error set_setting(std::string_view id, std::uint16_t value);
 
   /// Whether `id` has a pull outstanding. `status()` says the same
   /// thing; this is the question a host's key handler asks of every
@@ -1477,6 +1533,7 @@ class seam_engine {
     /// here: cleared by `enable()`, dropped by `reset()`, never
     /// serialized.
     std::array<std::uint16_t, scratch_words> scratch{};
+    std::uint16_t setting{};
     /// How many times a handler of this seam has declined
     /// (`seam_context::decline`). Zero means it has not, which is what
     /// the diagnostics channel's report-once test reads; the count

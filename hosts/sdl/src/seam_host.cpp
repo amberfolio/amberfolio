@@ -56,6 +56,10 @@ namespace amberfolio::sdl {
       return "this seam is not one you pull; it acts whenever it is on";
     case machine::seam_error::not_enabled:
       return "this seam is off - turn it on with --seam before pulling it";
+    case machine::seam_error::no_setting:
+      return "this seam takes no number";
+    case machine::seam_error::setting_out_of_range:
+      return "that number is outside what this seam takes";
   }
   return "unknown";
 }
