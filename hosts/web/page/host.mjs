@@ -115,6 +115,15 @@ export const AF_SEAM_ON = 1;
 export const AF_SEAM_UNAVAILABLE = 2;
 export const AF_SEAM_NONE = 3;
 
+/// Which half of a seam's number `af_machine_seam_setting_name` and
+/// `af_machine_seam_setting_limit` answer (abi.h's AF_SEAM_SETTING_*).
+export const AF_SEAM_SETTING_NAME = 0;
+export const AF_SEAM_SETTING_UNIT = 1;
+export const AF_SEAM_SETTING_MINIMUM = 0;
+export const AF_SEAM_SETTING_MAXIMUM = 1;
+export const AF_SEAM_SETTING_STEP = 2;
+export const AF_SEAM_SETTING_INITIAL = 3;
+
 /// The host services a seam may call out to (`machine::seam_host_service`),
 /// in the order the ABI numbers them — index is `which` for
 /// `af_machine_seam_host_calls` and friends, and the name is the one core
@@ -146,7 +155,8 @@ export const HOST_SERVICES = [
 
 /// What one enabled seam did, as the desktop host says it at the end of a
 /// run (hosts/sdl/src/seam_host.cpp): `armed fired=N`, or `inert fired=N`, and
-/// the sentence that names the failure when an armed seam fired nothing.
+/// the sentence that names the failure when an armed seam fired nothing,
+/// and last the seam's number when it takes one (` pause=1500ms`, #531).
 ///
 /// Here rather than in either caller because both hosts have to say it
 /// identically — the same argument `machine/report.h` makes for the stop
@@ -187,7 +197,10 @@ export function formatSeamFired(seam) {
     if (seam.waiting) extra += ' waiting';
     else if (seam.fired !== 0) extra += ` waited=${Math.round(seam.waited)}`;
   }
-  return `${seam.armed ? 'armed' : 'inert'} fired=${Math.round(seam.fired)}${extra}${seam.reading ?? ''}`;
+  // A seam's number (#531) goes last, `name=valueunit`, the way the
+  // desktop host prints it.
+  const setting = seam.setting ? ` ${seam.setting.name}=${seam.setting.value}${seam.setting.unit}` : '';
+  return `${seam.armed ? 'armed' : 'inert'} fired=${Math.round(seam.fired)}${extra}${seam.reading ?? ''}${setting}`;
 }
 
 /// Why a file the host offered did not go in, in the words a person
@@ -1260,6 +1273,10 @@ export class Machine {
   /// #161's: whether this seam is pulled rather than left on, whether a
   /// pull is outstanding, how often its point has been arrived at at
   /// all, and what the last pull cost in ticks.
+  ///
+  /// `setting` is #531's: `null` for a seam that takes no number, or
+  /// `{ name, unit, minimum, maximum, step, initial, value }` for one
+  /// that does — `value` is what it is now, set or initial.
   seamList() {
     const count = this.module._af_machine_seam_count(this.handle);
     const seams = [];
@@ -1284,9 +1301,45 @@ export class Machine {
         // code-wheel seam was the one gate, and it waits for a person
         // answering the challenge now rather than for a PDF (#291).
         gate: this.#text((out, max) => this.module._af_machine_seam_gate(this.handle, i, out, max), 64) ?? '',
+        setting: this.#seamSetting(i),
       });
     }
     return seams;
+  }
+
+  /// Seam `index`'s number (#531), or null when it takes none: a seam
+  /// with a setting always has a name, so an empty name is the answer.
+  #seamSetting(index) {
+    const name = this.#text(
+      (out, max) => this.module._af_machine_seam_setting_name(this.handle, index, AF_SEAM_SETTING_NAME, out, max),
+      64,
+    );
+    if (name === null) return null;
+    const limit = (which) => this.module._af_machine_seam_setting_limit(this.handle, index, which) >>> 0;
+    return {
+      name,
+      unit:
+        this.#text(
+          (out, max) => this.module._af_machine_seam_setting_name(this.handle, index, AF_SEAM_SETTING_UNIT, out, max),
+          64,
+        ) ?? '',
+      minimum: limit(AF_SEAM_SETTING_MINIMUM),
+      maximum: limit(AF_SEAM_SETTING_MAXIMUM),
+      step: limit(AF_SEAM_SETTING_STEP),
+      initial: limit(AF_SEAM_SETTING_INITIAL),
+      value: this.module._af_machine_seam_setting(this.handle, index) >>> 0,
+    };
+  }
+
+  /// Set the number of the seam called `id` (#531), on or off. True if
+  /// it took; false for no such seam, one that takes no number, or a
+  /// value outside its bounds — refused, not clamped, and nothing
+  /// changed. Configuration like `seamEnable`, and it outlasts a reset.
+  setSeamSetting(id, value) {
+    if (!Number.isInteger(value) || value < 0 || value > 0xffffffff) return false;
+    return (
+      this.#withCString(id, (ptr) => this.module._af_machine_seam_set_setting(this.handle, ptr, value >>> 0)) === AF_OK
+    );
   }
 
   /// Pull the trigger of a seam that takes one (#161). `AF_OK` if the

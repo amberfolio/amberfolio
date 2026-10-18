@@ -34,9 +34,9 @@
 //               the code wheel's answered copies. Keyed by the names they
 //               had in `localStorage`, because a drawer that moved house
 //               kept its label.
-//   `settings`  this page's own choices, as JSON. Two: the program last
-//               booted, and the seams the player turned on in the toggle
-//               panel (#383).
+//   `settings`  this page's own choices, as JSON: the program last
+//               booted, the seams the player turned on in the toggle
+//               panel (#383) and the numbers they gave them (#531).
 //
 // **Which of `disk` and `play` a file belongs in is not this file's
 // decision.** `machine/save_layer.h` is the fact table for that — which
@@ -129,6 +129,14 @@ export const PROGRAM_SETTING = 'program';
 /// player who has never opened the panel has. There is one meaning of
 /// off.
 export const SEAMS_SETTING = 'seams';
+
+/// The seam numbers this player chose in the toggle panel (#531), as an
+/// object from seam id to value: `{ "message-pause": 2500 }`.
+/// `toggle-panel.mjs`'s `storedSeamSettings()` reads it, fail-closed like
+/// `storedSeams()`. Only numbers moved off their initial are kept, and a
+/// player who put them all back leaves no record. Applied at every boot
+/// beside the seams; a value this build refuses is dropped.
+export const SEAM_SETTINGS_SETTING = 'seam-settings';
 
 /// The database factory, or null where there is none.
 ///

@@ -100,11 +100,16 @@ import {
   SETTINGS_STORE,
   PROGRAM_SETTING,
   SEAMS_SETTING,
+  SEAM_SETTINGS_SETTING,
 } from './persist.mjs';
 import {
   applyStoredSeams,
+  applyStoredSeamSettings,
   panelRows,
+  seamSettingsToStore,
   seamsToStore,
+  settingEntry,
+  storedSeamSettings,
   storedSeams,
   PANEL_COLUMNS,
 } from './toggle-panel.mjs';
@@ -1583,8 +1588,30 @@ export function runDevPage() {
         }
       }
 
-      const refreshSeams = renderSeams(box, el(SEAMS_ID), appendConsole, (ids) =>
-        rememberSetting(SEAMS_SETTING, ids),
+      // And the numbers this player gave them (#531), the same way: the
+      // record is read fail-closed, each value goes in through the
+      // `setSeamSetting()` the panel's box takes, and one this build
+      // refuses (no such seam, out of its bounds) is dropped. Core keeps
+      // them across a reset, so this once per boot is all it takes.
+      const numbers = storedSeamSettings(await readSetting(SEAM_SETTINGS_SETTING));
+      if (numbers !== null) {
+        const { set } = applyStoredSeamSettings(box, numbers);
+        if (set.length !== 0) {
+          appendConsole(
+            `[host] seam numbers remembered here: ${set
+              .map(({ id, value }) => `${id} ${value}`)
+              .join(', ')}
+`,
+          );
+        }
+      }
+
+      const refreshSeams = renderSeams(
+        box,
+        el(SEAMS_ID),
+        appendConsole,
+        (ids) => rememberSetting(SEAMS_SETTING, ids),
+        (numbers) => rememberSetting(SEAM_SETTINGS_SETTING, numbers),
       );
       // And where the document control can reach it (#384): a document
       // presented after this boot relights the rows that were waiting on
@@ -1728,12 +1755,25 @@ async function reportUnrecognizedEdition(box, appendConsole) {
 /// shown as the other is a promise the seam does not keep. It is live
 /// only while the seam is on.
 ///
+/// A seam that takes a **number** (#531) has a box for it beside the
+/// pull button's place, with the setting's bounds and step and its unit
+/// after it. A change is set at once, on or off; an entry that is not a
+/// whole number inside the bounds, or one core refuses, snaps back to
+/// the value the seam has, and only a value that took is remembered
+/// (`rememberNumbers`, `persist.mjs`'s `seam-settings` key).
+///
 /// Answers a `refresh()` the run loop calls on its own readout cadence,
 /// which is how `fired` stays a live number instead of one taken once
 /// before the machine had run a step. It rewrites the cells only —
 /// rebuilding the table under a person's pointer while they were aiming
 /// at a checkbox would be worse than a number being half a second old.
-function renderSeams(machine, container, appendConsole, remember = async () => {}) {
+function renderSeams(
+  machine,
+  container,
+  appendConsole,
+  remember = async () => {},
+  rememberNumbers = async () => {},
+) {
   if (!container) return () => {};
   const rows = panelRows(machine);
   if (rows.length === 0) {
@@ -1763,6 +1803,7 @@ function renderSeams(machine, container, appendConsole, remember = async () => {
   /// rewrite them without touching the controls beside them.
   const cells = new Map();
   const buttons = new Map();
+  const numbers = new Map();
 
   /// Everything about a row that can change while the machine runs.
   const writeRow = (row) => {
@@ -1783,6 +1824,12 @@ function renderSeams(machine, container, appendConsole, remember = async () => {
     held.box.checked = row.on;
     const trigger = buttons.get(row.id);
     if (trigger) trigger.disabled = !row.on;
+    // Never under a person's cursor: a box being typed into keeps what
+    // they are typing.
+    const number = numbers.get(row.id);
+    if (number && row.setting && document.activeElement !== number) {
+      number.value = String(row.setting.value);
+    }
   };
 
   for (const row of rows) {
@@ -1844,6 +1891,44 @@ function renderSeams(machine, container, appendConsole, remember = async () => {
         if (after) writeRow(after);
       });
       pull.append(trigger);
+    }
+    if (row.setting) {
+      // The seam's one number (#531), labelled with its own name and
+      // unit so a screen reader says what the box is for.
+      const { name, unit, minimum, maximum, step } = row.setting;
+      const label = document.createElement('label');
+      label.className = 'setting';
+      const number = document.createElement('input');
+      number.type = 'number';
+      number.min = String(minimum);
+      number.max = String(maximum);
+      number.step = String(step === 0 ? 1 : step);
+      number.value = String(row.setting.value);
+      number.title = `${name}: ${minimum} to ${maximum}${unit ? ` ${unit}` : ''}, on or off`;
+      numbers.set(row.id, number);
+      label.append(name, number);
+      if (unit) label.append(unit);
+      number.addEventListener('change', () => {
+        const wanted = settingEntry(row.setting, number.value);
+        const took = wanted !== null && machine.setSeamSetting(row.id, wanted);
+        const after = panelRows(machine).find((seam) => seam.id === row.id);
+        const now = after?.setting?.value ?? row.setting.value;
+        appendConsole(
+          took
+            ? `[host] seam ${row.id} ${name}=${now}${unit}
+`
+            : `[host] seam ${row.id} ${name} refused (${number.value || 'empty'}) - ` +
+                `it takes ${minimum} to ${maximum}${unit}; still ${now}${unit}
+`,
+        );
+        // **An entry core refused is not a choice**: the box goes back
+        // to what the seam has, and nothing is remembered.
+        number.value = String(now);
+        if (!took) return;
+        void rememberNumbers(seamSettingsToStore(panelRows(machine)));
+      });
+      if (trigger) pull.append(' ');
+      pull.append(label);
     }
     line.append(pull);
 
