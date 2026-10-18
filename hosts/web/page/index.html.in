@@ -161,6 +161,11 @@
         display: block;
         color: #e0a33c;
       }
+      /* A seam's one number (#531), in the control column. */
+      table.seams label.setting input {
+        width: 6rem;
+        padding: 0.1rem 0.35rem;
+      }
       /* The key card (#427): one small table to a context, set out in
          columns so a wide window shows several at once and a phone shows
          one. The key is the heading of its row. */
@@ -361,7 +366,8 @@
            `fired` as a number, the refusal reason in core's own word, and
            the document the row waits for. A checkbox per seam, off by
            default and disabled with the reason when the seam is not
-           available for this program (PLAN.md §5). A choice made here is
+           available for this program (PLAN.md §5). A seam that takes a
+           number has a box for it, set at once. A choice made here is
            remembered in this browser; a seam nobody chose is off. -->
       <div class="controls">
         <span id="edition"></span>

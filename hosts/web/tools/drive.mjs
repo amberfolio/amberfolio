@@ -252,6 +252,9 @@ const USAGE = `usage: node drive.mjs <dir> <PROGRAM.EXE> [options]
                         the program there, as the SDL host's --install
                         does (#397); the root by default
   --seam ID             turn one seam on before the first step (repeatable)
+  --setting ID=VALUE    give seam ID its number (#531), after the --seams
+                        and before the first step (repeatable); a value
+                        outside the seam's bounds is refused
   --document PATH       present a document the player holds, by path on
                         this machine (repeatable) — a possession gate,
                         so the file is hashed and dropped
@@ -276,7 +279,7 @@ const USAGE = `usage: node drive.mjs <dir> <PROGRAM.EXE> [options]
                         script with neither gets one.
   --replay PATH         be the run a recording describes, and check it.
                         The recording decides the seams and the speed, so
-                        --seam is refused beside it; a document or a
+                        --seam and --setting are refused beside it; a document or a
                         journal store the recording needs is still this
                         side's to hand over, because neither is in the
                         stream. Nothing else runs: the answer is the
@@ -316,6 +319,7 @@ export function parseArgs(argv) {
     presses: [],
     pulls: [],
     seams: [],
+    settings: [],
     documents: [],
     codeWheelAnswered: false,
     codeWheelStore: '',
@@ -406,6 +410,14 @@ export function parseArgs(argv) {
       opts.install = next().replace(/^[\\/]+|[\\/]+$/g, '');
     } else if (arg === '--seam' && i + 1 < argv.length) {
       opts.seams.push(next());
+    } else if (arg === '--setting' && i + 1 < argv.length) {
+      const text = next();
+      const at = text.indexOf('=');
+      const value = at <= 0 ? NaN : Number(text.slice(at + 1));
+      if (!/^\d+$/.test(text.slice(at + 1)) || !Number.isSafeInteger(value)) {
+        return { error: `--setting wants ID=VALUE with a whole number; got ${text}` };
+      }
+      opts.settings.push({ id: text.slice(0, at), value });
     } else if (arg === '--vfs-list') {
       opts.listVfs = true;
     } else if (arg === '--save-layer') {
@@ -459,6 +471,11 @@ export function parseArgs(argv) {
   // run is refused rather than quietly ignored.
   if (opts.replay !== null && opts.seams.length !== 0) {
     return { error: 'the recording decides the seams; --seam cannot be given with --replay' };
+  }
+  if (opts.replay !== null && opts.settings.length !== 0) {
+    return {
+      error: 'the recording decides the seams; --setting cannot be given with --replay',
+    };
   }
   if (opts.replay !== null && opts.speed !== null) {
     return { error: 'the recording decides the speed; --speed cannot be given with --replay' };
@@ -857,6 +874,23 @@ export async function drive(opts) {
       say(
         `amberfolio: seam ${id} refused (${row?.reason ?? 'no seam by that name'})`,
       );
+      reportSeams(machine);
+      machine.destroy();
+      return 1;
+    }
+  }
+  // Their numbers (#531), after them as on the desktop, and refused the
+  // same way: a run that asked for a number it did not get is not the
+  // run it asked for.
+  for (const { id, value } of opts.settings) {
+    if (!machine.setSeamSetting(id, value)) {
+      const row = machine.seamList().find((seam) => seam.id === id);
+      const why = !row
+        ? 'no seam by that name'
+        : !row.setting
+          ? 'this seam takes no number'
+          : `it takes ${row.setting.minimum} to ${row.setting.maximum}${row.setting.unit}`;
+      say(`amberfolio: seam ${id} setting ${value} refused (${why})`);
       reportSeams(machine);
       machine.destroy();
       return 1;
