@@ -94,13 +94,42 @@
 // types ahead during a pause is used up ending it.
 //
 //
+// One wipe without a pause: the encounter menu
+// ---------------------------------------------
+//
+// **What the program does.** The script opcode that offers COMBAT, WAIT,
+// FLEE and PARLAY or ADVANCE (overlay 3, its routine at `0x1EF8`) prints
+// its own line in the text box before the menu, through the box printer
+// at `0x2176` (a far call, the clear flag the fourth word pushed, at
+// `[SP+4]`), and clears the box first when that line is not empty. A
+// script that has just printed "YOU SPOT A GROUP OF ..." and goes
+// straight into the menu has its line wiped as soon as it is typed, with
+// no pause between: a third of a second on the screen, and no pause for
+// this seam to lengthen (a player's report on the first build). The
+// script's own lines go through the print opcode's two calls to the same
+// printer, overlay 3 `0x0A69` (append) and `0x0A91` (clear), with the
+// line, a Pascal string, at DGROUP `0x70C8`. Every key the program takes
+// goes through the runtime's `ReadKey`, image offset `0xA70F`.
+//
+// **What the seam does.** It keeps one word: whether a line with anything
+// but spaces in it has been printed since the program last read a key or
+// paused. The print opcode's two calls set it; `ReadKey` and the pause's
+// `push ax` clear it. At the menu's own call, when it is set and the call
+// clears the box, it waits the setting before letting the call go: it
+// calls the runtime's `Delay` (paragraph `0xA40` of the image, offset
+// `0x029C`, one word, `retf 2`) fifty milliseconds at a time, and at each
+// return, back at the same instruction, takes a waiting key and stops
+// waiting. Fifty at a time, rather than all at once, because a call into
+// the program is a batch and a batch offers no points: the countdown
+// point that ends a pause on a key is not reached inside one.
+//
+//
 // What it is not yet (docs/seams.md §8.5)
 // ---------------------------------------
 //
-// A scripted line the script clears or replaces with no pause at all
-// (a few dozen in the game's scripts) is not lengthened: there is no
-// pause to lengthen, and making one would be a seam that decided, line by
-// line, which text deserves reading time.
+// A scripted line that another line replaces, or a picture or a change of
+// map wipes, with no pause between is not given one: only the encounter
+// menu's wipe is.
 
 #include <array>
 #include <cstdint>
@@ -137,6 +166,42 @@ constexpr std::uint16_t dgroup_paragraphs = 0xC7C;
 /// image segment, and the offset the call returns to.
 constexpr std::uint16_t script_load_segment_at = 0x200;  // overlay 3
 constexpr std::uint16_t script_return_offset = 0x272B;
+
+/// Overlay 3, the script interpreter's: file offset 3398 (`0xD46`), 13581
+/// bytes (`0x350D`), the load-segment word above (the manager's record
+/// for those two numbers is the one match of the search
+/// `seam_cheats.cpp` documents).
+constexpr seam_module script_module{
+    .file = "GAME.OVR",
+    .file_offset = 3398,
+    .length = 13581,
+    .digest =
+        "56c6135af78c125823c0d8066fcfeefc7cfd1121d752ca398fed5c37fa17182a",
+    .load_segment_at = script_load_segment_at};
+
+/// In it: the print opcode's two calls to the box printer, and the
+/// encounter menu's.
+constexpr std::uint32_t print_append_call = 0x0A69;
+constexpr std::uint32_t print_clear_call = 0x0A91;
+constexpr std::uint32_t encounter_print_call = 0x2176;
+
+/// The line the print opcode prints, a Pascal string in the data segment.
+constexpr std::uint16_t data_print_line = 0x70C8;
+
+/// The encounter menu's call: the clear flag is the fourth word pushed.
+constexpr std::uint16_t call_clear_flag = 4;
+
+/// The runtime's `ReadKey`, and `Delay`, from the image segment.
+constexpr std::uint32_t read_key_offset = 0xA70F;
+constexpr std::uint16_t delay_paragraphs = 0xA40;
+constexpr std::uint16_t delay_offset = 0x029C;
+
+/// How long one call of the wait before the menu is, in milliseconds.
+constexpr std::uint16_t wait_slice = 50;
+
+/// The seam's own words.
+constexpr unsigned word_unread = 0;     // a line printed, not yet waited on
+constexpr unsigned word_remaining = 1;  // of the wait before the menu, ms
 
 /// The death routine's calls: its overlay's load-segment word, from the
 /// image segment, and the offsets the calls return to.
@@ -231,6 +296,8 @@ void lengthen_the_pause(machine& box, seam_context& ctx) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
+  // A pause, lengthened or not, is time the line already had.
+  ctx.set_scratch(word_unread, 0);
   const std::uint16_t wanted = ctx.setting();
   if (regs[cpu::reg16::ax] >= wanted) {
     // The game speed is already at least this long.
@@ -293,13 +360,90 @@ void end_on_a_key(machine& box, seam_context& ctx) {
   regs[cpu::reg16::dx] = 1;
 }
 
-constexpr std::array<seam_point, 2> message_pause_points{{
+/// Whether a key is waiting in the BIOS buffer.
+[[nodiscard]] bool key_waiting(cpu::processor& cpu) {
+  return cpu.read_word(bda::segment, bda::keyboard_buffer_head) !=
+         cpu.read_word(bda::segment, bda::keyboard_buffer_tail);
+}
+
+void note_a_printed_line(machine& box, seam_context& ctx) {
+  cpu::processor& cpu = box.processor();
+  const std::uint16_t ds = cpu.regs()[cpu::sreg::ds];
+  if (ds != dgroup_of(ctx)) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  const std::uint8_t length = cpu.read_byte(ds, data_print_line);
+  for (std::uint16_t at = 1; at <= length; ++at) {
+    if (cpu.read_byte(ds, static_cast<std::uint16_t>(data_print_line + at)) !=
+        ' ') {
+      ctx.set_scratch(word_unread, 1);
+      return;
+    }
+  }
+}
+
+void note_a_key_read(machine& /*box*/, seam_context& ctx) {
+  ctx.set_scratch(word_unread, 0);
+}
+
+void wait_before_the_menu(machine& box, seam_context& ctx) {
+  cpu::processor& cpu = box.processor();
+  cpu::registers& regs = cpu.regs();
+  if (regs[cpu::sreg::ds] != dgroup_of(ctx)) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  std::uint16_t remaining = ctx.scratch(word_remaining);
+  if (remaining == 0) {
+    const std::uint8_t clears = cpu.read_byte(
+        regs[cpu::sreg::ss],
+        static_cast<std::uint16_t>(regs[cpu::reg16::sp] + call_clear_flag));
+    if (ctx.scratch(word_unread) == 0 || clears == 0) {
+      // Nothing unread, or the menu prints beneath it and wipes nothing.
+      return;
+    }
+    ctx.set_scratch(word_unread, 0);
+    remaining = ctx.setting();
+    if (remaining == 0) {
+      return;
+    }
+  } else if (key_waiting(cpu)) {
+    take_key(cpu);
+    ctx.set_scratch(word_remaining, 0);
+    return;
+  }
+  const std::uint16_t slice = remaining < wait_slice ? remaining : wait_slice;
+  const std::array<std::uint16_t, 1> milliseconds{slice};
+  const auto delay =
+      static_cast<std::uint16_t>((ctx.image_base() >> 4U) + delay_paragraphs);
+  if (!ctx.call_program(delay, delay_offset, milliseconds)) {
+    ctx.set_scratch(word_remaining, 0);
+    return;
+  }
+  ctx.set_scratch(word_remaining,
+                  static_cast<std::uint16_t>(remaining - slice));
+}
+
+constexpr std::array<seam_point, 6> message_pause_points{{
     {.module = resident_image,
      .offset = push_offset,
      .run = &lengthen_the_pause},
     {.module = resident_image,
      .offset = countdown_offset,
      .run = &end_on_a_key},
+    {.module = resident_image,
+     .offset = read_key_offset,
+     .run = &note_a_key_read},
+    {.module = script_module,
+     .offset = print_append_call,
+     .run = &note_a_printed_line},
+    {.module = script_module,
+     .offset = print_clear_call,
+     .run = &note_a_printed_line},
+    {.module = script_module,
+     .offset = encounter_print_call,
+     .run = &wait_before_the_menu},
 }};
 
 constexpr seam_definition message_pause_definition{

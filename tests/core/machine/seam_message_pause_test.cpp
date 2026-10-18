@@ -52,6 +52,17 @@ constexpr std::uint16_t script_word = 0x200;
 constexpr std::uint16_t script_segment = 0x2D00;
 constexpr std::uint16_t script_return = 0x272B;
 
+/// The runtime's `ReadKey` and `Delay`, from the image segment.
+constexpr std::uint16_t read_key = 0xA70F;
+constexpr std::uint16_t delay_entry = 0xA69C;
+
+/// In overlay 3: the print opcode's two calls to the box printer, the
+/// encounter menu's, and the line the print opcode prints.
+constexpr std::uint16_t print_append = 0x0A69;
+constexpr std::uint16_t print_clear = 0x0A91;
+constexpr std::uint16_t encounter_print = 0x2176;
+constexpr std::uint16_t data_print_line = 0x70C8;
+
 /// Overlay 31's load-segment word, the segment the test puts there, and
 /// the death routine's two far returns.
 constexpr std::uint16_t death_word = 0x3E10;
@@ -192,18 +203,107 @@ struct rig {
     return box->seams().status(seam_id);
   }
 
+  /// Arrive at one of the script interpreter's points, or the image's,
+  /// at a HLT, with DS the data segment, and take one step.
+  void arrive_at(std::uint16_t segment, std::uint16_t offset) const {
+    box->memory().ram()[cpu::physical_address(segment, offset)] = 0xF4;
+    box->processor().reset();
+    cpu::registers& r = box->processor().regs();
+    r[cpu::sreg::cs] = segment;
+    r.ip = offset;
+    r[cpu::sreg::ds] = data_segment;
+    r[cpu::sreg::ss] = stack_segment;
+    r[cpu::reg16::sp] = frame;
+    box->step();
+  }
+
+  /// The print opcode printing `line` through its clearing call.
+  void print(std::string_view line) const {
+    box->memory().ram()[cpu::physical_address(data_segment, data_print_line)] =
+        static_cast<std::uint8_t>(line.size());
+    for (std::size_t i = 0; i < line.size(); ++i) {
+      box->memory().ram()[cpu::physical_address(
+          data_segment, static_cast<std::uint16_t>(data_print_line + 1 + i))] =
+          static_cast<std::uint8_t>(line[i]);
+    }
+    arrive_at(script_segment, print_clear);
+  }
+
+  [[nodiscard]] std::uint16_t unread() const {
+    return box->seams().scratch(seam_id, 0);
+  }
+
+  /// The encounter menu's call with `clears` as its clear flag, and a
+  /// `Delay` that returns at once; run until the HLT at the call has run,
+  /// and answer how many calls `Delay` took and what each was asked for.
+  struct waited {
+    unsigned calls{};
+    unsigned milliseconds{};
+  };
+  [[nodiscard]] waited open_the_menu(std::uint8_t clears,
+                                     int key_after = -1) const {
+    // `Delay` here is a `nop; retf 2`, so each slice comes straight back;
+    // the call's first step runs the `nop`, and the loop sees the `retf`.
+    const std::uint32_t delay = cpu::physical_address(
+        static_cast<std::uint16_t>(image_load_segment + 0xA40), 0x029C);
+    box->memory().ram()[delay] = 0x90;
+    box->memory().ram()[delay + 1] = 0xCA;
+    box->memory().ram()[delay + 2] = 0x02;
+    box->memory().ram()[delay + 3] = 0x00;
+    box->memory()
+        .ram()[cpu::physical_address(script_segment, encounter_print)] = 0xF4;
+    put_word(stack_segment, static_cast<std::uint16_t>(frame + 4), clears);
+    box->processor().reset();
+    cpu::registers& r = box->processor().regs();
+    r[cpu::sreg::cs] = script_segment;
+    r.ip = encounter_print;
+    r[cpu::sreg::ds] = data_segment;
+    r[cpu::sreg::ss] = stack_segment;
+    r[cpu::reg16::sp] = frame;
+    waited out{};
+    for (int step = 0; step < 10000; ++step) {
+      const cpu::registers& now = box->processor().regs();
+      if (now[cpu::sreg::cs] == script_segment &&
+          now.ip == encounter_print + 1) {
+        break;
+      }
+      if (cpu::physical_address(now[cpu::sreg::cs], now.ip) == delay + 1) {
+        ++out.calls;
+        out.milliseconds +=
+            word(now[cpu::sreg::ss],
+                 static_cast<std::uint16_t>(now[cpu::reg16::sp] + 4));
+        if (static_cast<int>(out.calls) == key_after) {
+          type(0x1C0D);
+        }
+      }
+      box->step();
+    }
+    return out;
+  }
+
   std::unique_ptr<machine> box;
 };
 
-TEST(SeamMessagePause, IsTwoResidentPointsAndANumber) {
+TEST(SeamMessagePause, IsSixPointsAndANumber) {
   const rig r;
   const seam_definition* s = r.box->seams().find(seam_id);
   ASSERT_NE(s, nullptr);
-  ASSERT_EQ(s->points.size(), 2U);
+  ASSERT_EQ(s->points.size(), 6U);
   EXPECT_TRUE(s->points[0].module.is_resident_image());
   EXPECT_EQ(s->points[0].offset, push_point);
   EXPECT_TRUE(s->points[1].module.is_resident_image());
   EXPECT_EQ(s->points[1].offset, countdown);
+  EXPECT_TRUE(s->points[2].module.is_resident_image());
+  EXPECT_EQ(s->points[2].offset, read_key);
+  for (std::size_t i = 3; i < 6; ++i) {
+    EXPECT_FALSE(s->points[i].module.is_resident_image());
+    EXPECT_EQ(s->points[i].module.load_segment_at, script_word);
+    EXPECT_EQ(s->points[i].module.file_offset, 3398U);
+    EXPECT_EQ(s->points[i].module.length, 13581U);
+  }
+  EXPECT_EQ(s->points[3].offset, print_append);
+  EXPECT_EQ(s->points[4].offset, print_clear);
+  EXPECT_EQ(s->points[5].offset, encounter_print);
   EXPECT_FALSE(s->trigger);
   EXPECT_TRUE(s->group.empty());
   ASSERT_TRUE(s->setting.present());
@@ -368,6 +468,66 @@ TEST(SeamMessagePause, DeclinesAnotherDataSegmentAtTheCountdown) {
   r.type(0x1C0D);
   EXPECT_EQ(r.count_down(900, pause_return, data_segment + 1), 900U);
   EXPECT_EQ(r.keys_waiting(), 1U);
+}
+
+// --- The wait before the encounter menu --------------------------------------
+
+TEST(SeamMessagePause, WaitsBeforeTheMenuWipesAPrintedLine) {
+  const rig r;
+  r.arm();
+  r.print("YOU SPOT A GROUP OF ORCS.");
+  EXPECT_EQ(r.unread(), 1U);
+  const rig::waited w = r.open_the_menu(1);
+  EXPECT_EQ(w.milliseconds, 1500U) << "the setting, in the runtime's Delay";
+  EXPECT_EQ(w.calls, 30U) << "fifty milliseconds at a time";
+  EXPECT_EQ(r.unread(), 0U);
+  EXPECT_EQ(r.open_the_menu(1).calls, 0U) << "once per line";
+}
+
+TEST(SeamMessagePause, AKeyEndsTheWaitBeforeTheMenu) {
+  const rig r;
+  r.arm();
+  r.print("YOU SPOT A GROUP OF ORCS.");
+  const rig::waited w = r.open_the_menu(1, 3);
+  EXPECT_EQ(w.calls, 3U);
+  EXPECT_EQ(r.keys_waiting(), 0U) << "the key that ended it is used up";
+}
+
+TEST(SeamMessagePause, DoesNotWaitWhenTheMenuWipesNothing) {
+  const rig r;
+  r.arm();
+  r.print("YOU SPOT A GROUP OF ORCS.");
+  EXPECT_EQ(r.open_the_menu(0).calls, 0U)
+      << "the menu's own line is empty and prints beneath";
+}
+
+TEST(SeamMessagePause, DoesNotWaitOverABlankLine) {
+  const rig r;
+  r.arm();
+  r.print("  ");
+  EXPECT_EQ(r.unread(), 0U);
+  r.print("");
+  EXPECT_EQ(r.open_the_menu(1).calls, 0U);
+}
+
+TEST(SeamMessagePause, AKeyReadOrAPauseIsTimeTheLineHad) {
+  const rig r;
+  r.arm();
+  r.print("YOU SPOT A GROUP OF ORCS.");
+  r.arrive_at(image_load_segment, read_key);
+  EXPECT_EQ(r.unread(), 0U) << "the program took a key after it";
+  r.print("YOU SPOT A GROUP OF ORCS.");
+  EXPECT_EQ(r.pause(speed_one), 1500U);
+  EXPECT_EQ(r.unread(), 0U) << "the line had its pause";
+  EXPECT_EQ(r.open_the_menu(1).calls, 0U);
+}
+
+TEST(SeamMessagePause, ASettingOfZeroAddsNoWait) {
+  const rig r;
+  r.arm();
+  ASSERT_EQ(r.box->seams().set_setting(seam_id, 0), seam_reason::none);
+  r.print("YOU SPOT A GROUP OF ORCS.");
+  EXPECT_EQ(r.open_the_menu(1).calls, 0U);
 }
 
 TEST(SeamMessagePause, IsUnavailableOnAnyOtherBinary) {

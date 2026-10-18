@@ -897,7 +897,7 @@ to carry.
 | `explored` | fog of war on the overworld map: a black checker over every square the party has not stood on; a setting, no key | the resident image |
 | `modern-controls` | the controls a later game has, nine pieces in one seam: Up and Down step the pick-lists and the selected party member; Left, Right, Enter and Esc work at the command bars; walking is a mode the party's bar starts with `Move` and ends with `Exit`, `Area` gone; the main menu has a cursor, and its number row's 1 to 8 select a party member with each number shown; the arrows no longer type letters at a text prompt; every selection is a yellow block with its key letter a white one; and it notes when the program is reading a line of text and where the combat aim bar keeps its cursor, for a host to ask (§10) | overlay 25 (the menu-bar and list routines), overlays 13, 14, 16 and 19, and the resident image |
 | `quick-steps` | a turn, and the next step, do not wait for the footstep's click; the click still plays, and a step's two clicks keep their spacing | the resident image, and the call sites in overlays 14 and 3 |
-| `message-pause` | a message the program moves on from by itself stands at least the seam's number of milliseconds, 1500 unless the player chose otherwise, and any key ends it | the resident image, and the call site in overlay 3 |
+| `message-pause` | a message the program moves on from by itself stands at least the seam's number of milliseconds, 1500 unless the player chose otherwise, and any key ends it; the encounter menu waits as long before it wipes a line the script just printed | the resident image, and overlays 3 and 31 |
 | `cheat-invulnerable` | the party takes no damage | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage, **when pulled** (§3a) | the end check's overlay |
 | `cheat-wound-party` | the whole party drops to one hit point, **when pulled at camp** (§3a) | the resident image |
@@ -3105,6 +3105,9 @@ back on, which stops the driver and the sound with it.
 | point | what the handler does |
 | --- | --- |
 | `0x7E5B`, the pause's `push ax` | raises AX to the setting when the setting is longer, unless the far return in the frame is the death routine's (overlay 31's segment now) or the script opcode's (overlay 3's) while the approach's count is not zero: those pauses are a sound's length and a beat of the walk-up, and keep the game's |
+| `0xA70F`, the runtime's `ReadKey` | clears the seam's one word, "a line is unread". The pause's `push ax` clears it too |
+| overlay 3 `0x0A69`, `0x0A91`, the print opcode's two calls to the box printer | sets that word when the line, the Pascal string at DGROUP `0x70C8`, has anything but spaces in it |
+| overlay 3 `0x2176`, the encounter menu's call to the box printer | when the word is set and the call clears the box (its fourth pushed word, `[SP+4]`, is 1), waits the setting before the call: the runtime's `Delay` (image paragraph `0xA40`, offset `0x029C`) called fifty milliseconds at a time, the point offered again after each, where a waiting key is taken and ends the wait |
 | `0xA6B7`, `Delay`'s `dec dx` | when the far return at `SS:SP` is `0x7E61`'s, the pause's caller (at `[BP+2]`, which `Delay` leaves alone) is not one of those, and a key is waiting in the BIOS buffer, takes the key and sets DX to 1, so the spin ends at this millisecond. Every other `Delay` runs as it did |
 
 - **The number** is `pause`, in `ms`, 0 to 10,000 in steps of 250,
@@ -3129,10 +3132,22 @@ back on, which stops the driver and the sound with it.
   follows later and every clock read after it reads another time
   (`fight-pause`, `contrast`, 104 of 164 checkpoints identical, divergent
   at the pause that opens the battle; the same fight to the same end).
-- **Open**: a scripted line the script clears or replaces with no pause
-  at all, a few dozen in the game's scripts, is not lengthened. There is
-  no pause to lengthen, and making one would be a seam deciding line by
-  line which text deserves reading time.
+- **The encounter menu wipes with no pause.** The script opcode that
+  offers COMBAT, WAIT, FLEE and PARLAY or ADVANCE (overlay 3, `0x1EF8`)
+  prints its own line first, and clears the box to do it when that line
+  is not empty, so a script that prints "YOU SPOT A GROUP OF ..." and goes
+  straight into the menu shows its line for as long as it takes to type
+  (a player's report, on the first build). Hence the wait before it, keyed
+  to the one word above: a line printed since the program last read a key
+  or paused. Fifty milliseconds a call rather than one call, because a
+  call into the program is a batch, a batch offers no points, and the
+  countdown point that ends a pause on a key would not be reached. The
+  scripts that do it are in the first script file's blocks 18 and 24;
+  none of the session library's runs reaches one, so it is driven only on
+  the maintainer's copy and held by the unit suite.
+- **Open**: a scripted line that another line replaces, or a picture or a
+  change of map wipes, with no pause between, a few dozen in the game's
+  scripts, is not given one: only the encounter menu's wipe is.
 
 ### The timer fix
 
