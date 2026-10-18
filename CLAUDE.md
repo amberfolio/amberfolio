@@ -10,7 +10,7 @@ Windows/macOS/Linux (64-bit) and WebAssembly. v1 targets Pool of
 Radiance. **PLAN.md is the plan of record**: scope, architecture,
 milestones and settled decisions live there. Don't re-litigate them.
 
-**Status.** M0–M6 are done and `v0.15.3` is the current tag, an interim
+**Status.** M0–M6 are done and `v0.16.0` is the current tag, an interim
 one inside M7 (the GOG/Steam release boots, saves and reads its journal
 as sold: #396–#398; every copy plays Tandy sound: #404, #407; a host can read the
 screen as text; the sidecars are one pair per save slot and nothing
@@ -30,7 +30,10 @@ a reset or an exit closes every file the program left open: #514; a
 host can read where the party is and what is around it, in a fight
 as well, the aim cursor and each figure's range included: #520, #521,
 #523; the Fix casts through its stub's own segment, and a reset drops
-a seam's unfinished call: #526, #527). The game boots, plays end to end, all six v1 enhancements work and toggle
+a seam's unfinished call: #526, #527; a `message-pause` seam keeps a
+message the game moves on from by itself up long enough to read, any
+key ending it, and is the first seam that takes a number, set from
+`--setting`, the config file, both panels and the ABI: #531). The game boots, plays end to end, all six v1 enhancements work and toggle
 independently on both hosts, and a player reaches all of it from the
 shells: onboarding, a config file, a toggle panel, a document control and
 the on-screen keyboard. The current milestone is **M7** (1.0: release
