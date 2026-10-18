@@ -241,11 +241,11 @@ struct rig {
     unsigned milliseconds{};
   };
   [[nodiscard]] waited open_the_menu(std::uint8_t clears,
-                                     int key_after = -1) const {
+                                     unsigned key_after = 0) const {
     // `Delay` here is a `nop; retf 2`, so each slice comes straight back;
     // the call's first step runs the `nop`, and the loop sees the `retf`.
-    const std::uint32_t delay = cpu::physical_address(
-        static_cast<std::uint16_t>(image_load_segment + 0xA40), 0x029C);
+    const std::uint32_t delay =
+        cpu::physical_address(image_load_segment, delay_entry);
     box->memory().ram()[delay] = 0x90;
     box->memory().ram()[delay + 1] = 0xCA;
     box->memory().ram()[delay + 2] = 0x02;
@@ -264,7 +264,7 @@ struct rig {
     for (int step = 0; step < 10000; ++step) {
       const cpu::registers& now = box->processor().regs();
       if (now[cpu::sreg::cs] == script_segment &&
-          now.ip == encounter_print + 1) {
+          now.ip == static_cast<std::uint16_t>(encounter_print + 1)) {
         break;
       }
       if (cpu::physical_address(now[cpu::sreg::cs], now.ip) == delay + 1) {
@@ -272,7 +272,7 @@ struct rig {
         out.milliseconds +=
             word(now[cpu::sreg::ss],
                  static_cast<std::uint16_t>(now[cpu::reg16::sp] + 4));
-        if (static_cast<int>(out.calls) == key_after) {
+        if (out.calls == key_after) {
           type(0x1C0D);
         }
       }
