@@ -61,7 +61,7 @@ inline constexpr std::string_view modern_controls_id = "modern-controls";
 [[nodiscard]] const seam_definition& quick_steps_seam() noexcept;
 
 /// A message the program moves on from by itself stays up long enough to
-/// read (seam_message_pause.cpp, #533).
+/// read (seam_message_pause.cpp, #531).
 [[nodiscard]] const seam_definition& message_pause_seam() noexcept;
 
 /// The pieces' points, in the order the registration offers them at an

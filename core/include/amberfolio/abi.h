@@ -444,7 +444,7 @@ uint32_t af_version(void);
 ///   * **3.3** — #520, one added entry point and nothing changed:
 ///     `af_machine_scene_json`, where the party is and what is around it
 ///     as one JSON string. Minor: a host that never asks is unaffected.
-///   * **3.4** — #533, four added entry points and nothing changed: a
+///   * **3.4** — #531, four added entry points and nothing changed: a
 ///     seam's one number (`machine::seam_setting`), read through
 ///     `af_machine_seam_setting_name`, `_setting_limit` and `_setting`,
 ///     and set through `af_machine_seam_set_setting`. Minor: a host that
@@ -1302,7 +1302,7 @@ double af_machine_seam_fired(const af_machine* box, uint32_t index);
 uint32_t af_machine_seam_enable(af_machine* box, const char* id);
 uint32_t af_machine_seam_disable(af_machine* box, const char* id);
 
-// --- A seam's number (#533) -----------------------------------------------
+// --- A seam's number (#531) -----------------------------------------------
 //
 // One number a seam may take from a player (machine/seam.h,
 // `seam_setting`): how long a message waits, for `message-pause`.

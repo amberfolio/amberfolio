@@ -485,7 +485,7 @@ struct seam_point {
   bool inside_calls{false};
 };
 
-/// The one number a seam may take from a player (#533): how long, how
+/// The one number a seam may take from a player (#531): how long, how
 /// many, how far. Empty `name`, the default, is a seam with none.
 ///
 /// **Configuration, like the enable, and more durable than it.** A value
@@ -675,7 +675,7 @@ enum class seam_reason : std::uint8_t {
   /// at some unrelated later moment, which is exactly the "it did
   /// something and I do not know when" this trigger exists to remove.
   not_enabled,
-  /// A value was given to a seam that takes none (`seam_setting`, #533).
+  /// A value was given to a seam that takes none (`seam_setting`, #531).
   no_setting,
   /// A value outside the seam's `minimum`..`maximum`. Refused, not
   /// clamped: whoever wrote it was reading another table.
@@ -1084,7 +1084,7 @@ class seam_context {
   [[nodiscard]] std::uint16_t scratch(unsigned slot) const noexcept;
   void set_scratch(unsigned slot, std::uint16_t value) noexcept;
 
-  /// This seam's number (`seam_definition::setting`, #533): what the
+  /// This seam's number (`seam_definition::setting`, #531): what the
   /// player chose, or the definition's `initial` if nobody did. Zero for
   /// a seam that takes none.
   [[nodiscard]] std::uint16_t setting() const noexcept;
@@ -1297,7 +1297,7 @@ class seam_engine {
   /// state.
   seam_error pull(std::string_view id, ticks now);
 
-  /// The number `id` takes (`seam_setting`, #533): what was set, or the
+  /// The number `id` takes (`seam_setting`, #531): what was set, or the
   /// definition's `initial`. Zero for an unknown seam or one with none.
   [[nodiscard]] std::uint16_t setting(std::string_view id) const noexcept;
 
