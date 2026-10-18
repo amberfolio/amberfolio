@@ -8,6 +8,9 @@
 
 #pragma once
 
+#include <string>
+#include <string_view>
+
 #include "amberfolio/host/host_services.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/seam.h"
@@ -22,10 +25,18 @@ namespace amberfolio::sdl {
 [[nodiscard]] const char* seam_refusal(machine::seam_error why) noexcept;
 
 /// Enable every seam the run was asked for, now that there is a program to
-/// key them on, and say why any was refused. False when the launch should
-/// stop: a `--seam` this host cannot honour is a command line to fix.
+/// key them on, then give each seam the number it was asked for (#531),
+/// and say why any was refused. False when the launch should stop: a
+/// `--seam` or a `--setting` this host cannot honour is a command line to
+/// fix. A remembered one is a line on stderr and the run goes on (#383).
 [[nodiscard]] bool enable_requested_seams(machine::machine& box,
                                           const options& opts);
+
+/// A seam's number as the end-of-run line and the `--seams` listing say
+/// it (#531): ` pause=1500ms`, with its leading space, or empty for a
+/// seam that takes none. The web host prints the same.
+[[nodiscard]] std::string setting_words(const machine::seam_engine& seams,
+                                        std::string_view id);
 
 /// The `--seams` listing (#98): every seam's id, its state and the reason,
 /// the document it waits for, and what has been shown to the engine.

@@ -489,6 +489,13 @@ bool parse_replay_line(std::span<const char> line, replay_event& out) noexcept {
         out.id[i] = word[i];
       }
       out.id_length = word.size();
+      if (f.next(word)) {
+        if (!parse_number(word, n, 0xFFFFU)) {
+          return false;
+        }
+        out.have_setting = true;
+        out.setting = static_cast<std::uint16_t>(n);
+      }
       return f.exhausted();
     }
 
@@ -652,6 +659,10 @@ std::size_t format_replay_line(const replay_event& event,
     case replay_line::seam:
       w.text("seam ");
       w.text(event.id_text());
+      if (event.have_setting) {
+        w.put(' ');
+        w.number(event.setting);
+      }
       break;
     case replay_line::file: {
       w.text("file ");
@@ -823,6 +834,13 @@ std::size_t write_preamble(const machine& box, filesystem& fs,
       event.id[c] = id[c];
     }
     event.id_length = id.size();
+    // A seam that takes a number says which, whether or not it is the
+    // initial one: the initial is this build's, and the run is the run.
+    if (const seam_definition* seam = box.seams().find(id);
+        seam != nullptr && seam->setting.present()) {
+      event.have_setting = true;
+      event.setting = box.seams().setting(id);
+    }
     if (!emit(event)) {
       return 0;
     }
@@ -985,8 +1003,16 @@ bool replay_player::load(std::span<const char> text) {
                0);
           return false;
         }
+        if (event.have_setting &&
+            preamble_.format_version < recording_format_setting) {
+          fail(replay_status::malformed,
+               "a preamble line this recording's format does not have", 0);
+          return false;
+        }
         preamble_.seams[preamble_.seam_count] = event.id;
         preamble_.seam_lengths[preamble_.seam_count] = event.id_length;
+        preamble_.seam_has_setting[preamble_.seam_count] = event.have_setting;
+        preamble_.seam_settings[preamble_.seam_count] = event.setting;
         ++preamble_.seam_count;
         break;
       case replay_line::file:
@@ -1066,6 +1092,12 @@ replay_status replay_player::check_initial(const machine& box, filesystem* fs) {
     const seam_status row = box.seams().status(preamble_.seam(i));
     if (row.state != seam_state::on) {
       fail(replay_status::malformed, "a recorded seam is not on", i);
+      return status_;
+    }
+    if (preamble_.seam_has_setting[i] &&
+        box.seams().setting(preamble_.seam(i)) != preamble_.seam_settings[i]) {
+      fail(replay_status::malformed,
+           "a recorded seam's setting is not the one recorded", i);
       return status_;
     }
     // A seam that is on and shut behind a document gate (#171) would do
@@ -1505,6 +1537,10 @@ verify_result verify_recording(machine& box, filesystem* fs,
   }
   for (std::size_t i = 0; i < player.preamble().seam_count; ++i) {
     static_cast<void>(box.seams().enable(player.preamble().seam(i)));
+    if (player.preamble().seam_has_setting[i]) {
+      static_cast<void>(box.seams().set_setting(
+          player.preamble().seam(i), player.preamble().seam_settings[i]));
+    }
   }
 
   if (player.check_initial(box, fs) != replay_status::ok) {

@@ -1528,6 +1528,39 @@ sound. Heard in the run's `.wav` (made without `--fast`, so the audio is
 not short of samples), each click is about seventy milliseconds as with
 it off, and a step's two start the same 170 milliseconds apart.
 
+## Leg 24 — messages that stand long enough to read (#531)
+
+`docs/seams.md` §10, *The message pause*. The disk leg 3 saved, slot A's
+lone fighter walked into the slums until a band of orcs is surprised, at
+the 386 governor, the fight handed to the computer:
+
+```
+--speed 386 --wall none --seam code-wheel --code-wheel-answered --seam message-pause
+--press L@7551 --press A@7801            LOAD SAVED GAME, slot A
+--press Up@9101 ... 150 apart            Up Up Up Right Right, 23 keys, the last at 12401
+--press C@12700 --press Q@13300          COMBAT, QUICK
+--dump PREFIX --dump-every 2
+```
+
+The orcs are surprised at frame 12,484 either way. The frame each combat
+line is first on the screen:
+
+| line | seam off | seam on (1500) | seam on, Space at 13,470 |
+|---|---|---|---|
+| BOB ATTACKS ORC AND MISSES | 13338 | 13338 | 13338 |
+| BOB ATTACKS ORC HITTING FOR 1 | 13376 | 13452 | 13452 |
+| ORC ATTACKS BOB HITTING FOR 6 | 13408 | 13560 | 13490 |
+| ORC ATTACKS BOB HITTING FOR 1 | 13444 | 13672 | 13602 |
+| BOB ATTACKS ORC HITTING FOR 2 | 13476 | 13780 | 13710 |
+| BOB ATTACKS ORC AND MISSES | 13512 | 13894 | 13824 |
+| ORC SURRENDERS | 13530 | 13988 | 13918 |
+
+The same fight, line for line: a line stands about 110 frames instead
+of 36. The Space ends the pause it lands in, and the next line follows
+twenty frames later, which is the program drawing it; the key goes no
+further. `tests/sessions/fight-pause.rec` is the same comparison at the
+`xt` governor, over `fight`'s own keys.
+
 ## What the run should not say
 
 The three notices `docs/first-light.md` tabulates

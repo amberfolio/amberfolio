@@ -42,11 +42,12 @@
 // first token of the first line, so a file from a later build is
 // *refused* rather than half-read:
 //
-//     amberfolio-config 1
+//     amberfolio-config 2
 //     game-directory C:\Games\POR
 //     program START.EXE
 //     seam automap
 //     seam journal
+//     setting message-pause 2000
 //     journal-ocr none
 //     volume 75
 //     mute off
@@ -55,9 +56,11 @@
 //     save-sidecars on
 //
 // One `key value` a line, the value being the whole rest of the line so
-// that a path with spaces in it needs no quoting. `seam` is the one
-// repeatable key. Every key is optional: a file says what somebody
-// chose, and a key that is not there is not a choice.
+// that a path with spaces in it needs no quoting. `seam` and `setting`
+// are the repeatable keys; `setting` is the one whose value is two words,
+// a seam's id and the number it takes (`machine::seam_setting`, #531),
+// and it names each seam at most once. Every key is optional: a file says
+// what somebody chose, and a key that is not there is not a choice.
 //
 // **Unforgiving on purpose**, for `code_wheel_store.h`'s reason: no
 // comments and no blank lines, because a parser that skipped what it did
@@ -82,9 +85,15 @@
 
 namespace amberfolio::sdl {
 
-/// The format version this build writes, and the oldest it reads. One,
-/// both: this is the first.
-inline constexpr std::uint32_t desktop_config_version = 1;
+/// The format version this build writes, and the oldest it reads.
+///
+/// 1 (#382): the first.
+///
+/// 2 (#531): the `setting` key. A build that knows only 1 refuses a 2 as
+/// a later version rather than as a line it cannot read, which is the
+/// truer of the two sentences. A 1 is still read: every 1 is a 2 that
+/// names no setting.
+inline constexpr std::uint32_t desktop_config_version = 2;
 inline constexpr std::uint32_t desktop_config_oldest_version = 1;
 
 /// The first line's keyword — what says a file is one of ours before
@@ -118,6 +127,18 @@ enum class config_trouble : std::uint8_t {
 /// `later-version`, `unknown-key`, `bad-value`. Never null.
 [[nodiscard]] const char* config_trouble_name(config_trouble why) noexcept;
 
+/// One seam's number, as `--setting ID=VALUE` and the config's
+/// `setting ID VALUE` both name it (#531). Whether the seam takes one and
+/// whether the value is inside its bounds is the seam engine's question,
+/// asked when the run applies it: this unit needs nothing from core.
+struct seam_setting_choice {
+  std::string seam;
+  std::uint16_t value{};
+
+  friend bool operator==(const seam_setting_choice&,
+                         const seam_setting_choice&) = default;
+};
+
 /// What a reading of a config file turned out to be.
 ///
 /// The line number and the line itself travel with the trouble because a
@@ -149,6 +170,12 @@ struct desktop_config {
   /// Present only when the file named at least one; a file that names
   /// none is a player who chose none, which is also the default.
   std::optional<std::vector<std::string>> seams;
+
+  /// The numbers the player chose for seams that take one (#531), each
+  /// seam at most once. A seam with no line here runs on its
+  /// definition's `initial`. Kept whether the seam is on or off: the
+  /// number is the player's even while the seam is not.
+  std::optional<std::vector<seam_setting_choice>> settings;
 
   /// The OCR engine: a path to run, or `none`. Absent means "discover
   /// one" (`ocr_discovery.h`), which is what a player who never said

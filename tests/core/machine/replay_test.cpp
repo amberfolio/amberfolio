@@ -60,7 +60,7 @@ TEST(ReplayGrammar, RoundTripsEveryKindOfLine) {
   e.kind = replay_line::header;
   e.format_version = recording_format_version;
   e.state_version = state_format_version;
-  EXPECT_EQ(line_of(e), "amberfolio-recording 4 state=2\n");
+  EXPECT_EQ(line_of(e), "amberfolio-recording 5 state=2\n");
 
   e = replay_event{};
   e.kind = replay_line::cwd;
@@ -1415,9 +1415,9 @@ TEST(Replay, APullInAnOlderFormatIsRefused) {
   ASSERT_EQ(first.box->seams().enable("test-poll-trigger"), seam_reason::none);
   std::string text =
       record(first, {}, 20'000, 100'000, {{40'000, "test-poll-trigger"}});
-  const std::size_t header = text.find("amberfolio-recording 4");
+  const std::size_t header = text.find("amberfolio-recording 5");
   ASSERT_EQ(header, 0u);
-  text.replace(0, std::strlen("amberfolio-recording 4"),
+  text.replace(0, std::strlen("amberfolio-recording 5"),
                "amberfolio-recording 2");
 
   const rig second;
@@ -1443,11 +1443,11 @@ TEST(Replay, RefusesATextThatIsNotARecording) {
   EXPECT_EQ(player.status(), replay_status::malformed);
 
   // A `std::string` and not a view: the concatenation below is a
-  // temporary, and a view of it would dangle at the semicolon. Version 5
-  // is one this build has never written; 1 to 4 it has, and reads all
+  // temporary, and a view of it would dangle at the semicolon. Version 6
+  // is one this build has never written; 1 to 5 it has, and reads all
   // four.
   const std::string other_version =
-      "amberfolio-recording 5 state=2\nprogram A.EXE " + std::string(64, 'a') +
+      "amberfolio-recording 6 state=2\nprogram A.EXE " + std::string(64, 'a') +
       "\n";
   EXPECT_FALSE(player.load(
       std::span<const char>(other_version.data(), other_version.size())));
@@ -1537,8 +1537,8 @@ TEST(Replay, ACwdLineInAnOlderFormatIsRefused) {
   enter_game(first, true);
   first.start();
   std::string text = record(first, {}, 40'000, 60'000);
-  ASSERT_EQ(text.find("amberfolio-recording 4"), 0U);
-  text.replace(0, std::strlen("amberfolio-recording 4"),
+  ASSERT_EQ(text.find("amberfolio-recording 5"), 0U);
+  text.replace(0, std::strlen("amberfolio-recording 5"),
                "amberfolio-recording 3");
   replay_player player;
   EXPECT_FALSE(player.load(std::span<const char>(text.data(), text.size())));

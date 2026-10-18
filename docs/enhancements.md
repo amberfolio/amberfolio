@@ -518,6 +518,33 @@ step's two clicks the way the game always had them.
 waits as it always did, and the time the game spends drawing the view is
 its own.
 
+## The message pause
+
+**What it does.** Gives a message the game moves on from by itself time
+to be read. Every line of a fight ("... ATTACKS ... HITTING FOR 6 POINTS
+OF DAMAGE"), a flashed warning, and a scripted line the game pauses after
+stand for the game's pause, a quarter of a second at the game speed every
+save starts with, and on the machines the game was written for the
+drawing that followed made it a few seconds. At the 386 setting there is
+next to no drawing, and a fight's lines go by twice a second. With the
+message pause on, each of those pauses lasts at least a second and a half
+and any key ends it: the key is used up ending the pause, so it does not
+also answer whatever comes next.
+
+**How you turn it on.** `--seam message-pause`, or its toggle in the
+panel. The length is the seam's number, in milliseconds, from 0 to
+10,000 in the panel's steps of 250: `--setting message-pause=2500`, the
+number beside its toggle, or `setting message-pause 2500` in the config
+file. 0 keeps the game's own length and only adds the key.
+
+**What it will not do.** Slow anything else. The game's own speed
+setting (Encamp, Alter, Speed) slows the walk and every animation with
+the messages; this leaves them alone, and a game speed longer than the
+number is left as you set it. A monster's approach keeps its own beat,
+and so does a death in a fight, whose pause is how long its sound plays.
+A scripted line the script replaces with no pause at all is not
+lengthened, since there is no pause to lengthen.
+
 ## The text faces
 
 **What they do.** Redraw the game's lettering in a face of your choice,

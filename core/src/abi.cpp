@@ -1407,6 +1407,78 @@ uint32_t af_machine_seam_disable(af_machine* handle, const char* id) {
              : AF_INVALID;
 }
 
+uint32_t af_machine_seam_setting_name(const af_machine* handle, uint32_t index,
+                                      uint32_t which, char* out, uint32_t max) {
+  const machine* box = box_of(handle);
+  if (box == nullptr || index >= box->seams().count()) {
+    return 0;
+  }
+  const amberfolio::machine::seam_definition* seam =
+      box->seams().find(box->seams().status(index).id);
+  if (seam == nullptr || !seam->setting.present()) {
+    return 0;
+  }
+  std::string_view text;
+  if (which == AF_SEAM_SETTING_NAME) {
+    text = seam->setting.name;
+  } else if (which == AF_SEAM_SETTING_UNIT) {
+    text = seam->setting.unit;
+  } else {
+    return 0;
+  }
+  return copy_out(std::span<const char>(text.data(), text.size()), out, max);
+}
+
+uint32_t af_machine_seam_setting_limit(const af_machine* handle, uint32_t index,
+                                       uint32_t which) {
+  const machine* box = box_of(handle);
+  if (box == nullptr || index >= box->seams().count()) {
+    return 0;
+  }
+  const amberfolio::machine::seam_definition* seam =
+      box->seams().find(box->seams().status(index).id);
+  if (seam == nullptr || !seam->setting.present()) {
+    return 0;
+  }
+  switch (which) {
+    case AF_SEAM_SETTING_MINIMUM:
+      return seam->setting.minimum;
+    case AF_SEAM_SETTING_MAXIMUM:
+      return seam->setting.maximum;
+    case AF_SEAM_SETTING_STEP:
+      return seam->setting.step;
+    case AF_SEAM_SETTING_INITIAL:
+      return seam->setting.initial;
+    default:
+      return 0;
+  }
+}
+
+uint32_t af_machine_seam_setting(const af_machine* handle, uint32_t index) {
+  const machine* box = box_of(handle);
+  if (box == nullptr || index >= box->seams().count()) {
+    return 0;
+  }
+  return box->seams().setting(box->seams().status(index).id);
+}
+
+uint32_t af_machine_seam_set_setting(af_machine* handle, const char* id,
+                                     uint32_t value) {
+  machine* box = box_of(handle);
+  if (box == nullptr) {
+    return AF_NO_MACHINE;
+  }
+  std::size_t length = 0;
+  if (!text_length(id, 64, length) || value > 0xFFFFU) {
+    return AF_INVALID;
+  }
+  return box->seams().set_setting(std::string_view(id, length),
+                                  static_cast<std::uint16_t>(value)) ==
+                 amberfolio::machine::seam_reason::none
+             ? AF_OK
+             : AF_INVALID;
+}
+
 int32_t af_machine_seam_triggered(const af_machine* handle, uint32_t index) {
   const machine* box = box_of(handle);
   if (box == nullptr || index >= box->seams().count()) {

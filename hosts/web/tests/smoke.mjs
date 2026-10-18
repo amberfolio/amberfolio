@@ -151,11 +151,16 @@ import {
   STORES,
   TEXT_STORE,
   SEAMS_SETTING,
+  SEAM_SETTINGS_SETTING,
 } from './persist.mjs';
 import {
   applyStoredSeams,
+  applyStoredSeamSettings,
   panelRow,
+  seamSettingsToStore,
   seamsToStore,
+  settingEntry,
+  storedSeamSettings,
   storedSeams,
   PANEL_COLUMNS,
 } from './toggle-panel.mjs';
@@ -268,6 +273,12 @@ const EXPECTED_EXPORTS = [
   '_af_machine_seam_host_calls',
   '_af_machine_seam_host_argument',
   '_af_machine_seam_gate',
+  // A seam's one number (#531): its name, unit and bounds, its value,
+  // and setting it.
+  '_af_machine_seam_setting_name',
+  '_af_machine_seam_setting_limit',
+  '_af_machine_seam_setting',
+  '_af_machine_seam_set_setting',
   '_af_machine_present_document',
   '_af_machine_document_count',
   '_af_machine_document_name_at',
@@ -2135,6 +2146,17 @@ if (missing.length === 0) {
       'armed fired=0 reached=12 waiting',
     'a pending pull does not show as waiting',
   );
+  // A seam's number (#531) goes last, after core's sentence, in the
+  // desktop host's spelling: `name=valueunit`.
+  check(
+    formatSeamFired({
+      armed: true,
+      fired: 3,
+      reading: ' - a sentence',
+      setting: { name: 'pause', unit: 'ms', value: 1500 },
+    }) === 'armed fired=3 pause=1500ms - a sentence',
+    "a seam's number is not before the sentence on its line",
+  );
 
   // And the two rows that must never contradict themselves, from runs
   // that happened. `probe` acted; `probe-unreached` armed at an address
@@ -3188,11 +3210,95 @@ if (missing.length === 0) {
     );
   }
 
+  // --- A seam's number (#531) ------------------------------------------
+  const pause = { name: 'pause', unit: 'ms', minimum: 0, maximum: 10000, step: 250, initial: 1500, value: 1500 };
+  check(panelRow(aSeam()).setting === null, 'a seam with no number grew one on its row');
+  check(panelRow(aSeam({ setting: pause })).setting === pause, "a seam's number is not on its row");
+  check(settingEntry(pause, ' 2500 ') === 2500, 'a typed whole number in range was not taken');
+  for (const bad of ['', '-1', '1.5', '10001', 'abc', '1e3']) {
+    check(settingEntry(pause, bad) === null, `the entry ${JSON.stringify(bad)} was taken`);
+  }
+  check(settingEntry(null, '5') === null, 'a seam with no number took one');
+  check(SEAM_SETTINGS_SETTING === 'seam-settings', `the settings key is '${SEAM_SETTINGS_SETTING}'`);
+  check(
+    JSON.stringify(storedSeamSettings({ 'message-pause': 2500 })) === '{"message-pause":2500}',
+    'a stored number did not come back as one',
+  );
+  for (const nothing of [undefined, null, 7, 'x', [1], { a: -1 }, { a: 1.5 }, { a: '5' }]) {
+    check(
+      storedSeamSettings(nothing) === null,
+      `a record of ${JSON.stringify(nothing) ?? 'undefined'} was read as a choice of numbers`,
+    );
+  }
+  check(
+    seamSettingsToStore([panelRow(aSeam({ setting: pause }))]) === null,
+    'a number left at its initial was written down',
+  );
+  check(
+    JSON.stringify(
+      seamSettingsToStore([
+        panelRow(aSeam()),
+        panelRow(aSeam({ id: 'message-pause', setting: { ...pause, value: 3000 } })),
+      ]),
+    ) === '{"message-pause":3000}',
+    'a moved number did not come out as the record to store',
+  );
+  {
+    const stand = { setSeamSetting: (id, value) => id === 'message-pause' && value <= 10000 };
+    const applied = applyStoredSeamSettings(stand, { 'message-pause': 2000, gone: 5, far: 99999 });
+    check(
+      JSON.stringify(applied) ===
+        '{"set":[{"id":"message-pause","value":2000}],"refused":["gone","far"]}',
+      `stored numbers applied as ${JSON.stringify(applied)}`,
+    );
+    check(
+      applyStoredSeamSettings(stand, storedSeamSettings(null)).set.length === 0,
+      'a browser with no record set a number',
+    );
+  }
+
   console.log(
     'smoke: the toggle panel says the same five facts a desktop panel' +
       ' does, a stored choice that is not a list of names is no choice,' +
       ' and one that is goes through seamEnable with its refusals kept',
   );
+}
+
+// --- A seam's number, through the module (#531) ---------------------------
+//
+// `message-pause` is the one seam that takes a number. The listing carries
+// it before any program is loaded, a value set comes back, one outside the
+// bounds is refused and changes nothing, and a reset keeps what was chosen.
+
+if (missing.length === 0) {
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+  const machine = new Machine(module);
+  check(machine.attachReferenceDevices() === AF_OK, 'attaching the reference devices failed');
+  machine.reset();
+  const row = () => machine.seamList().find((seam) => seam.id === 'message-pause');
+  const listed = row()?.setting;
+  check(
+    JSON.stringify(listed) ===
+      '{"name":"pause","unit":"ms","minimum":0,"maximum":10000,"step":250,"initial":1500,"value":1500}',
+    `message-pause lists its number as ${JSON.stringify(listed)}`,
+  );
+  check(
+    machine.seamList().every((seam) => seam.id === 'message-pause' || seam.setting === null),
+    'a seam with no number listed one',
+  );
+  check(machine.setSeamSetting('message-pause', 2750), 'setting message-pause to 2750 was refused');
+  check(row()?.setting?.value === 2750, `message-pause reads ${row()?.setting?.value} after 2750`);
+  check(!machine.setSeamSetting('message-pause', 10001), 'a number past the maximum was taken');
+  check(!machine.setSeamSetting('message-pause', -1), 'a negative number was taken');
+  check(!machine.setSeamSetting('message-pause', 1.5), 'a fraction was taken');
+  check(!machine.setSeamSetting('no-such-seam', 100), 'a number for no seam was taken');
+  check(row()?.setting?.value === 2750, 'a refused number changed the value');
+  machine.reset();
+  check(row()?.setting?.value === 2750, `a reset put message-pause back to ${row()?.setting?.value}`);
+  machine.destroy();
+  console.log('smoke: message-pause lists, sets, refuses and keeps its number across a reset');
 }
 
 // --- The one permission this page asks for (M6, #385) ---------------------
@@ -4083,6 +4189,23 @@ if (missing.length === 0 && sessions !== null) {
   check(
     ok.pulls[0]?.id === 'a' && ok.pulls[0]?.frame === 7,
     `--pull a@7 parsed as ${JSON.stringify(ok.pulls[0])}`,
+  );
+  const numbered = parseDriveArgs([
+    'dir', 'P.EXE', '--seam', 'message-pause', '--setting', 'message-pause=2500',
+  ]);
+  check(
+    JSON.stringify(numbered.settings) === '[{"id":"message-pause","value":2500}]',
+    `--setting message-pause=2500 parsed as ${JSON.stringify(numbered.settings)}`,
+  );
+  for (const bad of ['message-pause', '=5', 'message-pause=', 'message-pause=-1', 'message-pause=1.5']) {
+    check(
+      parseDriveArgs(['dir', 'P.EXE', '--setting', bad]).error !== undefined,
+      `the driver accepted --setting ${bad}`,
+    );
+  }
+  check(
+    parseDriveArgs(['dir', 'P.EXE', '--replay', 'r.txt', '--setting', 'a=1']).error !== undefined,
+    'the driver accepted --setting beside --replay',
   );
 
   // The PPM encoder, on a picture small enough to write out by hand: two

@@ -106,6 +106,7 @@ authority (`docs/machine.md` §5). The SHA-256 is the seam table's key
 | `--watch OFF[:N]` | print a data-segment word when it changes. `OFF` is a hex offset in the data segment, `N` is 1 or 2 bytes, default 1. Repeatable. Reads `memory_map::ram()`, not the bus, so it disturbs no EGA latch. Line format: the comment atop `hosts/sdl/src/options.h`. |
 | `--seam ID` | turn one seam on (PLAN.md §5, `machine/seam.h`), refused unless the loaded program is the binary its addresses are facts about. Repeatable. |
 | `--seams` | list every seam this build carries, and exit. |
+| `--setting ID=VALUE` | the one number a seam takes (#531, `seam_setting` in `machine/seam.h`), such as `message-pause=2000`, in its unit (milliseconds there). Applied after the seams, whether or not this one is on; a seam that takes none, or a value outside its bounds, is **refused, not clamped**, and stops the launch. Refused with `--replay`. Repeatable; the last for a seam wins. The `--seams` listing and the end-of-run seam line carry the value as `pause=2000ms`: `amberfolio: seam message-pause armed fired=12 pause=2000ms`. |
 | `--vfs-list`, `--vfs-get PATH`, `--vfs-remove PATH` | after the run: list the disk; print one file's size and SHA-256, never its bytes; delete one. |
 | `--save-layer` | which of the disk's files are the player's (#208, §6): the loaded program's table beside the edition line, and after the run the files it names, each with the slot letter and party-member index its name carries. |
 | `--document PATH` | present a document the player holds (`docs/seams.md`, §9). Repeatable. A file **dropped on the window** does the same thing and says the same two lines, in the panel as well as on stderr. |
@@ -235,11 +236,12 @@ PATH` points at another file, which is what the checks in
 person's own.
 
 ```
-amberfolio-config 1
+amberfolio-config 2
 game-directory C:\Games\POR
 program START.EXE
 seam automap
 seam journal
+setting message-pause 2000
 journal-ocr none
 volume 75
 mute off
@@ -249,9 +251,11 @@ save-sidecars on
 ```
 
 One `key value` a line, the value being the whole rest of the line so a
-path with spaces needs no quoting; `seam` is the one repeatable key;
-every key is optional. The version is the first line's second token, so a
-file from a later build is refused rather than half-read.
+path with spaces needs no quoting; `seam` and `setting` are the
+repeatable keys, `setting` naming a seam and its number and each seam at
+most once; every key is optional. The version is the first line's second
+token, so a file from a later build is refused rather than half-read;
+this build writes 2 and still reads 1, which is a 2 with no `setting`.
 `hosts/sdl/src/desktop_config.h` is the authority.
 
 **Precedence is flag > config > default**, stated once as `prefer()` in
@@ -260,7 +264,8 @@ overruled — including a flag that names the default, which is why the
 host records *which* settings the command line mentioned rather than
 comparing values. `--seam` on the command line **replaces** the file's
 list rather than adding to it, so a run can turn a remembered seam off
-without editing anything.
+without editing anything. `--setting` wins **seam by seam**: it replaces
+the file's number for the seam it names and leaves another seam's alone.
 
 **Only `--remember` writes it**, with one exception (§2b). A host that
 wrote its settings down at the end of every run would make the next run's
@@ -277,7 +282,8 @@ settings. The reason above is untouched by it: a key a person was asked
 for in so many words is not a driving script's flag.
 
 **The one exception is a toggle in the panel** (§8, #383), which writes
-the `seam` lines and nothing else about the run. The rule above is about
+the `seam` lines and nothing else about the run; a number set there
+writes that seam's `setting` line and nothing else. The rule above is about
 a *flag*, and the reason it exists is that a script's `--seam` may not be
 a player's choice. A click or a Return in a panel is nobody but a player.
 
@@ -286,7 +292,9 @@ a player's choice. A click or a Return in a panel is nobody but a player.
 does; a remembered choice that no longer fits — a player who turned a
 seam on last week and has loaded another program today — is a row in the
 panel with a reason on it, and taking the game away over one is
-persistence doing harm. `run-config-file.cmake` checks both halves.
+persistence doing harm. `run-config-file.cmake` checks both halves. A
+remembered `setting` the seam refuses is the same: a line on stderr, and
+the seam runs on its own default.
 
 **A malformed file is a loud line and a clean start on the defaults.**
 The line number and the line itself are printed, the file is left where
@@ -956,7 +964,7 @@ rename or removal of either moves these numbers — `abi.h` says so at
 compares `major` against what it was written for and refuses before
 fetching the module.
 
-The ABI moved as follows (`abi.h` has the whole list, now at 3.2): 1.1 added the two doors below (#228, #229), 1.2 added
+The ABI moved as follows (`abi.h` has the whole list, now at 3.4): 1.1 added the two doors below (#228, #229), 1.2 added
 `af_machine_code_wheel_answered` and `af_machine_set_code_wheel_answered`
 (#291), 1.3 added `af_web_journal_part_begins_paragraph` (#361), which is
 how a fragment boundary that is a paragraph break reaches the page that
@@ -985,7 +993,13 @@ It also adds `af_machine_set_current_directory`, `af_machine_current_directory`,
 archive release; on another layout their rows follow the save directory
 the copy names (§6). 3.1 adds `af_web_key_card_json` (#427, §11). 3.2
 adds `af_machine_text_entry` (#504, §12). 3.3 adds
-`af_machine_scene_json` (#520, §13).
+`af_machine_scene_json` (#520, §13). 3.4 adds a seam's one number (#531,
+§8): `af_machine_seam_setting_name` (its name or unit),
+`af_machine_seam_setting_limit` (minimum, maximum, step, initial),
+`af_machine_seam_setting` (its value now) and
+`af_machine_seam_set_setting`, which refuses a value outside the bounds
+rather than clamping it. The value is configuration and outlasts
+`af_machine_reset`.
 
 **`exportsDigest` does not depend on anyone having bumped the right
 number.** It is the sha256 of the `exports` list, sorted and
@@ -1073,7 +1087,7 @@ it; `app.mjs` uses it and no other file knows the schema.
 | `disk` | the file's canonical path (`\SAVE\SAVGAMA.DAT`) | its bytes | at the drop, and for a `config` row that changed |
 | `play` | the same | the same | when `af_machine_vfs_generation()` moves |
 | `text` | the `localStorage` key it had | one string | at an ingestion, a correction, a *Forget*, an answered code wheel |
-| `settings` | a name | JSON | the program last booted; whether this build may keep sidecars beside the saves (#385, §2b) |
+| `settings` | a name | JSON | the program last booted; whether this build may keep sidecars beside the saves (#385, §2b); the seams turned on in the panel and the numbers given them (§8) |
 
 **The save layer draws the line between the first two** (§6). On a
 generation change the page walks `vfsList()` and asks
@@ -1262,6 +1276,7 @@ beside the module, so it imports `./host.mjs` with no path.
 | `--press KEY@FRAME` | post a key at the top of frame `FRAME`, counting 60 Hz frames of virtual time. Repeatable. |
 | `--pull ID@FRAME` | pull a seam's trigger at the top of frame `FRAME` (#161). Repeatable. |
 | `--seam ID` | turn one seam on after the load, before the first step. Repeatable; a refusal **ends the run**, so a script never silently gets a plain machine. |
+| `--setting ID=VALUE` | give seam `ID` its number (#531), after the `--seam`s and before the first step: `--setting message-pause=2500`. Repeatable; a value outside the seam's bounds, or a seam that takes no number, **ends the run**. Refused with `--replay`. The seam's end-of-run line carries it, `pause=2500ms`, as the desktop's does. |
 | `--seams` | list every seam this build carries, and exit. |
 | `--install DIR` | put the directory's files at `DIR` (`\POOLRAD`) and make it current before the load, the desktop's `--install` (§2c). |
 | `--save-sidecars` | the playthrough's sidecars, the same filenames and bytes as the desktop's, in this module's filesystem. Turn it on once, after the files are in and before the program is loaded, so the first load is watched. A driven run is never asked about this and states it (§2b). |
@@ -1269,7 +1284,7 @@ beside the module, so it imports `./host.mjs` with no path.
 | `--code-wheel-answered` | say the challenge has been answered on this copy (#291). Without it the seam only watches, and a driven run sits at the challenge for ever. |
 | `--code-wheel-store PATH` | where answered copies are remembered, in the desktop host's format. Read before the first step, written when somebody answers. |
 | `--journal-store PATH` | the journal text the reader is answered out of, in the desktop host's format. |
-| `--replay PATH` | be the run a recording describes (`af_machine_verify_recording`), and check it. The recording decides seams and speed, so `--seam` is refused beside it; a document or journal store it needs is still this side's. |
+| `--replay PATH` | be the run a recording describes (`af_machine_verify_recording`), and check it. The recording decides seams and speed, so `--seam` and `--setting` are refused beside it; a document or journal store it needs is still this side's. |
 | `--speed xt\|turbo\|at\|386` | the governor, spelled as on the desktop host. |
 | `--trace` | the trace ring and the service-call and file channels. |
 | `--dump PREFIX` | `PREFIX.ppm`, `PREFIX.wav` and `PREFIX.edges`, in the SDL host's formats, `PREFIX.json`, `screenText()`'s answer (§10), and `PREFIX.scene.json`, `scene()`'s (§13). |
@@ -1741,6 +1756,7 @@ hosts. None of them is decoration.
 | fired | how many times a handler has **acted**, as a number |
 | reason | `seam_reason_name()` — core's word, or `-` |
 | waits for | the document the row is gated on, or `-` |
+| setting | the seam's number, `<pause 1500 ms>`, or blank for a seam that takes none; the page shows a number box in its place (#531) |
 
 **`state` distinguishes the two claims an enabled seam can make.** The
 difference is `seam_status::armed`: at least one of the seam's points
@@ -1780,8 +1796,8 @@ cannot disagree about the same seam.
 
 | host | where | key |
 |---|---|---|
-| desktop | `config.txt` (§2a) | `seam ID`, one line each |
-| page | IndexedDB, the `settings` store | `seams`, an array of ids |
+| desktop | `config.txt` (§2a) | `seam ID`, one line each; `setting ID VALUE` for a number |
+| page | IndexedDB, the `settings` store | `seams`, an array of ids; `seam-settings`, `{ id: number }` for numbers moved off their initial |
 
 **Absence of a stored choice is *off*, never "unset means inherit".** A
 player who has never opened the panel gets every seam off, which is the
@@ -1832,12 +1848,18 @@ check.
   own argument (#377): this machine has no mouse, so no mouse button is a
   control the game can ever want back. A second press turns it into the
   key card (§11).
-- The left button picks a row and toggles it. The panel is asked before
+- The left button picks a row and toggles it; on the left or right half
+  of a row's `setting` cell it moves that number one step down or up
+  instead. The panel is asked before
   the on-screen keyboard, because the two overlays can be over the same
   pixel and a click belongs to the one in front; a click on no row falls
   through to the keyboard.
-- Up, down and Return drive it **only while the on-screen keyboard is
-  not shown**. The keyboard already claims all four arrows and Return
+- Up, down and Return drive it, and left and right move the focused
+  row's number one `step`, held keys repeating, never past its bounds
+  (`stepped_setting()`), and remembered as a toggle is
+  (`remember_panel_setting()`). On the key card left and right turn the
+  page. All of these **only while the on-screen keyboard is not
+  shown**. The keyboard already claims all four arrows and Return
   (§7), and two overlays fighting over one key is worse for a player
   than one of them waiting for the other to be stepped off.
 - Drawn after `--verify`'s read-back, for §7's reason. While it is up the
@@ -1852,6 +1874,17 @@ seam that takes a trigger. Toggling is a configuration call between
 frames, and the listing is re-read after every one so an on-but-inert
 seam shows as such. A choice core refused puts the checkbox back and is
 not written down.
+
+A seam that takes a number (#531, `message-pause`'s `pause` in `ms`) has a
+number box in the same cell, labelled with the setting's name and unit
+and bounded by its minimum, maximum and step. A change is set at once,
+on or off. An entry that is not a whole number inside the bounds snaps
+back to the seam's value and is not written down; one that took is kept
+under the `seam-settings` key as `{ "message-pause": 2500 }`, only for
+numbers moved off their initial, read fail-closed like `seams`
+(`storedSeamSettings()`), and set again at every boot after the seams.
+A remembered value this build refuses is dropped. Core keeps the value
+across a reset, so a reset needs nothing re-applied.
 
 ---
 

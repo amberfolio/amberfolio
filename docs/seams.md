@@ -41,6 +41,7 @@ style every seam in the tree follows.
 | `trigger` | whether this seam is **pulled** rather than left on (§3a) |
 | `gate` | a document the player must present before it arms (§5); unused by every shipped seam |
 | `group` | seams that are **alternatives** share one: enabling one disables the others (§6); the text faces |
+| `setting` | the one **number** a player may choose (§6): a name, a unit, bounds, a step and an initial; `message-pause`'s length |
 | `schema` | the `seam_schema_version` the definition was written against |
 
 Everything in it is a fact about the program (an address, an offset, a
@@ -557,6 +558,17 @@ clears it, the serialization omits it, a replay records the active set
 as an initial condition (#100). A trigger's latch is the same; *when* it
 was pulled is a stream event (§3a).
 
+**A number** (`seam_setting`, #531). A seam may take one: a name, a
+unit, a minimum and maximum, the step a panel's arrow moves it by, and
+the value it starts at. `set_setting()` refuses a value outside the
+bounds rather than clamping it, `setting()` answers what was set or the
+initial, and a handler reads its own through `seam_context::setting()`.
+It is configuration as the enable is, and more durable: a person chose
+it, so `clear()` and `reset()` leave it where it was, the way they leave
+an answered code wheel. Set or not, a seam that is off is not consulted,
+so the number moves nothing until the seam is on. A recording carries it
+on the seam's line (`docs/replay.md` §1).
+
 **The panel a player works is `docs/hosts.md` §8** (#383): the same five
 facts on both hosts — name, state, `fired` as a number, the reason, the
 gate — with a checkbox in front of each, and a choice made in it
@@ -624,6 +636,8 @@ and never triggered.
 | `name-arrows-edit` | contrast | `name-arrows` (a Right, an Up, a Down and a Left among the letters of a name: the program types a letter for each) |
 | `menu-letters-quick` | identical | `menu-letters` (the party menu clicks no footstep) |
 | `walk-quick` | contrast | `walk` (the first footstep goes on without its wait) |
+| `quiet-message-pause` | identical | `quiet` (no message is shown, so neither point is reached) |
+| `fight-pause` | contrast | `fight` (the pause that opens the battle, and every combat line after it, stand longer) |
 
 **A built-in fix has no pair** (`built_in_fixes()`, seam.h). It is on
 with its program and listed nowhere: no panel, config file, flag or
@@ -883,6 +897,7 @@ to carry.
 | `explored` | fog of war on the overworld map: a black checker over every square the party has not stood on; a setting, no key | the resident image |
 | `modern-controls` | the controls a later game has, nine pieces in one seam: Up and Down step the pick-lists and the selected party member; Left, Right, Enter and Esc work at the command bars; walking is a mode the party's bar starts with `Move` and ends with `Exit`, `Area` gone; the main menu has a cursor, and its number row's 1 to 8 select a party member with each number shown; the arrows no longer type letters at a text prompt; every selection is a yellow block with its key letter a white one; and it notes when the program is reading a line of text and where the combat aim bar keeps its cursor, for a host to ask (§10) | overlay 25 (the menu-bar and list routines), overlays 13, 14, 16 and 19, and the resident image |
 | `quick-steps` | a turn, and the next step, do not wait for the footstep's click; the click still plays, and a step's two clicks keep their spacing | the resident image, and the call sites in overlays 14 and 3 |
+| `message-pause` | a message the program moves on from by itself stands at least the seam's number of milliseconds, 1500 unless the player chose otherwise, and any key ends it | the resident image, and the call site in overlay 3 |
 | `cheat-invulnerable` | the party takes no damage | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage, **when pulled** (§3a) | the end check's overlay |
 | `cheat-wound-party` | the whole party drops to one hit point, **when pulled at camp** (§3a) | the resident image |
@@ -3054,6 +3069,70 @@ to its `pop bp; retf 2`.
   And of what is left between a key and a turned view, about four frames
   at the 386 governor are the program composing the view in its back
   buffer and copying it out.
+
+### The message pause (#531)
+
+Not a PLAN.md §5 item: a player's report that encounter text went by
+before it could be read. **The pause is a calibrated spin, and exact**:
+the runtime's `Delay` counts loops it measured against the BIOS tick at
+start-up, 27, 54, 108 and 543 a millisecond at the four governors, so a
+pause is a millisecond of virtual time at every one. What a player read
+by on an XT was the drawing around it. A combat line stands about 2.7 s
+at `xt` and about 0.6 s at `386`, the site's only speed.
+
+**What the program does.** One routine is the message pause, image
+offset `0x7E4E`: `push bp; mov bp,sp`, the game-speed byte, DGROUP
+`0x49E2`, times 225 into AX, `push ax` at `0x7E5B`, a far call to
+`Delay(ms)` whose far return is `0x7E61`, `pop bp; retf`. Every combat
+line, the flashed warnings, the script opcode that pauses (overlay 3,
+load-segment word `0x200`, routine `0x271F`, its call returning to
+`0x272B`) and the cinematic beats at a pool's cleansing and the ending
+come through it. A line typed out a character at a time calls `Delay`
+directly, with a tenth of the speed, and is not touched. `Delay`, at
+image offset `0xA69C`, spins each millisecond out and then `dec dx` at
+`0xA6B7`; nothing is pushed between its entry and there, so its caller's
+far return is at `SS:SP`. A monster walking up to the party is a run of
+script pauses between frames, counted down in the word at `+0x582` of
+the game-state block DGROUP `0x49D6` points at (a far pointer). And a
+death in a fight is a sound timed by the pause: the routine that takes a
+downed figure off the field (overlay 31, load-segment word `0x3E10`)
+turns the music gate off, starts the death's sound, calls the pause
+(returning to `0x1018`, or `0x0E34` outside a fight), and turns the gate
+back on, which stops the driver and the sound with it.
+
+**Points**, in the resident image:
+
+| point | what the handler does |
+| --- | --- |
+| `0x7E5B`, the pause's `push ax` | raises AX to the setting when the setting is longer, unless the far return in the frame is the death routine's (overlay 31's segment now) or the script opcode's (overlay 3's) while the approach's count is not zero: those pauses are a sound's length and a beat of the walk-up, and keep the game's |
+| `0xA6B7`, `Delay`'s `dec dx` | when the far return at `SS:SP` is `0x7E61`'s, the pause's caller (at `[BP+2]`, which `Delay` leaves alone) is not one of those, and a key is waiting in the BIOS buffer, takes the key and sets DX to 1, so the spin ends at this millisecond. Every other `Delay` runs as it did |
+
+- **The number** is `pause`, in `ms`, 0 to 10,000 in steps of 250,
+  initially 1500 (§6). 0 keeps the game's length and only adds the key.
+  A game speed whose pause is longer than the number is left alone.
+- **The key is used up.** A key typed ahead during a pause ends it and
+  does not go on to answer the next prompt.
+- **Rejected**: lengthening the death routine's pause with the rest. The
+  sound plays out until the gate after the pause stops it, so at 1500 the
+  death sound ran 1.65 s where the game's own run of `fight` gives it
+  0.45 s: an effect the game always cut short, heard whole, which the
+  maintainer heard as a weird change on the first build.
+- **Refuses** a DS that is not the data segment at either point, and a
+  BP that is not the routine's frame (`BP == SP` at the `push ax`).
+- **`fired`** counts every millisecond of every `Delay` while the seam is
+  on, because the countdown point is reached at each of them and acts
+  only at the pause's own; a large number is the seam watching, as the
+  code wheel's is.
+- **Fidelity**: before the first message pause it moves nothing; a run
+  with none is the run with it off (`quiet-message-pause`, `identical`,
+  and it is in `quiet-all`). From the first one the program reaches what
+  follows later and every clock read after it reads another time
+  (`fight-pause`, `contrast`, 104 of 164 checkpoints identical, divergent
+  at the pause that opens the battle; the same fight to the same end).
+- **Open**: a scripted line the script clears or replaces with no pause
+  at all, a few dozen in the game's scripts, is not lengthened. There is
+  no pause to lengthen, and making one would be a seam deciding line by
+  line which text deserves reading time.
 
 ### The timer fix
 

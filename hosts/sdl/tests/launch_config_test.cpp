@@ -18,6 +18,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -132,6 +133,23 @@ TEST(ConfigOf, LeavesOutWhatNobodyNamed) {
   EXPECT_FALSE(config.game_directory.has_value());
   EXPECT_FALSE(config.program.has_value());
   EXPECT_FALSE(config.seams.has_value());
+  EXPECT_FALSE(config.settings.has_value());
+}
+
+TEST(SettledSettings, TheCommandLineWinsSeamBySeam) {
+  // Per seam rather than the seams' whole-list rule: a `--setting` for one
+  // seam says nothing about another's remembered number.
+  options opts;
+  opts.remembered_settings = {{.seam = "message-pause", .value = 2000},
+                              {.seam = "other", .value = 3}};
+  opts.settings = {{.seam = "message-pause", .value = 500},
+                   {.seam = "third", .value = 9}};
+  EXPECT_THAT(
+      settled_settings(opts),
+      ElementsAre(seam_setting_choice{.seam = "message-pause", .value = 500},
+                  seam_setting_choice{.seam = "other", .value = 3},
+                  seam_setting_choice{.seam = "third", .value = 9}));
+  EXPECT_EQ(config_of(opts).settings, settled_settings(opts));
 }
 
 TEST_F(LaunchConfig, TheConfigFillsWhatTheCommandLineLeftOut) {
@@ -142,6 +160,7 @@ TEST_F(LaunchConfig, TheConfigFillsWhatTheCommandLineLeftOut) {
       "game-directory /games/por\n"
       "program START.EXE\n"
       "seam automap\n"
+      "setting message-pause 2000\n"
       "volume 40\n"
       "speed turbo\n"
       "scale 2\n"
@@ -156,6 +175,10 @@ TEST_F(LaunchConfig, TheConfigFillsWhatTheCommandLineLeftOut) {
   EXPECT_EQ(opts.program, "START.EXE");
   EXPECT_THAT(opts.seams, ElementsAre("automap"));
   EXPECT_TRUE(opts.seams_from_config);
+  EXPECT_THAT(
+      opts.remembered_settings,
+      ElementsAre(seam_setting_choice{.seam = "message-pause", .value = 2000}));
+  EXPECT_THAT(opts.settings, ::testing::IsEmpty());
   EXPECT_FLOAT_EQ(opts.volume, 0.4F);
   EXPECT_EQ(opts.speed, machine::speed_preset::turbo_xt);
   EXPECT_EQ(opts.scale, 2U);
@@ -274,6 +297,7 @@ TEST_F(LaunchConfig, RememberWritesTheSettledRunAndForgetEmptiesIt) {
   opts.program = "START.EXE";
   opts.speed = machine::speed_preset::at;
   opts.given.speed = true;
+  opts.settings = {{.seam = "message-pause", .value = 750}};
   opts.save_sidecars = false;
   opts.given.save_sidecars = true;
   opts.remember = true;
@@ -291,6 +315,8 @@ TEST_F(LaunchConfig, RememberWritesTheSettledRunAndForgetEmptiesIt) {
   ASSERT_TRUE(back.parse(text).ok());
   EXPECT_EQ(back.program, "START.EXE");
   EXPECT_EQ(back.speed, "at");
+  EXPECT_EQ(back.settings, (std::optional<std::vector<seam_setting_choice>>{
+                               {{.seam = "message-pause", .value = 750}}}));
 
   options forget;
   forget.headless = true;
@@ -306,6 +332,43 @@ TEST_F(LaunchConfig, RememberWritesTheSettledRunAndForgetEmptiesIt) {
   desktop_config nothing;
   ASSERT_TRUE(nothing.parse(after).ok());
   EXPECT_TRUE(nothing.empty());
+}
+
+TEST_F(LaunchConfig, ThePanelRemembersOneNumberOverWhatTheFileHeld) {
+  options opts;
+  opts.config_path = config_with(
+      "amberfolio-config 2\n"
+      "program START.EXE\n"
+      "seam automap\n"
+      "setting other 3\n"
+      "setting message-pause 2000\n");
+  // A driving script's number for another seam is not the player's.
+  opts.settings = {{.seam = "other", .value = 9}};
+
+  testing::internal::CaptureStderr();
+  remember_panel_setting(opts, "message-pause", 1750);
+  EXPECT_THAT(testing::internal::GetCapturedStderr(),
+              HasSubstr("config setting remembered in "));
+
+  desktop_config back;
+  std::ifstream file(opts.config_path, std::ios::binary);
+  const std::string text((std::istreambuf_iterator<char>(file)),
+                         std::istreambuf_iterator<char>());
+  ASSERT_TRUE(back.parse(text).ok());
+  EXPECT_EQ(back.program, "START.EXE");
+  EXPECT_EQ(back.seams, (std::optional<std::vector<std::string>>{{"automap"}}));
+  EXPECT_EQ(back.settings, (std::optional<std::vector<seam_setting_choice>>{
+                               {{.seam = "other", .value = 3},
+                                {.seam = "message-pause", .value = 1750}}}));
+}
+
+TEST_F(LaunchConfig, ThePanelWritesNothingUnderNoConfig) {
+  options opts;
+  opts.no_config = true;
+  testing::internal::CaptureStderr();
+  remember_panel_setting(opts, "message-pause", 1750);
+  EXPECT_THAT(testing::internal::GetCapturedStderr(),
+              HasSubstr("this choice is not remembered"));
 }
 
 }  // namespace

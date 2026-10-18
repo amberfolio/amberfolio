@@ -193,6 +193,22 @@
 //     and a launch after that is not asked at all. It was gated on a PDF
 //     of the wheel until #290, and nothing in this build is gated now.
 //
+//   --setting ID=VALUE
+//                    the number a seam takes, for this run
+//
+//     A seam may take one number from a player (`machine::seam_setting`,
+//     #531): `message-pause` takes how long a message stays up, in
+//     milliseconds. `--seams` lists each one's name and value. Applied
+//     after the seams are on, whether or not this one is, through the
+//     engine's own `set_setting()`; a value outside the seam's bounds is
+//     **refused, not clamped**, and stops the launch, for `--seam`'s
+//     reason. Repeatable; a later one for the same seam wins.
+//
+//     Not remembered except by `--remember`, for `--seam`'s reason. A
+//     value the config remembers and this build no longer takes is a
+//     line on stderr and the seam's own default, never a stopped launch
+//     (#383's rule for a remembered seam).
+//
 //   --code-wheel-answered
 //                    say the code-wheel challenge has already been
 //                    answered on this copy
@@ -388,10 +404,13 @@
 //     question and exits; this is the panel a player works, and the
 //     right mouse button opens and closes it whether or not this flag
 //     was given. Up and down pick a row and Return toggles it, through
-//     the same `enable()`/`disable()` a `--seam` flag takes.
+//     the same `enable()`/`disable()` a `--seam` flag takes; left and
+//     right move the number of a seam that takes one, through the same
+//     `set_setting()` a `--setting` flag takes (#531).
 //
-//     A toggle made in the panel is **written to the config file**, and
-//     that is the difference between a person and a script: `--seam` is
+//     A toggle or a number set in the panel is **written to the config
+//     file**, and that is the difference between a person and a
+//     script: `--seam` is
 //     remembered only by `--remember` (a driving script's flag is not a
 //     player's choice), where a click in a panel is nobody but a
 //     player. A run with `--no-config` says so and writes nothing.
@@ -599,6 +618,7 @@
 
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/platform.h"
+#include "desktop_config.h"
 #include "press_spec.h"
 
 namespace amberfolio::sdl {
@@ -703,6 +723,17 @@ struct options {
   /// reason on it, and stopping the launch over it would be persistence
   /// taking the game away.
   bool seams_from_config{false};
+
+  /// The numbers seams take (#531): `settings` off the command line,
+  /// `remembered_settings` out of the config file. Two lists rather than
+  /// one settled by `prefer()`, because the rule here is per seam: a
+  /// `--setting` for one seam overrules the file's line for that seam and
+  /// leaves the file's line for another alone. Applied remembered first
+  /// and command line second, so the command line wins; and kept apart
+  /// so a refusal costs each what it should (`seams_from_config`'s
+  /// reason).
+  std::vector<seam_setting_choice> settings;
+  std::vector<seam_setting_choice> remembered_settings;
 
   /// The VFS door (M5-D2, #170), against the directory this host was
   /// pointed at. Applied *after* the run, so `--vfs-list` says what is
@@ -901,6 +932,12 @@ struct options {
 /// that a fact this parser depends on would be free only until it was
 /// not.
 [[nodiscard]] bool parse_pull(std::string_view spec, scripted_pull& out);
+
+/// `ID=VALUE`, into a seam's number (#531). Split on the last `=`; the
+/// value is a decimal a `std::uint16_t` holds. Whether the seam takes a
+/// number, and that one, is the engine's to say when the run applies it.
+[[nodiscard]] bool parse_setting(std::string_view spec,
+                                 seam_setting_choice& out);
 
 /// `OFF[:WIDTH]`, hexadecimal offset, into a watch point. False on
 /// anything that is not that.

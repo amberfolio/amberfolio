@@ -42,9 +42,14 @@
 // **The on-screen keyboard has priority for the keys.** It already
 // claims all four arrows and Return, and two overlays fighting over
 // one key is worse for a player than one of them being unreachable for
-// as long as the other is up. So the panel takes up, down and Return
-// only while the keyboard is *not* shown; a player with both up steps
-// the keyboard off and has them back.
+// as long as the other is up. So the panel takes up, down, left, right
+// and Return only while the keyboard is *not* shown; a player with both
+// up steps the keyboard off and has them back.
+//
+// **Left and right set a number** (#531): on a row whose seam takes one,
+// they move it a `step`, held keys repeating, and the value is written
+// to the config file the way a toggle is. On the key card they turn its
+// pages.
 //
 // The rows are rebuilt from the engine at every paint and at every
 // click rather than kept, which is what makes `fired` a live number
@@ -72,7 +77,7 @@ namespace amberfolio::sdl {
 
 /// How many keys each overlay takes for itself while it is up.
 inline constexpr std::size_t keyboard_control_count = 6;
-inline constexpr std::size_t panel_control_count = 4;
+inline constexpr std::size_t panel_control_count = 6;
 
 class overlays {
  public:
@@ -137,6 +142,12 @@ class overlays {
   /// fail-closed toggle surface cannot have: the next launch would turn
   /// on a seam this one could not.
   void panel_toggle(std::size_t at);
+
+  /// The number of the seam on row `at` one `step` up or down (#531),
+  /// through the engine's own `set_setting()` and remembered the way a
+  /// toggle is. A row whose seam takes no number, or one already at the
+  /// bound it is pushed towards, is left as it is and nothing is written.
+  void panel_adjust(std::size_t at, int direction);
 
   /// The focus one row up or down, wrapping. A build with no seams has
   /// no focus at all rather than a focus on row zero of nothing.

@@ -93,7 +93,69 @@ export function panelRow(seam) {
     on,
     available,
     trigger: Boolean(seam.trigger),
+    // The seam's one number (#531), or null: `{ name, unit, minimum,
+    // maximum, step, initial, value }` exactly as `seamList()` gave it.
+    setting: seam.setting ?? null,
   };
+}
+
+/// A number typed into a seam's setting box, as the value to set, or
+/// null for an entry that is not one: empty, not a whole number, or
+/// outside the setting's bounds. Null is what snaps the box back to the
+/// value the seam has; core would refuse the same entries (`AF_INVALID`),
+/// and this answers first so the page never asks it to.
+export function settingEntry(setting, text) {
+  if (!setting) return null;
+  const trimmed = String(text ?? '').trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const value = Number(trimmed);
+  if (value < setting.minimum || value > setting.maximum) return null;
+  return value;
+}
+
+/// What a stored record of seam numbers means, fail-closed like
+/// `storedSeams()`: an object from seam id to a whole number, or **null
+/// for no choice**. Anything else — an array, a string, an entry that is
+/// not a non-negative integer — is no choice, and no choice leaves every
+/// seam at its initial.
+export function storedSeamSettings(value) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+  const chosen = {};
+  for (const [id, number] of Object.entries(value)) {
+    if (id === '' || !Number.isInteger(number) || number < 0) return null;
+    chosen[id] = number;
+  }
+  return chosen;
+}
+
+/// The seam numbers a player has moved off their initial, as the record
+/// to store, or null when none has — so that a player who put every
+/// number back leaves the record a player who never touched one has,
+/// `seamsToStore()`'s one meaning of the default.
+export function seamSettingsToStore(rows) {
+  const chosen = {};
+  for (const row of rows) {
+    if (row.setting && row.setting.value !== row.setting.initial) {
+      chosen[row.id] = row.setting.value;
+    }
+  }
+  return Object.keys(chosen).length === 0 ? null : chosen;
+}
+
+/// A stored record of seam numbers applied to a machine, through the
+/// same `setSeamSetting()` the panel's box takes. Answers `{ set,
+/// refused }`: `{ id, value }` for each that took, and the ids this
+/// build refused — no such seam, one that takes no number, a value
+/// outside its bounds. A refusal is dropped quietly, the way a stale
+/// seam choice costs a run nothing.
+export function applyStoredSeamSettings(machine, chosen) {
+  const set = [];
+  const refused = [];
+  for (const [id, value] of Object.entries(chosen ?? {})) {
+    if (machine.setSeamSetting(id, value)) set.push({ id, value });
+    else refused.push(id);
+  }
+  return { set, refused };
 }
 
 /// Every seam, as rows.

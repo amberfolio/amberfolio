@@ -6,12 +6,15 @@
 #include <cstdint>
 #include <cstdio>
 #include <string>
+#include <string_view>
 
 #include "amberfolio/host/slot_store.h"
 #include "amberfolio/machine/document.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/text_entry.h"
+#include "desktop_config.h"
+#include "options.h"
 
 namespace amberfolio::sdl {
 
@@ -56,8 +59,53 @@ namespace amberfolio::sdl {
       return "this seam is not one you pull; it acts whenever it is on";
     case machine::seam_error::not_enabled:
       return "this seam is off - turn it on with --seam before pulling it";
+    case machine::seam_error::no_setting:
+      return "this seam takes no number";
+    case machine::seam_error::setting_out_of_range:
+      return "that number is outside what this seam takes";
   }
   return "unknown";
+}
+
+namespace {
+
+/// One `--setting` or remembered `setting` line, applied, and the refusal
+/// said in words when it did not take. An out-of-range value names the
+/// range, which is the one thing a person holding the wrong number needs.
+[[nodiscard]] bool apply_setting(machine::seam_engine& seams,
+                                 const seam_setting_choice& choice) {
+  const machine::seam_error why = seams.set_setting(choice.seam, choice.value);
+  if (why == machine::seam_error::none) {
+    return true;
+  }
+  std::fprintf(stderr, "amberfolio: setting %s=%u refused (%s)\n",
+               choice.seam.c_str(), static_cast<unsigned>(choice.value),
+               seam_refusal(why));
+  if (const machine::seam_definition* seam = seams.find(choice.seam);
+      why == machine::seam_error::setting_out_of_range && seam != nullptr) {
+    const machine::seam_setting& takes = seam->setting;
+    std::fprintf(stderr, "amberfolio: setting %s takes %u to %u %.*s\n",
+                 choice.seam.c_str(), static_cast<unsigned>(takes.minimum),
+                 static_cast<unsigned>(takes.maximum),
+                 static_cast<int>(takes.unit.size()), takes.unit.data());
+  }
+  return false;
+}
+
+}  // namespace
+
+std::string setting_words(const machine::seam_engine& seams,
+                          std::string_view id) {
+  const machine::seam_definition* seam = seams.find(id);
+  if (seam == nullptr || !seam->setting.present()) {
+    return {};
+  }
+  std::string out = " ";
+  out += seam->setting.name;
+  out += '=';
+  out += std::to_string(seams.setting(id));
+  out += seam->setting.unit;
+  return out;
 }
 
 bool enable_requested_seams(machine::machine& box, const options& opts) {
@@ -84,6 +132,27 @@ bool enable_requested_seams(machine::machine& box, const options& opts) {
     }
     return false;
   }
+  // The numbers, after the seams, whether or not each seam came on: a
+  // setting is the player's even while its seam is off. Remembered ones
+  // first, so the command line's win; one a command line also names is
+  // skipped rather than refused and then overruled.
+  for (const seam_setting_choice& remembered : opts.remembered_settings) {
+    bool overruled = false;
+    for (const seam_setting_choice& given : opts.settings) {
+      overruled = overruled || given.seam == remembered.seam;
+    }
+    if (!overruled && !apply_setting(box.seams(), remembered)) {
+      std::fprintf(stderr,
+                   "amberfolio: setting %s was remembered, not asked for on"
+                   " this command line - carrying on without it\n",
+                   remembered.seam.c_str());
+    }
+  }
+  for (const seam_setting_choice& given : opts.settings) {
+    if (!apply_setting(box.seams(), given)) {
+      return false;
+    }
+  }
   return true;
 }
 
@@ -91,17 +160,21 @@ void report_seam_listing(const machine::machine& box) {
   const machine::seam_engine& seams = box.seams();
   for (std::size_t i = 0; i < seams.count(); ++i) {
     const machine::seam_status row = seams.status(i);
-    std::fprintf(stderr, "amberfolio: seams %.*s %s%s%s%s - %.*s\n",
-                 static_cast<int>(row.id.size()), row.id.data(),
-                 machine::seam_state_name(row.state),
-                 row.state == machine::seam_state::on
-                     ? (row.armed ? " armed" : " inert")
-                     : "",
-                 row.reason == machine::seam_reason::none ? "" : " ",
-                 row.reason == machine::seam_reason::none
-                     ? ""
-                     : machine::seam_reason_name(row.reason),
-                 static_cast<int>(row.about.size()), row.about.data());
+    // The number a seam takes, on its own row (#531), and on the row
+    // rather than a line of its own: a listing is one line a seam, and
+    // the cases that read it (`run-config-file.cmake`) count on that.
+    const std::string setting = setting_words(seams, row.id);
+    std::fprintf(
+        stderr, "amberfolio: seams %.*s %s%s%s%s%s - %.*s\n",
+        static_cast<int>(row.id.size()), row.id.data(),
+        machine::seam_state_name(row.state),
+        row.state == machine::seam_state::on ? (row.armed ? " armed" : " inert")
+                                             : "",
+        row.reason == machine::seam_reason::none ? "" : " ",
+        row.reason == machine::seam_reason::none
+            ? ""
+            : machine::seam_reason_name(row.reason),
+        setting.c_str(), static_cast<int>(row.about.size()), row.about.data());
     // What the seam is gated on, on a line of its own and only when
     // there is one (#171). A person reading a listing needs to know
     // that a seam is waiting on a document *before* they wonder why it
@@ -161,6 +234,9 @@ void report_seam_outcomes(const machine::machine& box) {
         extra += " waited=" + std::to_string(row.waited);
       }
     }
+    // And the number it ran with, for a seam that takes one (#531): two
+    // runs of `message-pause` at different values are different runs.
+    extra += setting_words(box.seams(), row.id);
     // What the row means is core's answer, not this host's (#163).
     const char* say = machine::seam_reading_text(machine::seam_reading_of(row));
     std::fprintf(stderr, "amberfolio: seam %.*s %s fired=%llu%s%s\n",

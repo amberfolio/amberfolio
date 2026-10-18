@@ -183,6 +183,21 @@ bool load_replay(const options& opts, machine::machine& box,
                    player.preamble().seam(i).data());
       return false;
     }
+    // And the number it was recorded with (#531), which `check_initial`
+    // then holds the machine to: the initial is this build's, and the
+    // run is the run.
+    if (player.preamble().seam_has_setting[i] &&
+        box.seams().set_setting(player.preamble().seam(i),
+                                player.preamble().seam_settings[i]) !=
+            machine::seam_error::none) {
+      std::fprintf(stderr,
+                   "amberfolio: the recording's seam %.*s was made with a"
+                   " setting of %u, which this build does not take\n",
+                   static_cast<int>(player.preamble().seam(i).size()),
+                   player.preamble().seam(i).data(),
+                   static_cast<unsigned>(player.preamble().seam_settings[i]));
+      return false;
+    }
   }
   if (player.check_initial(box, &files) != machine::replay_status::ok) {
     std::array<char, machine::replay_report_capacity> line{};
