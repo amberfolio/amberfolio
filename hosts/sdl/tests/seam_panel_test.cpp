@@ -24,6 +24,7 @@
 
 #include "amberfolio/machine/seam.h"
 #include "gtest/gtest.h"
+#include "key_card_view.h"
 
 namespace amberfolio::sdl {
 namespace {
@@ -248,6 +249,72 @@ TEST(SeamPanel, PutsTheDocumentNoticeUnderTheTableWithItsHashWhole) {
   EXPECT_NE(row_line(lines, 0).find("automap"), std::string::npos);
   EXPECT_EQ(row_under(fit_panel(lines, 1920, 1200), rows.size(), 0.0F, 0.0F),
             panel_no_row);
+}
+
+/// The setting `message-pause` takes, as a fact table would spell it.
+constexpr machine::seam_setting a_pause{.name = "pause",
+                                        .unit = "ms",
+                                        .minimum = 0,
+                                        .maximum = 10000,
+                                        .step = 250,
+                                        .initial = 1500};
+
+TEST(SeamPanel, SaysANumberWithItsNameAndUnit) {
+  EXPECT_EQ(setting_text(a_pause, 1500), "pause 1500 ms");
+  EXPECT_EQ(setting_text(machine::seam_setting{}, 7), "")
+      << "a seam that takes no number shows none";
+
+  panel_row row = panel_row_of(a_status(), machine::document_kind::none);
+  row.setting = setting_text(a_pause, 10000);
+  const std::vector<std::string> lines = panel_lines({row}, 0);
+  // The widest value, whole and between its two arrows, under its
+  // heading.
+  const std::size_t cell = row_line(lines, 0).find("<pause 10000 ms>");
+  ASSERT_NE(cell, std::string::npos);
+  EXPECT_EQ(lines.at(1).find("setting"), cell + 1);
+  // And a row without one has nothing there.
+  const std::string plain = row_line(
+      panel_lines({panel_row_of(a_status(), machine::document_kind::none)}, 0),
+      0);
+  EXPECT_EQ(plain.find('<'), std::string::npos);
+}
+
+TEST(SeamPanel, StepsANumberAndStopsAtItsBounds) {
+  EXPECT_EQ(stepped_setting(a_pause, 1500, 1), 1750U);
+  EXPECT_EQ(stepped_setting(a_pause, 1500, -1), 1250U);
+  EXPECT_EQ(stepped_setting(a_pause, 1500, 0), 1500U);
+  // Never past a bound: the panel offers the engine nothing it refuses.
+  EXPECT_EQ(stepped_setting(a_pause, 10000, 1), 10000U);
+  EXPECT_EQ(stepped_setting(a_pause, 9900, 1), 10000U);
+  EXPECT_EQ(stepped_setting(a_pause, 0, -1), 0U);
+  EXPECT_EQ(stepped_setting(a_pause, 100, -1), 0U);
+}
+
+TEST(SeamPanel, ClicksOnEitherHalfOfTheNumberMoveItThatWay) {
+  panel_row row = panel_row_of(a_status(), machine::document_kind::none);
+  row.setting = setting_text(a_pause, 1500);
+  const std::vector<std::string> lines = panel_lines({row}, 0);
+  const panel_box box = fit_panel(lines, 1920, 1200);
+  const float cell = box.scale * 8.0F;
+  const std::size_t at = row_line(lines, 0).find('<');
+  ASSERT_NE(at, std::string::npos);
+  const auto column = [&](std::size_t c) {
+    return box.left + (cell * (static_cast<float>(c) + 0.5F));
+  };
+  EXPECT_EQ(setting_direction_under(box, column(at)), -1);
+  EXPECT_EQ(setting_direction_under(box, column(at + 15)), 1);
+  // Anywhere else on the row is the toggle it always was.
+  EXPECT_EQ(setting_direction_under(box, column(4)), 0);
+  EXPECT_EQ(setting_direction_under(box, box.left - 4.0F), 0);
+}
+
+TEST(SeamPanel, IsAsWideAsTheKeyCard) {
+  // One rectangle for the panel and the card it steps to, so neither
+  // jumps when the right button turns one into the other.
+  for (const std::string& line : panel_lines(
+           {panel_row_of(a_status(), machine::document_kind::none)}, 0)) {
+    EXPECT_EQ(line.size(), card_columns) << line;
+  }
 }
 
 TEST(SeamPanel, AddsNoLinesWhenThereIsNoNotice) {

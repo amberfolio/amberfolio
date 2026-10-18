@@ -5,6 +5,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -13,6 +14,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 #include "amberfolio/machine/seam.h"
@@ -150,7 +152,59 @@ void remember_the_sidecar_answer(const std::string& path,
   write_config(path, from_file, "remembered your answer in");
 }
 
+/// The config file as it stands, for a panel gesture to write one key
+/// into (#383, #531). False when there is nowhere this build may write:
+/// `--no-config`, or a file it cannot read, which is left exactly where
+/// it is -- rewriting one to save a checkbox would throw away somebody's
+/// settings to keep a preference (CLAUDE.md's "log, don't fake").
+[[nodiscard]] bool config_for_a_panel_write(const options& opts,
+                                            std::string& path,
+                                            sdl::desktop_config& what) {
+  if (opts.no_config) {
+    std::fprintf(stderr,
+                 "amberfolio: --no-config, so this choice is not"
+                 " remembered\n");
+    return false;
+  }
+  path = config_file_path(opts);
+  bool found = false;
+  const std::string text = slurp_file(path, found);
+  if (found) {
+    if (const sdl::config_reading read = what.parse(text); !read.ok()) {
+      std::fprintf(stderr,
+                   "amberfolio: config %s line %zu - %s: %s; this choice"
+                   " is not remembered\n",
+                   path.c_str(), read.line, sdl::config_trouble_name(read.why),
+                   read.text.c_str());
+      return false;
+    }
+  }
+  return true;
+}
+
+/// `choice` into `into`, replacing the line for the same seam if there
+/// is one.
+void put_setting(std::vector<seam_setting_choice>& into,
+                 const seam_setting_choice& choice) {
+  for (seam_setting_choice& one : into) {
+    if (one.seam == choice.seam) {
+      one.value = choice.value;
+      return;
+    }
+  }
+  into.push_back(choice);
+}
+
 }  // namespace
+
+[[nodiscard]] std::vector<seam_setting_choice> settled_settings(
+    const options& opts) {
+  std::vector<seam_setting_choice> out = opts.remembered_settings;
+  for (const seam_setting_choice& one : opts.settings) {
+    put_setting(out, one);
+  }
+  return out;
+}
 
 [[nodiscard]] unsigned volume_percent(float gain) {
   return static_cast<unsigned>(std::lround(static_cast<double>(gain) * 100.0));
@@ -166,6 +220,10 @@ void remember_the_sidecar_answer(const std::string& path,
   }
   if (!opts.seams.empty()) {
     out.seams = opts.seams;
+  }
+  if (std::vector<seam_setting_choice> settings = settled_settings(opts);
+      !settings.empty()) {
+    out.settings = std::move(settings);
   }
   // Only when somebody named one. A discovered engine is deliberately
   // not written down: discovery is the answer that stays right when a
@@ -185,29 +243,10 @@ void remember_the_sidecar_answer(const std::string& path,
 
 void remember_panel_seams(const options& opts,
                           const machine::seam_engine& seams) {
-  if (opts.no_config) {
-    std::fprintf(stderr,
-                 "amberfolio: --no-config, so this choice is not"
-                 " remembered\n");
-    return;
-  }
-  const std::string path = config_file_path(opts);
+  std::string path;
   sdl::desktop_config what;
-  bool found = false;
-  const std::string text = slurp_file(path, found);
-  if (found) {
-    // A file this build cannot read is left exactly where it is, here as
-    // everywhere else: rewriting one to save a checkbox would throw away
-    // somebody's settings to keep a preference (CLAUDE.md's "log, don't
-    // fake").
-    if (const sdl::config_reading read = what.parse(text); !read.ok()) {
-      std::fprintf(stderr,
-                   "amberfolio: config %s line %zu - %s: %s; this choice"
-                   " is not remembered\n",
-                   path.c_str(), read.line, sdl::config_trouble_name(read.why),
-                   read.text.c_str());
-      return;
-    }
+  if (!config_for_a_panel_write(opts, path, what)) {
+    return;
   }
   std::vector<std::string> on;
   for (std::size_t i = 0; i < seams.count(); ++i) {
@@ -219,6 +258,20 @@ void remember_panel_seams(const options& opts,
   what.seams = on.empty() ? std::optional<std::vector<std::string>>{}
                           : std::optional<std::vector<std::string>>{on};
   write_config(path, what, "seams remembered in");
+}
+
+void remember_panel_setting(const options& opts, std::string_view id,
+                            std::uint16_t value) {
+  std::string path;
+  sdl::desktop_config what;
+  if (!config_for_a_panel_write(opts, path, what)) {
+    return;
+  }
+  if (!what.settings.has_value()) {
+    what.settings.emplace();
+  }
+  put_setting(*what.settings, {.seam = std::string(id), .value = value});
+  write_config(path, what, "setting remembered in");
 }
 
 [[nodiscard]] bool nobody_is_at_the_keyboard(const options& opts) {
@@ -308,6 +361,12 @@ void remember_panel_seams(const options& opts,
         opts.seams_from_config =
             !opts.given.seams && from_file.seams.has_value();
         sdl::prefer(opts.given.seams, from_file.seams, opts.seams);
+        // Per seam rather than through `prefer()` (#531,
+        // `options::remembered_settings`): the command line's are applied
+        // after these and win seam by seam.
+        if (from_file.settings.has_value()) {
+          opts.remembered_settings = *from_file.settings;
+        }
         sdl::prefer(opts.given.journal_ocr, from_file.journal_ocr,
                     opts.journal_ocr);
         unsigned percent = volume_percent(opts.volume);

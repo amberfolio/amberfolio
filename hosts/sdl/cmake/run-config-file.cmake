@@ -71,7 +71,7 @@ if(NOT EXISTS "${config}")
 endif()
 file(READ "${config}" kept)
 foreach(expected
-    "amberfolio-config 1"
+    "amberfolio-config 2"
     "program HELLO.EXE"
     "speed xt"
     "save-sidecars off")

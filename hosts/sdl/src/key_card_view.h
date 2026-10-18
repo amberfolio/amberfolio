@@ -32,8 +32,8 @@ namespace amberfolio::sdl {
 
 /// How wide a card line is, which is the toggle panel's width: the two
 /// views are one rectangle and do not jump about when the button steps
-/// from one to the other.
-inline constexpr std::size_t card_columns = 78;
+/// from one to the other. `seam_panel_test.cpp` holds the two together.
+inline constexpr std::size_t card_columns = 94;
 
 /// Where the second word of a row begins. The first is at most
 /// `host::key_card_keys_width` wide, so a space always separates them.

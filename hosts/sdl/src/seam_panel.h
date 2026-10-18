@@ -33,6 +33,11 @@
 //     every seam in this build since #290; #384's document control is
 //     what lights this column.
 //
+// And a sixth column for the seams that take a number (#531): its name, its
+// value and its unit between two arrows, `<pause 1500 ms>`. Left and right
+// on the focused row, or a click on either half of the cell, move it one
+// `step` and no further than its bounds.
+//
 // And under the rows, for whichever one the focus is on: what the seam is
 // for, and `seam_reading_text()` — core's sentence about what the numbers
 // on that row *mean*, so that a browser run and a desktop run say the
@@ -90,10 +95,26 @@ struct panel_row {
   std::string gate;
   /// `seam_reading_text()` without its leading separator, or empty.
   std::string reading;
+  /// The seam's number in words, `pause 1500 ms` (`setting_text()`), or
+  /// empty for a seam that takes none (#531).
+  std::string setting;
   /// Whether the box is ticked, and whether it may be.
   bool on{false};
   bool available{false};
 };
+
+/// A seam's number as the panel says it: `pause 1500 ms`. Empty for a seam
+/// that takes none.
+[[nodiscard]] std::string setting_text(const machine::seam_setting& setting,
+                                       std::uint16_t value);
+
+/// The value one press away from `value`: `step` up for a positive
+/// `direction`, down for a negative one, and never past `minimum` or
+/// `maximum` -- the panel stops at a bound rather than offering the
+/// engine a number it will refuse. `value` itself for a zero direction.
+[[nodiscard]] std::uint16_t stepped_setting(
+    const machine::seam_setting& setting, std::uint16_t value,
+    int direction) noexcept;
 
 /// One status row, plus the gate off its definition, as a panel row.
 [[nodiscard]] panel_row panel_row_of(const machine::seam_status& row,
@@ -152,6 +173,12 @@ struct panel_box {
 /// title, the header, the description or outside the panel altogether.
 [[nodiscard]] std::size_t row_under(const panel_box& box, std::size_t rows,
                                     float x, float y) noexcept;
+
+/// Which way a click at window column `x` moves a row's number: -1 on the
+/// left half of the setting column, +1 on the right half, 0 anywhere else
+/// (#531). A click elsewhere on a row is the toggle it always was.
+[[nodiscard]] int setting_direction_under(const panel_box& box,
+                                          float x) noexcept;
 
 /// Paints the panel. Owns nothing but the atlas it draws letters with.
 class panel_painter {

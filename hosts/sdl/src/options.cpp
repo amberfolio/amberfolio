@@ -40,7 +40,7 @@ void print_usage() {
       "                                      [--trace]"
       " [--watch OFF[:N]]\n"
       "                                      [--seam ID] [--seams]"
-      " [--seam-panel]\n"
+      " [--seam-panel] [--setting ID=VALUE]\n"
       "                                      [--vfs-list]"
       " [--vfs-get PATH] [--vfs-remove PATH]\n"
       "                                      [--save-layer]\n"
@@ -133,6 +133,25 @@ void print_usage() {
   }
   out.id = std::string(spec.substr(0, at));
   out.frame = frame;
+  return true;
+}
+
+[[nodiscard]] bool parse_setting(std::string_view spec,
+                                 seam_setting_choice& out) {
+  const std::size_t at = spec.rfind('=');
+  if (at == std::string_view::npos || at == 0 || at + 1 == spec.size()) {
+    return false;
+  }
+  const std::string_view digits = spec.substr(at + 1);
+  std::uint16_t value = 0;
+  const char* const first = digits.data();
+  const char* const last = first + digits.size();
+  const std::from_chars_result parsed = std::from_chars(first, last, value);
+  if (parsed.ec != std::errc{} || parsed.ptr != last) {
+    return false;
+  }
+  out.seam = std::string(spec.substr(0, at));
+  out.value = value;
   return true;
 }
 
@@ -237,6 +256,15 @@ void print_usage() {
     } else if (arg == "--seam" && i + 1 < argc) {
       opts.seams.emplace_back(argv[++i]);
       opts.given.seams = true;
+    } else if (arg == "--setting" && i + 1 < argc) {
+      seam_setting_choice choice;
+      if (!parse_setting(argv[++i], choice)) {
+        std::fprintf(stderr,
+                     "amberfolio: --setting wants ID=VALUE, a seam and a"
+                     " whole number, as in message-pause=2000\n");
+        return opts;
+      }
+      opts.settings.push_back(std::move(choice));
     } else if (arg == "--install" && i + 1 < argc) {
       opts.install = argv[++i];
     } else if (arg == "--vfs-list") {
@@ -544,6 +572,8 @@ void print_usage() {
     const char* also = nullptr;
     if (opts.given.seams) {
       also = "--seam";
+    } else if (!opts.settings.empty()) {
+      also = "--setting";
     } else if (opts.given.speed) {
       also = "--speed";
     } else if (!opts.presses.empty()) {

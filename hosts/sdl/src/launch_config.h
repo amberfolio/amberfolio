@@ -8,7 +8,10 @@
 
 #pragma once
 
+#include <cstdint>
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include "amberfolio/machine/seam.h"
 #include "desktop_config.h"
@@ -59,6 +62,20 @@ namespace amberfolio::sdl {
 /// so that it can be taken out on its own if this rule is the wrong one.
 void remember_panel_seams(const options& opts,
                           const machine::seam_engine& seams);
+
+/// One seam's number, written into the config file and nothing else
+/// about this run (#531): the panel's other gesture, remembered for
+/// `remember_panel_seams()`'s reason. Only the seam that was changed: a
+/// driving script's `--setting` for another seam is not a player's
+/// choice and stays out of the file, the way its `--seam` does.
+void remember_panel_setting(const options& opts, std::string_view id,
+                            std::uint16_t value);
+
+/// The settings a run settled on, one per seam: the remembered ones, each
+/// replaced by the command line's for the same seam, and the command
+/// line's others after them (#531). What `--remember` writes.
+[[nodiscard]] std::vector<seam_setting_choice> settled_settings(
+    const options& opts);
 
 /// Whether this launch is one nobody is watching (#385).
 ///

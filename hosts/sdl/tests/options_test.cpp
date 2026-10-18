@@ -74,6 +74,24 @@ TEST(ParsePull, IsASeamIdAtAFrame) {
   EXPECT_FALSE(parse_pull("cheat-kill-all@soon", pull));
 }
 
+TEST(ParseSetting, IsASeamIdAndAWholeNumber) {
+  seam_setting_choice choice;
+  ASSERT_TRUE(parse_setting("message-pause=2000", choice));
+  EXPECT_EQ(choice.seam, "message-pause");
+  EXPECT_EQ(choice.value, 2000U);
+  ASSERT_TRUE(parse_setting("message-pause=0", choice));
+  EXPECT_EQ(choice.value, 0U);
+
+  // Whether the seam takes this number is the engine's to say; what is
+  // refused here is anything that is not a number at all, or one no
+  // seam's setting could hold.
+  for (const char* bad :
+       {"message-pause", "=2000", "message-pause=", "message-pause=1.5",
+        "message-pause=-1", "message-pause=65536", "message-pause=2000ms"}) {
+    EXPECT_FALSE(parse_setting(bad, choice)) << bad;
+  }
+}
+
 TEST(ParseWatch, IsAHexOffsetAndAByteOrWordWidth) {
   watch_point point;
   ASSERT_TRUE(parse_watch("6AAD", point));
@@ -132,6 +150,18 @@ TEST(Parse, ARepeatableFlagCollects) {
   EXPECT_EQ(opts.presses.size(), 1U);
   EXPECT_EQ(opts.pulls.size(), 1U);
   EXPECT_EQ(opts.watches.size(), 1U);
+}
+
+TEST(Parse, ASettingIsRepeatableAndRefusedWhenItIsNotANumber) {
+  const options opts = parse_line({"d", "p", "--setting", "message-pause=2000",
+                                   "--setting", "message-pause=250"});
+  ASSERT_TRUE(opts.valid);
+  ASSERT_EQ(opts.settings.size(), 2U);
+  EXPECT_EQ(opts.settings[1].value, 250U) << "in order, so the last one wins";
+  EXPECT_THAT(opts.remembered_settings, IsEmpty());
+
+  EXPECT_THAT(refused({"d", "p", "--setting", "message-pause=long"}),
+              HasSubstr("--setting wants ID=VALUE"));
 }
 
 TEST(Parse, EverythingAfterTheSeparatorIsTheProgramsTail) {
@@ -219,9 +249,11 @@ TEST(Parse, ARunIsRecordedOrReplayedNeverBoth) {
 
 TEST(Parse, AReplayTakesItsSettingsFromTheRecording) {
   for (const char* also :
-       {"--seam", "--speed", "--press", "--pull", "--wall"}) {
+       {"--seam", "--setting", "--speed", "--press", "--pull", "--wall"}) {
     std::vector<std::string> line = {"d", "p", "--replay", "a.rec", also};
-    const std::string value = std::string(also) == "--seam"    ? "automap"
+    const std::string value = std::string(also) == "--seam" ? "automap"
+                              : std::string(also) == "--setting"
+                                  ? "message-pause=2000"
                               : std::string(also) == "--speed" ? "at"
                               : std::string(also) == "--press" ? "A@1"
                               : std::string(also) == "--pull"  ? "x@1"

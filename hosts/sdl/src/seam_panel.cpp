@@ -30,7 +30,8 @@ namespace {
 ///
 /// Each width is the longest thing core can put in it plus a space —
 /// `cheat-invulnerable` is eighteen characters, `unavailable` eleven,
-/// `document_not_presented` twenty-two, `no document` eleven.
+/// `document_not_presented` twenty-two, `no document` eleven, and
+/// `<pause 10000 ms>` sixteen.
 constexpr std::size_t column_mark = 0;
 constexpr std::size_t column_id = 4;
 constexpr std::size_t column_state = 23;
@@ -38,13 +39,16 @@ constexpr std::size_t column_fired = 35;
 constexpr std::size_t width_fired = 6;
 constexpr std::size_t column_reason = 43;
 constexpr std::size_t column_gate = 66;
-constexpr std::size_t panel_columns = 78;
+constexpr std::size_t column_setting = 78;
+constexpr std::size_t width_setting = 16;
+constexpr std::size_t panel_columns = column_setting + width_setting;
 
 /// What a panel says about itself. A person who has just opened it has
 /// two questions — how do I work it, and does it stick — and the answer
 /// to both is shorter than a row.
 constexpr std::string_view panel_title =
-    "seams - up/down, Return toggles and remembers, right button: keys";
+    "seams - up/down, Return toggles, left/right sets a number, all"
+    " remembered; right button: keys";
 
 /// `text` written into `line` at `at`, cut to `width` characters so a
 /// long value cannot walk into the column beside it.
@@ -72,7 +76,7 @@ void place(std::string& line, std::size_t at, std::string_view text,
 /// spaces.
 ///
 /// A word longer than the panel is wide — which is what a 64-character
-/// SHA-256 is not, deliberately: the panel is 78 columns and a hash is
+/// SHA-256 is not, deliberately: the panel is 94 columns and a hash is
 /// 64, so a wrap on spaces always leaves one whole — is put on a line of
 /// its own and left to `place()` to cut. Nothing here hyphenates,
 /// because the words being wrapped are a filename's worth of English and
@@ -120,6 +124,35 @@ constexpr float height_share = 0.9F;
 
 }  // namespace
 
+std::string setting_text(const machine::seam_setting& setting,
+                         std::uint16_t value) {
+  if (!setting.present()) {
+    return {};
+  }
+  std::string out(setting.name);
+  out += ' ';
+  out += std::to_string(value);
+  if (!setting.unit.empty()) {
+    out += ' ';
+    out += setting.unit;
+  }
+  return out;
+}
+
+std::uint16_t stepped_setting(const machine::seam_setting& setting,
+                              std::uint16_t value, int direction) noexcept {
+  const int step = std::max(1, static_cast<int>(setting.step));
+  int next = static_cast<int>(value);
+  if (direction > 0) {
+    next += step;
+  } else if (direction < 0) {
+    next -= step;
+  }
+  next = std::clamp(next, static_cast<int>(setting.minimum),
+                    static_cast<int>(setting.maximum));
+  return static_cast<std::uint16_t>(next);
+}
+
 panel_row panel_row_of(const machine::seam_status& row,
                        machine::document_kind gate) {
   panel_row out;
@@ -162,6 +195,10 @@ std::vector<panel_row> panel_rows(const machine::seam_engine& seams) {
     rows.push_back(panel_row_of(row, definition == nullptr
                                          ? machine::document_kind::none
                                          : definition->gate));
+    if (definition != nullptr) {
+      rows.back().setting =
+          setting_text(definition->setting, seams.setting(row.id));
+    }
   }
   return rows;
 }
@@ -182,7 +219,8 @@ std::vector<std::string> panel_lines(const std::vector<panel_row>& rows,
   // Right-aligned over the numbers under it, like they are.
   place(header, column_fired + width_fired - 5, "fired", 5);
   place(header, column_reason, "reason", panel_columns - column_reason);
-  place(header, column_gate, "waits for", panel_columns - column_gate);
+  place(header, column_gate, "waits for", column_setting - column_gate - 1);
+  place(header, column_setting + 1, "setting", width_setting - 1);
   lines.push_back(header);
 
   for (const panel_row& row : rows) {
@@ -200,7 +238,11 @@ std::vector<std::string> panel_lines(const std::vector<panel_row>& rows,
               : column_fired + width_fired - fired.size(),
           fired, width_fired);
     place(line, column_reason, row.reason, column_gate - column_reason - 1);
-    place(line, column_gate, row.gate, panel_columns - column_gate);
+    place(line, column_gate, row.gate, column_setting - column_gate - 1);
+    if (!row.setting.empty()) {
+      // Between the two arrows a click on either half of it stands for.
+      place(line, column_setting, "<" + row.setting + ">", width_setting);
+    }
     lines.push_back(line);
   }
   if (rows.empty()) {
@@ -277,6 +319,20 @@ std::size_t row_under(const panel_box& box, std::size_t rows, float x,
     return panel_no_row;
   }
   return line - panel_first_row;
+}
+
+int setting_direction_under(const panel_box& box, float x) noexcept {
+  if (box.scale <= 0.0F || x < box.left || x >= box.left + box.width) {
+    return 0;
+  }
+  const float cell =
+      box.scale * static_cast<float>(machine::font::glyph_height);
+  // Non-negative, which the bounds above are what says.
+  const auto column = static_cast<std::size_t>((x - box.left) / cell);
+  if (column < column_setting) {
+    return 0;
+  }
+  return column < column_setting + (width_setting / 2) ? -1 : 1;
 }
 
 void panel_painter::draw(SDL_Renderer* renderer,

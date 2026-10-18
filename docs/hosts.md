@@ -106,6 +106,7 @@ authority (`docs/machine.md` §5). The SHA-256 is the seam table's key
 | `--watch OFF[:N]` | print a data-segment word when it changes. `OFF` is a hex offset in the data segment, `N` is 1 or 2 bytes, default 1. Repeatable. Reads `memory_map::ram()`, not the bus, so it disturbs no EGA latch. Line format: the comment atop `hosts/sdl/src/options.h`. |
 | `--seam ID` | turn one seam on (PLAN.md §5, `machine/seam.h`), refused unless the loaded program is the binary its addresses are facts about. Repeatable. |
 | `--seams` | list every seam this build carries, and exit. |
+| `--setting ID=VALUE` | the one number a seam takes (#531, `seam_setting` in `machine/seam.h`), such as `message-pause=2000`, in its unit (milliseconds there). Applied after the seams, whether or not this one is on; a seam that takes none, or a value outside its bounds, is **refused, not clamped**, and stops the launch. Refused with `--replay`. Repeatable; the last for a seam wins. The `--seams` listing and the end-of-run seam line carry the value as `pause=2000ms`: `amberfolio: seam message-pause armed fired=12 pause=2000ms`. |
 | `--vfs-list`, `--vfs-get PATH`, `--vfs-remove PATH` | after the run: list the disk; print one file's size and SHA-256, never its bytes; delete one. |
 | `--save-layer` | which of the disk's files are the player's (#208, §6): the loaded program's table beside the edition line, and after the run the files it names, each with the slot letter and party-member index its name carries. |
 | `--document PATH` | present a document the player holds (`docs/seams.md`, §9). Repeatable. A file **dropped on the window** does the same thing and says the same two lines, in the panel as well as on stderr. |
@@ -235,11 +236,12 @@ PATH` points at another file, which is what the checks in
 person's own.
 
 ```
-amberfolio-config 1
+amberfolio-config 2
 game-directory C:\Games\POR
 program START.EXE
 seam automap
 seam journal
+setting message-pause 2000
 journal-ocr none
 volume 75
 mute off
@@ -249,9 +251,11 @@ save-sidecars on
 ```
 
 One `key value` a line, the value being the whole rest of the line so a
-path with spaces needs no quoting; `seam` is the one repeatable key;
-every key is optional. The version is the first line's second token, so a
-file from a later build is refused rather than half-read.
+path with spaces needs no quoting; `seam` and `setting` are the
+repeatable keys, `setting` naming a seam and its number and each seam at
+most once; every key is optional. The version is the first line's second
+token, so a file from a later build is refused rather than half-read;
+this build writes 2 and still reads 1, which is a 2 with no `setting`.
 `hosts/sdl/src/desktop_config.h` is the authority.
 
 **Precedence is flag > config > default**, stated once as `prefer()` in
@@ -260,7 +264,8 @@ overruled — including a flag that names the default, which is why the
 host records *which* settings the command line mentioned rather than
 comparing values. `--seam` on the command line **replaces** the file's
 list rather than adding to it, so a run can turn a remembered seam off
-without editing anything.
+without editing anything. `--setting` wins **seam by seam**: it replaces
+the file's number for the seam it names and leaves another seam's alone.
 
 **Only `--remember` writes it**, with one exception (§2b). A host that
 wrote its settings down at the end of every run would make the next run's
@@ -277,7 +282,8 @@ settings. The reason above is untouched by it: a key a person was asked
 for in so many words is not a driving script's flag.
 
 **The one exception is a toggle in the panel** (§8, #383), which writes
-the `seam` lines and nothing else about the run. The rule above is about
+the `seam` lines and nothing else about the run; a number set there
+writes that seam's `setting` line and nothing else. The rule above is about
 a *flag*, and the reason it exists is that a script's `--seam` may not be
 a player's choice. A click or a Return in a panel is nobody but a player.
 
@@ -286,7 +292,9 @@ a player's choice. A click or a Return in a panel is nobody but a player.
 does; a remembered choice that no longer fits — a player who turned a
 seam on last week and has loaded another program today — is a row in the
 panel with a reason on it, and taking the game away over one is
-persistence doing harm. `run-config-file.cmake` checks both halves.
+persistence doing harm. `run-config-file.cmake` checks both halves. A
+remembered `setting` the seam refuses is the same: a line on stderr, and
+the seam runs on its own default.
 
 **A malformed file is a loud line and a clean start on the defaults.**
 The line number and the line itself are printed, the file is left where
@@ -1741,6 +1749,7 @@ hosts. None of them is decoration.
 | fired | how many times a handler has **acted**, as a number |
 | reason | `seam_reason_name()` — core's word, or `-` |
 | waits for | the document the row is gated on, or `-` |
+| setting | the seam's number, `<pause 1500 ms>`, or blank for a seam that takes none (desktop, #531) |
 
 **`state` distinguishes the two claims an enabled seam can make.** The
 difference is `seam_status::armed`: at least one of the seam's points
@@ -1780,7 +1789,7 @@ cannot disagree about the same seam.
 
 | host | where | key |
 |---|---|---|
-| desktop | `config.txt` (§2a) | `seam ID`, one line each |
+| desktop | `config.txt` (§2a) | `seam ID`, one line each; `setting ID VALUE` for a number |
 | page | IndexedDB, the `settings` store | `seams`, an array of ids |
 
 **Absence of a stored choice is *off*, never "unset means inherit".** A
@@ -1832,12 +1841,18 @@ check.
   own argument (#377): this machine has no mouse, so no mouse button is a
   control the game can ever want back. A second press turns it into the
   key card (§11).
-- The left button picks a row and toggles it. The panel is asked before
+- The left button picks a row and toggles it; on the left or right half
+  of a row's `setting` cell it moves that number one step down or up
+  instead. The panel is asked before
   the on-screen keyboard, because the two overlays can be over the same
   pixel and a click belongs to the one in front; a click on no row falls
   through to the keyboard.
-- Up, down and Return drive it **only while the on-screen keyboard is
-  not shown**. The keyboard already claims all four arrows and Return
+- Up, down and Return drive it, and left and right move the focused
+  row's number one `step`, held keys repeating, never past its bounds
+  (`stepped_setting()`), and remembered as a toggle is
+  (`remember_panel_setting()`). On the key card left and right turn the
+  page. All of these **only while the on-screen keyboard is not
+  shown**. The keyboard already claims all four arrows and Return
   (§7), and two overlays fighting over one key is worse for a player
   than one of them waiting for the other to be stepped off.
 - Drawn after `--verify`'s read-back, for §7's reason. While it is up the
