@@ -2154,8 +2154,8 @@ if (missing.length === 0) {
       fired: 3,
       reading: ' - a sentence',
       setting: { name: 'pause', unit: 'ms', value: 1500 },
-    }) === 'armed fired=3 - a sentence pause=1500ms',
-    "a seam's number is not on the end of its line",
+    }) === 'armed fired=3 pause=1500ms - a sentence',
+    "a seam's number is not before the sentence on its line",
   );
 
   // And the two rows that must never contradict themselves, from runs

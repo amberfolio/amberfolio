@@ -156,7 +156,8 @@ export const HOST_SERVICES = [
 /// What one enabled seam did, as the desktop host says it at the end of a
 /// run (hosts/sdl/src/seam_host.cpp): `armed fired=N`, or `inert fired=N`, and
 /// the sentence that names the failure when an armed seam fired nothing,
-/// and last the seam's number when it takes one (` pause=1500ms`, #531).
+/// with the seam's number before that sentence when it takes one
+/// (` pause=1500ms`, #531).
 ///
 /// Here rather than in either caller because both hosts have to say it
 /// identically — the same argument `machine/report.h` makes for the stop
@@ -197,10 +198,10 @@ export function formatSeamFired(seam) {
     if (seam.waiting) extra += ' waiting';
     else if (seam.fired !== 0) extra += ` waited=${Math.round(seam.waited)}`;
   }
-  // A seam's number (#531) goes last, `name=valueunit`, the way the
-  // desktop host prints it.
+  // A seam's number (#531), `name=valueunit`, after the counts and
+  // before core's sentence, the way the desktop host prints it.
   const setting = seam.setting ? ` ${seam.setting.name}=${seam.setting.value}${seam.setting.unit}` : '';
-  return `${seam.armed ? 'armed' : 'inert'} fired=${Math.round(seam.fired)}${extra}${seam.reading ?? ''}${setting}`;
+  return `${seam.armed ? 'armed' : 'inert'} fired=${Math.round(seam.fired)}${extra}${setting}${seam.reading ?? ''}`;
 }
 
 /// Why a file the host offered did not go in, in the words a person

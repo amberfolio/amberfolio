@@ -1756,7 +1756,7 @@ hosts. None of them is decoration.
 | fired | how many times a handler has **acted**, as a number |
 | reason | `seam_reason_name()` — core's word, or `-` |
 | waits for | the document the row is gated on, or `-` |
-| setting | the seam's number, `<pause 1500 ms>`, or blank for a seam that takes none (desktop, #531) |
+| setting | the seam's number, `<pause 1500 ms>`, or blank for a seam that takes none; the page shows a number box in its place (#531) |
 
 **`state` distinguishes the two claims an enabled seam can make.** The
 difference is `seam_status::armed`: at least one of the seam's points
@@ -1797,7 +1797,7 @@ cannot disagree about the same seam.
 | host | where | key |
 |---|---|---|
 | desktop | `config.txt` (§2a) | `seam ID`, one line each; `setting ID VALUE` for a number |
-| page | IndexedDB, the `settings` store | `seams`, an array of ids |
+| page | IndexedDB, the `settings` store | `seams`, an array of ids; `seam-settings`, `{ id: number }` for numbers moved off their initial |
 
 **Absence of a stored choice is *off*, never "unset means inherit".** A
 player who has never opened the panel gets every seam off, which is the
