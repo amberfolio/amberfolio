@@ -57,7 +57,9 @@
 // drawing these areas in the interior view instead**; the party's
 // position not being on a 16-by-36 map; the column bias not being one a
 // 44-column table could hold; the bar on the screen not being the
-// adventuring screen's own; the position not having settled; and the
+// adventuring screen's own; the position not having settled; a script
+// holding the window with a picture or a figure of its own, or the window
+// not having been presented since one did (#535); and the
 // party having been near every cell the window is showing, which is the
 // one case where there is nothing to cover. Every one of those returns
 // having touched no port and no pixel.
@@ -339,6 +341,25 @@ constexpr std::uint16_t data_view_column_bias = 0x3C76;
 /// byte read here is the byte the facts describe.
 constexpr int max_column_bias = 0x2B;
 
+/// **The program's own word that the window is not the map.** A script
+/// can draw over the travel view's window: the picture opcode (overlay 3,
+/// `0x08B2`) and the message printer's picture branch (overlay 7,
+/// `0x0636`) both set `0x84E0` to 1 *before* they draw a picture there,
+/// and the paths that put the view back (the step's redraw, the opcode
+/// that closes the picture, the conditional redraw) clear it. Beside it
+/// are the script's two "open" bytes, cleared at the end of every event:
+/// `0x84C8`, a figure the message printer drew in the view (its "SPRIT"
+/// branch), and `0x84C9`, the picture opcode's own (`0x08AD`). Second
+/// route: the disassembly of each writer, and a player's screen, where
+/// the fog was laid over the picture an arrival event drew (#535).
+constexpr std::uint16_t data_picture_in_view = 0x84E0;
+constexpr std::uint16_t data_figure_in_view = 0x84C8;
+constexpr std::uint16_t data_picture_open = 0x84C9;
+
+/// The seam's one word of its own: the program has put something over the
+/// window since it last presented the screen.
+constexpr unsigned word_window_taken = 0;
+
 /// The two halves of an overland record's identity — the disk the area's
 /// files come from and the area's own id — are read by the shared
 /// recorder and come back in its answer (`automap_overland.h`), so this
@@ -546,6 +567,14 @@ constexpr int window_cells = static_cast<int>(explored_window_cells);
 // The handlers
 // ---------------------------------------------------------------------------
 
+/// Whether a script has drawn into the window and not given it back.
+[[nodiscard]] bool script_holds_the_window(cpu::processor& cpu,
+                                           std::uint16_t ds) {
+  return cpu.read_byte(ds, data_picture_in_view) != 0 ||
+         cpu.read_byte(ds, data_figure_in_view) != 0 ||
+         cpu.read_byte(ds, data_picture_open) != 0;
+}
+
 /// A cheap mixed hash of the few things a repaint depends on. Not a
 /// digest of anything and not compared against anything outside this
 /// file.
@@ -584,6 +613,20 @@ void paint(machine& box, seam_context& ctx, std::uint16_t ds,
     // after it (an encounter the party flees), so the next poll at that
     // bar has to draw rather than trust the signature.
     state.set_explored_signature(0);
+    return;
+  }
+
+  if (script_holds_the_window(cpu, ds)) {
+    // A script has put a picture or a figure where the map was, and is
+    // still at the party's own bar while it types its text: an arrival
+    // event, whose first polls are where a step's position settles. It
+    // stays the script's until the program presents the screen again,
+    // because the end of an event clears those bytes without a redraw.
+    ctx.set_scratch(word_window_taken, 1);
+    state.set_explored_signature(0);
+    return;
+  }
+  if (!after_a_present && ctx.scratch(word_window_taken) != 0) {
     return;
   }
 
@@ -684,6 +727,9 @@ void at_present_return(machine& box, seam_context& ctx) {
   if (cpu.read_byte(ds, data_game_mode) != mode_overland) {
     return;
   }
+  // The program has just put the screen up, so whatever covered the
+  // window before is either gone or still says so in its own bytes.
+  ctx.set_scratch(word_window_taken, 0);
 
   // The rest of the guard is the recorder's, and it is the same guard,
   // so it is asked rather than repeated: the view kind, the transition
