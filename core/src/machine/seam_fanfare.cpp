@@ -9,10 +9,12 @@
 // about thirty-one seconds starts as the loading line goes and plays on
 // through the logo, the title and the credits and into the menus, in
 // virtual time, so it keeps its tempo at every governor. A key that
-// hurries the titles along does not stop it. The first sound the game makes does: the game's own sound
-// always wins, and the fanfare gives way for good. It plays only when the
-// game is sounding through the Tandy chip, which every copy is started
-// with here; the piece is written for that chip and nothing else.
+// hurries the titles along does not stop it. The first sound the game
+// makes does: the game's own sound always wins, and the fanfare gives way
+// for good. Switched off while it plays, it stops there and then, and
+// the chip goes quiet. It plays only when the game is sounding through
+// the Tandy chip, which every copy is started with here; the piece is
+// written for that chip and nothing else.
 //
 // **The piece is this project's own.** It was written for this seam, as a
 // list of writes to the chip's port (fanfare_score.cpp); nothing in it
@@ -68,17 +70,19 @@
 // key inside the BIOS, where no address of the program's is reached.
 //
 // It stops, and puts the chip back as it found it, at the end of the
-// score; at a moment that finds the setting is not the Tandy chip; and at
-// the dispatch entry, before the program's first request gets to the
-// driver, so the program's writes never meet the seam's.
+// score; at a moment that finds the setting is not the Tandy chip; at the
+// dispatch entry, before the program's first request gets to the driver,
+// so the program's writes never meet the seam's; and when it is switched
+// off with a moment still asked for, through the engine's stop (#540),
+// before the program's next instruction.
 //
 // It refuses an entry whose DS is not the data segment or whose
 // instruction is not a `push bp`.
 //
 // **What it costs.** Before the titles it moves nothing. From the titles
-// the chip's registers are the score's until the score ends or gives way,
-// and then they are what they were; the writes themselves are in the run's
-// audio record for good. `fired` counts the titles' entry, every moment,
+// the chip's registers are the score's until the score ends, gives way or
+// is switched off, and then they are what they were; the writes themselves
+// are in the run's audio record for good. `fired` counts the titles' entry, every moment,
 // and every sound the program starts while the seam is on.
 //
 //
@@ -204,6 +208,12 @@ void give_way(machine& box, seam_context& ctx) {
   hand_the_chip_back(box);
 }
 
+/// Switched off mid-piece. The engine runs this only for a seam that had
+/// a moment asked for, which is a piece still playing.
+void switched_off(machine& box, seam_context& /*ctx*/) {
+  hand_the_chip_back(box);
+}
+
 constexpr std::array<seam_point, 3> fanfare_points{
     {{.module = titles_module,
       .offset = titles_entry,
@@ -216,6 +226,7 @@ constexpr seam_definition fanfare_definition{
     .about = "a fanfare on the Tandy chip as soon as the loading is done",
     .fingerprints = fanfare_binaries,
     .points = fanfare_points,
+    .stop = &switched_off,
     .schema = seam_schema_version};
 
 }  // namespace

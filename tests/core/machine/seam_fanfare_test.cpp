@@ -231,6 +231,7 @@ TEST(SeamFanfare, IsTheTitlesEntryAMomentAndTheDispatchEntry) {
   EXPECT_FALSE(s->trigger);
   EXPECT_FALSE(s->setting.present());
   EXPECT_TRUE(s->group.empty());
+  EXPECT_NE(s->stop, nullptr) << "for being switched off mid-piece (#540)";
 }
 
 TEST(SeamFanfare, IsOffByDefault) {
@@ -374,6 +375,54 @@ TEST(SeamFanfare, StopsWhenTheSoundIsNoLongerTheChip) {
   r.put_byte(data_segment, data_sound, sound_tandy);
   r.play_for(piece_and_then_some);
   EXPECT_EQ(r.chip->writes.size(), played + hand_back.size());
+}
+
+TEST(SeamFanfare, SwitchedOffMidPieceItHandsTheChipBack) {
+  // #540: off at twelve seconds, and the chord the last moment wrote
+  // would otherwise sound until the program's first request.
+  const rig r;
+  r.arm();
+  r.arrive_at_titles();
+  r.play_for(12 * pit_input_hz);
+  const std::size_t played = r.chip->writes.size();
+  ASSERT_GT(played, 4U);
+  ASSERT_LT(played, piece_writes);
+
+  ASSERT_EQ(r.box->seams().disable(seam_id), seam_reason::none);
+  const ticks off_at = r.box->time();
+  r.play_for(pit_input_hz);
+  ASSERT_EQ(r.chip->writes.size(), played + hand_back.size());
+  for (std::size_t i = 0; i < hand_back.size(); ++i) {
+    EXPECT_EQ(r.chip->writes[played + i].value, hand_back[i]) << i;
+    EXPECT_EQ(r.chip->writes[played + i].at, off_at)
+        << "before the program's next instruction";
+  }
+  psg_registers chip = after_start_up();
+  for (const chip_write& w : r.chip->writes) {
+    static_cast<void>(chip.write(w.value));
+  }
+  EXPECT_TRUE(same(chip, after_start_up()));
+
+  r.play_for(piece_and_then_some);
+  EXPECT_EQ(r.chip->writes.size(), played + hand_back.size())
+      << "and the rest of the piece is not played";
+}
+
+TEST(SeamFanfare, SwitchedOffWithNothingPlayingWritesNothing) {
+  const rig r;
+  r.arm();
+  ASSERT_EQ(r.box->seams().disable(seam_id), seam_reason::none);
+  r.arrive_at_titles();
+  r.play_for(pit_input_hz);
+  EXPECT_TRUE(r.chip->writes.empty()) << "before the titles";
+
+  r.arm();
+  r.arrive_at_titles();
+  r.play_for(piece_and_then_some);
+  ASSERT_EQ(r.box->seams().disable(seam_id), seam_reason::none);
+  r.play_for(pit_input_hz);
+  EXPECT_EQ(r.chip->writes.size(), piece_writes + hand_back.size())
+      << "nor after the piece has handed the chip back itself";
 }
 
 TEST(SeamFanfare, PlaysNothingWhenTheSoundIsNotTheChipAtTheTitles) {

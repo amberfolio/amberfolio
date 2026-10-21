@@ -281,6 +281,18 @@
 // and a seam that has asked for none costs the run one comparison a step
 // (`due()`).
 //
+// A seam that plays something out can be **holding something between its
+// moments** that the program is not: a chip still sounding the chord its
+// last moment wrote. Its own points put that back when the seam ends the
+// thing itself, but a seam switched off has no points left to do it with
+// (#540). So a definition may name a `stop`, and a seam switched off while
+// it has a moment asked for is owed it: run once, at the next step
+// boundary after the `disable()`, whatever is running, with what a
+// moment's handler has and no more. The stop is the one handler a seam
+// that is off still runs. A reset drops it with everything else, and
+// there is nothing for it to put back then: the machine's devices go back
+// to power-on with it.
+//
 //
 // Qualified points
 // ----------------
@@ -641,6 +653,14 @@ struct seam_definition {
   /// The number a player may set, or none (`seam_setting`). A handler
   /// reads it through `seam_context::setting()`.
   seam_setting setting{};
+
+  /// What puts back what this seam holds between its moments, or null for
+  /// nothing (#540; this file's "A point at a moment"). Run once, at the
+  /// next step boundary after a `disable()` that found a moment asked
+  /// for, and never otherwise: a seam that ends the thing itself puts it
+  /// back from its own points. Like a moment's handler it is at no known
+  /// instruction, so `call_program` and `place_bytes` answer false.
+  seam_handler stop{nullptr};
 
   /// The schema this definition was written against — `seam_schema_version`
   /// at the time. Spelled in the definition rather than assumed, so the
@@ -1343,7 +1363,9 @@ class seam_engine {
   seam_error enable(std::string_view id);
 
   /// Turn `id` off. `seam_reason::none` on success, `unknown_seam`
-  /// otherwise; a seam that was already off is simply off.
+  /// otherwise; a seam that was already off is simply off. One that had a
+  /// moment asked for and names a `stop` is owed it, at the next step
+  /// boundary (#540).
   seam_error disable(std::string_view id);
 
   /// Turn everything off. `machine::reset()` calls this — an enabled seam
@@ -1403,9 +1425,10 @@ class seam_engine {
   /// A batch of calls counts, and not only because it has to be driven:
   /// a seam switched off in the middle of one leaves a half-finished
   /// frame on the machine's stack, and the only honest thing is to let it
-  /// return (#188). You cannot un-call a call.
+  /// return (#188). You cannot un-call a call. So does a stop a seam
+  /// switched off is owed (#540), for the one step it waits.
   [[nodiscard]] bool armed() const noexcept {
-    return armed_ != 0 || call_.active;
+    return armed_ != 0 || call_.active || stops_owed_ != 0;
   }
 
   /// Whether `dispatch(box, at)` can do anything at all at this step
@@ -1429,7 +1452,8 @@ class seam_engine {
   /// Whether a moment some seam asked for has come by `now` (#538): the
   /// other question `machine::step()` asks before `dispatch`, for the
   /// points `wants` cannot be about. One comparison, and false at every
-  /// tick a clock can reach while no seam has asked for one.
+  /// tick a clock can reach while no seam has asked for one. True at
+  /// once while a stop is owed (#540), which is due now.
   [[nodiscard]] bool due(ticks now) const noexcept {
     return now >= next_moment_;
   }
@@ -1619,6 +1643,9 @@ class seam_engine {
     /// while `offered`. Configuration like the latch.
     bool offered{false};
     ticks moment{};
+    /// Switched off while `offered`, with a `stop` to run: owed it at the
+    /// next step boundary (#540).
+    bool stop_owed{false};
     /// How many times a handler of this seam has declined
     /// (`seam_context::decline`). Zero means it has not, which is what
     /// the diagnostics channel's report-once test reads; the count
@@ -1831,13 +1858,20 @@ class seam_engine {
   bool latched_{false};
 
   /// The earliest moment a seam with an armed `at_moment` point has asked
-  /// for, or never (`due()`). Rebuilt by `rebuild_moments()` wherever a
-  /// moment or the armed table changes.
+  /// for, or never (`due()`); zero while a stop is owed. Rebuilt by
+  /// `rebuild_moments()` wherever a moment, a stop or the armed table
+  /// changes.
   static constexpr ticks no_moment = ~ticks{};
   ticks next_moment_{no_moment};
 
+  /// How many slots say `stop_owed` (#540).
+  std::size_t stops_owed_{};
+
   void rebuild_moments() noexcept;
   void offer_moment(std::string_view id, bool offered, ticks moment) noexcept;
+
+  /// Run every stop owed, once each, at this boundary (#540).
+  void serve_stops(machine& box, std::uint32_t at);
 
   struct anchored_entry {
     std::uint32_t anchor{};

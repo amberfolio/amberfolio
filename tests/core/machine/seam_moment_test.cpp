@@ -5,7 +5,8 @@
 // moment it asked for and not the tick the machine reached; never while
 // nothing is asked; dropped by everything that drops a latch; unable to
 // call the program; and costing a run that serves one and writes nothing
-// not a byte of machine state.
+// not a byte of machine state. And a seam switched off with a moment
+// asked for is owed its stop, once, at the next boundary (#540).
 //
 // The program is this file's own: a NOP the address point sits on, then
 // a HLT the processor idles at while the clock runs.
@@ -53,6 +54,9 @@ struct served {
 };
 std::vector<served> arrivals;
 
+/// What the stop saw, one entry per run of it.
+std::vector<served> stops;
+
 void ask_for_a_moment(machine& box, seam_context& ctx) {
   if (ask_at_arrival) {
     ctx.offer_at(box.time() + ask_after);
@@ -74,6 +78,17 @@ void at_the_moment(machine& box, seam_context& ctx) {
   }
 }
 
+void at_the_stop(machine& box, seam_context& ctx) {
+  const std::array<std::uint16_t, 1> word{1};
+  const std::array<std::uint8_t, 2> bytes{1, 2};
+  std::uint16_t segment = 0;
+  std::uint16_t offset = 0;
+  stops.push_back({.moment = ctx.moment(),
+                   .now = box.time(),
+                   .called = ctx.call_program(0x1000, 0, word),
+                   .placed = ctx.place_bytes(bytes, segment, offset)});
+}
+
 constexpr std::array<seam_point, 2> moment_points{
     {{.module = resident_image, .offset = 0, .run = &ask_for_a_moment},
      {.module = resident_image, .run = &at_the_moment, .at_moment = true}}};
@@ -91,6 +106,13 @@ constexpr seam_definition only_moment_seam{
     .fingerprints = claimed_binaries,
     .points = only_moment_points};
 
+constexpr seam_definition stopping_seam{
+    .id = "test-moment-stop",
+    .about = "asks for a moment, and has a stop for being switched off",
+    .fingerprints = claimed_binaries,
+    .points = moment_points,
+    .stop = &at_the_stop};
+
 struct rig {
   rig() : box(std::make_unique<machine>(memory_layout::pc)) {
     ask_at_arrival = false;
@@ -98,8 +120,10 @@ struct rig {
     period = 0;
     asks_left = 0;
     arrivals.clear();
+    stops.clear();
     EXPECT_TRUE(box->seams().add(moment_seam));
     EXPECT_TRUE(box->seams().add(only_moment_seam));
+    EXPECT_TRUE(box->seams().add(stopping_seam));
     sha256_digest digest;
     EXPECT_TRUE(parse_digest(claimed_hex, digest));
     box->seams().loaded(digest, image_load_segment);
@@ -250,6 +274,82 @@ TEST(SeamMoment, CountsNoArrivalAndIsNoAddress) {
   const seam_status moment = r.box->seams().status("test-moment");
   EXPECT_EQ(moment.reached, 1U) << "the NOP, and the moment counts none";
   EXPECT_EQ(moment.fired, 2U) << "the NOP and the moment";
+}
+
+TEST(SeamMoment, SwitchedOffWithOneAskedItsStopRunsOnceAtTheNextBoundary) {
+  const rig r;
+  ASSERT_EQ(r.box->seams().enable("test-moment-stop"), seam_reason::none);
+  ask_at_arrival = true;
+  ask_after = 1'000'000;
+  r.box->step();
+  ASSERT_EQ(r.box->seams().disable("test-moment-stop"), seam_reason::none);
+  EXPECT_TRUE(stops.empty()) << "configuration runs no handler";
+  EXPECT_TRUE(r.box->seams().armed());
+  EXPECT_TRUE(r.box->seams().due(r.box->time())) << "due now";
+
+  const ticks boundary = r.box->time();
+  r.box->step();
+  ASSERT_EQ(stops.size(), 1U);
+  EXPECT_EQ(stops[0].now, boundary);
+  EXPECT_EQ(stops[0].moment, 0U) << "a stop is no moment";
+  EXPECT_FALSE(stops[0].called) << "a stop is at no known instruction";
+  EXPECT_FALSE(stops[0].placed);
+  EXPECT_FALSE(r.box->seams().armed()) << "and the machine is plain again";
+
+  static_cast<void>(r.run_to(r.box->time() + 2'000'000));
+  EXPECT_EQ(stops.size(), 1U);
+  EXPECT_TRUE(arrivals.empty()) << "nor is its moment served";
+}
+
+TEST(SeamMoment, SwitchedOffWithNoneAskedIsOwedNoStop) {
+  const rig unasked;
+  ASSERT_EQ(unasked.box->seams().enable("test-moment-stop"), seam_reason::none);
+  unasked.box->step();
+  ASSERT_EQ(unasked.box->seams().disable("test-moment-stop"),
+            seam_reason::none);
+  EXPECT_FALSE(unasked.box->seams().armed());
+  static_cast<void>(unasked.run_to(10'000));
+  EXPECT_TRUE(stops.empty());
+
+  // Nor after its last moment was served and it asked for no other.
+  const rig served_last;
+  ASSERT_EQ(served_last.box->seams().enable("test-moment-stop"),
+            seam_reason::none);
+  ask_at_arrival = true;
+  ask_after = 100;
+  static_cast<void>(served_last.run_to(1'000));
+  ASSERT_EQ(arrivals.size(), 1U);
+  ASSERT_EQ(served_last.box->seams().disable("test-moment-stop"),
+            seam_reason::none);
+  static_cast<void>(served_last.run_to(served_last.box->time() + 1'000));
+  EXPECT_TRUE(stops.empty());
+}
+
+TEST(SeamMoment, SwitchedBackOnBeforeTheBoundaryTheStopStillRuns) {
+  // What the stop puts back is still out there whether or not the seam
+  // is on again, and the seam on again starts from its own points.
+  const rig r;
+  ASSERT_EQ(r.box->seams().enable("test-moment-stop"), seam_reason::none);
+  ask_at_arrival = true;
+  ask_after = 1'000;
+  r.box->step();
+  ASSERT_EQ(r.box->seams().disable("test-moment-stop"), seam_reason::none);
+  ASSERT_EQ(r.box->seams().enable("test-moment-stop"), seam_reason::none);
+  static_cast<void>(r.run_to(r.box->time() + 10'000));
+  EXPECT_EQ(stops.size(), 1U);
+  EXPECT_TRUE(arrivals.empty());
+}
+
+TEST(SeamMoment, AResetDropsAStopOwed) {
+  const rig r;
+  ASSERT_EQ(r.box->seams().enable("test-moment-stop"), seam_reason::none);
+  ask_at_arrival = true;
+  ask_after = 1'000;
+  r.box->step();
+  ASSERT_EQ(r.box->seams().disable("test-moment-stop"), seam_reason::none);
+  r.box->reset();
+  EXPECT_FALSE(r.box->seams().armed());
+  EXPECT_FALSE(r.box->seams().due(~ticks{} - 1));
 }
 
 TEST(SeamMoment, ServingOneThatWritesNothingLeavesTheRunIdentical) {
