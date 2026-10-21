@@ -380,10 +380,12 @@ pinning and not only at a milestone.
   config file). *Exit: a new player goes from artifacts-in-hand to
   playing without reading source code, and the game is fully playable,
   text entry included, on a device with no keyboard attached to it.*
-- **M7 — Release 1.0.** Versioning, GitHub Releases with prebuilt
-  binaries for the three desktop targets + the wasm bundle, README/docs
-  refresh, a short "supplying your artifacts" guide. *Exit: tagged 1.0
-  release, binaries downloadable, release gate (§1) green.*
+- **M7 — Release 1.0.** Versioning, a GitHub Release carrying the
+  wasm bundle a site pins by hash, the README/docs refresh. The desktop
+  host is built from source; prebuilt desktop binaries are left for a
+  later release. Where a player's copy goes is `docs/hosts.md` §2c on
+  the desktop and the page's own onboarding in a browser. *Exit: tagged
+  1.0 release, release gate (§1) green.*
 - **M8 — A controller.** One thing 1.0 ships without, deliberately.
 
   **Native controller support** is an *enhancement*, on the seam
@@ -421,8 +423,8 @@ pinning and not only at a milestone.
   supporting the currently sold editions first, a friendly
   unrecognized-artifact message, and a process for adding editions.
 - **macOS distribution.** Signing/notarization needs an Apple developer
-  account; unsigned builds with instructions are acceptable for the
-  0.x pre-releases. Open question below for 1.0.
+  account. 1.0 ships no desktop binaries, so the question waits for
+  the release that does (below).
 - **Scope creep toward the family.** Sibling titles are tempting and
   the machine is family-shaped by design — but v1 is Pool of Radiance
   only; family work starts after 1.0 ships.
@@ -445,8 +447,9 @@ pinning and not only at a milestone.
 
 ## 10. Open questions
 
-- macOS signing/notarization for 1.0: acquire the developer account
-  during the 0.x run, or ship 1.0 unsigned with instructions too?
+- macOS signing/notarization for the first release with desktop
+  binaries: acquire the developer account, or ship unsigned with
+  instructions?
 - Which game-binary editions to fingerprint beyond the one there is.
   One START.EXE is known, and it is two releases: the one sold on GOG
   and Steam (the baseline row) and a third-party repack of it, which

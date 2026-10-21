@@ -135,7 +135,8 @@ exists to catch; run it after editing one.
 
 ## Releases and tags
 
-Every milestone from M3 on gets a **0.x pre-release** tag (PLAN.md §7).
+Every milestone from M3 to M6 got a **0.x pre-release** tag (PLAN.md §7);
+from `v1.0.0` on, a tag is a full release.
 
 - The tag is **annotated**, on `main`, named `vMAJOR.MINOR.PATCH`, and
   matches `project(VERSION ...)` in the top-level `CMakeLists.txt`
@@ -172,8 +173,8 @@ it downloaded. `scripts/release-bundle.sh` is the bundle and
 `scripts/test-release-bundle.sh` asserts its refusals (the list by name
 and in order, a notices collision, an engine directory with no
 `tesseract.min.js`, and `GITHUB_SHA` being the tag object rather than a
-commit). A `0.x` tag is a pre-release, so
-`/releases/latest` shows nothing until 1.0.
+commit). A `0.x` tag is a pre-release and any later one is not, so
+`/releases/latest` is the newest tag from `v1.0.0` on.
 
 **A tag older than the release job** is released by `release.yml`,
 dispatched with the tag's name. It builds and tests the wasm module from
