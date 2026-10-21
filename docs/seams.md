@@ -1423,7 +1423,7 @@ fact table.
 | the fog | a one-pixel checker of palette index 0 on half of a square's pixels; colour from set/reset, bit mask alternating `0xAA` / `0x55` by scanline; the parity is the screen's, so it runs unbroken between squares; a masked write, so each byte is read then written (§3) |
 | `explored_reveal_radius` | Chebyshev **0** (`machine/automap.h`) |
 | the record | where the party stood; the reveal is derived at draw time, so the radius can change without touching a sidecar |
-| never covered | the party's own square; any pixel outside the window |
+| never covered | the party's own square; any pixel outside the window; a window a script holds, while `0x84E0` (a picture is in the view), `0x84C8` (a figure the message printer drew) or `0x84C9` (the picture opcode's open byte) is set, and until the program next presents the screen after one was, since the end of an event clears them without a redraw (#535) |
 | covered | a neighbouring area's squares in an overhanging window |
 
 - **Rejected** (each with its reason in `docs/explored-overlay.md` §5):

@@ -67,6 +67,9 @@ constexpr std::uint16_t data_disk_number = 0x5376;
 constexpr std::uint16_t data_area_id = 0x84DC;
 constexpr std::uint16_t data_view_column_bias = 0x3C76;
 constexpr std::uint16_t data_menu_area_view = 0x04B6;
+constexpr std::uint16_t data_picture_in_view = 0x84E0;
+constexpr std::uint16_t data_figure_in_view = 0x84C8;
+constexpr std::uint16_t data_picture_open = 0x84C9;
 constexpr std::uint16_t bar_frame_menu_offset = 18;
 constexpr std::uint16_t bar_frame_menu_segment = 20;
 
@@ -731,6 +734,57 @@ TEST(ExploredOverlay, TheFogComesBackWithThePartysBarAfterAnEncounter) {
   r.put_up_the_bar(rig::dgroup(), data_menu_area_view);
   r.poll(1);
   EXPECT_EQ(pixels_covered(r), covered);
+}
+
+TEST(ExploredOverlay, NothingIsDrawnOverAPictureAScriptPutInTheWindow) {
+  // What a player saw (#535): a step onto a square whose event puts a
+  // picture up. The event types its text at the party's own bar, and its
+  // first polls are where the step's position settles, so a seam that
+  // asked only the bar laid the fog over the picture.
+  const rig r;
+  r.enable();
+  r.travelling(3, 32);
+  r.poll(4);
+  r.put_word(record_segment, record_overland_row, 31);
+  r.put_byte(rig::dgroup(), data_picture_open, 1);
+  r.put_byte(rig::dgroup(), data_picture_in_view, 1);
+  r.fill();
+  r.poll(4);
+  EXPECT_EQ(pixels_covered(r), 0u) << "the window is the script's picture";
+  r.present();
+  EXPECT_EQ(pixels_covered(r), 0u) << "and says so after a present too";
+}
+
+TEST(ExploredOverlay, NothingIsDrawnOverAFigureTheMessagePrinterDrew) {
+  const rig r;
+  r.enable();
+  r.travelling(3, 32);
+  r.put_byte(rig::dgroup(), data_figure_in_view, 1);
+  r.fill();
+  r.poll(4);
+  r.present();
+  EXPECT_EQ(pixels_covered(r), 0u);
+}
+
+TEST(ExploredOverlay, AfterAPictureTheFogWaitsForTheProgramsOwnRedraw) {
+  // The end of an event clears the script's bytes without redrawing the
+  // window, so the picture is still on the screen when the party's bar
+  // polls again. The fog comes back with the program's next present,
+  // which is the map put back.
+  const rig r;
+  r.enable();
+  r.travelling(3, 32);
+  r.put_byte(rig::dgroup(), data_picture_open, 1);
+  r.put_byte(rig::dgroup(), data_picture_in_view, 1);
+  r.poll(4);
+  r.put_byte(rig::dgroup(), data_picture_open, 0);
+  r.put_byte(rig::dgroup(), data_picture_in_view, 0);
+  r.fill();
+  r.poll(4);
+  EXPECT_EQ(pixels_covered(r), 0u) << "the event is over; its picture is not";
+
+  r.present();
+  EXPECT_EQ(fogged_cells(r), every_cell & ~block(2, 2, 2, 2));
 }
 
 TEST(ExploredOverlay, TheFogIsThereOnTheFirstFrameAcrossABandEdge) {

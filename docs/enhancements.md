@@ -145,6 +145,8 @@ none.
 your party has stood on are the game's own map; every other square is
 hazed with a fine black checkerboard, so the shape of the country shows
 through. The reveal radius is zero: the square you are standing on.
+A picture the game puts in the map's window is left alone; the fog
+comes back when the map does.
 
 **How you turn it on.** `--seam explored`. There is no key. It shares the
 automap's store and its table, so squares walked with only the automap on
