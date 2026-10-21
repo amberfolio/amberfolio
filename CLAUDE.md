@@ -10,8 +10,13 @@ Windows/macOS/Linux (64-bit) and WebAssembly. v1 targets Pool of
 Radiance. **PLAN.md is the plan of record**: scope, architecture,
 milestones and settled decisions live there. Don't re-litigate them.
 
-**Status.** M0–M6 are done and `v0.16.1` is the current tag, an interim
-one inside M7 (the GOG/Steam release boots, saves and reads its journal
+**Status.** M0–M7 are done and `v1.0.0` is the current tag, the release
+PLAN.md §1's gate defines. A release carries the web build; the desktop
+host is built from source. The game boots, plays end to end, all six v1
+enhancements work and toggle independently on both hosts, and a player
+reaches all of it from the shells: onboarding, a config file, a toggle
+panel, a document control and the on-screen keyboard. Past M6, 1.0 has
+more: the GOG/Steam release boots, saves and reads its journal
 as sold: #396–#398; every copy plays Tandy sound: #404, #407; a host can read the
 screen as text; the sidecars are one pair per save slot and nothing
 between saves: #413; the lettering can be a bold sans or a chisel
@@ -35,11 +40,8 @@ message the game moves on from by itself up long enough to read, any
 key ending it, and is the first seam that takes a number, set from
 `--setting`, the config file, both panels and the ABI, and waits
 before the encounter menu wipes a line the script just printed: #531,
-#533). The game boots, plays end to end, all six v1 enhancements work and toggle
-independently on both hosts, and a player reaches all of it from the
-shells: onboarding, a config file, a toggle panel, a document control and
-the on-screen keyboard. The current milestone is **M7** (1.0: release
-engineering, binaries, the docs refresh).
+#533; the fog leaves a picture a script draws in the travel window
+alone: #535.
 Controller support is the site's: a pad driving real keys, which
 `modern-controls` turns into selection (#372, #379 and #210 closed). Open
 issues are the
