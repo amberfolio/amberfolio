@@ -44,7 +44,8 @@ before the encounter menu wipes a line the script just printed: #531,
 #533; the fog leaves a picture a script draws in the travel window
 alone: #535; a `fanfare` seam plays the maintainer's own piece on the
 Tandy chip from the end of the boot's loading on, paced by a point at a
-moment of virtual time rather than an address: #538.
+moment of virtual time rather than an address, and switched off
+mid-piece puts the chip back at once: #538, #540.
 Controller support is the site's: a pad driving real keys, which
 `modern-controls` turns into selection (#372, #379 and #210 closed). Open
 issues are the

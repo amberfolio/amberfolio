@@ -562,7 +562,8 @@ the titles along does not stop it.
 
 **How you turn it on.** `--seam fanfare`, or its toggle in the panel. It
 takes effect at the next boot, because the end of the loading is where
-it starts.
+it starts. Switched off while it plays, it stops there and then, and the
+chip goes quiet.
 
 **What it will not do.** Play over the game. The first sound the game
 makes, a footstep or a door, ends the piece for good, and so does the

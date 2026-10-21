@@ -548,10 +548,13 @@ void seam_engine::clear() noexcept {
     slots_[i].waiting = false;
     slots_[i].pulled_at = ticks{};
     slots_[i].waited = ticks{};
-    // And so does a moment, for the same reason (#538).
+    // And so does a moment, for the same reason (#538), and a stop owed
+    // for one: what it would put back, a reset puts back itself (#540).
     slots_[i].offered = false;
     slots_[i].moment = ticks{};
+    slots_[i].stop_owed = false;
   }
+  stops_owed_ = 0;
   enabled_ = 0;
   points_ = {};
   armed_ = 0;
@@ -690,7 +693,13 @@ seam_error seam_engine::disable(std::string_view id) {
   // running when somebody switched the seam back on.
   s.waiting = false;
   // A moment too: a seam switched back on starts from its own points,
-  // not from somewhere in a run it was switched off in (#538).
+  // not from somewhere in a run it was switched off in (#538). One that
+  // was holding something until that moment is owed its stop, which
+  // `arm_all()` below makes due at the next step boundary (#540).
+  if (s.offered && s.seam->stop != nullptr && !s.stop_owed) {
+    s.stop_owed = true;
+    ++stops_owed_;
+  }
   s.offered = false;
   s.moment = ticks{};
   --enabled_;
@@ -927,8 +936,9 @@ void seam_engine::rebuild_moments() noexcept {
   // Over the armed table rather than the slots: a moment asked for by a
   // seam with no moment point armed is one nothing could serve, and
   // counting it would have `due()` send every step to `dispatch` to find
-  // nothing there.
-  next_moment_ = no_moment;
+  // nothing there. A stop owed is due now, and its seam is off, so has no
+  // point to be counted by (#540).
+  next_moment_ = stops_owed_ != 0 ? ticks{} : no_moment;
   for (std::size_t i = 0; i < armed_; ++i) {
     const armed_point& point = points_[i];
     const slot& owner = slots_[point.owner];
@@ -947,6 +957,24 @@ void seam_engine::offer_moment(std::string_view id, bool offered,
   }
   slots_[at].offered = offered;
   slots_[at].moment = moment;
+  rebuild_moments();
+}
+
+void seam_engine::serve_stops(machine& box, std::uint32_t at) {
+  // First, at the first boundary after the `disable()`, and whatever is
+  // running, a batch included: a stop is at no known instruction either
+  // way, and what it puts back is sounding until it does.
+  for (std::size_t i = 0; i < registered_; ++i) {
+    slot& s = slots_[i];
+    if (!s.stop_owed) {
+      continue;
+    }
+    s.stop_owed = false;
+    seam_context ctx(box, *this, s.seam->id, at, image_base(), image_base(),
+                     true);
+    s.seam->stop(box, ctx);
+  }
+  stops_owed_ = 0;
   rebuild_moments();
 }
 
@@ -1031,6 +1059,9 @@ void seam_engine::offer_inside_calls(machine& box, std::uint32_t at) {
 }
 
 void seam_engine::dispatch(machine& box, std::uint32_t at) {
+  if (stops_owed_ != 0) {
+    serve_stops(box, at);
+  }
   if (call_.active) {
     // A batch is running, and while it is the engine does one thing.
     // Points are not offered: the machine is inside the program's own

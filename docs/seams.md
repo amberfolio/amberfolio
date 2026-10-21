@@ -379,13 +379,21 @@ BIOS reaches no address of its own, so no address can pace it.
   each moment served.
 - The moment is configuration: `reset()`, `clear()`, `enable()` and
   `disable()` drop it, and the serialization never sees it.
+- **A stop** (`seam_definition::stop`, #540). Between its moments a seam
+  can be holding something the program is not, a chip still sounding,
+  and a seam switched off has no points left to put it back with. So a
+  definition may name a stop, and a `disable()` that finds a moment asked
+  for owes it: run once, at the next step boundary, whatever is running,
+  with what a moment's handler has. It is the one handler a seam that is
+  off runs. `fired` does not count it, and a reset drops it, the devices
+  going back to power-on with the machine.
 - **Cost**: `machine::step()` asks `due(now)` beside `wants(at)`, one
   comparison against the earliest moment any seam has asked for; with
-  none asked it is false at every tick.
+  none asked it is false at every tick. A stop owed is due now.
 
 Tests: `SeamMoment.*` (`tests/core/machine/seam_moment_test.cpp`),
 `SeamMoment.ServingOneThatWritesNothingLeavesTheRunIdentical` the
-fidelity one.
+fidelity one, `SeamMoment.SwitchedOff*` the stop's.
 
 ---
 
@@ -3215,6 +3223,7 @@ setting is the byte at DGROUP `0x5372`, 0 the Tandy chip.
 | overlay 1 `0x0627`, the titles' entry | when the setting is the chip and nothing is playing, puts the score's first cue in the seam's word and asks for a moment, now |
 | a moment (§3b) | writes every cue that is due through port `C0h`, from where the piece started (the moment it was handed less its cue's tick), and asks for the next cue's moment; at the end of the score, or with the setting no longer the chip, hands the chip back instead |
 | `0x8BBC`, the dispatch entry | while a moment is outstanding, drops it and hands the chip back, before the program's request reaches the driver |
+| its stop (§3b) | switched off with a moment outstanding, hands the chip back, before the program's next instruction (#540) |
 
 - **Handing the chip back** is eleven writes: each tone voice's period
   and the noise control to zero, every voice silent, the noise voice's
@@ -3228,8 +3237,9 @@ setting is the byte at DGROUP `0x5372`, 0 the Tandy chip.
 - **`fired`** counts the titles' entry, each moment (4,184 for the whole
   piece), and every sound the program starts while the seam is on.
 - **Fidelity**: before the titles it moves nothing. From the titles the
-  chip's registers are the piece's while it plays and the writes are in
-  the run's audio record for good; the program's own run is untouched
+  chip's registers are the piece's until it ends, gives way or is
+  switched off, and the writes are in the run's audio record for good;
+  the program's own run is untouched
   (`quiet-fanfare`, `contrast quiet`, 27 of 90 checkpoints identical,
   divergent from tick 68,752,816, the end of the loading at the `xt`
   governor, in `devices` and `audio` only, and in `audio` alone once the
