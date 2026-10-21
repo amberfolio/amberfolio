@@ -258,6 +258,19 @@ std::uint16_t seam_context::setting() const noexcept {
   return engine_->setting(id_);
 }
 
+void seam_context::offer_at(ticks moment) noexcept {
+  engine_->offer_moment(id_, true, moment);
+}
+
+void seam_context::withdraw_offer() noexcept {
+  engine_->offer_moment(id_, false, ticks{});
+}
+
+bool seam_context::offered() const noexcept {
+  const std::size_t at = engine_->index_of(id_);
+  return at != seam_engine::max_seams && engine_->slots_[at].offered;
+}
+
 std::uint16_t seam_engine::scratch(std::string_view id,
                                    unsigned word) const noexcept {
   const std::size_t at = index_of(id);
@@ -484,7 +497,7 @@ seam_status seam_engine::slot_status(std::size_t index) const noexcept {
   // sentence (#163).
   out.addressed = false;
   for (const seam_point& point : s.seam->points) {
-    if (!point.at_every_step) {
+    if (!point.at_every_step && !point.at_moment) {
       out.addressed = true;
       break;
     }
@@ -535,6 +548,9 @@ void seam_engine::clear() noexcept {
     slots_[i].waiting = false;
     slots_[i].pulled_at = ticks{};
     slots_[i].waited = ticks{};
+    // And so does a moment, for the same reason (#538).
+    slots_[i].offered = false;
+    slots_[i].moment = ticks{};
   }
   enabled_ = 0;
   points_ = {};
@@ -648,6 +664,8 @@ seam_error seam_engine::enable_slot(std::size_t index) {
   s.waiting = false;
   s.pulled_at = ticks{};
   s.waited = ticks{};
+  s.offered = false;
+  s.moment = ticks{};
   ++enabled_;
   report(id, seam_event_kind::enabled, seam_reason::none);
   arm_all(overlays_);
@@ -671,6 +689,10 @@ seam_error seam_engine::disable(std::string_view id) {
   // being switched off would fire on whatever fight happened to be
   // running when somebody switched the seam back on.
   s.waiting = false;
+  // A moment too: a seam switched back on starts from its own points,
+  // not from somewhere in a run it was switched off in (#538).
+  s.offered = false;
+  s.moment = ticks{};
   --enabled_;
   report(id, seam_event_kind::disabled, seam_reason::none);
   arm_all(overlays_);
@@ -796,18 +818,21 @@ void seam_engine::arm_all(const overlay_tracker* overlays) {
             // never compared for it, and a plausible-looking
             // number in a field nothing reads is the kind of
             // fact this tree does not keep.
-            .at = point.at_every_step ? 0 : base + point.offset,
+            .at = point.at_every_step || point.at_moment ? 0
+                                                         : base + point.offset,
             .module_base = base,
             .anchor = anchor,
             .offset = point.offset,
             .run = point.run,
             .owner = i,
-            .at_every_step = point.at_every_step,
+            .at_every_step = point.at_every_step && !point.at_moment,
             // Honoured only where seam.h says it is: an
             // address point in a module that stays put,
             // on a seam no latch gates.
             .inside_calls = point.inside_calls && !point.at_every_step &&
-                            anchor == no_load_segment && !s.seam->trigger};
+                            !point.at_moment && anchor == no_load_segment &&
+                            !s.seam->trigger,
+            .at_moment = point.at_moment};
         ++armed_;
       }
     }
@@ -864,6 +889,9 @@ void seam_engine::rebuild_filter() noexcept {
     if (point.run == nullptr) {
       continue;
     }
+    if (point.at_moment) {
+      continue;  // not about `at`: `rebuild_moments()` below.
+    }
     if (point.at_every_step) {
       latched_ = latched_ || slots_[point.owner].waiting;
     } else if (point.anchor != no_load_segment) {
@@ -884,7 +912,7 @@ void seam_engine::rebuild_filter() noexcept {
   std::array<std::uint8_t, 16> next{};
   for (std::size_t i = 0; i < armed_; ++i) {
     const armed_point& point = points_[i];
-    if (point.run == nullptr || point.at_every_step ||
+    if (point.run == nullptr || point.at_every_step || point.at_moment ||
         point.anchor == no_load_segment) {
       continue;
     }
@@ -892,6 +920,34 @@ void seam_engine::rebuild_filter() noexcept {
     anchored_[anchored_from_[nibble] + next[nibble]++] = {
         .anchor = point.anchor, .offset = point.offset};
   }
+  rebuild_moments();
+}
+
+void seam_engine::rebuild_moments() noexcept {
+  // Over the armed table rather than the slots: a moment asked for by a
+  // seam with no moment point armed is one nothing could serve, and
+  // counting it would have `due()` send every step to `dispatch` to find
+  // nothing there.
+  next_moment_ = no_moment;
+  for (std::size_t i = 0; i < armed_; ++i) {
+    const armed_point& point = points_[i];
+    const slot& owner = slots_[point.owner];
+    if (point.at_moment && point.run != nullptr && owner.offered &&
+        owner.moment < next_moment_) {
+      next_moment_ = owner.moment;
+    }
+  }
+}
+
+void seam_engine::offer_moment(std::string_view id, bool offered,
+                               ticks moment) noexcept {
+  const std::size_t at = index_of(id);
+  if (at == max_seams) {
+    return;
+  }
+  slots_[at].offered = offered;
+  slots_[at].moment = moment;
+  rebuild_moments();
 }
 
 void seam_engine::open_batch(machine& box, std::string_view id) noexcept {
@@ -1014,7 +1070,21 @@ void seam_engine::dispatch(machine& box, std::uint32_t at) {
     }
 
     std::uint32_t base = point.module_base;
-    if (point.at_every_step) {
+    if (point.at_moment) {
+      // A point at a moment (#538). Nothing about `at`: the question is
+      // whether its seam asked for a moment and the clock has reached it.
+      const slot& owner = slots_[point.owner];
+      if (!owner.offered || box.time() < owner.moment) {
+        continue;
+      }
+      if (point.anchor != no_load_segment) {
+        const std::uint16_t segment = word_at(point.anchor);
+        if (segment == 0) {
+          continue;
+        }
+        base = static_cast<std::uint32_t>(segment) * 16U;
+      }
+    } else if (point.at_every_step) {
       // A point with no address (#163). One bool decides whether
       // anything at all happens here, and it is the latch: nobody has
       // pulled, nothing is read, nothing is compared, and the step is
@@ -1066,7 +1136,7 @@ void seam_engine::dispatch(machine& box, std::uint32_t at) {
     }
 
     slot& owner = slots_[point.owner];
-    if (!point.at_every_step) {
+    if (!point.at_every_step && !point.at_moment) {
       // The arrival, counted first and whatever happens next: `reached`
       // is a fact about where the program went, and it is the only thing
       // that can say how often a trigger *could* be served (#161). A
@@ -1083,7 +1153,15 @@ void seam_engine::dispatch(machine& box, std::uint32_t at) {
       }
     }
 
-    seam_context ctx(box, *this, owner.seam->id, at, base, image_base());
+    seam_context ctx(box, *this, owner.seam->id, at, base, image_base(),
+                     point.at_moment);
+    if (point.at_moment) {
+      // Served: the moment is spent before the handler runs, so a handler
+      // that wants another asks for it, and one that does not is done.
+      ctx.moment_ = owner.moment;
+      owner.offered = false;
+      rebuild_moments();
+    }
     point.run(box, ctx);
     if (call_.active && !call_.running) {
       // The handler asked the program to draw something. CS:IP is about

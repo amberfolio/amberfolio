@@ -550,6 +550,23 @@ typed, the message pause waits the same length first, and a key ends
 that wait too. Any other line the game replaces with no pause at all is
 not given one.
 
+## The fanfare
+
+**What it does.** Plays a short piece, about thirty-one seconds, on the
+Tandy sound chip when the game's title picture comes up. The game itself
+is silent from its logo to its first sound in play. The piece was written
+for this project; nothing in it is the game's. It plays on through the
+credits and into the menus at the same tempo at every speed setting, and
+a key that hurries the title along does not stop it.
+
+**How you turn it on.** `--seam fanfare`, or its toggle in the panel. It
+takes effect at the next boot, because the title is where it starts.
+
+**What it will not do.** Play over the game. The first sound the game
+makes, a footstep or a door, ends the piece for good, and so does the
+game's sound being turned off (Ctrl-S). It plays only through the Tandy
+chip, which is how every copy is started here.
+
 ## The text faces
 
 **What they do.** Redraw the game's lettering in a face of your choice,

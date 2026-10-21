@@ -265,12 +265,13 @@ cpu::step_status machine::step() {
   //
   // The cost when nothing is enabled is the `armed()` test alone. When
   // something is, a step at an address no point is at costs `wants()`,
-  // two tests of two words, and `dispatch` is not called (seam.h, "The
-  // cost when it is off").
+  // two tests of two words, and `due()`, one comparison against the
+  // clock, and `dispatch` is not called (seam.h, "The cost when it is
+  // off").
   if (seams_.armed()) {
     const std::uint32_t at =
         cpu::physical_address(cpu_.regs()[cpu::sreg::cs], cpu_.regs().ip);
-    if (seams_.wants(at)) {
+    if (seams_.wants(at) || seams_.due(now_)) {
       seams_.dispatch(*this, at);
     }
   }

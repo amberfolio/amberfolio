@@ -255,6 +255,33 @@
 // header can make.
 //
 //
+// A point at a moment (#538)
+// --------------------------
+//
+// Every point above is offered when the program arrives somewhere, or
+// when a person asks. A seam that plays something over a stretch of time
+// needs neither: it needs to be offered **when a moment of virtual time
+// comes**, whatever the program is doing then, including waiting for a
+// key inside the BIOS, where no address of the program's is reached at
+// all. So a point may say `at_moment` and have no address. It is offered
+// at the first step boundary at or after the moment its seam asked for
+// with `seam_context::offer_at()`, once, and never while nothing is
+// asked: one moment per seam, and a handler that wants another asks for
+// it. `seam_context::moment()` hands the arrival the moment it was asked
+// for, not the tick the machine reached, the scheduler's own rule
+// (scheduler.h), so a seam pacing itself from the moment it was given
+// never drifts.
+//
+// A moment is no place in the program, so **a handler there edits no
+// register and no memory of the program's**: it may write a port the
+// program is known not to be using, keep its own words, and ask for its
+// next moment. `call_program` and `place_bytes` answer false there. The
+// moment is configuration, like the latch: `reset()`, `clear()`,
+// `enable()` and `disable()` drop it, the serialization never sees it,
+// and a seam that has asked for none costs the run one comparison a step
+// (`due()`).
+//
+//
 // Qualified points
 // ----------------
 //
@@ -350,6 +377,12 @@
 // is exactly the machine it was before #163. A run with a pull
 // outstanding pays a guard per step until the guard holds, by design:
 // the guard is what the point has instead of an address.
+//
+// A point at a moment (`seam_point::at_moment`) is not in that filter at
+// all, because it is not about `at`. `due(now)` is its question, asked
+// beside `wants(at)`: the earliest moment any seam has asked for, kept
+// in one word and rebuilt wherever a moment is asked for, served or
+// dropped, against the clock.
 
 #pragma once
 
@@ -418,7 +451,12 @@ struct edition;
 /// before this version means "never inside a batch", which is what every
 /// point meant then; the field decides *when* a handler runs, which is
 /// not a thing to infer.
-inline constexpr std::uint16_t seam_schema_version = 7;
+///
+/// 8: a point may say `at_moment`, and then it has no address: it is
+/// offered when a moment of virtual time its seam asked for arrives
+/// (#538). A definition written before this version means "an address
+/// point"; the field decides *when* a handler runs.
+inline constexpr std::uint16_t seam_schema_version = 8;
 
 /// What runs when execution reaches an armed interception point. Native
 /// C++, called from outside the emulated machine — see this file's top
@@ -483,6 +521,20 @@ struct seam_point {
   /// trigger, which is all the one user needs: anywhere else the field is
   /// not honoured, and the unit suite checks `all_seams()` for it.
   bool inside_calls{false};
+
+  /// This point has **no address**: it is offered at the first step
+  /// boundary at or after the moment its seam asked for with
+  /// `seam_context::offer_at()`, once per asking, and `offset` means
+  /// nothing (#538; this file's "A point at a moment").
+  ///
+  /// For a seam that plays something out over time, which the program's
+  /// addresses cannot pace: a program waiting for a key inside the BIOS
+  /// reaches none of them. Its handler is at no known instruction, so it
+  /// writes only what the program is known not to be writing — a port
+  /// nothing else is driving — and asks for its next moment. The module
+  /// still has to be in memory, as `at_every_step`'s does. Not with
+  /// `at_every_step`; a point that says both is a moment point.
+  bool at_moment{false};
 };
 
 /// The one number a seam may take from a player (#531): how long, how
@@ -1089,6 +1141,23 @@ class seam_context {
   /// a seam that takes none.
   [[nodiscard]] std::uint16_t setting() const noexcept;
 
+  /// Offer this seam's `at_moment` points at the first step boundary at
+  /// or after `moment` (#538). One moment per seam: asking again replaces
+  /// the one outstanding. A moment already past is offered at the next
+  /// boundary.
+  void offer_at(ticks moment) noexcept;
+
+  /// Drop this seam's outstanding moment, if it has one.
+  void withdraw_offer() noexcept;
+
+  /// Whether this seam has a moment outstanding.
+  [[nodiscard]] bool offered() const noexcept;
+
+  /// At an `at_moment` point, the moment this arrival was asked for —
+  /// at or before the machine's clock, never after it. Zero anywhere
+  /// else.
+  [[nodiscard]] ticks moment() const noexcept { return moment_; }
+
   /// "I was reached, and what is here is not what my facts describe."
   ///
   /// A handler calls this instead of acting when a precondition it can
@@ -1122,9 +1191,12 @@ class seam_context {
   std::uint32_t at_;
   std::uint32_t module_base_;
   std::uint32_t image_base_;
-  /// Run at an `inside_calls` point while a batch is running: the batch
-  /// owns the stack, and `call_program`/`place_bytes` answer false.
+  /// Run at an `inside_calls` point while a batch is running, or at a
+  /// moment: the batch owns the stack, or the machine is at no known
+  /// instruction, and `call_program`/`place_bytes` answer false.
   bool inside_batch_;
+  /// `moment()`.
+  ticks moment_{};
   /// Whether `decline()` was called during this one visit. Read by
   /// `seam_engine::dispatch()` to decide whether a trigger's latch was
   /// spent.
@@ -1354,8 +1426,17 @@ class seam_engine {
            (((anchored_nibbles_ >> (at & 15U)) & 1U) != 0 && anchored_hit(at));
   }
 
-  /// Run whatever is armed at `at`, if anything. Called from
-  /// `machine::step()` at the boundary, when `armed()` and `wants(at)`.
+  /// Whether a moment some seam asked for has come by `now` (#538): the
+  /// other question `machine::step()` asks before `dispatch`, for the
+  /// points `wants` cannot be about. One comparison, and false at every
+  /// tick a clock can reach while no seam has asked for one.
+  [[nodiscard]] bool due(ticks now) const noexcept {
+    return now >= next_moment_;
+  }
+
+  /// Run whatever is armed at `at`, and whatever moment has come, if
+  /// anything. Called from `machine::step()` at the boundary, when
+  /// `armed()` and `wants(at)` or `due()`.
   /// Complete on its own: a caller that skips `wants` only pays more.
   void dispatch(machine& box, std::uint32_t at);
 
@@ -1534,6 +1615,10 @@ class seam_engine {
     /// serialized.
     std::array<std::uint16_t, scratch_words> scratch{};
     std::uint16_t setting{};
+    /// The moment this seam asked for (`seam_context::offer_at`, #538),
+    /// while `offered`. Configuration like the latch.
+    bool offered{false};
+    ticks moment{};
     /// How many times a handler of this seam has declined
     /// (`seam_context::decline`). Zero means it has not, which is what
     /// the diagnostics channel's report-once test reads; the count
@@ -1563,6 +1648,9 @@ class seam_engine {
     bool at_every_step{false};
     /// `seam_point::inside_calls`: also offered while a batch runs.
     bool inside_calls{false};
+    /// `seam_point::at_moment`: no address; offered when its seam's
+    /// moment has come.
+    bool at_moment{false};
   };
 
   /// One queued call: where, and the words to push before it.
@@ -1741,6 +1829,15 @@ class seam_engine {
   /// A point with no address has a latched seam: somebody's pull is
   /// outstanding, so `dispatch` has to offer it this step.
   bool latched_{false};
+
+  /// The earliest moment a seam with an armed `at_moment` point has asked
+  /// for, or never (`due()`). Rebuilt by `rebuild_moments()` wherever a
+  /// moment or the armed table changes.
+  static constexpr ticks no_moment = ~ticks{};
+  ticks next_moment_{no_moment};
+
+  void rebuild_moments() noexcept;
+  void offer_moment(std::string_view id, bool offered, ticks moment) noexcept;
 
   struct anchored_entry {
     std::uint32_t anchor{};

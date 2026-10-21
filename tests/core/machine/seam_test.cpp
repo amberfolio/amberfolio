@@ -1240,8 +1240,9 @@ TEST(SeamGate, ADefinitionWithAGateNamesTheCurrentSchema) {
   // The version moved for this field (seam.h): a definition written
   // before schema 5 read as ungated would be a possession gate silently
   // not applied, which is the one failure a gate has. It moved again for
-  // the group (schema 6), and again for `inside_calls` (schema 7).
-  EXPECT_EQ(seam_schema_version, 7);
+  // the group (schema 6), again for `inside_calls` (schema 7), and again
+  // for `at_moment` (schema 8).
+  EXPECT_EQ(seam_schema_version, 8);
   for (const seam_definition& seam : all_seams()) {
     EXPECT_EQ(seam.schema, seam_schema_version) << seam.id;
   }

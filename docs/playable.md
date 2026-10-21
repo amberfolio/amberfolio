@@ -1561,6 +1561,42 @@ twenty frames later, which is the program drawing it; the key goes no
 further. `tests/sessions/fight-pause.rec` is the same comparison at the
 `xt` governor, over `fight`'s own keys.
 
+## Leg 25 — a fanfare at the title (#538)
+
+`docs/seams.md` §10, *The fanfare*. The shipped slots, at the 386
+governor, booted to ninety virtual seconds with no key pressed:
+
+```
+--headless --speed 386 --wall none --until 107386380
+--seam code-wheel --code-wheel-answered --seam fanfare
+```
+
+| | seam off | seam on |
+|---|---|---|
+| `tandy writes=` | 8 | 5,969 |
+| `fired=` | | 4,185 |
+
+The 8 are the program's start-up silencing the four voices twice, in the
+boot's first eighth of a second; with the seam on they are followed by the
+piece's 5,950 writes from tick 11,945,110 (ten seconds in, the title
+picture) and the 11 that hand the chip back. Traced write by write, every
+one of the piece's went out on its own tick. `fired` is the title and one
+moment for each of the 4,184 ticks the piece writes on.
+
+The same boot with a game loaded and walked while the piece plays:
+
+```
+--speed 386 --wall none --fast max --until 59659100
+--seam code-wheel --code-wheel-answered --seam fanfare
+--press L@1500 --press A@1560 --press Up@1900 --press Up@2000
+```
+
+The program's first sound reaches the driver 31.67 virtual seconds in:
+the chip is handed back at that boundary, and the program's own first
+packet follows fifteen milliseconds later with nothing of the piece
+between them or after. `fired=3202`. Driven headlessly; not yet listened
+to in a window.
+
 ## What the run should not say
 
 The three notices `docs/first-light.md` tabulates

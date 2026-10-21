@@ -64,6 +64,10 @@ inline constexpr std::string_view modern_controls_id = "modern-controls";
 /// read (seam_message_pause.cpp, #531).
 [[nodiscard]] const seam_definition& message_pause_seam() noexcept;
 
+/// A fanfare on the Tandy chip when the title comes up (seam_fanfare.cpp,
+/// #538).
+[[nodiscard]] const seam_definition& fanfare_seam() noexcept;
+
 /// The pieces' points, in the order the registration offers them at an
 /// address two of them share: the pick-lists' arrows, the bars' keys, the
 /// main menu's cursor, the heroes' numbers, the line editor, the

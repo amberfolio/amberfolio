@@ -49,6 +49,7 @@ add_library(amberfolio-core STATIC
   src/machine/document.cpp
   src/machine/edition.cpp
   src/machine/ega.cpp
+  src/machine/fanfare_score.cpp
   src/machine/fingerprint.cpp
   src/machine/font.cpp
   src/machine/int10.cpp
@@ -90,6 +91,7 @@ add_library(amberfolio-core STATIC
   src/machine/seam_menu_cursor.cpp
   src/machine/seam_quick_steps.cpp
   src/machine/seam_message_pause.cpp
+  src/machine/seam_fanfare.cpp
   src/machine/seam_roster_fix.cpp
   src/machine/seam_timer_fix.cpp
   src/machine/seam_modern_controls.cpp

@@ -41,7 +41,9 @@ key ending it, and is the first seam that takes a number, set from
 `--setting`, the config file, both panels and the ABI, and waits
 before the encounter menu wipes a line the script just printed: #531,
 #533; the fog leaves a picture a script draws in the travel window
-alone: #535.
+alone: #535; a `fanfare` seam plays the maintainer's own piece on the
+Tandy chip from the title on, paced by a point at a moment of virtual
+time rather than an address: #538.
 Controller support is the site's: a pad driving real keys, which
 `modern-controls` turns into selection (#372, #379 and #210 closed). Open
 issues are the

@@ -18,6 +18,7 @@ style every seam in the tree follows.
 - [2. The handler contract](#2-the-handler-contract)
 - [3. The action primitives](#3-the-action-primitives)
 - [3a. The trigger: a host pulls, a seam acts](#3a-the-trigger-a-host-pulls-a-seam-acts)
+- [3b. A point at a moment](#3b-a-point-at-a-moment)
 - [4. Qualified points: the resident image and the overlays](#4-qualified-points-the-resident-image-and-the-overlays)
 - [5. Identity: fingerprints and editions](#5-identity-fingerprints-and-editions)
 - [6. The toggle surface](#6-the-toggle-surface)
@@ -354,6 +355,40 @@ in the stream beside the keys, not among the preamble's `seam` lines
 
 ---
 
+## 3b. A point at a moment
+
+A point that says `seam_point::at_moment` (#538) has no address. It is
+offered when a moment of virtual time its seam asked for comes, for a seam
+that plays something out over time: a program waiting for a key inside the
+BIOS reaches no address of its own, so no address can pace it.
+
+- A handler asks with `seam_context::offer_at(moment)`; one moment per
+  seam, a later ask replacing it, `withdraw_offer()` dropping it and
+  `offered()` saying whether one is outstanding.
+- The point is offered **once**, at the first step boundary at or after
+  the moment, the moment spent before the handler runs. A handler that
+  wants another asks for it.
+- `seam_context::moment()` is the moment asked for, not the tick reached,
+  the scheduler's rule (`scheduler.h`): a seam that asks for its next
+  moment from the one it was handed never drifts, however coarse a step.
+- **It is at no known instruction.** Its handler writes only what the
+  program is known not to be writing (a port nothing else drives), reads
+  what it must, and asks for its next moment; `call_program` and
+  `place_bytes` answer false there.
+- It counts no `reached`, like a point with no address; `fired` counts
+  each moment served.
+- The moment is configuration: `reset()`, `clear()`, `enable()` and
+  `disable()` drop it, and the serialization never sees it.
+- **Cost**: `machine::step()` asks `due(now)` beside `wants(at)`, one
+  comparison against the earliest moment any seam has asked for; with
+  none asked it is false at every tick.
+
+Tests: `SeamMoment.*` (`tests/core/machine/seam_moment_test.cpp`),
+`SeamMoment.ServingOneThatWritesNothingLeavesTheRunIdentical` the
+fidelity one.
+
+---
+
 ## 4. Qualified points: the resident image and the overlays
 
 PLAN.md §5: the program swaps overlaid code through shared memory, so a
@@ -638,6 +673,7 @@ and never triggered.
 | `walk-quick` | contrast | `walk` (the first footstep goes on without its wait) |
 | `quiet-message-pause` | identical | `quiet` (no message is shown, so neither point is reached) |
 | `fight-pause` | contrast | `fight` (the pause that opens the battle, and every combat line after it, stand longer) |
+| `quiet-fanfare` | contrast | `quiet` (the piece from the title on: the chip's writes, and its registers while it plays) |
 
 **A built-in fix has no pair** (`built_in_fixes()`, seam.h). It is on
 with its program and listed nowhere: no panel, config file, flag or
@@ -898,6 +934,7 @@ to carry.
 | `modern-controls` | the controls a later game has, nine pieces in one seam: Up and Down step the pick-lists and the selected party member; Left, Right, Enter and Esc work at the command bars; walking is a mode the party's bar starts with `Move` and ends with `Exit`, `Area` gone; the main menu has a cursor, and its number row's 1 to 8 select a party member with each number shown; the arrows no longer type letters at a text prompt; every selection is a yellow block with its key letter a white one; and it notes when the program is reading a line of text and where the combat aim bar keeps its cursor, for a host to ask (§10) | overlay 25 (the menu-bar and list routines), overlays 13, 14, 16 and 19, and the resident image |
 | `quick-steps` | a turn, and the next step, do not wait for the footstep's click; the click still plays, and a step's two clicks keep their spacing | the resident image, and the call sites in overlays 14 and 3 |
 | `message-pause` | a message the program moves on from by itself stands at least the seam's number of milliseconds, 1500 unless the player chose otherwise, and any key ends it; the encounter menu waits as long before it wipes a line the script just printed | the resident image, and overlays 3 and 31 |
+| `fanfare` | a piece written for this project plays on the Tandy chip from the title picture on, paced by a point at a moment (§3b); the program's first sound ends it | overlay 1, the resident image, and a moment |
 | `cheat-invulnerable` | the party takes no damage | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage, **when pulled** (§3a) | the end check's overlay |
 | `cheat-wound-party` | the whole party drops to one hit point, **when pulled at camp** (§3a) | the resident image |
@@ -3148,6 +3185,56 @@ back on, which stops the driver and the sound with it.
 - **Open**: a scripted line that another line replaces, or a picture or a
   change of map wipes, with no pause between, a few dozen in the game's
   scripts, is not given one: only the encounter menu's wipe is.
+
+### The fanfare (#538)
+
+Not a PLAN.md §5 item: the maintainer's request, and their own piece, about
+thirty-one seconds for the Tandy chip, 5,950 writes to its port at PIT
+ticks from the piece's start (`fanfare_score.cpp`, written from the
+composer's list by `scripts/fanfare-score.py`). Nothing in it is the
+program's, which plays no music at its title.
+
+**What the program does.** Overlay 1 (GAME.OVR file offset 212, 2062
+bytes, load-segment word `0x1A0`) is the titles, at `0x0627`: the
+publisher's logo, five seconds or a key; the title picture, five more;
+the credits, ten more. The far call at `0x06FD` reads the clock the
+title's five seconds count from, with the picture up and DS the data
+segment, once a boot. The program writes the chip only through its
+driver: the start-up silences the four voices (twice, in the first
+eighth of a second), and after that every write answers a request
+through the dispatch entry, `0x8BBC` (*Quick steps* above), so nothing
+writes the chip from the title to the first sound in play. The sound
+setting is the byte at DGROUP `0x5372`, 0 the Tandy chip.
+
+**Points:**
+
+| point | what the handler does |
+| --- | --- |
+| overlay 1 `0x06FD`, the title's clock read | when the setting is the chip and nothing is playing, puts the score's first cue in the seam's word and asks for a moment, now |
+| a moment (§3b) | writes every cue that is due through port `C0h`, from where the piece started (the moment it was handed less its cue's tick), and asks for the next cue's moment; at the end of the score, or with the setting no longer the chip, hands the chip back instead |
+| `0x8BBC`, the dispatch entry | while a moment is outstanding, drops it and hands the chip back, before the program's request reaches the driver |
+
+- **Handing the chip back** is eleven writes: each tone voice's period
+  and the noise control to zero, every voice silent, the noise voice's
+  attenuation named last, which is the chip the start-up leaves.
+- **It never meets the program's writes**: the piece stops at the
+  boundary the program's first request arrives at, and the driver writes
+  nothing until a request.
+- **Refuses** a title point whose DS is not the data segment or whose
+  instruction is not a far call. A setting other than the chip at the
+  title is a choice, not a wrong fact: it plays nothing and declines
+  nothing.
+- **`fired`** counts the title, each moment (4,184 for the whole piece),
+  and every sound the program starts while the seam is on.
+- **Fidelity**: before the title it moves nothing. From the title the
+  chip's registers are the piece's while it plays and the writes are in
+  the run's audio record for good; the program's own run is untouched
+  (`quiet-fanfare`, `contrast quiet`, 49 of 90 checkpoints identical,
+  divergent from tick 124,757,424, the title at the `xt` governor, in
+  `devices` and `audio` only, and in `audio` alone once the chip is handed
+  back). No `identical` pair can exist: every boot shows the title. Not in
+  `quiet-all` for the same reason.
+- **Open**: nothing.
 
 ### The timer fix
 
