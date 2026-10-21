@@ -1561,7 +1561,7 @@ twenty frames later, which is the program drawing it; the key goes no
 further. `tests/sessions/fight-pause.rec` is the same comparison at the
 `xt` governor, over `fight`'s own keys.
 
-## Leg 25 — a fanfare at the title (#538)
+## Leg 25 — a fanfare when the loading is done (#538)
 
 `docs/seams.md` §10, *The fanfare*. The shipped slots, at the 386
 governor, booted to ninety virtual seconds with no key pressed:
@@ -1578,10 +1578,12 @@ governor, booted to ninety virtual seconds with no key pressed:
 
 The 8 are the program's start-up silencing the four voices twice, in the
 boot's first eighth of a second; with the seam on they are followed by the
-piece's 5,950 writes from tick 11,945,110 (ten seconds in, the title
-picture) and the 11 that hand the chip back. Traced write by write, every
-one of the piece's went out on its own tick. `fired` is the title and one
-moment for each of the 4,184 ticks the piece writes on.
+piece's 5,950 writes from tick 3,408,753 (2.86 seconds in, frame 171,
+the titles' entry, with the loading line still up; it is gone by frame
+174 and the logo paints from frame 225) and the 11 that hand the chip
+back. Traced write by write, each of the piece's goes out on its own
+tick. `fired` is the titles' entry and one moment for each of the 4,184
+ticks the piece writes on.
 
 The same boot with a game loaded and walked while the piece plays:
 
@@ -1594,8 +1596,8 @@ The same boot with a game loaded and walked while the piece plays:
 The program's first sound reaches the driver 31.67 virtual seconds in:
 the chip is handed back at that boundary, and the program's own first
 packet follows fifteen milliseconds later with nothing of the piece
-between them or after. `fired=3202`. Driven headlessly; not yet listened
-to in a window.
+between them or after. `fired=4151`. Heard in a window at the 386
+governor, by its composer.
 
 ## What the run should not say
 

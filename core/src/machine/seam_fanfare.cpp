@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The fanfare seam: a short piece on the Tandy sound chip when the
-// game's title comes up (#538).
+// The fanfare seam: a short piece on the Tandy sound chip as soon as the
+// boot's loading is done (#538).
 //
-// **What a player meets.** With it off, the boot is silent from the
-// publisher's logo to the first sound of the game: the title, the
-// credits and the menus make none. With it on, a fanfare of about
-// thirty-one seconds starts as the title picture goes up and plays on
-// through the credits and into the menus, in virtual time, so it keeps
-// its tempo at every governor. A key that hurries the title along does
-// not stop it. The first sound the game makes does: the game's own sound
+// **What a player meets.** With it off, the boot is silent from its
+// loading line to the first sound of the game: the publisher's logo, the
+// title, the credits and the menus make none. With it on, a fanfare of
+// about thirty-one seconds starts as the loading line goes and plays on
+// through the logo, the title and the credits and into the menus, in
+// virtual time, so it keeps its tempo at every governor. A key that
+// hurries the titles along does not stop it. The first sound the game makes does: the game's own sound
 // always wins, and the fanfare gives way for good. It plays only when the
 // game is sounding through the Tandy chip, which every copy is started
 // with here; the piece is written for that chip and nothing else.
@@ -30,18 +30,18 @@
 // image offset `0x1A0`) at `0x0627`: the publisher's logo and a wait of
 // five seconds or a key, then, when the configuration asks for the full
 // titles (every copy's does), the title picture, five more seconds or a
-// key, and the credits, ten more. The title picture is up once the far
-// call returning to `0x06FD` has freed it, and the far call *at* `0x06FD`
-// reads the clock the title's five seconds are counted from. That call is
-// the point: reached once a boot, with DS the data segment.
+// key, and the credits, ten more. The program calls it once a boot, when
+// its loading is done, and its entry, a `push bp` with DS the data
+// segment, is the point. Measured at the 386 governor: the loading line
+// is on the screen until frame 174, the entry is reached in frame 175,
+// and the logo paints from frame 225.
 //
 // **One routine starts every sound.** The driver's dispatch entry, image
 // offset `0x8BBC` (seam_quick_steps.cpp has its frame). The program
 // writes the chip through the driver and only through it: at start-up the
 // driver silences the chip, and after that it writes it only in answer to
 // a request, which comes through this entry. Between the two, which is
-// the whole of the title, the credits and the menus, nothing writes the
-// chip.
+// the whole of the titles and the menus, nothing writes the chip.
 //
 // **The sound setting is a byte.** DGROUP `0x5372` (the data segment is
 // the image's paragraph `0xC7C` on): 0 the Tandy chip, 1 the speaker, 2
@@ -50,7 +50,7 @@
 //
 // **The chip as the driver's start-up leaves it**: every voice silent,
 // every period and the noise control zero, the last register named the
-// noise voice's attenuation. Measured: the only writes before the title
+// noise voice's attenuation. Measured: the only writes before the titles
 // are the start-up's silencing of the four voices, done twice in the
 // boot's first eighth of a second, over a chip that came up with zeros
 // in its periods and its noise control (psg.h).
@@ -59,7 +59,7 @@
 // What the seam does
 // ------------------
 //
-// At the title, it asks the engine for a moment, now; at each moment it
+// At the titles' entry, it asks the engine for a moment, now; at each moment it
 // writes every cue of the score that is due, through the port as the
 // program would (`machine::write_port8`), and asks for the moment of the
 // next one. The engine hands each arrival the moment it asked for, so the
@@ -72,14 +72,14 @@
 // the dispatch entry, before the program's first request gets to the
 // driver, so the program's writes never meet the seam's.
 //
-// It refuses a title point whose DS is not the data segment or whose
-// instruction is not a far call.
+// It refuses an entry whose DS is not the data segment or whose
+// instruction is not a `push bp`.
 //
-// **What it costs.** Before the title it moves nothing. From the title the
-// chip's registers are the score's until the score ends or gives way, and
-// then they are what they were; the writes themselves are in the run's
-// audio record for good. `fired` counts the title, every moment, and every
-// sound the program starts while the seam is on.
+// **What it costs.** Before the titles it moves nothing. From the titles
+// the chip's registers are the score's until the score ends or gives way,
+// and then they are what they were; the writes themselves are in the run's
+// audio record for good. `fired` counts the titles' entry, every moment,
+// and every sound the program starts while the seam is on.
 //
 //
 // What it is not yet (docs/seams.md §8.5)
@@ -120,10 +120,9 @@ constexpr seam_module titles_module{
         "b6ca55979d60ca53a0e0063c4929a61ca8c5f21843f77fd390598ee29fc4967a",
     .load_segment_at = 0x1A0};
 
-/// In it: the far call that reads the clock for the title's five seconds,
-/// with the title picture up.
-constexpr std::uint32_t title_offset = 0x06FD;
-constexpr std::uint8_t far_call = 0x9A;
+/// In it: the titles routine's entry, a `push bp`.
+constexpr std::uint32_t titles_entry = 0x0627;
+constexpr std::uint8_t push_bp = 0x55;
 
 /// The driver's dispatch entry, from the image segment.
 constexpr std::uint32_t dispatch_offset = 0x8BBC;
@@ -159,11 +158,11 @@ void hand_the_chip_back(machine& box) {
   }
 }
 
-void start_at_the_title(machine& box, seam_context& ctx) {
+void start_with_the_titles(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   const cpu::registers& regs = cpu.regs();
   if (regs[cpu::sreg::ds] != data_segment(ctx) ||
-      cpu.read_byte(regs[cpu::sreg::cs], regs.ip) != far_call) {
+      cpu.read_byte(regs[cpu::sreg::cs], regs.ip) != push_bp) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
@@ -207,14 +206,14 @@ void give_way(machine& box, seam_context& ctx) {
 
 constexpr std::array<seam_point, 3> fanfare_points{
     {{.module = titles_module,
-      .offset = title_offset,
-      .run = &start_at_the_title},
+      .offset = titles_entry,
+      .run = &start_with_the_titles},
      {.module = resident_image, .run = &play_what_is_due, .at_moment = true},
      {.module = resident_image, .offset = dispatch_offset, .run = &give_way}}};
 
 constexpr seam_definition fanfare_definition{
     .id = "fanfare",
-    .about = "a fanfare on the Tandy chip when the title comes up",
+    .about = "a fanfare on the Tandy chip as soon as the loading is done",
     .fingerprints = fanfare_binaries,
     .points = fanfare_points,
     .schema = seam_schema_version};

@@ -10,9 +10,10 @@ Windows/macOS/Linux (64-bit) and WebAssembly. v1 targets Pool of
 Radiance. **PLAN.md is the plan of record**: scope, architecture,
 milestones and settled decisions live there. Don't re-litigate them.
 
-**Status.** M0–M7 are done and `v1.0.0` is the current tag, the release
-PLAN.md §1's gate defines. A release carries the web build; the desktop
-host is built from source. The game boots, plays end to end, all six v1
+**Status.** M0–M7 are done, `v1.0.0` is the release PLAN.md §1's gate
+defines, and `v1.1.0` is the current tag. A release carries the web
+build; the desktop host is built from source. The game boots, plays end
+to end, all six v1
 enhancements work and toggle independently on both hosts, and a player
 reaches all of it from the shells: onboarding, a config file, a toggle
 panel, a document control and the on-screen keyboard. Past M6, 1.0 has
@@ -42,8 +43,8 @@ key ending it, and is the first seam that takes a number, set from
 before the encounter menu wipes a line the script just printed: #531,
 #533; the fog leaves a picture a script draws in the travel window
 alone: #535; a `fanfare` seam plays the maintainer's own piece on the
-Tandy chip from the title on, paced by a point at a moment of virtual
-time rather than an address: #538.
+Tandy chip from the end of the boot's loading on, paced by a point at a
+moment of virtual time rather than an address: #538.
 Controller support is the site's: a pad driving real keys, which
 `modern-controls` turns into selection (#372, #379 and #210 closed). Open
 issues are the

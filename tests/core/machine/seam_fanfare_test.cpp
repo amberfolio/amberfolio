@@ -2,8 +2,8 @@
 //
 // The fanfare seam (seam_fanfare.cpp), exercised through its mechanism and
 // not through any program: the test puts the titles' overlay where the
-// overlay manager's word says it is, stands the processor on the title's
-// clock read with the data segment in DS, and lets the clock run with the
+// overlay manager's word says it is, stands the processor on the titles
+// routine's entry with the data segment in DS, and lets the clock run with the
 // processor halted, logging every byte written to the Tandy chip's port
 // and the tick it was written at. And it stands the processor on the
 // driver's dispatch entry, for the program's first sound.
@@ -12,8 +12,8 @@
 // seam suites' rule, and so are the few facts about the piece the checks
 // below need: how many writes it is, its first note, and the tick of its
 // last write. **Every byte of program here is this file's own** (PLAN.md
-// §6): a far call at the title's point, whose operand sends the processor
-// to a HLT, and a HLT at the dispatch entry.
+// §6): a `push bp` at the titles' entry and a far jump behind it that
+// sends the processor to a HLT, and a HLT at the dispatch entry.
 
 #include <array>
 #include <cstddef>
@@ -40,12 +40,12 @@ namespace {
 
 constexpr std::string_view seam_id = "fanfare";
 
-/// Overlay 1's facts, the word its segment is kept in, and the title's
-/// clock read in it.
+/// Overlay 1's facts, the word its segment is kept in, and the titles
+/// routine's entry in it.
 constexpr std::uint32_t titles_file_offset = 212;
 constexpr std::uint32_t titles_length = 2062;
 constexpr std::uint16_t titles_word = 0x1A0;
-constexpr std::uint16_t title_point = 0x06FD;
+constexpr std::uint16_t titles_entry = 0x0627;
 
 /// The driver's dispatch entry, from the image segment.
 constexpr std::uint16_t dispatch_entry = 0x8BBC;
@@ -57,8 +57,8 @@ constexpr std::uint16_t data_sound = 0x5372;
 constexpr std::uint8_t sound_tandy = 0;
 constexpr std::uint8_t sound_none = 2;
 
-/// Where this test puts the titles' overlay, and the HLT its far call at
-/// the point goes to.
+/// Where this test puts the titles' overlay, and the HLT the far jump
+/// behind the entry goes to.
 constexpr std::uint16_t titles_segment = 0x2000;
 constexpr std::uint16_t idle_segment = 0x3000;
 constexpr std::uint16_t stack_segment = 0x5000;
@@ -149,16 +149,17 @@ struct rig {
     put_word(image_load_segment, titles_word, segment);
   }
 
-  /// Stand on the title's clock read in the overlay at `segment`, a far
-  /// call to the idle HLT, and take the step.
-  void arrive_at_title(std::uint16_t segment = titles_segment,
-                       std::uint16_t ds = data_segment,
-                       std::uint8_t opcode = 0x9A) const {
-    put_byte(segment, title_point, opcode);
-    put_word(segment, static_cast<std::uint16_t>(title_point + 1), 0);
-    put_word(segment, static_cast<std::uint16_t>(title_point + 3),
+  /// Stand on the titles' entry in the overlay at `segment`, `opcode`
+  /// there and a far jump to the idle HLT behind it, and take the step.
+  void arrive_at_titles(std::uint16_t segment = titles_segment,
+                        std::uint16_t ds = data_segment,
+                        std::uint8_t opcode = 0x55) const {
+    put_byte(segment, titles_entry, opcode);
+    put_byte(segment, static_cast<std::uint16_t>(titles_entry + 1), 0xEA);
+    put_word(segment, static_cast<std::uint16_t>(titles_entry + 2), 0);
+    put_word(segment, static_cast<std::uint16_t>(titles_entry + 4),
              idle_segment);
-    stand_at(segment, title_point, ds);
+    stand_at(segment, titles_entry, ds);
     box->step();
   }
 
@@ -206,19 +207,19 @@ struct rig {
          a.attenuation == b.attenuation;
 }
 
-TEST(SeamFanfare, IsATitlePointAMomentAndTheDispatchEntry) {
+TEST(SeamFanfare, IsTheTitlesEntryAMomentAndTheDispatchEntry) {
   const rig r;
   const seam_definition* s = r.box->seams().find(seam_id);
   ASSERT_NE(s, nullptr);
   ASSERT_EQ(s->points.size(), 3U);
 
-  const seam_point& title = s->points[0];
-  EXPECT_EQ(title.module.file, "GAME.OVR");
-  EXPECT_EQ(title.module.file_offset, titles_file_offset);
-  EXPECT_EQ(title.module.length, titles_length);
-  EXPECT_EQ(title.module.load_segment_at, titles_word);
-  EXPECT_EQ(title.offset, title_point);
-  EXPECT_FALSE(title.at_moment);
+  const seam_point& titles = s->points[0];
+  EXPECT_EQ(titles.module.file, "GAME.OVR");
+  EXPECT_EQ(titles.module.file_offset, titles_file_offset);
+  EXPECT_EQ(titles.module.length, titles_length);
+  EXPECT_EQ(titles.module.load_segment_at, titles_word);
+  EXPECT_EQ(titles.offset, titles_entry);
+  EXPECT_FALSE(titles.at_moment);
 
   EXPECT_TRUE(s->points[1].at_moment);
   EXPECT_TRUE(s->points[1].module.is_resident_image());
@@ -235,15 +236,15 @@ TEST(SeamFanfare, IsATitlePointAMomentAndTheDispatchEntry) {
 TEST(SeamFanfare, IsOffByDefault) {
   const rig r;
   EXPECT_EQ(r.status().state, seam_state::off);
-  r.arrive_at_title();
+  r.arrive_at_titles();
   r.play_for(pit_input_hz);
   EXPECT_TRUE(r.chip->writes.empty());
 }
 
-TEST(SeamFanfare, PlaysThePieceFromTheTitleToItsEnd) {
+TEST(SeamFanfare, PlaysThePieceFromTheTitlesToItsEnd) {
   const rig r;
   r.arm();
-  r.arrive_at_title();
+  r.arrive_at_titles();
   const ticks start = r.chip->writes.empty() ? 0 : r.chip->writes[0].at;
   r.play_for(piece_and_then_some);
 
@@ -267,14 +268,14 @@ TEST(SeamFanfare, PlaysThePieceFromTheTitleToItsEnd) {
     EXPECT_EQ(w[piece_writes + i].at, w[piece_writes - 1].at) << i;
   }
   EXPECT_EQ(r.status().fired, 1U + 4184U)
-      << "the title, and one moment for each tick the piece writes on";
+      << "the titles, and one moment for each tick the piece writes on";
 }
 
 TEST(SeamFanfare, StartsAtTheTitlesArrival) {
   const rig r;
   r.arm();
   const ticks before = r.box->time();
-  r.arrive_at_title();
+  r.arrive_at_titles();
   ASSERT_FALSE(r.chip->writes.empty())
       << "the first moment is the arrival itself";
   EXPECT_GE(r.chip->writes[0].at, before);
@@ -284,7 +285,7 @@ TEST(SeamFanfare, StartsAtTheTitlesArrival) {
 TEST(SeamFanfare, HandsTheChipBackAsTheStartUpLeftIt) {
   const rig r;
   r.arm();
-  r.arrive_at_title();
+  r.arrive_at_titles();
   r.play_for(piece_and_then_some);
   psg_registers chip = after_start_up();
   for (const chip_write& w : r.chip->writes) {
@@ -300,14 +301,14 @@ TEST(SeamFanfare, KeepsItsTempoWhateverAStepCosts) {
   // coarser step, however far into the piece.
   const rig coarse;
   coarse.arm();
-  coarse.arrive_at_title();
+  coarse.arrive_at_titles();
   coarse.play_for(piece_and_then_some);
 
   const rig fine;
   constexpr ticks fine_step = 13;
   ASSERT_TRUE(fine.box->set_step_cost(fine_step));
   fine.arm();
-  fine.arrive_at_title();
+  fine.arrive_at_titles();
   fine.play_for(piece_and_then_some);
 
   const std::vector<chip_write>& a = coarse.chip->writes;
@@ -324,7 +325,7 @@ TEST(SeamFanfare, KeepsItsTempoWhateverAStepCosts) {
 TEST(SeamFanfare, GivesWayToTheProgramsFirstSound) {
   const rig r;
   r.arm();
-  r.arrive_at_title();
+  r.arrive_at_titles();
   r.play_for(5 * pit_input_hz);
   const std::size_t played = r.chip->writes.size();
   ASSERT_GT(played, 4U);
@@ -351,7 +352,7 @@ TEST(SeamFanfare, ASoundWithNothingPlayingIsLeftAlone) {
   r.play_for(pit_input_hz);
   EXPECT_TRUE(r.chip->writes.empty());
 
-  r.arrive_at_title();
+  r.arrive_at_titles();
   r.play_for(piece_and_then_some);
   r.arrive_at_dispatch();
   EXPECT_EQ(r.chip->writes.size(), piece_writes + hand_back.size())
@@ -361,7 +362,7 @@ TEST(SeamFanfare, ASoundWithNothingPlayingIsLeftAlone) {
 TEST(SeamFanfare, StopsWhenTheSoundIsNoLongerTheChip) {
   const rig r;
   r.arm();
-  r.arrive_at_title();
+  r.arrive_at_titles();
   r.play_for(5 * pit_input_hz);
   const std::size_t played = r.chip->writes.size();
 
@@ -375,11 +376,11 @@ TEST(SeamFanfare, StopsWhenTheSoundIsNoLongerTheChip) {
   EXPECT_EQ(r.chip->writes.size(), played + hand_back.size());
 }
 
-TEST(SeamFanfare, PlaysNothingWhenTheSoundIsNotTheChipAtTheTitle) {
+TEST(SeamFanfare, PlaysNothingWhenTheSoundIsNotTheChipAtTheTitles) {
   const rig r;
   r.arm();
   r.put_byte(data_segment, data_sound, 1);
-  r.arrive_at_title();
+  r.arrive_at_titles();
   r.play_for(piece_and_then_some);
   EXPECT_TRUE(r.chip->writes.empty());
   EXPECT_EQ(r.status().declined, 0U) << "a choice, not a wrong fact";
@@ -388,16 +389,16 @@ TEST(SeamFanfare, PlaysNothingWhenTheSoundIsNotTheChipAtTheTitle) {
 TEST(SeamFanfare, DeclinesAnotherDataSegment) {
   const rig r;
   r.arm();
-  r.arrive_at_title(titles_segment, 0x1234);
+  r.arrive_at_titles(titles_segment, 0x1234);
   r.play_for(pit_input_hz);
   EXPECT_TRUE(r.chip->writes.empty());
   EXPECT_EQ(r.status().declined, 1U);
 }
 
-TEST(SeamFanfare, DeclinesAnInstructionThatIsNotAFarCall) {
+TEST(SeamFanfare, DeclinesAnInstructionThatIsNotAPushBp) {
   const rig r;
   r.arm();
-  r.arrive_at_title(titles_segment, data_segment, 0xF4);
+  r.arrive_at_titles(titles_segment, data_segment, 0xF4);
   r.play_for(pit_input_hz);
   EXPECT_TRUE(r.chip->writes.empty());
   EXPECT_EQ(r.status().declined, 1U);
@@ -407,21 +408,21 @@ TEST(SeamFanfare, FollowsTheOverlayManagersWord) {
   const rig r;
   r.arm();
   r.manager_puts_titles_at(0x2400);
-  r.arrive_at_title(titles_segment);
+  r.arrive_at_titles(titles_segment);
   r.play_for(pit_input_hz);
   EXPECT_TRUE(r.chip->writes.empty()) << "where the overlay was, not is";
 
-  r.arrive_at_title(0x2400);
+  r.arrive_at_titles(0x2400);
   r.play_for(pit_input_hz);
   EXPECT_FALSE(r.chip->writes.empty());
 }
 
-TEST(SeamFanfare, ATitleReachedAgainDoesNotStartItAgain) {
+TEST(SeamFanfare, TheTitlesReachedAgainDoNotStartItAgain) {
   const rig r;
   r.arm();
-  r.arrive_at_title();
+  r.arrive_at_titles();
   r.play_for(2 * pit_input_hz);
-  r.arrive_at_title();
+  r.arrive_at_titles();
   r.play_for(piece_and_then_some);
   EXPECT_EQ(r.chip->writes.size(), piece_writes + hand_back.size());
 }
@@ -429,7 +430,7 @@ TEST(SeamFanfare, ATitleReachedAgainDoesNotStartItAgain) {
 TEST(SeamFanfare, AResetEndsIt) {
   const rig r;
   r.arm();
-  r.arrive_at_title();
+  r.arrive_at_titles();
   r.play_for(2 * pit_input_hz);
   const std::size_t played = r.chip->writes.size();
   r.box->reset();

@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
 # The fanfare's pair (#538): `quiet`'s script with the seam on. Every boot
-# shows the title, so the piece plays in every run with the seam on and
+# runs the titles, so the piece plays in every run with the seam on and
 # there is no `identical` to record: the pair is a `contrast`, agreeing
-# with `quiet` up to the title and differing from it from there on.
+# with `quiet` up to the end of the loading and differing from there on.
 
-about fanfare on: the piece from the title, then slot A loaded, one
-about step, a wall, a turn, a wall, as `quiet` does
+about fanfare on: the piece from the end of the loading, then slot A
+about loaded, one step, a wall, a turn, a wall, as `quiet` does
 disk external
 code-wheel-answered
 contrast quiet

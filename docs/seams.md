@@ -673,7 +673,7 @@ and never triggered.
 | `walk-quick` | contrast | `walk` (the first footstep goes on without its wait) |
 | `quiet-message-pause` | identical | `quiet` (no message is shown, so neither point is reached) |
 | `fight-pause` | contrast | `fight` (the pause that opens the battle, and every combat line after it, stand longer) |
-| `quiet-fanfare` | contrast | `quiet` (the piece from the title on: the chip's writes, and its registers while it plays) |
+| `quiet-fanfare` | contrast | `quiet` (the piece from the end of the boot's loading on: the chip's writes, and its registers while it plays) |
 
 **A built-in fix has no pair** (`built_in_fixes()`, seam.h). It is on
 with its program and listed nowhere: no panel, config file, flag or
@@ -934,7 +934,7 @@ to carry.
 | `modern-controls` | the controls a later game has, nine pieces in one seam: Up and Down step the pick-lists and the selected party member; Left, Right, Enter and Esc work at the command bars; walking is a mode the party's bar starts with `Move` and ends with `Exit`, `Area` gone; the main menu has a cursor, and its number row's 1 to 8 select a party member with each number shown; the arrows no longer type letters at a text prompt; every selection is a yellow block with its key letter a white one; and it notes when the program is reading a line of text and where the combat aim bar keeps its cursor, for a host to ask (§10) | overlay 25 (the menu-bar and list routines), overlays 13, 14, 16 and 19, and the resident image |
 | `quick-steps` | a turn, and the next step, do not wait for the footstep's click; the click still plays, and a step's two clicks keep their spacing | the resident image, and the call sites in overlays 14 and 3 |
 | `message-pause` | a message the program moves on from by itself stands at least the seam's number of milliseconds, 1500 unless the player chose otherwise, and any key ends it; the encounter menu waits as long before it wipes a line the script just printed | the resident image, and overlays 3 and 31 |
-| `fanfare` | a piece written for this project plays on the Tandy chip from the title picture on, paced by a point at a moment (§3b); the program's first sound ends it | overlay 1, the resident image, and a moment |
+| `fanfare` | a piece written for this project plays on the Tandy chip from the end of the boot's loading on, paced by a point at a moment (§3b); the program's first sound ends it | overlay 1, the resident image, and a moment |
 | `cheat-invulnerable` | the party takes no damage | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage, **when pulled** (§3a) | the end check's overlay |
 | `cheat-wound-party` | the whole party drops to one hit point, **when pulled at camp** (§3a) | the resident image |
@@ -3197,20 +3197,22 @@ program's, which plays no music at its title.
 **What the program does.** Overlay 1 (GAME.OVR file offset 212, 2062
 bytes, load-segment word `0x1A0`) is the titles, at `0x0627`: the
 publisher's logo, five seconds or a key; the title picture, five more;
-the credits, ten more. The far call at `0x06FD` reads the clock the
-title's five seconds count from, with the picture up and DS the data
-segment, once a boot. The program writes the chip only through its
-driver: the start-up silences the four voices (twice, in the first
-eighth of a second), and after that every write answers a request
-through the dispatch entry, `0x8BBC` (*Quick steps* above), so nothing
-writes the chip from the title to the first sound in play. The sound
+the credits, ten more. The program calls it once a boot, when its
+loading is done; its entry is a `push bp` with DS the data segment. At
+the 386 governor the entry is reached in frame 171 with the loading
+line still up, the line is gone by frame 174 and the logo paints from
+frame 225. The program writes the chip only through its driver: the
+start-up silences the four voices (twice, in the first eighth of a
+second), and after that every write answers a request through the
+dispatch entry, `0x8BBC` (*Quick steps* above), so nothing writes the
+chip from the titles to the first sound in play. The sound
 setting is the byte at DGROUP `0x5372`, 0 the Tandy chip.
 
 **Points:**
 
 | point | what the handler does |
 | --- | --- |
-| overlay 1 `0x06FD`, the title's clock read | when the setting is the chip and nothing is playing, puts the score's first cue in the seam's word and asks for a moment, now |
+| overlay 1 `0x0627`, the titles' entry | when the setting is the chip and nothing is playing, puts the score's first cue in the seam's word and asks for a moment, now |
 | a moment (§3b) | writes every cue that is due through port `C0h`, from where the piece started (the moment it was handed less its cue's tick), and asks for the next cue's moment; at the end of the score, or with the setting no longer the chip, hands the chip back instead |
 | `0x8BBC`, the dispatch entry | while a moment is outstanding, drops it and hands the chip back, before the program's request reaches the driver |
 
@@ -3220,20 +3222,19 @@ setting is the byte at DGROUP `0x5372`, 0 the Tandy chip.
 - **It never meets the program's writes**: the piece stops at the
   boundary the program's first request arrives at, and the driver writes
   nothing until a request.
-- **Refuses** a title point whose DS is not the data segment or whose
-  instruction is not a far call. A setting other than the chip at the
-  title is a choice, not a wrong fact: it plays nothing and declines
-  nothing.
-- **`fired`** counts the title, each moment (4,184 for the whole piece),
-  and every sound the program starts while the seam is on.
-- **Fidelity**: before the title it moves nothing. From the title the
+- **Refuses** an entry whose DS is not the data segment or whose
+  instruction is not a `push bp`. A setting other than the chip there is
+  a choice, not a wrong fact: it plays nothing and declines nothing.
+- **`fired`** counts the titles' entry, each moment (4,184 for the whole
+  piece), and every sound the program starts while the seam is on.
+- **Fidelity**: before the titles it moves nothing. From the titles the
   chip's registers are the piece's while it plays and the writes are in
   the run's audio record for good; the program's own run is untouched
-  (`quiet-fanfare`, `contrast quiet`, 49 of 90 checkpoints identical,
-  divergent from tick 124,757,424, the title at the `xt` governor, in
-  `devices` and `audio` only, and in `audio` alone once the chip is handed
-  back). No `identical` pair can exist: every boot shows the title. Not in
-  `quiet-all` for the same reason.
+  (`quiet-fanfare`, `contrast quiet`, 27 of 90 checkpoints identical,
+  divergent from tick 68,752,816, the end of the loading at the `xt`
+  governor, in `devices` and `audio` only, and in `audio` alone once the
+  chip is handed back). No `identical` pair can exist: every boot runs
+  the titles. Not in `quiet-all` for the same reason.
 - **Open**: nothing.
 
 ### The timer fix
