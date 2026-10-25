@@ -11,7 +11,7 @@ Radiance. **PLAN.md is the plan of record**: scope, architecture,
 milestones and settled decisions live there. Don't re-litigate them.
 
 **Status.** M0–M7 are done, `v1.0.0` is the release PLAN.md §1's gate
-defines, and `v1.1.1` is the current tag. A release carries the web
+defines, and `v1.1.2` is the current tag. A release carries the web
 build; the desktop host is built from source. The game boots, plays end
 to end, all six v1
 enhancements work and toggle independently on both hosts, and a player
@@ -42,7 +42,7 @@ key ending it, and is the first seam that takes a number, set from
 `--setting`, the config file, both panels and the ABI, and waits
 before the encounter menu wipes a line the script just printed: #531,
 #533; the fog leaves a picture a script draws in the travel window
-alone: #535; a `fanfare` seam plays the maintainer's own piece on the
+alone, and keeps off one an event leaves up: #535, #545; a `fanfare` seam plays the maintainer's own piece on the
 Tandy chip from the end of the boot's loading on, paced by a point at a
 moment of virtual time rather than an address, and switched off
 mid-piece puts the chip back at once: #538, #540.
