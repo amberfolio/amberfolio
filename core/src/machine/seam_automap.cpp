@@ -1065,15 +1065,18 @@ constexpr std::uint8_t colour_label = 14;
 ///
 /// A word too long for a whole line on its own is broken at the last soft
 /// break that still leaves room for the hyphen, and the remainder wraps —
-/// so a name marked `WILDER|NESS` sets as `WILDER-` over `NESS`. With no
+/// so a name marked `WILDER|NESS` sets as `WILDER-` over `NESS`, and one
+/// with a hyphen of its own, `THRI-KREEN`, breaks after it. With no
 /// marker at all, which is the `AREA <n>` fallback and any name nobody
 /// has marked yet, it takes what fits. That is the deliberate answer
 /// rather than an oversight: a new name never vanishes, it just breaks in
 /// an ugly place until somebody puts a marker in it.
-void draw_label(panel_pixels& panel, std::uint8_t disk, std::uint8_t area,
-                std::uint8_t geo, const font_table& font) noexcept {
+void draw_label(panel_pixels& panel, const sample& now, const map_grid& grid,
+                const font_table& font) noexcept {
   zone_fallback fallback{};
-  const std::string_view name = zone_label(disk, area, geo, fallback);
+  const std::string_view name =
+      zone_label(now.disk, now.area, now.geo,
+                 {.map = &grid, .x = now.x, .y = now.y}, fallback);
 
   constexpr auto columns = static_cast<std::size_t>(automap_text_columns);
   constexpr int band_x = static_cast<int>(automap_band_x);
@@ -1112,17 +1115,28 @@ void draw_label(panel_pixels& panel, std::uint8_t disk, std::uint8_t area,
         break;
       }
 
-      // Alone on the line and still too long: hyphenate at the last
-      // marker that fits, and take what fits where there is none.
+      // Alone on the line and still too long: break at the last marker
+      // or hyphen that fits, and take what fits where there is none. A
+      // marker adds its hyphen; a hyphen of the name's own ends the line
+      // as it is.
       std::size_t cut = 0;
       bool marked = false;
+      bool hyphen = false;
       std::size_t seen = 0;
       for (std::size_t q = p; q < name.size() && name[q] != ' '; ++q) {
-        if (name[q] != soft_break) {
-          ++seen;
-        } else if (seen + 1 <= columns) {
-          cut = q;
+        if (name[q] == soft_break) {
+          if (seen + 1 <= columns) {
+            cut = q;
+            marked = true;
+            hyphen = false;
+          }
+          continue;
+        }
+        ++seen;
+        if (name[q] == '-' && seen <= columns) {
+          cut = q + 1;
           marked = true;
+          hyphen = true;
         }
       }
       if (marked) {
@@ -1131,8 +1145,12 @@ void draw_label(panel_pixels& panel, std::uint8_t disk, std::uint8_t area,
             line[filled++] = name[q];
           }
         }
-        line[filled++] = '-';
-        p = cut + 1;
+        if (hyphen) {
+          p = cut;
+        } else {
+          line[filled++] = '-';
+          p = cut + 1;
+        }
       } else {
         for (; filled < columns && p < name.size() && name[p] != ' '; ++p) {
           if (name[p] != soft_break) {
@@ -1237,17 +1255,26 @@ void render(automap_state& state, const automap_record& map,
   // construction (`automap.h`), so nothing below can reach it and nothing
   // here can reach the map.
   if (font != nullptr) {
-    draw_label(panel, now.disk, now.area, now.geo, *font);
+    draw_label(panel, now, grid, *font);
   }
 
   const std::uint16_t doors = state.door_nibbles();
   const std::uint16_t seen_kinds = state.door_nibbles_seen();
   state.begin_doors_drawn();
   const auto cell = static_cast<int>(automap_cell_pixels);
+  // Only the place the party is in: a wilderness lair shares its grid
+  // with the area's other lairs, and what was explored of those is
+  // somewhere else (`map_format::place_of`).
+  const map_format::place_squares here = map_format::place_of(
+      now.disk, now.area, now.geo, {.map = &grid, .x = now.x, .y = now.y});
+  const auto shown = [&](unsigned cx, unsigned cy) {
+    return here[map_format::cell_of(cx, cy)] &&
+           automap_state::seen(map, cx, cy);
+  };
 
   for (unsigned cy = 0; cy < automap_map_side; ++cy) {
     for (unsigned cx = 0; cx < automap_map_side; ++cx) {
-      if (!automap_state::seen(map, cx, cy)) {
+      if (!shown(cx, cy)) {
         continue;
       }
       const int x0 = static_cast<int>(cx) * cell;
@@ -1297,8 +1324,7 @@ void render(automap_state& state, const automap_record& map,
   for (std::size_t i = 0; i < map.marker_count; ++i) {
     const unsigned mx = map.marker_x[i];
     const unsigned my = map.marker_y[i];
-    if (!automap_state::seen(map, mx, my) ||
-        (mx == (px & 0x0FU) && my == (py & 0x0FU))) {
+    if (!shown(mx, my) || (mx == (px & 0x0FU) && my == (py & 0x0FU))) {
       continue;
     }
     const int x0 = static_cast<int>(mx) * cell;

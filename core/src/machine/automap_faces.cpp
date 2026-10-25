@@ -181,6 +181,132 @@ struct sub_map_name {
 constexpr std::array<sub_map_name, 1> sub_map_names{
     {{.disk = 1, .area = 24, .geo = 31, .name = "WEALTHY AREA"}}};
 
+/// The lairs inside a wilderness area's grid, each by the square the
+/// area's script puts the party on when it enters it. Looked up before
+/// both tables above, and only on the grid.
+///
+/// Each wilderness area's script (disks 6 to 8, areas 25 to 27) loads its
+/// own geometry block, and that one grid holds every lair the area has:
+/// four, three and four separate places walled off from one another,
+/// which the script enters at one of its entrance squares at random. The
+/// squares are the script's own (its entrance-picking table), and each is
+/// also the lair's exit square in the published walkthrough the names are
+/// taken from. A lair is the squares a party can walk to from its
+/// entrance (`region_of`), and on the shipped grids those regions are
+/// disjoint and cover every square anybody can stand on; two of them wrap
+/// round the grid's west edge, as the program's own coordinates do.
+struct lair {
+  std::uint8_t x;
+  std::uint8_t y;
+  std::string_view name;
+};
+
+struct lair_grid {
+  std::uint8_t disk;
+  std::uint8_t area;
+  std::uint8_t geo;
+  /// An empty name is no lair: the central area has three.
+  std::array<lair, 4> lairs;
+};
+
+constexpr std::array<lair_grid, 3> lair_grids{
+    {{.disk = 6,
+      .area = 25,
+      .geo = 25,
+      .lairs = {{{.x = 15, .y = 3, .name = "WILD BOAR LAIR"},
+                 {.x = 0, .y = 2, .name = "ANKHEG LAIR"},
+                 {.x = 0, .y = 9, .name = "THRI-KREEN LAIR"},
+                 {.x = 11, .y = 15, .name = "GIANT SNAKE LAIR"}}}},
+     {.disk = 7,
+      .area = 26,
+      .geo = 26,
+      .lairs = {{{.x = 2, .y = 3, .name = "GROVE WITH POOL"},
+                 {.x = 10, .y = 13, .name = "RUINED HUTS"},
+                 {.x = 13, .y = 6, .name = "STIRGE GROVE"}}}},
+     {.disk = 8,
+      .area = 27,
+      .geo = 27,
+      .lairs = {{{.x = 0, .y = 3, .name = "WYVERN LAIR"},
+                 {.x = 6, .y = 15, .name = "GIANT LIZARD LAIR"},
+                 {.x = 12, .y = 15, .name = "GNOLL LAIR"},
+                 {.x = 11, .y = 0, .name = "KOBOLD LAIR"}}}}}};
+
+/// Whether a face stops a party: one that exists and is solid. A way
+/// through and a door, shut or not, do not.
+[[nodiscard]] bool blocks(const grid& map, unsigned x, unsigned y,
+                          unsigned lane) noexcept {
+  return face_of(map, x, y, lane) != 0 &&
+         style_of(map, x, y, lane) == face_solid;
+}
+
+using region = place_squares;
+
+/// The squares reachable from (x, y) across borders neither side of which
+/// blocks, on the grid as the program treats it: a torus. Unlike sight
+/// this has to wrap, because a lair that straddles the edge is one place.
+[[nodiscard]] region region_of(const grid& map, unsigned x,
+                               unsigned y) noexcept {
+  region in{};
+  std::array<std::uint8_t, std::tuple_size_v<region>> queue{};
+  std::size_t head = 0;
+  std::size_t tail = 0;
+  const unsigned start = cell_of(x, y);
+  in[start] = true;
+  queue[tail++] = static_cast<std::uint8_t>(start);
+  while (head < tail) {
+    const unsigned cell = queue[head++];
+    const unsigned cx = cell % automap_map_side;
+    const unsigned cy = cell / automap_map_side;
+    for (const unsigned lane : lanes) {
+      const step to = step_of(lane);
+      const auto nx = static_cast<unsigned>(static_cast<int>(cx) + to.dx);
+      const auto ny = static_cast<unsigned>(static_cast<int>(cy) + to.dy);
+      const unsigned next = cell_of(nx, ny);
+      if (in[next] || blocks(map, cx, cy, lane) ||
+          blocks(map, nx, ny, opposite(lane))) {
+        continue;
+      }
+      in[next] = true;
+      queue[tail++] = static_cast<std::uint8_t>(next);
+    }
+  }
+  return in;
+}
+
+/// The lair the party is in, and its squares.
+struct lair_found {
+  std::string_view name;
+  region in{};
+};
+
+/// The lair the party is in, or no name: off the grid, on a map with no
+/// lairs, or in a region holding no entrance or more than one, which is
+/// a map this table was not measured on.
+[[nodiscard]] lair_found find_lair(std::uint8_t disk, std::uint8_t area,
+                                   std::uint8_t geo,
+                                   const zone_place& where) noexcept {
+  if (where.map == nullptr) {
+    return {};
+  }
+  for (const lair_grid& grid : lair_grids) {
+    if (grid.disk != disk || grid.area != area || grid.geo != geo) {
+      continue;
+    }
+    lair_found found{.name = {}, .in = region_of(*where.map, where.x, where.y)};
+    for (const lair& entrance : grid.lairs) {
+      if (entrance.name.empty() || !found.in[cell_of(entrance.x, entrance.y)]) {
+        continue;
+      }
+      if (!found.name.empty()) {
+        return {};
+      }
+      found.name = entrance.name;
+    }
+    return found;
+  }
+  return {};
+}
+
 }  // namespace
 
 unsigned cell_of(unsigned x, unsigned y) noexcept {
@@ -340,8 +466,12 @@ std::size_t sight_from(const grid& map, unsigned x, unsigned y, unsigned facing,
 }
 
 std::string_view zone_label(std::uint8_t disk, std::uint8_t area,
-                            std::uint8_t geo,
+                            std::uint8_t geo, const zone_place& where,
                             zone_fallback& fallback) noexcept {
+  const std::string_view lair = find_lair(disk, area, geo, where).name;
+  if (!lair.empty()) {
+    return lair;
+  }
   for (const sub_map_name& sub : sub_map_names) {
     if (sub.disk == disk && sub.area == area && sub.geo == geo) {
       return sub.name;
@@ -368,6 +498,17 @@ std::string_view zone_label(std::uint8_t disk, std::uint8_t area,
     fallback[used++] = digits[--count];
   }
   return std::string_view{fallback.data(), used};
+}
+
+place_squares place_of(std::uint8_t disk, std::uint8_t area, std::uint8_t geo,
+                       const zone_place& where) noexcept {
+  const lair_found lair = find_lair(disk, area, geo, where);
+  if (lair.name.empty()) {
+    place_squares all{};
+    all.fill(true);
+    return all;
+  }
+  return lair.in;
 }
 
 }  // namespace amberfolio::machine::map_format

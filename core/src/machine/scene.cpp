@@ -284,12 +284,24 @@ class memory {
   std::uint32_t data_;
 };
 
+/// The loaded map, out of the program's buffer at `map_at`.
+[[nodiscard]] map_format::grid read_grid(const memory& ram,
+                                         std::uint32_t map_at) noexcept {
+  map_format::grid grid{};
+  for (std::size_t i = 0; i < grid.size(); ++i) {
+    grid[i] = ram.at(map_at + static_cast<std::uint32_t>(i));
+  }
+  return grid;
+}
+
 /// The zone name, by the map's identity. `geo` is the loaded geometry
-/// block, zero where there is none to read (`zone_label`).
-void name_zone(scene& out, std::uint8_t geo) noexcept {
+/// block, zero where there is none to read, and `where` the party's
+/// square on the grid, none on the overland (`zone_label`).
+void name_zone(scene& out, std::uint8_t geo,
+               const map_format::zone_place& where) noexcept {
   map_format::zone_fallback fallback{};
   const std::string_view label =
-      map_format::zone_label(out.disk, out.area, geo, fallback);
+      map_format::zone_label(out.disk, out.area, geo, where, fallback);
   std::size_t used = 0;
   for (const char ch : label) {
     if (ch != map_format::soft_break && used < out.zone.size()) {
@@ -353,12 +365,10 @@ void name_zone(scene& out, std::uint8_t geo) noexcept {
   out.y = static_cast<std::uint8_t>(ram.data(data_party_y) & 0x0FU);
   out.facing = facing;
   const std::uint8_t geo = ram.at(record + record_geometry_block);
-  name_zone(out, geo);
 
-  map_format::grid grid{};
-  for (std::size_t i = 0; i < grid.size(); ++i) {
-    grid[i] = ram.at(map_at + static_cast<std::uint32_t>(i));
-  }
+  const map_format::grid grid = read_grid(ram, map_at);
+  const map_format::zone_place where{.map = &grid, .x = out.x, .y = out.y};
+  name_zone(out, geo, where);
   map_format::wall_set_blocks blocks{};
   for (unsigned slot = 0; slot < map_format::wall_set_slots; ++slot) {
     blocks[slot] = ram.data_word(static_cast<std::uint16_t>(
@@ -380,9 +390,13 @@ void name_zone(scene& out, std::uint8_t geo) noexcept {
   if (kept != nullptr) {
     const automap_record* explored = kept->find(out.disk, out.area, geo);
     if (explored != nullptr) {
+      // The panel's squares: only the lair the party is in.
+      const map_format::place_squares here =
+          map_format::place_of(out.disk, out.area, geo, where);
       for (unsigned y = 0; y < automap_map_side; ++y) {
         for (unsigned x = 0; x < automap_map_side; ++x) {
-          if (automap_state::seen(*explored, x, y)) {
+          if (here[map_format::cell_of(x, y)] &&
+              automap_state::seen(*explored, x, y)) {
             out.map[out.map_count++] = square_at(grid, x, y, doors);
           }
         }
@@ -420,7 +434,7 @@ void name_zone(scene& out, std::uint8_t geo) noexcept {
   out.x = static_cast<std::uint8_t>(column);
   out.y = static_cast<std::uint8_t>(row);
   out.facing = facing;
-  name_zone(out, 0);
+  name_zone(out, 0, {});
 
   const explored_window origin = explored_window_top_left(
       bias, static_cast<int>(column), static_cast<int>(row));
@@ -635,8 +649,22 @@ void read_aim(const memory& ram, const scene_aim_frame& at,
   out.area = ram.data(data_area_id);
   const std::uint32_t area_record =
       ram.follow(data_area_record, record_geometry_block + 1);
+  // A fight on the grid leaves the party's square and the map where they
+  // were (the program builds the field from both), so a lair is named in
+  // one; a fight on the overland has no square on a grid.
+  const std::uint32_t map_at =
+      ram.follow(data_map_pointer, map_format::map_bytes);
+  map_format::grid grid{};
+  map_format::zone_place where{};
+  if (ram.data(data_view_kind) == view_kind_grid && map_at != 0) {
+    grid = read_grid(ram, map_at);
+    where = {.map = &grid,
+             .x = static_cast<std::uint8_t>(ram.data(data_party_x) & 0x0FU),
+             .y = static_cast<std::uint8_t>(ram.data(data_party_y) & 0x0FU)};
+  }
   name_zone(out,
-            area_record == 0 ? 0 : ram.at(area_record + record_geometry_block));
+            area_record == 0 ? 0 : ram.at(area_record + record_geometry_block),
+            where);
   out.window_x = window_x;
   out.window_y = window_y;
 
