@@ -42,11 +42,12 @@
 // nobody has walked is a window that is almost entirely fog — and no
 // amount of not-pressing-anything hides it.
 //
-// **Its points are addresses**, three of them, all resident, and two of
-// the three are the automap's (#173) — which is nothing new; several
-// seams in this tree share those. The one that is this seam's own is the
-// **return of the program's back-buffer present**. It draws at two of
-// them and the paragraph after next says why two.
+// **Its points are addresses**, four of them, all resident, and two of
+// the four are the automap's (#173) — which is nothing new; several
+// seams in this tree share those. This seam's own are the **return of the
+// program's back-buffer present** and the **window painter's per-square
+// blit**. It draws at two of them and the paragraph after next says why
+// two; the blit only says the program has put its map back.
 //
 // **What it refuses** is longer than what it does, which is the usual
 // proportion here. In order, cheapest first: the data segment not being
@@ -58,8 +59,9 @@
 // position not being on a 16-by-36 map; the column bias not being one a
 // 44-column table could hold; the bar on the screen not being the
 // adventuring screen's own; the position not having settled; a script
-// holding the window with a picture or a figure of its own, or the window
-// not having been presented since one did (#535); and the
+// holding the window with a picture or a figure of its own, or the
+// program not having painted its map back since one did (#535, #545);
+// and the
 // party having been near every cell the window is showing, which is the
 // one case where there is nothing to cover. Every one of those returns
 // having touched no port and no pixel.
@@ -298,7 +300,7 @@ namespace {
 constexpr std::array<std::string_view, 1> explored_binaries{
     "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd"};
 
-/// **The points**, as offsets from the image segment, all three resident.
+/// **The points**, as offsets from the image segment, all four resident.
 ///
 /// The first is this seam's own: the far return of the routine that
 /// presents the composed back buffer — the `mov sp, bp / pop bp / retf`
@@ -313,9 +315,18 @@ constexpr std::array<std::string_view, 1> explored_binaries{
 /// between commands and therefore where the trail is recorded, and the
 /// thunk every menu bar in the game goes up through, which is how any
 /// seam here knows whose screen it is on.
+///
+/// The fourth is this seam's own too: the far-jump thunk the 5x5 window
+/// painter blits each square through (`docs/explored-overlay.md` §2).
+/// Reaching it on the travel view is the program putting its map back in
+/// the window, which nothing in the data segment records. The only other
+/// caller is the combat view's, which is never the travel view. Second
+/// route: a step's redraw reaches it 25 times, and a run that ends an
+/// event with its picture still up does not reach it at all (#545).
 constexpr std::uint32_t present_return = 0x649B;
 constexpr std::uint32_t key_pending_entry = 0xA6FD;
 constexpr std::uint32_t command_bar_entry = 0x3C7A;
+constexpr std::uint32_t window_square_blit = 0x3EBA;
 
 /// Where the data segment begins, as an offset in the image — the one
 /// fact every data-segment offset is relative to, checked against the DS
@@ -357,7 +368,7 @@ constexpr std::uint16_t data_figure_in_view = 0x84C8;
 constexpr std::uint16_t data_picture_open = 0x84C9;
 
 /// The seam's one word of its own: the program has put something over the
-/// window since it last presented the screen.
+/// window since it last painted its map there.
 constexpr unsigned word_window_taken = 0;
 
 /// The two halves of an overland record's identity — the disk the area's
@@ -620,13 +631,15 @@ void paint(machine& box, seam_context& ctx, std::uint16_t ds,
     // A script has put a picture or a figure where the map was, and is
     // still at the party's own bar while it types its text: an arrival
     // event, whose first polls are where a step's position settles. It
-    // stays the script's until the program presents the screen again,
-    // because the end of an event clears those bytes without a redraw.
+    // stays the script's until the program paints its map back. Not
+    // until the next present: the end of an event clears those bytes
+    // without a redraw, and putting the party's bar back up presents the
+    // screen with the picture still in the window (#545).
     ctx.set_scratch(word_window_taken, 1);
     state.set_explored_signature(0);
     return;
   }
-  if (!after_a_present && ctx.scratch(word_window_taken) != 0) {
+  if (ctx.scratch(word_window_taken) != 0) {
     return;
   }
 
@@ -727,9 +740,6 @@ void at_present_return(machine& box, seam_context& ctx) {
   if (cpu.read_byte(ds, data_game_mode) != mode_overland) {
     return;
   }
-  // The program has just put the screen up, so whatever covered the
-  // window before is either gone or still says so in its own bytes.
-  ctx.set_scratch(word_window_taken, 0);
 
   // The rest of the guard is the recorder's, and it is the same guard,
   // so it is asked rather than repeated: the view kind, the transition
@@ -741,6 +751,20 @@ void at_present_return(machine& box, seam_context& ctx) {
     return;
   }
   paint(box, ctx, ds, look, true);
+}
+
+/// The program is painting a square of its map into the window, so
+/// whatever a script put there is going.
+void at_window_square(machine& box, seam_context& ctx) {
+  cpu::processor& cpu = box.processor();
+  const std::uint16_t ds = data_segment(cpu, ctx);
+  if (ds == 0) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  if (cpu.read_byte(ds, data_game_mode) == mode_overland) {
+    ctx.set_scratch(word_window_taken, 0);
+  }
 }
 
 /// The program is asking whether a key is waiting, which is where it is
@@ -784,7 +808,7 @@ void at_command_bar(machine& box, seam_context& ctx) {
 // The definition
 // ---------------------------------------------------------------------------
 
-constexpr std::array<seam_point, 3> explored_points{
+constexpr std::array<seam_point, 4> explored_points{
     {{.module = resident_image,
       .offset = present_return,
       .run = &at_present_return},
@@ -793,7 +817,10 @@ constexpr std::array<seam_point, 3> explored_points{
       .run = &at_key_pending},
      {.module = resident_image,
       .offset = command_bar_entry,
-      .run = &at_command_bar}}};
+      .run = &at_command_bar},
+     {.module = resident_image,
+      .offset = window_square_blit,
+      .run = &at_window_square}}};
 
 constexpr seam_definition explored_definition{
     .id = "explored",

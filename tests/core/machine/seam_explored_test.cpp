@@ -244,6 +244,13 @@ struct rig {
     box->step();
   }
 
+  /// Step the window painter's per-square blit once: the program putting
+  /// its map back in the window.
+  void paint_the_map() const {
+    stand_on(point(3));
+    box->step();
+  }
+
   /// Paint every plane of the whole frame, the way the program's own
   /// composition leaves the window painted. Written through the bus, as a
   /// program would write it, so what comes back afterwards is the seam's
@@ -769,8 +776,7 @@ TEST(ExploredOverlay, NothingIsDrawnOverAFigureTheMessagePrinterDrew) {
 TEST(ExploredOverlay, AfterAPictureTheFogWaitsForTheProgramsOwnRedraw) {
   // The end of an event clears the script's bytes without redrawing the
   // window, so the picture is still on the screen when the party's bar
-  // polls again. The fog comes back with the program's next present,
-  // which is the map put back.
+  // polls again. The fog comes back once the program paints its map back.
   const rig r;
   r.enable();
   r.travelling(3, 32);
@@ -783,8 +789,47 @@ TEST(ExploredOverlay, AfterAPictureTheFogWaitsForTheProgramsOwnRedraw) {
   r.poll(4);
   EXPECT_EQ(pixels_covered(r), 0u) << "the event is over; its picture is not";
 
+  r.paint_the_map();
   r.present();
   EXPECT_EQ(fogged_cells(r), every_cell & ~block(2, 2, 2, 2));
+}
+
+TEST(ExploredOverlay, APresentIsNotTheMapPutBack) {
+  // What a player saw (#545): an event that ends on a choice leaves its
+  // picture in the window, and putting the party's bar back up presents
+  // the screen. The picture is still there after that present.
+  const rig r;
+  r.enable();
+  r.travelling(3, 32);
+  r.put_byte(rig::dgroup(), data_picture_open, 1);
+  r.put_byte(rig::dgroup(), data_picture_in_view, 1);
+  r.poll(4);
+  r.put_byte(rig::dgroup(), data_picture_open, 0);
+  r.put_byte(rig::dgroup(), data_picture_in_view, 0);
+  r.fill();
+  r.present();
+  r.poll(4);
+  r.present();
+  EXPECT_EQ(pixels_covered(r), 0u) << "the picture is still in the window";
+}
+
+TEST(ExploredOverlay, OffTheTravelViewTheMapPainterReleasesNothing) {
+  // The combat view blits its squares through the same thunk. Only the
+  // travel view's own painting puts the map back.
+  const rig r;
+  r.enable();
+  r.travelling(3, 32);
+  r.put_byte(rig::dgroup(), data_picture_open, 1);
+  r.put_byte(rig::dgroup(), data_picture_in_view, 1);
+  r.poll(4);
+  r.put_byte(rig::dgroup(), data_picture_open, 0);
+  r.put_byte(rig::dgroup(), data_picture_in_view, 0);
+  r.put_byte(rig::dgroup(), data_game_mode, mode_overland + 2);
+  r.paint_the_map();
+  r.put_byte(rig::dgroup(), data_game_mode, mode_overland);
+  r.fill();
+  r.present();
+  EXPECT_EQ(pixels_covered(r), 0u);
 }
 
 TEST(ExploredOverlay, TheFogIsThereOnTheFirstFrameAcrossABandEdge) {
@@ -1081,7 +1126,7 @@ TEST(ExploredDefinition, ItIsASettingAndNotAPullAndItNamesTheBaseline) {
   EXPECT_FALSE(explored->trigger) << "a setting is not a pull";
   EXPECT_EQ(explored->gate, document_kind::none);
   EXPECT_EQ(explored->schema, seam_schema_version);
-  EXPECT_EQ(explored->points.size(), 3u);
+  EXPECT_EQ(explored->points.size(), 4u);
   for (const seam_point& point : explored->points) {
     EXPECT_FALSE(point.at_every_step) << "every point of this seam has an "
                                          "address, which is where its safety "
