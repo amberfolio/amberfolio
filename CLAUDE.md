@@ -11,7 +11,7 @@ Radiance. **PLAN.md is the plan of record**: scope, architecture,
 milestones and settled decisions live there. Don't re-litigate them.
 
 **Status.** M0–M7 are done, `v1.0.0` is the release PLAN.md §1's gate
-defines, and `v1.1.2` is the current tag. A release carries the web
+defines, and `v1.1.3` is the current tag. A release carries the web
 build; the desktop host is built from source. The game boots, plays end
 to end, all six v1
 enhancements work and toggle independently on both hosts, and a player
