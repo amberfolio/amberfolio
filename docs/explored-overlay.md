@@ -43,7 +43,7 @@ agreed (`docs/seams.md` §8.1). "Driven" means a run under the §4 recipe.
 | the party's facing, 0 N / 2 E / 4 S / 6 W | `0x6AAF` | `docs/playable.md`'s watch list; driven, 4 with the status line reading `S` |
 | the column-bias table, indexed by view kind | `0x3C76` | begins where the terrain table ends (`0x3648 + 0x2C * 36 = 0x3C78`); its live entries 0, 13, 26 are what the status line adds to the column for kinds 3 and 4 |
 | the overland terrain table: 36 rows, stride `0x2C`, three 16-column bands at those biases | `0x3648` | the move step and the window painter index it with the same arithmetic |
-| a picture is in the view: set to 1 before the script's picture opcode (overlay 3 `0x08B2`) or the message printer's picture branch (overlay 7 `0x0636`) draws one, cleared by the view's redraws | `0x84E0` | the disassembly of both writers; a player's screen, where an arrival event's picture took the fog (#535) |
+| a picture is in the view: set to 1 before the script's picture opcode (overlay 3 `0x08B2`) or the message printer's picture branch (overlay 7 `0x0636`) draws one, cleared by the view's redraws and by the end of every event, which does not redraw | `0x84E0` | the disassembly of both writers; a player's screen, where an arrival event's picture took the fog (#535) |
 | the script's two open bytes: a figure the message printer drew in the view, and a picture the picture opcode opened (`0x08AD`); the end of every event clears both | `0x84C8`, `0x84C9` | the disassembly of the writers and of the end-of-event opcode |
 
 The seam reads the bias out of the program at `0x3C76`; the three values
@@ -75,7 +75,7 @@ Image offsets: a decompiled `seg:off` with load segment `0x1000` maps to
 | its **return** | image `0x649B` | `mov sp, bp / pop bp / retf`, the only far return in the routine |
 | the per-mode **composer** | overlay 26 rel `0x016D` | picks the interior or travel path; on the travel path computes the window's top-left and calls the two painters |
 | the 5x5 **window painter** | overlay 27 rel `0x0000`, `retf 4`, args row then column | 25 cells, cell index stepping by one and blit position by three |
-| the per-cell **blit thunk** | image `0x3EBA` into overlay 32 rel `0x00F1`, `retf 8` | one overhead tile into the back buffer |
+| the per-cell **blit thunk** | image `0x3EBA` into overlay 32 rel `0x00F1`, `retf 8` | one overhead tile into the back buffer; called by the window painter and by the combat view, nothing else |
 | the party **icon painter** | overlay 26 rel `0x0000`, `retf 0` | draws the icon in the party's cell and presents |
 
 Overlay rows, from the overlay file's own table: 26 at file offset
@@ -250,10 +250,14 @@ program believes it drew.
   during a new area's load walk the party on before its position could
   hold still;
 - no script holds the window: `0x84E0`, `0x84C8` and `0x84C9` are all
-  zero, and the program has presented the screen since any of them was
+  zero, and the program has painted its map back since any of them was
   seen set. An arrival event draws its picture and types its text at the
-  party's own bar, which is where a step's position settles, and the end
-  of the event clears the bytes without putting the map back (#535).
+  party's own bar, which is where a step's position settles (#535), and
+  the end of the event clears all three bytes without putting the map
+  back. Putting the party's bar back up then presents the screen with the
+  picture still in the window (#545), so a present does not release it.
+  **The window blit thunk, image `0x3EBA`,** reached on the travel view,
+  does: it is the window painter putting a square of the map back.
 
 The other two points are the automap's, shared: the key-pending entry
 `0xA6FD`, where the recording happens, and the command-bar thunk
@@ -261,9 +265,7 @@ The other two points are the automap's, shared: the key-pending entry
 the keyboard poll, because a trail read in beside a save under a
 standing party would otherwise never show (`docs/seams.md` §8.4).
 
-One repaint is at most 1,728 byte writes and two port writes; driven on
-the §4 walk the seam's three points are reached 746,746 times over
-13,075 frames.
+One repaint is at most 1,728 byte writes and two port writes.
 
 ## 7. The record's shape, decided
 
