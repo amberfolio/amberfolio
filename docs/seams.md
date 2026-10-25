@@ -1238,8 +1238,19 @@ rule, settling quarantine and ownership signals are derived in
   columns. A sub-map a script swaps in keeps its parent's label, except
   where it is a district of its own: a second table keyed (disk, area,
   geometry block) is looked up first, and names disk 1, area 24, block
-  31 the Wealthy Area rather than the Temple of Bane. A zero font pointer draws nothing and the font's segment is
-  in the drawing signature.
+  31 the Wealthy Area rather than the Temple of Bane. Before both, a
+  wilderness area's own grid (disks 6 to 8, areas and blocks 25 to 27)
+  is named by the lair the party stands in: each grid is several lairs
+  walled off from one another (four, three and four), and a lair is the
+  squares reachable from the entrance square its script puts the party
+  on, across faces that are absent or not solid on either side, with the
+  grid wrapping as the program's coordinates do. A region with no
+  entrance or more than one in it keeps the area's label. The party's
+  square is in the drawing signature, so a step that crosses into
+  another lair re-letters the band. A hyphen in a name is a break point
+  of its own, so `THRI-KREEN` sets as `THRI-` over `KREEN`. A zero font
+  pointer draws nothing and the font's segment is in the drawing
+  signature.
 - **Give-back**: one batch of two calls, the region clear over the panel
   rect then the roster drawer with the current member. Rejected: the
   per-mode screen composer (`screen_redraw()` in the proven design),

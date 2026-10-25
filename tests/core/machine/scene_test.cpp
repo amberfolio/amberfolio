@@ -360,6 +360,50 @@ TEST(SceneExplore, ASubMapThatIsADistrictOfItsOwnHasItsOwnName) {
             "WEALTHY AREA");
 }
 
+/// The western wilderness's grid, the party at (x, y) on it, with one lair
+/// walled off: the squares 14 to 1 by 1 to 2, which wrap round the west
+/// edge, around the ankheg lair's entrance at (0, 2). Everything else on
+/// this test's grid is one open region holding the other three entrances.
+void in_a_wilderness_lair(const rig& r, std::uint8_t x, std::uint8_t y) {
+  r.interior(x, y, east);
+  r.data(data_disk, 6);
+  r.data(data_area, 25);
+  r.record_word(record_geo, 25);
+  for (const unsigned column : {14U, 15U, 0U, 1U}) {
+    r.face(column, 1, north, 1, 0);
+    r.face(column, 2, south, 1, 0);
+  }
+  for (const unsigned row : {1U, 2U}) {
+    r.face(14, row, west, 1, 0);
+    r.face(1, row, east, 1, 0);
+  }
+}
+
+TEST(SceneExplore, AWildernessLairIsNamedByTheSquaresAroundItsEntrance) {
+  const rig r;
+  r.load_baseline();
+  // Across the west edge from the entrance, and still the same lair.
+  in_a_wilderness_lair(r, 14, 1);
+  const scene lair = r.read();
+  EXPECT_EQ(std::string_view(lair.zone.data(), lair.zone_length),
+            "ANKHEG LAIR");
+  // Outside its walls: a region with three entrances in it is no one lair.
+  r.data(data_x, 5);
+  r.data(data_y, 5);
+  const scene outside = r.read();
+  EXPECT_EQ(std::string_view(outside.zone.data(), outside.zone_length),
+            "WILDERNESS");
+}
+
+TEST(SceneExplore, AWayThroughIsNotAWallBetweenLairs) {
+  const rig r;
+  r.load_baseline();
+  in_a_wilderness_lair(r, 0, 2);
+  r.face(1, 2, east, 1, 1);
+  const scene s = r.read();
+  EXPECT_EQ(std::string_view(s.zone.data(), s.zone_length), "WILDERNESS");
+}
+
 TEST(SceneExplore, AMapWithNoNameIsItsNumber) {
   const rig r;
   r.load_baseline();
@@ -604,6 +648,23 @@ TEST(SceneCombat, ListsWhoIsInTheFightAndWhere) {
   EXPECT_FALSE(orc.player);
   EXPECT_EQ(orc.x, 14U);
   EXPECT_EQ(orc.y, 6U);
+}
+
+TEST(SceneCombat, AFightInALairIsInTheLairAndOneOnTheOverlandIsNot) {
+  const rig r;
+  r.load_baseline();
+  in_a_wilderness_lair(r, 0, 2);
+  r.combat(0, 0);
+  r.figure("HULK", false, 2, 2);
+  const scene lair = r.read();
+  ASSERT_EQ(lair.screen, scene_screen::combat);
+  EXPECT_EQ(std::string_view(lair.zone.data(), lair.zone_length),
+            "ANKHEG LAIR");
+  // The same square and map left behind, but the view is the overland's.
+  r.data(data_view_kind, 2);
+  const scene overland = r.read();
+  EXPECT_EQ(std::string_view(overland.zone.data(), overland.zone_length),
+            "WILDERNESS");
 }
 
 TEST(SceneCombat, AnEnemyOutsideTheWindowIsNotListedAndAPartyMemberIs) {

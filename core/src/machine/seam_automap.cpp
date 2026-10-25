@@ -1065,15 +1065,18 @@ constexpr std::uint8_t colour_label = 14;
 ///
 /// A word too long for a whole line on its own is broken at the last soft
 /// break that still leaves room for the hyphen, and the remainder wraps —
-/// so a name marked `WILDER|NESS` sets as `WILDER-` over `NESS`. With no
+/// so a name marked `WILDER|NESS` sets as `WILDER-` over `NESS`, and one
+/// with a hyphen of its own, `THRI-KREEN`, breaks after it. With no
 /// marker at all, which is the `AREA <n>` fallback and any name nobody
 /// has marked yet, it takes what fits. That is the deliberate answer
 /// rather than an oversight: a new name never vanishes, it just breaks in
 /// an ugly place until somebody puts a marker in it.
-void draw_label(panel_pixels& panel, std::uint8_t disk, std::uint8_t area,
-                std::uint8_t geo, const font_table& font) noexcept {
+void draw_label(panel_pixels& panel, const sample& now, const map_grid& grid,
+                const font_table& font) noexcept {
   zone_fallback fallback{};
-  const std::string_view name = zone_label(disk, area, geo, fallback);
+  const std::string_view name =
+      zone_label(now.disk, now.area, now.geo,
+                 {.map = &grid, .x = now.x, .y = now.y}, fallback);
 
   constexpr auto columns = static_cast<std::size_t>(automap_text_columns);
   constexpr int band_x = static_cast<int>(automap_band_x);
@@ -1112,17 +1115,28 @@ void draw_label(panel_pixels& panel, std::uint8_t disk, std::uint8_t area,
         break;
       }
 
-      // Alone on the line and still too long: hyphenate at the last
-      // marker that fits, and take what fits where there is none.
+      // Alone on the line and still too long: break at the last marker
+      // or hyphen that fits, and take what fits where there is none. A
+      // marker adds its hyphen; a hyphen of the name's own ends the line
+      // as it is.
       std::size_t cut = 0;
       bool marked = false;
+      bool hyphen = false;
       std::size_t seen = 0;
       for (std::size_t q = p; q < name.size() && name[q] != ' '; ++q) {
-        if (name[q] != soft_break) {
-          ++seen;
-        } else if (seen + 1 <= columns) {
-          cut = q;
+        if (name[q] == soft_break) {
+          if (seen + 1 <= columns) {
+            cut = q;
+            marked = true;
+            hyphen = false;
+          }
+          continue;
+        }
+        ++seen;
+        if (name[q] == '-' && seen <= columns) {
+          cut = q + 1;
           marked = true;
+          hyphen = true;
         }
       }
       if (marked) {
@@ -1131,8 +1145,12 @@ void draw_label(panel_pixels& panel, std::uint8_t disk, std::uint8_t area,
             line[filled++] = name[q];
           }
         }
-        line[filled++] = '-';
-        p = cut + 1;
+        if (hyphen) {
+          p = cut;
+        } else {
+          line[filled++] = '-';
+          p = cut + 1;
+        }
       } else {
         for (; filled < columns && p < name.size() && name[p] != ' '; ++p) {
           if (name[p] != soft_break) {
@@ -1237,7 +1255,7 @@ void render(automap_state& state, const automap_record& map,
   // construction (`automap.h`), so nothing below can reach it and nothing
   // here can reach the map.
   if (font != nullptr) {
-    draw_label(panel, now.disk, now.area, now.geo, *font);
+    draw_label(panel, now, grid, *font);
   }
 
   const std::uint16_t doors = state.door_nibbles();

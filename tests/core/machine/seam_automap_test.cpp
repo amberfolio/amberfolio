@@ -1460,6 +1460,49 @@ TEST(AutomapLabel, ALongWordIsBrokenWhereTheNameSaysItMay) {
   }
 }
 
+TEST(AutomapLabel, ALairIsNamedAndBreaksAtItsOwnHyphen) {
+  rig r;
+  r.attach_video();
+  r.enable();
+  r.install_font();
+  // The western wilderness's grid, the thri-kreen lair's entrance walled
+  // off with the square beside it from the rest of an open grid.
+  r.adventuring(0, 9, lane_north, 25);
+  const std::uint16_t ds = rig::dgroup();
+  r.put_byte(ds, data_disk_number, 6);
+  r.put_byte(ds, data_area_id, 25);
+  for (const unsigned x : {0U, 1U}) {
+    r.face(x, 9, lane_north, 1, 0);
+    r.face(x, 9, lane_south, 1, 0);
+  }
+  r.face(0, 9, lane_west, 1, 0);
+  r.face(1, 9, lane_east, 1, 0);
+  r.poll(4);
+  r.type(key_tab);
+  r.poll(2);
+
+  // THRI-KREEN is ten characters into eight columns, and the break is the
+  // name's own hyphen: THRI- over KREEN over LAIR, with no second hyphen
+  // on the first line to push its centring four pixels left.
+  const unsigned first = centred(5);
+  const unsigned second = centred(5);
+  // 'T' is 0x54, and 0x54 % 0x40 is 0x14.
+  for (unsigned column = 0; column < 8; ++column) {
+    EXPECT_EQ(r.panel_pixel(first + column, 8), lit(0x14, column) ? 14 : 0)
+        << "column " << column << " of the T";
+  }
+  for (unsigned column = 0; column < 8; ++column) {
+    EXPECT_EQ(r.panel_pixel(first + (4 * 8) + column, 8),
+              lit(0x2D, column) ? 14 : 0)
+        << "column " << column << " of the hyphen";
+  }
+  // 'K' is 0x4b, and 0x4b % 0x40 is 0x0b.
+  for (unsigned column = 0; column < 8; ++column) {
+    EXPECT_EQ(r.panel_pixel(second + column, 18), lit(0x0B, column) ? 14 : 0)
+        << "column " << column << " of the K";
+  }
+}
+
 TEST(AutomapLabel, AMapNobodyHasNamedSaysItsNumber) {
   rig r;
   r.attach_video();

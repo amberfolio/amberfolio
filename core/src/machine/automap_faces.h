@@ -233,10 +233,21 @@ inline constexpr char soft_break = '|';
 
 /// The label for a map, or `AREA <n>` where the table has no row, written
 /// into `fallback` so the view always names storage that outlives it.
+/// Where the party stands on the loaded map, for a map that holds more
+/// than one place: the wilderness areas' grids are each several lairs,
+/// told apart by the walls between them. No map (the overland) is a
+/// place nowhere on a grid.
+struct zone_place {
+  const grid* map{};
+  std::uint8_t x{};
+  std::uint8_t y{};
+};
+
 /// `geo` is the loaded geometry block, which names the few sub-maps that
 /// are a place of their own; pass zero where there is none (the overland).
 [[nodiscard]] std::string_view zone_label(std::uint8_t disk, std::uint8_t area,
                                           std::uint8_t geo,
+                                          const zone_place& where,
                                           zone_fallback& fallback) noexcept;
 
 }  // namespace amberfolio::machine::map_format
