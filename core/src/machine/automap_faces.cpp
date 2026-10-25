@@ -292,7 +292,7 @@ struct lair_found {
     if (grid.disk != disk || grid.area != area || grid.geo != geo) {
       continue;
     }
-    lair_found found{.in = region_of(*where.map, where.x, where.y)};
+    lair_found found{.name = {}, .in = region_of(*where.map, where.x, where.y)};
     for (const lair& entrance : grid.lairs) {
       if (entrance.name.empty() || !found.in[cell_of(entrance.x, entrance.y)]) {
         continue;
