@@ -1235,7 +1235,10 @@ rule, settling quarantine and ownership signals are derived in
   glyphs indexed by the character upper-cased modulo 64) rasterized into
   the buffer, from a table of (disk, area) to a label; no row prints
   `AREA <n>`; `|` in a name is a soft break for a word over eight
-  columns. A zero font pointer draws nothing and the font's segment is
+  columns. A sub-map a script swaps in keeps its parent's label, except
+  where it is a district of its own: a second table keyed (disk, area,
+  geometry block) is looked up first, and names disk 1, area 24, block
+  31 the Wealthy Area rather than the Temple of Bane. A zero font pointer draws nothing and the font's segment is
   in the drawing signature.
 - **Give-back**: one batch of two calls, the region clear over the panel
   rect then the roster drawer with the current member. Rejected: the

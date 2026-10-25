@@ -233,7 +233,10 @@ inline constexpr char soft_break = '|';
 
 /// The label for a map, or `AREA <n>` where the table has no row, written
 /// into `fallback` so the view always names storage that outlives it.
+/// `geo` is the loaded geometry block, which names the few sub-maps that
+/// are a place of their own; pass zero where there is none (the overland).
 [[nodiscard]] std::string_view zone_label(std::uint8_t disk, std::uint8_t area,
+                                          std::uint8_t geo,
                                           zone_fallback& fallback) noexcept;
 
 }  // namespace amberfolio::machine::map_format

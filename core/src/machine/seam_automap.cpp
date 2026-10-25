@@ -1071,9 +1071,9 @@ constexpr std::uint8_t colour_label = 14;
 /// rather than an oversight: a new name never vanishes, it just breaks in
 /// an ugly place until somebody puts a marker in it.
 void draw_label(panel_pixels& panel, std::uint8_t disk, std::uint8_t area,
-                const font_table& font) noexcept {
+                std::uint8_t geo, const font_table& font) noexcept {
   zone_fallback fallback{};
-  const std::string_view name = zone_label(disk, area, fallback);
+  const std::string_view name = zone_label(disk, area, geo, fallback);
 
   constexpr auto columns = static_cast<std::size_t>(automap_text_columns);
   constexpr int band_x = static_cast<int>(automap_band_x);
@@ -1237,7 +1237,7 @@ void render(automap_state& state, const automap_record& map,
   // construction (`automap.h`), so nothing below can reach it and nothing
   // here can reach the map.
   if (font != nullptr) {
-    draw_label(panel, now.disk, now.area, *font);
+    draw_label(panel, now.disk, now.area, now.geo, *font);
   }
 
   const std::uint16_t doors = state.door_nibbles();
