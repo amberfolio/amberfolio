@@ -250,4 +250,17 @@ struct zone_place {
                                           const zone_place& where,
                                           zone_fallback& fallback) noexcept;
 
+/// One flag per square of a map, by `cell_of`.
+using place_squares =
+    std::array<bool, std::size_t{automap_map_side} * automap_map_side>;
+
+/// The squares of the loaded map that are the place the party is in: on a
+/// wilderness area's grid, the lair it is standing in, and everywhere
+/// else, every square. What has been explored of the other lairs is kept
+/// but not shown, because it is somewhere else that happens to share a
+/// grid; a region `zone_label` cannot name is shown whole, as before.
+[[nodiscard]] place_squares place_of(std::uint8_t disk, std::uint8_t area,
+                                     std::uint8_t geo,
+                                     const zone_place& where) noexcept;
+
 }  // namespace amberfolio::machine::map_format

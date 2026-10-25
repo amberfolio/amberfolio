@@ -2215,7 +2215,7 @@ The interior screen (game mode 4, the sixteen-by-sixteen grid):
  "around":{"ahead":"wall","right":"open","behind":"wall","left":"wall"},
  "view":[{"x":4,"y":13,"north":"open","east":"wall","south":"wall","west":"wall"},
          {"x":4,"y":12,"north":"door","east":"wall","south":"open","west":"wall"}],
- "map":[ ...the same shape, every square the automap has revealed... ]}
+ "map":[ ...the same shape, every revealed square the automap panel draws... ]}
 ```
 
 The overland (game mode 3, view kinds 2 to 4):

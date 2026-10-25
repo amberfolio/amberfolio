@@ -367,7 +367,8 @@ void name_zone(scene& out, std::uint8_t geo,
   const std::uint8_t geo = ram.at(record + record_geometry_block);
 
   const map_format::grid grid = read_grid(ram, map_at);
-  name_zone(out, geo, {.map = &grid, .x = out.x, .y = out.y});
+  const map_format::zone_place where{.map = &grid, .x = out.x, .y = out.y};
+  name_zone(out, geo, where);
   map_format::wall_set_blocks blocks{};
   for (unsigned slot = 0; slot < map_format::wall_set_slots; ++slot) {
     blocks[slot] = ram.data_word(static_cast<std::uint16_t>(
@@ -389,9 +390,13 @@ void name_zone(scene& out, std::uint8_t geo,
   if (kept != nullptr) {
     const automap_record* explored = kept->find(out.disk, out.area, geo);
     if (explored != nullptr) {
+      // The panel's squares: only the lair the party is in.
+      const map_format::place_squares here =
+          map_format::place_of(out.disk, out.area, geo, where);
       for (unsigned y = 0; y < automap_map_side; ++y) {
         for (unsigned x = 0; x < automap_map_side; ++x) {
-          if (automap_state::seen(*explored, x, y)) {
+          if (here[map_format::cell_of(x, y)] &&
+              automap_state::seen(*explored, x, y)) {
             out.map[out.map_count++] = square_at(grid, x, y, doors);
           }
         }

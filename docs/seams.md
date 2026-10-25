@@ -1245,9 +1245,12 @@ rule, settling quarantine and ownership signals are derived in
   squares reachable from the entrance square its script puts the party
   on, across faces that are absent or not solid on either side, with the
   grid wrapping as the program's coordinates do. A region with no
-  entrance or more than one in it keeps the area's label. The party's
-  square is in the drawing signature, so a step that crosses into
-  another lair re-letters the band. A hyphen in a name is a break point
+  entrance or more than one in it keeps the area's label. The same
+  region is all of the grid the panel draws: what was explored of the
+  area's other lairs stays in the record, keyed by the grid, but is not
+  drawn while the party is in this one; a region with no one lair in it
+  draws the whole grid. The party's square is in the drawing signature,
+  so a step that crosses into another lair re-letters the band. A hyphen in a name is a break point
   of its own, so `THRI-KREEN` sets as `THRI-` over `KREEN`. A zero font
   pointer draws nothing and the font's segment is in the drawing
   signature.

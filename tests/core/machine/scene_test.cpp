@@ -552,6 +552,29 @@ TEST(SceneExplore, TheMapIsEveryRevealedSquareWhileTheAutomapIsOn) {
       << r.json();
 }
 
+TEST(SceneExplore, InALairTheMapIsThatLairsSquaresAlone) {
+  const rig r;
+  r.load_baseline();
+  ASSERT_EQ(r.box->seams().enable("automap"), seam_reason::none);
+  in_a_wilderness_lair(r, 0, 2);
+  automap_state& store = r.box->automap();
+  automap_record& map = store.record_for(6, 25, 25);
+  (void)store.reveal(map, 0, 2);
+  (void)store.reveal(map, 15, 1);
+  // Another lair on the same grid, explored on an earlier visit.
+  (void)store.reveal(map, 5, 5);
+
+  const scene in = r.read();
+  ASSERT_EQ(in.map_count, 2);
+  EXPECT_EQ(in.map[0].x, 15);
+  EXPECT_EQ(in.map[1].x, 0);
+
+  // Where no one lair can be named, the whole map, as before.
+  r.data(data_x, 5);
+  r.data(data_y, 5);
+  EXPECT_EQ(r.read().map_count, 3);
+}
+
 TEST(SceneExplore, AnUnexploredMapIsAnEmptyListWhileTheAutomapIsOn) {
   const rig r;
   r.load_baseline();

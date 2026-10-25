@@ -239,8 +239,7 @@ constexpr std::array<lair_grid, 3> lair_grids{
          style_of(map, x, y, lane) == face_solid;
 }
 
-using region =
-    std::array<bool, std::size_t{automap_map_side} * automap_map_side>;
+using region = place_squares;
 
 /// The squares reachable from (x, y) across borders neither side of which
 /// blocks, on the grid as the program treats it: a torus. Unlike sight
@@ -274,12 +273,18 @@ using region =
   return in;
 }
 
-/// The lair the party is in, or empty: off the grid, on a map with no
+/// The lair the party is in, and its squares.
+struct lair_found {
+  std::string_view name;
+  region in{};
+};
+
+/// The lair the party is in, or no name: off the grid, on a map with no
 /// lairs, or in a region holding no entrance or more than one, which is
 /// a map this table was not measured on.
-[[nodiscard]] std::string_view lair_label(std::uint8_t disk, std::uint8_t area,
-                                          std::uint8_t geo,
-                                          const zone_place& where) noexcept {
+[[nodiscard]] lair_found find_lair(std::uint8_t disk, std::uint8_t area,
+                                   std::uint8_t geo,
+                                   const zone_place& where) noexcept {
   if (where.map == nullptr) {
     return {};
   }
@@ -287,16 +292,15 @@ using region =
     if (grid.disk != disk || grid.area != area || grid.geo != geo) {
       continue;
     }
-    const region in = region_of(*where.map, where.x, where.y);
-    std::string_view found;
+    lair_found found{.in = region_of(*where.map, where.x, where.y)};
     for (const lair& entrance : grid.lairs) {
-      if (entrance.name.empty() || !in[cell_of(entrance.x, entrance.y)]) {
+      if (entrance.name.empty() || !found.in[cell_of(entrance.x, entrance.y)]) {
         continue;
       }
-      if (!found.empty()) {
+      if (!found.name.empty()) {
         return {};
       }
-      found = entrance.name;
+      found.name = entrance.name;
     }
     return found;
   }
@@ -464,7 +468,7 @@ std::size_t sight_from(const grid& map, unsigned x, unsigned y, unsigned facing,
 std::string_view zone_label(std::uint8_t disk, std::uint8_t area,
                             std::uint8_t geo, const zone_place& where,
                             zone_fallback& fallback) noexcept {
-  const std::string_view lair = lair_label(disk, area, geo, where);
+  const std::string_view lair = find_lair(disk, area, geo, where).name;
   if (!lair.empty()) {
     return lair;
   }
@@ -494,6 +498,17 @@ std::string_view zone_label(std::uint8_t disk, std::uint8_t area,
     fallback[used++] = digits[--count];
   }
   return std::string_view{fallback.data(), used};
+}
+
+place_squares place_of(std::uint8_t disk, std::uint8_t area, std::uint8_t geo,
+                       const zone_place& where) noexcept {
+  const lair_found lair = find_lair(disk, area, geo, where);
+  if (lair.name.empty()) {
+    place_squares all{};
+    all.fill(true);
+    return all;
+  }
+  return lair.in;
 }
 
 }  // namespace amberfolio::machine::map_format

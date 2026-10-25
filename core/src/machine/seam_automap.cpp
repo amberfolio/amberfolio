@@ -1262,10 +1262,19 @@ void render(automap_state& state, const automap_record& map,
   const std::uint16_t seen_kinds = state.door_nibbles_seen();
   state.begin_doors_drawn();
   const auto cell = static_cast<int>(automap_cell_pixels);
+  // Only the place the party is in: a wilderness lair shares its grid
+  // with the area's other lairs, and what was explored of those is
+  // somewhere else (`map_format::place_of`).
+  const map_format::place_squares here = map_format::place_of(
+      now.disk, now.area, now.geo, {.map = &grid, .x = now.x, .y = now.y});
+  const auto shown = [&](unsigned cx, unsigned cy) {
+    return here[map_format::cell_of(cx, cy)] &&
+           automap_state::seen(map, cx, cy);
+  };
 
   for (unsigned cy = 0; cy < automap_map_side; ++cy) {
     for (unsigned cx = 0; cx < automap_map_side; ++cx) {
-      if (!automap_state::seen(map, cx, cy)) {
+      if (!shown(cx, cy)) {
         continue;
       }
       const int x0 = static_cast<int>(cx) * cell;
@@ -1315,8 +1324,7 @@ void render(automap_state& state, const automap_record& map,
   for (std::size_t i = 0; i < map.marker_count; ++i) {
     const unsigned mx = map.marker_x[i];
     const unsigned my = map.marker_y[i];
-    if (!automap_state::seen(map, mx, my) ||
-        (mx == (px & 0x0FU) && my == (py & 0x0FU))) {
+    if (!shown(mx, my) || (mx == (px & 0x0FU) && my == (py & 0x0FU))) {
       continue;
     }
     const int x0 = static_cast<int>(mx) * cell;

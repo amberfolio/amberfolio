@@ -1503,6 +1503,40 @@ TEST(AutomapLabel, ALairIsNamedAndBreaksAtItsOwnHyphen) {
   }
 }
 
+TEST(AutomapPanel, InALairItDrawsThatLairAndNoneOfTheOthers) {
+  rig r;
+  r.attach_video();
+  r.enable();
+  // The thri-kreen lair as above, and a square of another lair on the
+  // same grid explored on an earlier visit.
+  r.adventuring(0, 9, lane_north, 25);
+  const std::uint16_t ds = rig::dgroup();
+  r.put_byte(ds, data_disk_number, 6);
+  r.put_byte(ds, data_area_id, 25);
+  for (const unsigned x : {0U, 1U}) {
+    r.face(x, 9, lane_north, 1, 0);
+    r.face(x, 9, lane_south, 1, 0);
+  }
+  r.face(0, 9, lane_west, 1, 0);
+  r.face(1, 9, lane_east, 1, 0);
+  automap_record& map = r.map_state().record_for(6, 25, 25);
+  (void)r.map_state().reveal(map, 1, 9);
+  (void)r.map_state().reveal(map, 5, 5);
+  r.poll(4);
+  r.type(key_tab);
+  r.poll(2);
+
+  EXPECT_EQ(r.panel_pixel((1 * automap_cell_pixels) + 3,
+                          (9 * automap_cell_pixels) + 3),
+            2)
+      << "the lair's own square, in the floor colour";
+  EXPECT_EQ(r.panel_pixel((5 * automap_cell_pixels) + 3,
+                          (5 * automap_cell_pixels) + 3),
+            0)
+      << "the other lair's square, kept but not drawn";
+  EXPECT_TRUE(automap_state::seen(map, 5, 5));
+}
+
 TEST(AutomapLabel, AMapNobodyHasNamedSaysItsNumber) {
   rig r;
   r.attach_video();
