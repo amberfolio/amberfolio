@@ -117,9 +117,10 @@ constexpr std::array<door_graphics, 19> door_table{
 /// re-expressing it as-is.
 ///
 /// The id is the *script* id, and a sub-map that a script swaps in under
-/// a fixed area keeps its parent's — so those need no row of their own.
-/// The third byte of the map identity is what tells them apart for the
-/// fog (`automap.h`), and to a player they are the same place.
+/// a fixed area keeps its parent's — so most of those need no row of their
+/// own. The third byte of the map identity is what tells them apart for
+/// the fog (`automap.h`), and usually to a player they are the same place.
+/// Where they are not, `sub_map_names` names the sub-map by that byte.
 ///
 /// A `|` is a soft break (`soft_break`): a point inside a word where the
 /// panel may split the label across two lines of its band with a hyphen.
@@ -161,6 +162,24 @@ constexpr std::array<zone_name, 29> zone_names{
      {.disk = 8, .area = 16, .name = "LIZARD|MAN KEEP"},
      {.disk = 8, .area = 27, .name = "WILDER|NESS"},
      {.disk = 8, .area = 29, .name = "KUTO'S WELL"}}};
+
+/// A sub-map that is a district of its own, by the geometry block its
+/// parent's script loads. Looked up before `zone_names`.
+///
+/// The Temple of Bane's script (disk 1, area 24) loads either its own
+/// block 24 or block 31, the Wealthy Area beside it, and the two are
+/// separate districts of the city. The other swaps keep their parent's
+/// name because they are its grounds or its cellar: block 30 is around
+/// the Lizardman Keep and block 32 is under Kuto's Well.
+struct sub_map_name {
+  std::uint8_t disk;
+  std::uint8_t area;
+  std::uint8_t geo;
+  std::string_view name;
+};
+
+constexpr std::array<sub_map_name, 1> sub_map_names{
+    {{.disk = 1, .area = 24, .geo = 31, .name = "WEALTHY AREA"}}};
 
 }  // namespace
 
@@ -321,7 +340,13 @@ std::size_t sight_from(const grid& map, unsigned x, unsigned y, unsigned facing,
 }
 
 std::string_view zone_label(std::uint8_t disk, std::uint8_t area,
+                            std::uint8_t geo,
                             zone_fallback& fallback) noexcept {
+  for (const sub_map_name& sub : sub_map_names) {
+    if (sub.disk == disk && sub.area == area && sub.geo == geo) {
+      return sub.name;
+    }
+  }
   for (const zone_name& zone : zone_names) {
     if (zone.disk == disk && zone.area == area) {
       return zone.name;

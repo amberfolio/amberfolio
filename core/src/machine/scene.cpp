@@ -284,10 +284,12 @@ class memory {
   std::uint32_t data_;
 };
 
-void name_zone(scene& out) noexcept {
+/// The zone name, by the map's identity. `geo` is the loaded geometry
+/// block, zero where there is none to read (`zone_label`).
+void name_zone(scene& out, std::uint8_t geo) noexcept {
   map_format::zone_fallback fallback{};
   const std::string_view label =
-      map_format::zone_label(out.disk, out.area, fallback);
+      map_format::zone_label(out.disk, out.area, geo, fallback);
   std::size_t used = 0;
   for (const char ch : label) {
     if (ch != map_format::soft_break && used < out.zone.size()) {
@@ -350,7 +352,8 @@ void name_zone(scene& out) noexcept {
   out.x = static_cast<std::uint8_t>(ram.data(data_party_x) & 0x0FU);
   out.y = static_cast<std::uint8_t>(ram.data(data_party_y) & 0x0FU);
   out.facing = facing;
-  name_zone(out);
+  const std::uint8_t geo = ram.at(record + record_geometry_block);
+  name_zone(out, geo);
 
   map_format::grid grid{};
   for (std::size_t i = 0; i < grid.size(); ++i) {
@@ -375,7 +378,6 @@ void name_zone(scene& out) noexcept {
 
   out.map_kept = kept != nullptr;
   if (kept != nullptr) {
-    const std::uint8_t geo = ram.at(record + record_geometry_block);
     const automap_record* explored = kept->find(out.disk, out.area, geo);
     if (explored != nullptr) {
       for (unsigned y = 0; y < automap_map_side; ++y) {
@@ -418,7 +420,7 @@ void name_zone(scene& out) noexcept {
   out.x = static_cast<std::uint8_t>(column);
   out.y = static_cast<std::uint8_t>(row);
   out.facing = facing;
-  name_zone(out);
+  name_zone(out, 0);
 
   const explored_window origin = explored_window_top_left(
       bias, static_cast<int>(column), static_cast<int>(row));
@@ -631,7 +633,10 @@ void read_aim(const memory& ram, const scene_aim_frame& at,
   out.screen = scene_screen::combat;
   out.disk = ram.data(data_disk_number);
   out.area = ram.data(data_area_id);
-  name_zone(out);
+  const std::uint32_t area_record =
+      ram.follow(data_area_record, record_geometry_block + 1);
+  name_zone(out,
+            area_record == 0 ? 0 : ram.at(area_record + record_geometry_block));
   out.window_x = window_x;
   out.window_y = window_y;
 

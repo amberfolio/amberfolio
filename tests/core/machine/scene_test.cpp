@@ -343,6 +343,23 @@ TEST(SceneExplore, AZoneNameLosesItsSoftBreaks) {
   EXPECT_EQ(std::string_view(s.zone.data(), s.zone_length), "BUCCANEER BASE");
 }
 
+TEST(SceneExplore, ASubMapThatIsADistrictOfItsOwnHasItsOwnName) {
+  const rig r;
+  r.load_baseline();
+  r.interior(7, 5, east);
+  r.data(data_disk, 1);
+  r.data(data_area, 24);
+  // The Temple of Bane's script loads its own grid or the Wealthy Area's.
+  r.record_word(record_geo, 24);
+  const scene temple = r.read();
+  EXPECT_EQ(std::string_view(temple.zone.data(), temple.zone_length),
+            "TEMPLE OF BANE");
+  r.record_word(record_geo, 31);
+  const scene wealthy = r.read();
+  EXPECT_EQ(std::string_view(wealthy.zone.data(), wealthy.zone_length),
+            "WEALTHY AREA");
+}
+
 TEST(SceneExplore, AMapWithNoNameIsItsNumber) {
   const rig r;
   r.load_baseline();
