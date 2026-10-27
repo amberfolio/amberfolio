@@ -1084,6 +1084,11 @@ void seam_engine::dispatch(machine& box, std::uint32_t at) {
     if (!advance_batch(box)) {
       return;  // the next call of the batch is under way.
     }
+    // The keys the player pressed while it ran, which `step()` held for
+    // it (seam.h), reach the buffer now and not a step later: the point
+    // offered below is where a handler looks for one, and a handler that
+    // found none would start another batch and hold them again.
+    box.take_held_keys();
     // The batch is done and the machine is back on the instruction the
     // handler was called at — which is this seam's point, and the point
     // has not been offered for it yet. **Offer it again**, at the

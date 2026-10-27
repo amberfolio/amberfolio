@@ -444,6 +444,13 @@ class machine final : public cpu::bus {
     return keyboard_.enqueue(*this, keystroke);
   }
 
+  /// Hand the keyboard service the host's key events that waited out a
+  /// seam's batch of calls. **A seam-engine primitive, not a host entry**:
+  /// `step()` holds them while the engine is `calling()`, and the engine
+  /// calls this as the batch finishes, before it offers the batch's point
+  /// again (seam.h, "A key the player presses during a batch").
+  void take_held_keys() { keyboard_.drain(*this); }
+
   /// The DOS handle table and exit state INT 21h's handlers use
   /// (dos.h, M2-D7, #52) — present whether or not a program ever calls
   /// INT 21h, the same as the platform-interface members below.

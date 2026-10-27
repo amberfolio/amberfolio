@@ -226,7 +226,14 @@ cpu::step_status machine::step() {
   // Ctrl-Break event may itself raise INT 1Bh here, which is why this
   // has to run before the CS check that follows — its own delivery can
   // be exactly what makes that check true.
-  keyboard_.drain(*this);
+  //
+  // Not while a seam's batch of calls is running: those keys wait in the
+  // queue for it, and the engine hands them over as it finishes (seam.h,
+  // "A key the player presses during a batch"). With every seam off there
+  // is never a batch, and this is the drain it always was.
+  if (!seams_.calling()) {
+    keyboard_.drain(*this);
+  }
 
   // Then the BIOS callout, and the whole of what it costs a step that is
   // not one: a single compare of CS against the segment the stubs live
