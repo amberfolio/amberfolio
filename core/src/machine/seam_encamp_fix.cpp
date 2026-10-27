@@ -2208,8 +2208,18 @@ enum class summary_shape : std::uint8_t { whole, terse, no_spells, bare };
   ctx.set_scratch(scratch_cycles, count);
   cpu::processor& cpu = box.processor();
   const roster_reading party = read_roster(cpu, ds);
+  // **A cure still pending is a rest that did not run its course**, and
+  // that is the player stopping the Fix. The rest is the program's own
+  // memorizing time, the longest any member needs, so one that ran out
+  // has memorized every cure it was for; one with a cure still pending
+  // was ended early, which only the program's own stop-resting question
+  // does in a camp the rest came back to. A ready cure says nothing
+  // either way when two members memorize — the quicker one's cures are
+  // back before the other's — and going on would press the Fix again
+  // under a player who had just answered yes.
   if (!party.ended || party.worst_deficit == 0 ||
-      party.castable_ready_cures == 0 || !keyboard_buffer_empty(cpu)) {
+      party.castable_ready_cures == 0 || party.castable_pending_cures != 0 ||
+      !keyboard_buffer_empty(cpu)) {
     return false;
   }
   if (!ctx.inject_keystroke(fix_key_scancode, fix_key_ascii)) {

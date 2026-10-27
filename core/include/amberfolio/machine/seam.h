@@ -151,7 +151,24 @@
 //   * **It cannot hang the host.** A routine that never returns would
 //     otherwise be an emulator that never comes back; the batch carries a
 //     step budget, and exceeding it restores the snapshot and reports
-//     `call_did_not_return` rather than waiting forever.
+//     `call_did_not_return` rather than waiting forever. Restoring the
+//     registers is not restoring the program, though: a call abandoned
+//     half-way through the program's own code leaves whatever it had
+//     begun — an overlay entered, a prompt drawn — and that is
+//     corruption. The budget is a backstop against a wrong fact table,
+//     never a way out of a batch that is merely waiting.
+//   * **A key the player presses during a batch waits for it to finish.**
+//     The program's own reader keeps the *last* key in the buffer and
+//     drops the rest, so a key typed while a seam's call is waiting on
+//     the one the seam put there would replace it, and the call would
+//     wait for a key the player never knows to press — until the budget
+//     abandoned it, mid-routine. So `machine::step()` leaves the host's
+//     key events in their queue while `calling()`, and the engine hands
+//     them to the keyboard service as the batch finishes, before its
+//     point is offered again — which is when a handler that stands aside
+//     for a waiting key can see one. A batch never waits on the player.
+//     A seam that is off has no batch, so the machine with every seam off
+//     takes its keys exactly when it always did.
 //
 // A batch is *not* machine state: the snapshot and the queue are the
 // engine's, `reset()` drops them, and the serialization never sees them.
@@ -1430,6 +1447,12 @@ class seam_engine {
   [[nodiscard]] bool armed() const noexcept {
     return armed_ != 0 || call_.active || stops_owed_ != 0;
   }
+
+  /// Whether a batch of calls is outstanding: what `machine::step()` asks
+  /// before it hands the program the host's keys, which wait for the
+  /// batch (the module comment, "A key the player presses during a
+  /// batch").
+  [[nodiscard]] bool calling() const noexcept { return call_.active; }
 
   /// Whether `dispatch(box, at)` can do anything at all at this step
   /// boundary: the filter `machine::step()` asks, after `armed()`, so

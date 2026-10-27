@@ -64,6 +64,11 @@ spell. The rest is then as long as the worst wound, so in an area the game
 rolls wandering monsters for it is likely to be interrupted before it
 finishes.
 
+**Stopping it.** Press any key while it casts and it stops after the cast
+under way, with the report saying what was done; the key then reaches the
+camp bar. Press one while it rests and the game asks `STOP RESTING?` as it
+does for any rest: answer yes and the Fix stops there too.
+
 **What it will not do.** Write hit points, mend the wound statuses a
 fight leaves that resting cannot mend, or memorize a cure into a slot
 that was empty to begin with.

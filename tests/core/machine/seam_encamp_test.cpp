@@ -1315,6 +1315,30 @@ TEST(SeamEncampFix, ReportsARestStoppedShortWhenTheCuresAreStillPending) {
   EXPECT_EQ(r.title(), "Fix: Rest Stopped");
 }
 
+TEST(SeamEncampFix, StopsWhenTheRestEndedWithACureStillPending) {
+  // A cure came back and another did not: the player answered the
+  // program's own stop-resting question part-way through. The Fix is not
+  // pressed again under them, and the command is reported as stopped.
+  const rig r;
+  r.arm();
+  r.camp();
+  r.drawing_routines();
+  r.party({{.status = status_unhurt, .hit_points = 5, .most_hit_points = 17},
+           {.status = status_unhurt,
+            .hit_points = 30,
+            .most_hit_points = 30,
+            .pending_cures = 2}});
+
+  r.one_menu_pass(fix_letter);
+  a_cure_rest(r, 1, 0, 1);
+  r.step_at(point_before_input);
+  r.run_the_calls();
+
+  EXPECT_EQ(r.keys_waiting(), 0u) << "the Fix is not pressed again";
+  EXPECT_EQ(r.frames_drawn(), 1u);
+  EXPECT_EQ(r.title(), "Fix: Rest Stopped");
+}
+
 TEST(SeamEncampFix, RestsTheWoundsOutWhenNoCureCanComeBack) {
   // The cures are pending with somebody who cannot act, or in an area that
   // refuses casting: a rest gives nobody a cure to cast, so it is the

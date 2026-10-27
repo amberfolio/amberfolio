@@ -26,10 +26,12 @@
 #include <vector>
 
 #include "amberfolio/cpu/address.h"
+#include "amberfolio/cpu/processor.h"
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/edition.h"
 #include "amberfolio/machine/loader.h"
 #include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/platform.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/service_floor.h"
 #include "amberfolio/sha256.h"
@@ -110,6 +112,15 @@ unsigned queue_how_many = 1;
 bool spin_instead = false;
 /// How many batches in a row the handler will queue, one per arrival.
 unsigned queue_batches = 1;
+/// The arrival that found a key waiting and stood aside for it, the way
+/// the Encamp Fix does; zero when none has.
+unsigned stood_aside_at = 0;
+
+[[nodiscard]] bool key_waiting(machine& box) {
+  cpu::processor& cpu = box.processor();
+  return cpu.read_word(bda::segment, bda::keyboard_buffer_head) !=
+         cpu.read_word(bda::segment, bda::keyboard_buffer_tail);
+}
 
 /// The handler under test: place a byte, queue `queue_how_many` calls
 /// that name it, and return. It acts once — a second arrival would queue
@@ -117,11 +128,13 @@ unsigned queue_batches = 1;
 /// instruction.
 void ask_the_program(machine& box, seam_context& ctx) {
   ++handler_runs;
-  if (handler_runs > queue_batches) {
+  if (handler_runs > queue_batches || key_waiting(box)) {
+    if (stood_aside_at == 0 && key_waiting(box)) {
+      stood_aside_at = handler_runs;
+    }
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
-  static_cast<void>(box);
 
   std::uint16_t segment = 0;
   std::uint16_t offset = 0;
@@ -224,6 +237,7 @@ struct rig {
     queue_how_many = 1;
     spin_instead = false;
     queue_batches = 1;
+    stood_aside_at = 0;
     inside_runs = 0;
     outside_runs = 0;
     inside_call_refused = false;
@@ -381,6 +395,31 @@ TEST(SeamCallProgram, OffersThePointAgainWhenTheBatchIsDone) {
   EXPECT_EQ(handler_runs, 4u)
       << "three batches, and the arrival that decided there was no fourth";
   EXPECT_EQ(r.word_at(data_segment, call_count), 3u);
+}
+
+/// A key the player presses while a batch runs waits for it, and is in
+/// the buffer when the point is offered again: the arrival a handler
+/// stands aside at. The program's own reader keeps the last key in the
+/// buffer, so a key let through mid-batch would replace the one a seam
+/// put there for the routine it called, and that routine would wait.
+TEST(SeamCallProgram, HoldsTheHostsKeysUntilTheBatchIsDone) {
+  const rig r;
+  queue_batches = 2;
+  ASSERT_EQ(r.box->seams().enable("test-call"), seam_reason::none);
+  r.stand_on_the_point();
+
+  r.box->step();
+  ASSERT_TRUE(r.batch_running());
+  ASSERT_TRUE(r.box->post_key(0x1E, key_action::down));
+  r.box->step();
+  EXPECT_FALSE(key_waiting(*r.box)) << "the key waits for the batch";
+
+  static_cast<void>(r.run(600));
+
+  EXPECT_EQ(stood_aside_at, 2u)
+      << "and is there at the arrival the point is offered again";
+  EXPECT_EQ(r.word_at(data_segment, call_count), 1u)
+      << "so the handler stood aside rather than queue its second batch";
 }
 
 TEST(SeamCallProgram, RefusesMoreCallsThanABatchHolds) {

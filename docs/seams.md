@@ -187,6 +187,20 @@ Properties:
   state and is hashed; an IRET left at the sentinel would alter every
   run. A call that does not come back is caught by the batch's **step
   budget**, which restores the snapshot and reports `call_did_not_return`.
+  The registers come back, the program does not: a call abandoned
+  part-way leaves what it began (an overlay entered, a prompt up), and
+  the run is corrupt from there. The budget catches a wrong fact table;
+  a batch must never be left waiting.
+- **The player's keys wait for the batch.** `machine::step()` leaves host
+  key events in their queue while the engine is `calling()`, and the
+  engine hands them over as the batch finishes, before its point is
+  offered again. The program's read keeps the last key waiting and drops
+  the rest, so a key let in mid-batch replaced the one a seam had put
+  there for the routine it called: the Fix's target picker then waited
+  for a key nobody knew to press, the budget abandoned it inside the cast
+  overlay, and the screen filled with garbage and asked for a disk that
+  does not exist (`SeamCallProgram.HoldsTheHostsKeys…`). A seam that is
+  off has no batch, so this never touches the plain machine.
 - **The budget is a bound against never, not against slow**: sixteen
   million steps. The program's cast driver repaints its screen off the
   disk at one to two million steps per call, and a budget of 250,000
@@ -1016,11 +1030,14 @@ Facts it relies on:
   so it lasts the program's own memorization time, and the camp menu's
   next pass posts the Fix's own key (scan `0x21`, `F`) for the bar it is
   about to draw: the command goes on and casts what the rest memorized.
-  It goes on only while somebody is still hurt and somebody who can act
-  holds a cure ready; otherwise the command is reported as any rest is (a
-  rest the player ended before the memorizing has its cures still
-  pending, and is `Fix: Rest Stopped`). A key the player has typed stops
-  it. Backstops: sixteen casts between two rests, twenty-four cycles a
+  It goes on only while somebody is still hurt, somebody who can act
+  holds a cure ready and nobody who can act still holds one pending;
+  otherwise the command is reported as any rest is. A cure still pending
+  is a rest the player ended with the program's own `STOP RESTING?`
+  before the memorizing was done (with two casters the quicker one's
+  cures are back by then), and is `Fix: Rest Stopped`. A key the player
+  types while the Fix casts stops it at the next cast, `Fix: Stopped`,
+  because the key waits out the cast's batch (§3). Backstops: sixteen casts between two rests, twenty-four cycles a
   command. Driven on slot A wounded by the cheat: `HEALED 193 HP, 43
   SPELLS, 1:22:45`, where resting the deficit out took 34 days with 5.
   Two of the seam's words (§3): casts since the last rest, and the
