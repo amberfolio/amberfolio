@@ -12,6 +12,7 @@
 #include "amberfolio/machine/edition.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/memory_map.h"
+#include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/text_face.h"
 
@@ -23,23 +24,11 @@ namespace {
 // The facts
 // ---------------------------------------------------------------------------
 
-/// Where one binary keeps its font: the data segment as an offset in the
-/// loaded image, and the far pointer to the glyphs as an offset in that
-/// segment. The same two facts the seams read the font through
-/// (seams.md §10, the zone label), stated for this read's own binaries.
-struct font_location {
-  std::string_view fingerprint;
-  std::uint32_t dgroup_offset;
-  std::uint16_t font_pointer;
-};
-
-/// The baseline edition (edition.h), and only it.
-constexpr std::array<font_location, 1> locations{{
-    {.fingerprint =
-         "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd",
-     .dgroup_offset = 0xC7C0,
-     .font_pointer = 0x5E20},
-}};
+/// The program whose font this read finds (program_profile.h): the
+/// baseline edition, and only it. The font is where the seams read it
+/// from (seams.md §10, the zone label): the far pointer in the data
+/// segment.
+constexpr const program_profile& profile = pool_of_radiance;
 
 // ---------------------------------------------------------------------------
 // The matcher
@@ -229,13 +218,7 @@ screen_text_trouble read_screen_text(const machine& box,
   if (!seams.have_program()) {
     return screen_text_trouble::no_program;
   }
-  const font_location* where = nullptr;
-  for (const font_location& known : locations) {
-    if (digest_is(seams.program(), known.fingerprint)) {
-      where = &known;
-    }
-  }
-  if (where == nullptr) {
+  if (!digest_is(seams.program(), profile.fingerprint)) {
     return screen_text_trouble::wrong_binary;
   }
 
@@ -245,7 +228,7 @@ screen_text_trouble read_screen_text(const machine& box,
   // that would run off conventional memory — is its own "no font yet".
   const std::span<const std::uint8_t> ram = box.memory().ram();
   const std::uint32_t pointer_at =
-      seams.image_base() + where->dgroup_offset + where->font_pointer;
+      seams.image_base() + profile.dgroup_offset() + profile.data_font_pointer;
   if (pointer_at + 4 > ram.size()) {
     return screen_text_trouble::no_font;
   }

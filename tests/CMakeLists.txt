@@ -54,6 +54,7 @@ add_executable(amberfolio-core-tests
   core/machine/pic_test.cpp
   core/machine/pit_test.cpp
   core/machine/platform_test.cpp
+  core/machine/program_profile_test.cpp
   core/machine/psg_test.cpp
   core/machine/renderer_test.cpp
   core/machine/replay_test.cpp

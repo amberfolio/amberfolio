@@ -284,6 +284,7 @@
 #include "amberfolio/machine/ega.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/overlay.h"
+#include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/seam.h"
 #include "automap_overland.h"
 #include "seam_builtin.h"
@@ -295,10 +296,11 @@ namespace {
 // The facts (docs/explored-overlay.md §2)
 // ---------------------------------------------------------------------------
 
-/// The SHA-256 of the program image every offset below is a fact about —
-/// the baseline edition (edition.h), and only it.
-constexpr std::array<std::string_view, 1> explored_binaries{
-    "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd"};
+/// The program this seam's facts are about (program_profile.h): the
+/// baseline edition, and only it. The seam is available on it and on no
+/// other binary.
+constexpr const program_profile& profile = pool_of_radiance;
+constexpr auto explored_binaries = fingerprints_of(std::array{&profile});
 
 /// **The points**, as offsets from the image segment, all four resident.
 ///
@@ -310,7 +312,7 @@ constexpr std::array<std::string_view, 1> explored_binaries{
 /// the back buffer's far pointer, the per-row dirty flags, the per-row
 /// minimum and maximum x, and the per-row destination x.
 ///
-/// The other two are the automap's (`seam_automap.cpp`), shared: the
+/// The other two are the profile's, and the automap's points too: the
 /// program's "is a key waiting" routine, which is where the program is
 /// between commands and therefore where the trail is recorded, and the
 /// thunk every menu bar in the game goes up through, which is how any
@@ -324,29 +326,12 @@ constexpr std::array<std::string_view, 1> explored_binaries{
 /// route: a step's redraw reaches it 25 times, and a run that ends an
 /// event with its picture still up does not reach it at all (#545).
 constexpr std::uint32_t present_return = 0x649B;
-constexpr std::uint32_t key_pending_entry = 0xA6FD;
-constexpr std::uint32_t command_bar_entry = 0x3C7A;
 constexpr std::uint32_t window_square_blit = 0x3EBA;
-
-/// Where the data segment begins, as an offset in the image — the one
-/// fact every data-segment offset is relative to, checked against the DS
-/// the program is actually holding rather than trusted.
-constexpr std::uint32_t dgroup_offset = 0xC7C0;
-
-/// The game mode, and the value that is the wilderness travel view.
-constexpr std::uint16_t data_game_mode = 0x49F3;
-constexpr std::uint8_t mode_overland = 3;
 
 /// Which view is up — 2, 3 and 4 are the three wilderness areas — is
 /// the shared recorder's to check, and it hands the answer back in its
 /// `overland_look` (`automap_overland.h`), so this file does not name
 /// that offset a second time.
-
-/// The per-view-kind **column bias**, a byte table indexed by the view
-/// kind. It puts each of the three areas in its own sixteen-column band
-/// of the one 44-column terrain table, and the seam reads it out of the
-/// program rather than carrying its values.
-constexpr std::uint16_t data_view_column_bias = 0x3C76;
 
 /// The widest bias a 44-column table could carry, which is what says a
 /// byte read here is the byte the facts describe.
@@ -426,8 +411,8 @@ constexpr std::uint16_t video_window_segment = 0xA000;
 /// every handler declines on that.
 [[nodiscard]] std::uint16_t data_segment(cpu::processor& cpu,
                                          const seam_context& ctx) noexcept {
-  const auto wanted = static_cast<std::uint16_t>((ctx.image_base() / 16U) +
-                                                 (dgroup_offset / 16U));
+  const auto wanted = static_cast<std::uint16_t>(
+      (ctx.image_base() / 16U) + (profile.dgroup_offset() / 16U));
   const std::uint16_t held = cpu.regs()[cpu::sreg::ds];
   return held == wanted ? held : static_cast<std::uint16_t>(0);
 }
@@ -665,7 +650,8 @@ void paint(machine& box, seam_context& ctx, std::uint16_t ds,
     return;
   }
 
-  const int bias = cpu.read_byte(ds, at(data_view_column_bias, look.view_kind));
+  const int bias =
+      cpu.read_byte(ds, at(profile.data_view_column_bias, look.view_kind));
   if (bias > max_column_bias) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
@@ -737,7 +723,7 @@ void at_present_return(machine& box, seam_context& ctx) {
   // The cheapest byte first. This routine is the program's one present
   // and is reached from every screen it draws, so the common case by an
   // enormous margin is one read and a return.
-  if (cpu.read_byte(ds, data_game_mode) != mode_overland) {
+  if (cpu.read_byte(ds, profile.data_game_mode) != profile.mode_travel) {
     return;
   }
 
@@ -762,7 +748,7 @@ void at_window_square(machine& box, seam_context& ctx) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
-  if (cpu.read_byte(ds, data_game_mode) == mode_overland) {
+  if (cpu.read_byte(ds, profile.data_game_mode) == profile.mode_travel) {
     ctx.set_scratch(word_window_taken, 0);
   }
 }
@@ -813,10 +799,10 @@ constexpr std::array<seam_point, 4> explored_points{
       .offset = present_return,
       .run = &at_present_return},
      {.module = resident_image,
-      .offset = key_pending_entry,
+      .offset = profile.key_pending_entry,
       .run = &at_key_pending},
      {.module = resident_image,
-      .offset = command_bar_entry,
+      .offset = profile.command_bar_entry,
       .run = &at_command_bar},
      {.module = resident_image,
       .offset = window_square_blit,

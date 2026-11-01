@@ -66,6 +66,7 @@ add_library(amberfolio-core STATIC
   src/machine/pit.cpp
   src/machine/platform.cpp
   src/machine/port_map.cpp
+  src/machine/program_profile.cpp
   src/machine/psg.cpp
   src/machine/renderer.cpp
   src/machine/replay.cpp

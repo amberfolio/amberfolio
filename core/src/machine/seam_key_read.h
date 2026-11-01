@@ -30,12 +30,12 @@
 // it from. One keystroke, because the program drains its keyboard after
 // every key it reads (docs/seams.md §8.4).
 //
-// **Why this is shared and the addresses are not.** `automap_overland.h`
-// says a fact table belongs to the file that acts on it, and that stands:
-// `0x49F3` is spelled in three seams. This is not a table. It is one
-// answer to one question about one routine, and the argument above is
-// longer than the constants — so it is kept once and referred to, and a
-// seam that starts claiming at the read gets both by including this.
+// **Why this is here and not in the profile.** The read's address is the
+// profile's (`key_read_entry`, program_profile.h). This is not a fact about
+// the program: it is one answer to one question about one routine, and the
+// argument above is longer than the constants — so it is kept once and
+// referred to, and a seam that starts claiming at the read gets both by
+// including this.
 
 #pragma once
 

@@ -2349,9 +2349,10 @@ A fight (game mode 5, the tactical grid):
   screen text: nothing the program can see moves, nothing is kept, and it
   is in no hash and no recording. A page that never asks pays nothing.
   The facts are the automap's and the explored overlay's
-  (`docs/explored-overlay.md` §2), restated for this read's own binary in
-  `core/src/machine/scene.cpp`, with the move step's terrain classes
-  (overlay 14 rel `0x0818`).
+  (`docs/explored-overlay.md` §2), read from the program profile
+  (`core/include/amberfolio/machine/program_profile.h`), with the move
+  step's terrain classes (overlay 14 rel `0x0818`) in
+  `core/src/machine/scene.cpp`.
 - **The tactical grid's facts**, each read by the fight's setup or round
   loop and by its drawing. The figures: far pointers to their records at
   `0x65B9 + 4·slot`, one-based, and their squares at `0x5F27 + 4·slot`

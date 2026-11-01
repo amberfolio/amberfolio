@@ -35,7 +35,7 @@ agreed (`docs/seams.md` §8.1). "Driven" means a run under the §4 recipe.
 
 | what | where | second route |
 | --- | --- | --- |
-| game mode; **3** is the travel view | `0x49F3` | used by `seam_cheats.cpp`, `seam_encamp_fix.cpp`, `seam_automap.cpp`; driven, 3 on arrival |
+| game mode; **3** is the travel view | `0x49F3` | the program profile's (`program_profile.h`), read by most seams; driven, 3 on arrival |
 | view kind; **2, 3, 4** are the three wilderness areas | `0x49FA` | the redraw's own test is `> 1 && < 5`; driven, 2 on the area in §4 |
 | a scripted move is in flight | `0x442F` | `seam_automap.cpp` reads the same byte |
 | the disk the area's files come from | `0x5376` | driven, 6 on the area in §4 |

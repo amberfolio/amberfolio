@@ -16,6 +16,7 @@
 #include "amberfolio/machine/edition.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/memory_map.h"
+#include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/seam.h"
 #include "automap_faces.h"
 #include "seam_builtin.h"
@@ -23,78 +24,31 @@
 namespace amberfolio::machine {
 namespace {
 
+/// The program this file's facts are about (program_profile.h): the
+/// baseline edition, and only it.
+constexpr const program_profile& profile = pool_of_radiance;
+
 // ---------------------------------------------------------------------------
 // The facts
 // ---------------------------------------------------------------------------
 //
-// The automap's and the explored overlay's, restated for this read's own
-// binary, which is the house pattern: a fact table belongs to the file
-// that acts on it (`automap_overland.h`). Each has its second route where
-// it was first written down: `docs/seams.md` §10 and
-// `docs/explored-overlay.md` §2.
-
-/// The baseline edition (edition.h), and only it.
-struct scene_binary {
-  std::string_view fingerprint;
-  std::uint32_t dgroup_offset;
-};
+// The ones the automap and the explored overlay read too are the
+// profile's (program_profile.h); the rest are this read's own. Each has
+// its second route where it was first written down: `docs/seams.md` §10
+// and `docs/explored-overlay.md` §2.
 
 static_assert(scene_view_max == map_format::sight_cells_max);
 static_assert(scene_map_max == automap_map_cells);
 
-constexpr std::array<scene_binary, 1> binaries{{
-    {.fingerprint =
-         "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd",
-     .dgroup_offset = 0xC7C0},
-}};
-
-/// The game mode byte: 4 is the interior screen, 3 the travel view, 5 a
-/// fight.
-constexpr std::uint16_t data_game_mode = 0x49F3;
-constexpr std::uint8_t mode_travel = 3;
-constexpr std::uint8_t mode_interior = 4;
-constexpr std::uint8_t mode_combat = 5;
-
-/// Which view is up: 1 the interior grid, 2 to 4 the three wilderness
-/// areas.
-constexpr std::uint16_t data_view_kind = 0x49FA;
-constexpr std::uint8_t view_kind_grid = 1;
-constexpr std::uint8_t view_kind_first_overland = 2;
-constexpr std::uint8_t view_kind_last_overland = 4;
-
-/// Non-zero while the program is running a scripted move between areas;
-/// the position is not to be believed while it is.
-constexpr std::uint16_t data_in_transition = 0x442F;
-
-/// The disk the area's files come from, and the area's own id.
-constexpr std::uint16_t data_disk_number = 0x5376;
-constexpr std::uint16_t data_area_id = 0x84DC;
-
-/// The party's square and facing everywhere but the overland.
-constexpr std::uint16_t data_party_x = 0x6AAD;
-constexpr std::uint16_t data_party_y = 0x6AAE;
-constexpr std::uint16_t data_party_facing = 0x6AAF;
-
-/// The loaded map: a far pointer, offset then segment.
-constexpr std::uint16_t data_map_pointer = 0x6A5C;
-
-/// The current area record: a far pointer, offset then segment. Inside
-/// it, the loaded geometry block (the third byte of a map's identity), the
-/// party's overland column and row (words), and the word that says the
-/// program draws the wilderness in 3D instead.
-constexpr std::uint16_t data_area_record = 0x49D2;
-constexpr std::uint16_t record_geometry_block = 0x18A;
-constexpr std::uint16_t record_overland_column = 0x186;
-constexpr std::uint16_t record_overland_row = 0x188;
-constexpr std::uint16_t record_shown_in_3d = 0x1CC;
-constexpr std::uint16_t record_reach = record_shown_in_3d + 2;
+/// How far into the current area record this read reaches: the last byte
+/// of the word that says the wilderness is drawn in 3D.
+constexpr std::uint16_t record_reach = profile.area_shown_in_3d + 2;
 
 /// The overland terrain table: 36 rows at a stride of 44, three sixteen-
 /// column bands, one per wilderness area, at the per-view-kind column
 /// bias in the byte table after it.
 constexpr std::uint16_t data_terrain = 0x3648;
 constexpr std::uint16_t terrain_stride = 0x2C;
-constexpr std::uint16_t data_view_column_bias = 0x3C76;
 constexpr int max_column_bias = terrain_stride - 1;
 
 /// **What the travel view's move step does with a terrain number**
@@ -163,9 +117,8 @@ constexpr std::array<shape_size, 5> shapes{{{.width = 0, .height = 0},
                                             {.width = 2, .height = 1},
                                             {.width = 2, .height = 2}}};
 
-/// Whose turn it is: a far pointer to the acting figure's record, which the
-/// round loop writes and the spell aim reads.
-constexpr std::uint16_t data_actor = 0x5D92;
+// In a fight the current member (the profile's) is whose turn it is: the
+// round loop writes it and the spell aim reads it.
 
 /// A figure's record: a Pascal name of up to fifteen letters, the status
 /// (the sheet's word), whether it is still in the fight, its side (0 the
@@ -174,12 +127,8 @@ constexpr std::uint16_t data_actor = 0x5D92;
 /// current hit points.
 constexpr std::uint16_t record_bytes = 0x11D;
 constexpr std::uint16_t record_name = 0x00;
-constexpr std::uint16_t record_status = 0x10C;
-constexpr std::uint16_t record_in_fight = 0x10D;
-constexpr std::uint16_t record_side = 0x10E;
 constexpr std::uint16_t record_computer = 0x10F;
 constexpr std::uint16_t record_ac = 0x111;
-constexpr std::uint16_t record_hp = 0x11B;
 constexpr int ac_base = 0x3C;
 
 /// The fallen: a count, and seven bytes each in the table before it — the
@@ -343,28 +292,29 @@ void name_zone(scene& out, std::uint8_t geo,
 
 [[nodiscard]] bool read_explore(const memory& ram, const automap_state* kept,
                                 scene& out) {
-  if (ram.data(data_view_kind) != view_kind_grid) {
+  if (ram.data(profile.data_view_kind) != profile.view_kind_grid) {
     return false;
   }
-  const std::uint32_t record = ram.follow(data_area_record, record_reach);
+  const std::uint32_t record =
+      ram.follow(profile.data_area_record, record_reach);
   const std::uint32_t map_at =
-      ram.follow(data_map_pointer, map_format::map_bytes);
+      ram.follow(profile.data_map_pointer, map_format::map_bytes);
   if (record == 0 || map_at == 0) {
     return false;
   }
-  const std::uint8_t facing = ram.data(data_party_facing);
+  const std::uint8_t facing = ram.data(profile.data_party_facing);
   if ((facing & 1U) != 0 || facing > scene_west) {
     // Only the four cardinals are a party facing.
     return false;
   }
 
   out.screen = scene_screen::explore;
-  out.disk = ram.data(data_disk_number);
-  out.area = ram.data(data_area_id);
-  out.x = static_cast<std::uint8_t>(ram.data(data_party_x) & 0x0FU);
-  out.y = static_cast<std::uint8_t>(ram.data(data_party_y) & 0x0FU);
+  out.disk = ram.data(profile.data_disk_number);
+  out.area = ram.data(profile.data_area_id);
+  out.x = static_cast<std::uint8_t>(ram.data(profile.data_party_x) & 0x0FU);
+  out.y = static_cast<std::uint8_t>(ram.data(profile.data_party_y) & 0x0FU);
   out.facing = facing;
-  const std::uint8_t geo = ram.at(record + record_geometry_block);
+  const std::uint8_t geo = ram.at(record + profile.area_geometry_block);
 
   const map_format::grid grid = read_grid(ram, map_at);
   const map_format::zone_place where{.map = &grid, .x = out.x, .y = out.y};
@@ -407,20 +357,23 @@ void name_zone(scene& out, std::uint8_t geo,
 }
 
 [[nodiscard]] bool read_travel(const memory& ram, scene& out) {
-  const std::uint8_t kind = ram.data(data_view_kind);
-  if (kind < view_kind_first_overland || kind > view_kind_last_overland) {
+  const std::uint8_t kind = ram.data(profile.data_view_kind);
+  if (kind < profile.view_kind_first_overland ||
+      kind > profile.view_kind_last_overland) {
     return false;
   }
-  const std::uint32_t record = ram.follow(data_area_record, record_reach);
-  if (record == 0 || ram.word_at(record + record_shown_in_3d) != 0) {
+  const std::uint32_t record =
+      ram.follow(profile.data_area_record, record_reach);
+  if (record == 0 || ram.word_at(record + profile.area_shown_in_3d) != 0) {
     // With that word set the program draws these areas in the interior
     // view, with the view kind still saying wilderness.
     return false;
   }
-  const std::uint16_t column = ram.word_at(record + record_overland_column);
-  const std::uint16_t row = ram.word_at(record + record_overland_row);
-  const int bias = ram.data(data_view_column_bias + kind);
-  const std::uint8_t facing = ram.data(data_party_facing);
+  const std::uint16_t column =
+      ram.word_at(record + profile.area_overland_column);
+  const std::uint16_t row = ram.word_at(record + profile.area_overland_row);
+  const int bias = ram.data(profile.data_view_column_bias + kind);
+  const std::uint8_t facing = ram.data(profile.data_party_facing);
   if (column >= automap_overland_columns || row >= automap_overland_rows ||
       bias > max_column_bias || (facing & 1U) != 0 || facing > scene_west) {
     // The program clamps the position in its own move step, so one past
@@ -429,8 +382,8 @@ void name_zone(scene& out, std::uint8_t geo,
   }
 
   out.screen = scene_screen::travel;
-  out.disk = ram.data(data_disk_number);
-  out.area = ram.data(data_area_id);
+  out.disk = ram.data(profile.data_disk_number);
+  out.area = ram.data(profile.data_area_id);
   out.x = static_cast<std::uint8_t>(column);
   out.y = static_cast<std::uint8_t>(row);
   out.facing = facing;
@@ -462,15 +415,15 @@ void read_combatant(const memory& ram, std::uint32_t record,
     out.name[i] = static_cast<char>(ram.at(record + record_name + 1U + i));
   }
   out.name_length = length;
-  out.side =
-      ram.at(record + record_side) == 0 ? scene_side::party : scene_side::enemy;
+  out.side = ram.at(record + profile.record_side) == 0 ? scene_side::party
+                                                       : scene_side::enemy;
   out.player = ram.at(record + record_computer) == 0;
-  out.standing = ram.at(record + record_in_fight) != 0;
-  const std::uint8_t status = ram.at(record + record_status);
+  out.standing = ram.at(record + profile.record_held) != 0;
+  const std::uint8_t status = ram.at(record + profile.record_status);
   out.status = status <= static_cast<std::uint8_t>(scene_status::gone)
                    ? static_cast<scene_status>(status)
                    : scene_status::okay;
-  out.hp = ram.at(record + record_hp);
+  out.hp = ram.at(record + profile.record_hit_points);
   out.ac = ac_base - static_cast<int>(ram.at(record + record_ac));
 }
 
@@ -645,30 +598,34 @@ void read_aim(const memory& ram, const scene_aim_frame& at,
   }
 
   out.screen = scene_screen::combat;
-  out.disk = ram.data(data_disk_number);
-  out.area = ram.data(data_area_id);
+  out.disk = ram.data(profile.data_disk_number);
+  out.area = ram.data(profile.data_area_id);
   const std::uint32_t area_record =
-      ram.follow(data_area_record, record_geometry_block + 1);
+      ram.follow(profile.data_area_record, profile.area_geometry_block + 1);
   // A fight on the grid leaves the party's square and the map where they
   // were (the program builds the field from both), so a lair is named in
   // one; a fight on the overland has no square on a grid.
   const std::uint32_t map_at =
-      ram.follow(data_map_pointer, map_format::map_bytes);
+      ram.follow(profile.data_map_pointer, map_format::map_bytes);
   map_format::grid grid{};
   map_format::zone_place where{};
-  if (ram.data(data_view_kind) == view_kind_grid && map_at != 0) {
+  if (ram.data(profile.data_view_kind) == profile.view_kind_grid &&
+      map_at != 0) {
     grid = read_grid(ram, map_at);
-    where = {.map = &grid,
-             .x = static_cast<std::uint8_t>(ram.data(data_party_x) & 0x0FU),
-             .y = static_cast<std::uint8_t>(ram.data(data_party_y) & 0x0FU)};
+    where = {
+        .map = &grid,
+        .x = static_cast<std::uint8_t>(ram.data(profile.data_party_x) & 0x0FU),
+        .y = static_cast<std::uint8_t>(ram.data(profile.data_party_y) & 0x0FU)};
   }
-  name_zone(out,
-            area_record == 0 ? 0 : ram.at(area_record + record_geometry_block),
-            where);
+  name_zone(
+      out,
+      area_record == 0 ? 0 : ram.at(area_record + profile.area_geometry_block),
+      where);
   out.window_x = window_x;
   out.window_y = window_y;
 
-  const std::uint32_t actor = ram.follow(data_actor, record_bytes);
+  const std::uint32_t actor =
+      ram.follow(profile.data_current_member, record_bytes);
   std::array<slot_seen, scene_combatants_max> seen{};
   std::array<std::uint32_t, scene_combatants_max> listed{};
   for (unsigned slot = 1; slot <= slots; ++slot) {
@@ -1148,18 +1105,18 @@ scene_trouble read_scene_in(std::span<const std::uint8_t> ram,
                             const scene_aim_frame* aim, scene& out) noexcept {
   out = {};
   const memory memory_now(ram, data_base);
-  if (memory_now.data(data_in_transition) != 0) {
+  if (memory_now.data(profile.data_in_transition) != 0) {
     return scene_trouble::elsewhere;
   }
   bool found = false;
-  switch (memory_now.data(data_game_mode)) {
-    case mode_interior:
+  switch (memory_now.data(profile.data_game_mode)) {
+    case profile.mode_adventure:
       found = read_explore(memory_now, kept, out);
       break;
-    case mode_travel:
+    case profile.mode_travel:
       found = read_travel(memory_now, out);
       break;
-    case mode_combat:
+    case profile.mode_combat:
       found = read_combat(memory_now, aim, out);
       break;
     default:
@@ -1178,13 +1135,7 @@ scene_trouble read_scene(const machine& box, scene& out) noexcept {
   if (!seams.have_program()) {
     return scene_trouble::no_program;
   }
-  const scene_binary* where = nullptr;
-  for (const scene_binary& known : binaries) {
-    if (digest_is(seams.program(), known.fingerprint)) {
-      where = &known;
-    }
-  }
-  if (where == nullptr) {
+  if (!digest_is(seams.program(), profile.fingerprint)) {
     return scene_trouble::wrong_binary;
   }
   // The explored map is the automap's, and only while it is on is it
@@ -1195,7 +1146,7 @@ scene_trouble read_scene(const machine& box, scene& out) noexcept {
   scene_aim_frame aim{};
   const bool aim_kept = aim_watch_now(box, aim);
   return read_scene_in(
-      box.memory().ram(), seams.image_base() + where->dgroup_offset,
+      box.memory().ram(), seams.image_base() + profile.dgroup_offset(),
       kept ? &box.automap() : nullptr, aim_kept ? &aim : nullptr, out);
 }
 

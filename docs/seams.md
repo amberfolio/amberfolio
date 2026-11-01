@@ -445,9 +445,10 @@ DOS, so a tracker whose only input is `note_read()` sees neither. Both were obse
 landing nineteen frames later, and the same module 0x73 paragraphs from
 its landing after a screen's loading. The manager keeps its own note of
 where each module is, in the resident image, and
-`seam_module::load_segment_at` is the offset of that word:
+`seam_module::load_segment_at` is the offset of that word. The combat
+overlay, as the program profile states it:
 
-    constexpr seam_module end_check{
+    inline constexpr seam_module combat{
         .file = "GAME.OVR",
         .file_offset = 38919,
         .length = 4735,
@@ -488,14 +489,36 @@ game runs as a plain machine, the hosts say so, and no seam is
 available. Availability is per seam: a seam is unavailable for any
 binary its `fingerprints` do not name.
 
+**The program profile** (`machine/program_profile.h`, #552) is one
+table per program image of the facts more than one file acts on: the
+data segment, the game mode byte and its values, the view kind, the
+party's records and pointers, the area record, the bar highlight, the
+keyboard's pushback slot, the font pointer, the resident routines a seam
+watches or calls (the keyboard's two entries, the clears, the frame and
+string drawers, the command-bar thunk, the roster drawer and the screen
+composer), the overlay modules with their load-segment words, and the
+menu-bar routine's and the adventuring loop's shared offsets. Each is
+stated once. Only Pool of Radiance has a profile (`pool_of_radiance`),
+and `find_program_profile()` answers null for anything else.
+
+A seam's `fingerprints` are the fingerprints of the profiles its facts
+are about (`fingerprints_of()`): each seam file names its program once
+(`constexpr const program_profile& profile = pool_of_radiance;`) and
+reads the shared facts through it. A seam's own facts, the ones no other
+file reads, stay in its own file beside its mechanism. The scene and
+screen-text reads check the program the same way and answer
+`wrong_binary` for one without a profile. `ProgramProfile.*` in
+`tests/core/machine/program_profile_test.cpp` checks that every seam is
+available only on programs that have one.
+
 **One program image, two releases, every seam valid on both** (#396).
 The release sold on GOG and Steam and the third-party repack the facts
 were gathered on boot the same START.EXE; their requirement rows are
 `por-store` and `por-archive` (`docs/hosts.md` §5). Every file the two
 share is byte-identical but GAME.OVR, and GAME.OVR differs in two bytes,
 at file offsets 3288–3289, inside overlay 2 (code at file offset 2476,
-862 bytes), the copy-protection overlay. None of the three modules a
-seam pins by digest (§4) is overlay 2, and the one seam on that path is
+862 bytes), the copy-protection overlay. None of the modules a seam
+pins by digest (§4, the program profile's) is overlay 2, and the one seam on that path is
 `code-wheel`, whose points are both in the resident image. Observed on a
 copy of the GOG install, driven headlessly beside the repack with the
 same keys:
@@ -754,10 +777,17 @@ Three decisions first, because each decides what the next step may be:
   or writes; the record offsets and what each byte means where that is
   not obvious; for anything it calls, the routine's entry, its `retf N`,
   and its argument frame.
-- **Check every fact twice, by two routes.** `seam_cheats.cpp` finds the
-  load-segment word by searching the resident image for the manager's
-  record with the module's file offset and length and taking the word
-  sixteen bytes in; the check is that the search has exactly one match.
+- **Where a fact lives.** A fact another file already reads, or will, is
+  the program profile's (`program_profile.h`, §5): add it there, with
+  what it means, and read it as `profile.<name>`; never copy its value
+  into a second file. A fact only this seam reads stays in the seam's
+  own file. A module is always the profile's, with its load-segment
+  word.
+- **Check every fact twice, by two routes.** A load-segment word is found
+  by searching the resident image for the manager's record with the
+  module's file offset and length and taking the word sixteen bytes in
+  (`program_profile.h`); the check is that the search has exactly one
+  match.
   **Prefer a fact derived from the artifact over one inferred from a
   trace** (§10, "How a wrong fact was found").
 - **Argument frames**: reverse of source order, segment before offset
@@ -1333,8 +1363,8 @@ PLAN.md §5 item 2's in-game half; ingestion is #174 and
 | the program's word-wrapping **message box**, where a script's every PRINT ends | resident image | the citation watch: reads the Pascal string (offset at SP+4, segment at SP+6) into a rolling window; the box's home-and-clear flag is the message boundary |
 | the adventuring loop's call into the menu-bar routine, one pair per view mode (M5-E4a, #221) | the adventuring loop's module | before: splices `Notes` onto the party's bar, sets `bar_live()`; at the return: splices it out, clears `bar_live()`, reads the letter from `AL` and the routine's out-parameter, puts the highlight byte back where the routine found it (#330) |
 
-Rejected as the watch: `image_draw_string`, the string drawer the Encamp
-Fix calls, because on this program it draws credits, menus and the
+Rejected as the watch: the string drawer the Encamp Fix calls (the
+profile's `draw_string_entry`), because on this program it draws credits, menus and the
 position line and no narration (#232).
 
 **The citation is a shape**: the word a numbered section is called by
@@ -1762,7 +1792,7 @@ temporary print, removed) and read the party panel for the selected member.
   so a raw Up or Down is never a command there; the two bars checked
   driven (the temple's and the shop's) did not act on one.
 - **The module words** for overlays 4, 6 and 7 (`0x230`, `0x290`, `0x2C0`)
-  are the manager's records, found by the search `seam_cheats.cpp`
+  are the manager's records, found by the search `program_profile.h`
   documents: one match each, and the same search returns the known
   `0x260`, `0x360`, `0x690`, `0x730`, `0x760`, `0x790`, `0x8D0` and
   `0x3C60`. Driven: the word read at the point equalled the frame's

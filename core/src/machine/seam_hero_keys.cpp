@@ -13,9 +13,9 @@
 //
 // **The party is a linked list of records, and one far pointer names the
 // selected member.** The head is a far pointer in the data segment
-// (`data_party_head`), each record holds the next member's far pointer at
+// (`data_roster_head`), each record holds the next member's far pointer at
 // `record_next`, and the selected member is another far pointer
-// (`data_current`). The program changes the selection through one resident
+// (`data_current_member`), all three the profile's. The program changes the selection through one resident
 // routine, the party cursor: **on `G` it steps back** (from the head it
 // wraps to the tail, from anyone else it goes to the member whose next is
 // the current one), **on `O` it steps forward** (the tail stays where it
@@ -150,6 +150,7 @@
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/memory_map.h"
 #include "amberfolio/machine/overlay.h"
+#include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/service_floor.h"
 #include "seam_builtin.h"
@@ -160,23 +161,11 @@
 namespace amberfolio::machine {
 namespace {
 
-// --- The module the menu-bar routine lives in ------------------------------
+/// The program this file's facts are about (program_profile.h): the
+/// baseline edition, and only it.
+constexpr const program_profile& profile = pool_of_radiance;
 
-/// The same module, word and point `bar-keys` and `list-arrows` use; the
-/// facts and their checks are documented there (docs/seams.md §10).
-constexpr std::uint32_t menu_load_segment_at = 0x3C60;
-
-constexpr seam_module menu_module{
-    .file = "GAME.OVR",
-    .file_offset = 182479,
-    .length = 4682,
-    .digest =
-        "175454bc2f527dd6757c89eaa50a6cdd27a9cf5d3aaa197b33a140f5b09a3901",
-    .load_segment_at = menu_load_segment_at};
-
-/// In the menu-bar routine: the call into the key-read routine, reached
-/// only when a key is waiting. Offset from the module's start.
-constexpr std::uint32_t key_read_call = 0x0572;
+// --- The menu-bar routine, in the menu overlay (the profile's) -----------
 
 /// Above BP in the routine's frame: the caller's return address.
 constexpr std::uint16_t frame_return_ip = 2;
@@ -186,7 +175,6 @@ constexpr std::uint16_t frame_return_cs = 4;
 
 // The party list, the selected-member pointer and the cursor's rule are
 // shared with `list-arrows`, which selects at the same bars (#469).
-using party_select::data_current;
 using party_select::far_pointer;
 using party_select::is_record;
 using party_select::max_party;
@@ -194,9 +182,6 @@ using party_select::party;
 using party_select::read_party;
 using party_select::read_pointer;
 using party_select::write_pointer;
-
-/// The program's one-byte pushback slot for an extended key's second half.
-constexpr std::uint16_t data_key_pushback = 0x8501;
 
 // --- The callers that hand Home and End to the party cursor ----------------
 
@@ -208,16 +193,13 @@ struct hero_caller {
   std::uint16_t return_offset;
 };
 
-/// The word the program's overlay manager keeps overlay 16's load segment
-/// in (`bar-keys`' table has it too).
-constexpr std::uint32_t main_menu_load_segment_at = 0x790;  // overlay 16
-
 /// The one caller: the main menu, the title screen's and every other. At
 /// every other bar with a party list, Up and Down select (`list-arrows`,
 /// and on the party's own bar `move-mode`), so the number row is the
 /// program's keypad layout again there (#479).
 constexpr std::array<hero_caller, 1> hero_callers{{
-    {.load_segment_at = main_menu_load_segment_at, .return_offset = 0x02FD},
+    {.load_segment_at = profile.roster_overlay.load_segment_at,
+     .return_offset = 0x02FD},
 }};
 
 // --- The keys, as the BIOS ring holds them: scan code high, character low --
@@ -298,7 +280,7 @@ void at_key_read(machine& box, seam_context& ctx) {
     return;
   }
   const std::uint16_t ds = regs[cpu::sreg::ds];
-  if (cpu.read_byte(ds, data_key_pushback) != 0) {
+  if (cpu.read_byte(ds, profile.data_key_pushback) != 0) {
     // The head of the ring is not the key about to be read.
     return;
   }
@@ -329,7 +311,7 @@ void at_key_read(machine& box, seam_context& ctx) {
   // then lands on the target by its own rule and the caller redraws.
   const far_pointer from =
       hero == members.size ? members.member[0] : members.member[hero];
-  write_pointer(cpu, ds, data_current, from);
+  write_pointer(cpu, ds, profile.data_current_member, from);
   cpu.write_word(bda::segment, ring_slot, key_home);
 }
 
@@ -622,7 +604,9 @@ void at_heading_copied(machine& box, seam_context& ctx) {
 // --- The definition --------------------------------------------------------
 
 constexpr std::array<seam_point, 5> hero_keys_point_table{
-    {{.module = menu_module, .offset = key_read_call, .run = &at_key_read},
+    {{.module = profile.menu_overlay,
+      .offset = profile.menu_key_read_call,
+      .run = &at_key_read},
      {.module = resident_image,
       .offset = row_cleared,
       .run = &at_row_cleared,

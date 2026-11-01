@@ -65,15 +65,18 @@
 #include <string_view>
 
 #include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/seam.h"
 #include "seam_builtin.h"
 
 namespace amberfolio::machine {
 namespace {
 
-/// The baseline edition (edition.h), and only it.
-constexpr std::array<std::string_view, 1> modern_controls_binaries{
-    "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd"};
+/// The program this seam's facts are about (program_profile.h): the
+/// baseline edition, and only it. The seam is available on it and on no
+/// other binary.
+constexpr const program_profile& profile = pool_of_radiance;
+constexpr auto modern_controls_binaries = fingerprints_of(std::array{&profile});
 
 constexpr std::size_t point_total =
     list_arrows_point_count + bar_keys_point_count + menu_cursor_point_count +

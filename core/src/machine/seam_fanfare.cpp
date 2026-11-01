@@ -101,6 +101,7 @@
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/overlay.h"
+#include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/tandy_sound.h"
 #include "fanfare_score.h"
@@ -109,31 +110,21 @@
 namespace amberfolio::machine {
 namespace {
 
-/// The SHA-256 of the program image these offsets are facts about: the
-/// baseline edition (edition.h), and only it.
-constexpr std::array<std::string_view, 1> fanfare_binaries{
-    "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd"};
+/// The program this seam's facts are about (program_profile.h): the
+/// baseline edition, and only it. The seam is available on it and on no
+/// other binary.
+constexpr const program_profile& profile = pool_of_radiance;
+constexpr auto fanfare_binaries = fingerprints_of(std::array{&profile});
 
-/// Overlay 1, the titles': file offset 212 (`0xD4`), 2062 bytes, and the
-/// word the overlay manager keeps its segment in.
-constexpr seam_module titles_module{
-    .file = "GAME.OVR",
-    .file_offset = 212,
-    .length = 2062,
-    .digest =
-        "b6ca55979d60ca53a0e0063c4929a61ca8c5f21843f77fd390598ee29fc4967a",
-    .load_segment_at = 0x1A0};
-
-/// In it: the titles routine's entry, a `push bp`.
+/// In the titles overlay (the profile's): the titles routine's entry, a
+/// `push bp`.
 constexpr std::uint32_t titles_entry = 0x0627;
 constexpr std::uint8_t push_bp = 0x55;
 
 /// The driver's dispatch entry, from the image segment.
 constexpr std::uint32_t dispatch_offset = 0x8BBC;
 
-/// The data segment is the image's paragraph `0xC7C` on; the sound setting
-/// is a byte in it, 0 for the Tandy chip.
-constexpr std::uint16_t dgroup_paragraphs = 0xC7C;
+/// The sound setting, a byte in the data segment: 0 for the Tandy chip.
 constexpr std::uint16_t data_sound = 0x5372;
 constexpr std::uint8_t sound_on_the_chip = 0;
 
@@ -148,7 +139,7 @@ constexpr std::array<std::uint8_t, 11> as_found{
 
 [[nodiscard]] std::uint16_t data_segment(const seam_context& ctx) {
   return static_cast<std::uint16_t>((ctx.image_base() >> 4U) +
-                                    dgroup_paragraphs);
+                                    profile.dgroup_paragraphs);
 }
 
 [[nodiscard]] bool sounding_on_the_chip(machine& box, const seam_context& ctx) {
@@ -215,7 +206,7 @@ void switched_off(machine& box, seam_context& /*ctx*/) {
 }
 
 constexpr std::array<seam_point, 3> fanfare_points{
-    {{.module = titles_module,
+    {{.module = profile.titles_overlay,
       .offset = titles_entry,
       .run = &start_with_the_titles},
      {.module = resident_image, .run = &play_what_is_due, .at_moment = true},

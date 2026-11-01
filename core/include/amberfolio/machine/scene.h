@@ -58,8 +58,9 @@
 //
 // The facts are the automap's and the explored overlay's
 // (`docs/seams.md` §10, `docs/explored-overlay.md` §2), the travel view's
-// move step and the tactical grid's (`docs/hosts.md` §13), each restated in
-// `scene.cpp` for its own binary.
+// move step and the tactical grid's (`docs/hosts.md` §13). The ones another
+// file reads too are the program profile's (program_profile.h), and the
+// rest are `scene.cpp`'s own.
 
 #pragma once
 

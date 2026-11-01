@@ -391,6 +391,7 @@
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/memory_map.h"
 #include "amberfolio/machine/overlay.h"
+#include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/service_floor.h"
 #include "seam_builtin.h"
@@ -398,44 +399,21 @@
 namespace amberfolio::machine {
 namespace {
 
-/// The SHA-256 of the program image these offsets are facts about — the
-/// baseline edition (edition.h), and only it.
-constexpr std::array<std::string_view, 1> encamp_binaries{
-    "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd"};
+/// The program this seam's facts are about (program_profile.h): the
+/// baseline edition, and only it. The seam is available on it and on no
+/// other binary.
+constexpr const program_profile& profile = pool_of_radiance;
+constexpr auto encamp_binaries = fingerprints_of(std::array{&profile});
 
 // --- The module the camp screen lives in -----------------------------------
-
-/// Where the program keeps this module's load segment: the offset, in the
-/// resident image, of one word (overlay.h, `seam_module::load_segment_at`).
-/// It reads zero while the module is not loaded and the segment the module
-/// begins at while it is, and the overlay manager maintains it — including
-/// when it moves the module, which is the whole reason the field exists
-/// (#131).
-///
-/// Found and checked the way `seam_cheats.cpp` documents for its own
-/// module: search the resident image for the manager's record whose file
-/// offset and length are the two below — one match — and take the word
-/// sixteen bytes past its start. That method was verified here by running
-/// it against the module `seam_cheats.cpp` already had facts for and
-/// getting `0x360` back.
-constexpr std::uint32_t overlay_load_segment_at = 0x760;
-
-/// The module the camp screen and the rest command live in: one read,
-/// whose facts the tracker records (overlay.h), plus the word above. The
-/// digest is of those bytes as read, so a copy whose overlay file does not
-/// match is not this module.
-constexpr seam_module camp_module{
-    .file = "GAME.OVR",
-    .file_offset = 96305,
-    .length = 8158,
-    .digest =
-        "9b9153998d07b8e16d2466d95670cdd683e4dc587281e162d05d15c3458d362b",
-    .load_segment_at = overlay_load_segment_at};
+//
+// The camp overlay, the profile's: the module the camp screen and the rest
+// command live in.
 
 /// In the camp menu loop, the instruction after the prompt has been built
 /// and before the bar is handed to the menu-bar input routine. Offsets
-/// from the start of the module, which is to say from the segment the word
-/// above holds, wherever the manager has most recently put it.
+/// from the start of the module, which is to say from the segment its
+/// load-segment word holds, wherever the manager has most recently put it.
 constexpr std::uint32_t camp_menu_before_input = 0x1F06;
 
 /// In the same loop, where the menu-bar input routine returns: the
@@ -496,16 +474,11 @@ constexpr std::uint16_t frame_changed = 0x06;
 // --- The program's data segment --------------------------------------------
 //
 // Offsets in the data segment DS addresses throughout the program. The
-// first two are already in this tree (`seam_cheats.cpp`, and the mode
-// byte is `docs/playable.md`'s `49F3`); the rest are the camp screen's.
-
-/// The game mode byte, and the value it reads while the camp screen is up.
-constexpr std::uint16_t data_game_mode = 0x49F3;
-constexpr std::uint8_t mode_camp = 2;
-
-/// The roster list's head: a far pointer, offset then segment. The party,
-/// which is the list the rest's heal tick walks.
-constexpr std::uint16_t data_roster_head = 0x5D96;
+// game mode byte (camp is `mode_camp`), the party's head (the list the
+// rest's heal tick walks), the bar highlight, the current member (what the
+// program's own cast screen sets before it casts, and what its slot sort
+// works on) and the area record are the profile's; the rest are the camp
+// screen's.
 
 /// The camp screen's command bar: a Pascal string, length byte first.
 constexpr std::uint16_t data_camp_bar = 0x508;
@@ -517,18 +490,6 @@ constexpr std::uint16_t data_camp_bar = 0x508;
 /// and the Fix costs four; the check below is against the slot and not
 /// against what happens to be in it, because the slot is the fact.
 constexpr std::uint8_t camp_bar_capacity = 40;
-
-/// The menu bar's highlight: **one byte in the data segment that every
-/// bar in the program shares** (M5-E1g, #304). The menu-bar routine reads
-/// it on entry as a one-based group index and resets it to the first
-/// group when it names a group the bar it was handed does not have; the
-/// two cursor keys step it, with a wrap at either end; and choosing a
-/// command sets it to that command's group. A group is one command letter
-/// — the routine's class is `0-9A-Z`, upper case only (#221) — and the
-/// characters after it up to the next, which is why one capital per word
-/// makes one group per word. Read off the routine, and checked by
-/// watching the byte through a driven camp.
-constexpr std::uint16_t data_bar_highlight = 0x6B2B;
 
 /// The days field of the rest clock — the one word this seam writes.
 constexpr std::uint16_t data_rest_days = 0x6DC2 + 8;
@@ -561,20 +522,15 @@ constexpr std::uint16_t rec_spell_slots = 0x17;
 constexpr unsigned rec_spell_slot_count = 0x15;
 constexpr std::uint8_t spell_pending = 0x80;
 
-/// Whether this character may act: the byte the program's own screens
-/// gate on, beside a status that is not an animated body.
-constexpr std::uint16_t rec_can_act = 0x10D;
+/// Whether this character may act: the profile's held byte, which the
+/// program's own screens gate on, beside a status that is not an animated
+/// body.
 constexpr std::uint8_t status_animated = 1;
 
-/// The area the party is in, as a far pointer, and the word in it that
-/// says this area refuses spellcasting — which the program's own cast
+/// The word in the area record (the profile's far pointer) that says this
+/// area refuses spellcasting — which the program's own cast
 /// screen reads before it offers anything.
-constexpr std::uint16_t data_area_record = 0x49D2;
 constexpr std::uint16_t area_refuses_casting = 0x01CA;
-
-/// The current party member, as a far pointer: what the program's own
-/// cast screen sets before it casts, and what its slot sort works on.
-constexpr std::uint16_t data_current_member = 0x5D92;
 
 /// The cast target anchor, as a far pointer. The program's own target
 /// picker opens **already on** the member this names — which is what a
@@ -615,9 +571,9 @@ constexpr std::uint16_t cast_driver_entry = 0x0039;
 /// casts, so that what the player sees is what that screen shows. The
 /// border is also the routine every frame on the program's screen is
 /// bordered by, and the report calls it once more to put the viewport
-/// box back over its own frame's top edge (M5-E1f, #303, below).
+/// box back over its own frame's top edge (M5-E1f, #303, below). The clear
+/// is the profile's `clear_region_entry`.
 constexpr std::uint16_t image_frame_border = 0x3F10;
-constexpr std::uint16_t image_clear_region = 0x4047;
 
 /// The slot sort, in this seam's own module: it orders the current
 /// member's slots by id, which is what the program's own memorize command
@@ -671,15 +627,13 @@ static_assert(viewport_box_bottom + 1 == cast_region_top - 1,
 /// which is the "press anything" half a player expects.
 constexpr std::uint16_t image_message_delay = 0x7E4E;
 
-/// The framed box with a centred title, and the string drawer — the two
-/// routines the report is made of (#188, `docs/seams.md` §3).
-///
-/// The frame puts its title on the box's **first interior row** rather
-/// than on the border: handed a title, it draws it on the row it is told
-/// is the top. The report hands it none (below), and draws its own title
-/// through the string drawer one row further down.
-constexpr std::uint16_t image_draw_frame = 0x041F8;
-constexpr std::uint16_t image_draw_string = 0x076B6;
+// The framed box with a centred title and the string drawer, the
+// profile's `draw_frame_entry` and `draw_string_entry`, are the two
+// routines the report is made of (#188, `docs/seams.md` §3). The frame
+// puts its title on the box's **first interior row** rather than on the
+// border: handed a title, it draws it on the row it is told is the top.
+// The report hands it none (below), and draws its own title through the
+// string drawer one row further down.
 
 /// The report's box is the message panel, which is the same region the
 /// cast screen frames — so the constants above are these, and the report
@@ -909,10 +863,9 @@ constexpr unsigned max_roster_walk = 16;
 
 // --- The character record ------------------------------------------------
 //
-// Offsets into a character record. `rec_next_offset`, `rec_status` and
-// `rec_hit_points` are `seam_cheats.cpp`'s, restated rather than shared
-// because they are facts about the program and not a module this file
-// depends on.
+// Offsets into a character record. The next pointer, the status and the
+// current hit points are the profile's (program_profile.h); these are the
+// ones only this seam reads.
 
 constexpr std::uint16_t rec_max_hit_points = 0x32;
 
@@ -926,9 +879,6 @@ constexpr std::uint16_t rec_max_hit_points = 0x32;
 /// party whose cleric knows Cure Light Wounds and has not memorized any
 /// can do something about it, and one whose nobody knows it cannot.
 constexpr std::uint16_t rec_known_spells = 0x32;
-constexpr std::uint16_t rec_next_offset = 0x104;  // far ptr: next record
-constexpr std::uint16_t rec_status = 0x10C;       // wound status
-constexpr std::uint16_t rec_hit_points = 0x11B;   // current hit points
 
 /// Whether resting can put this character right, by the wound status:
 /// the set the program's own healing applier gates on — unhurt, an
@@ -1270,11 +1220,11 @@ void restore_the_highlight(cpu::processor& cpu, std::uint16_t ds) {
     return;
   }
   std::uint8_t highlight = 0;
-  if (!read_byte(cpu, ds, data_bar_highlight, highlight) ||
+  if (!read_byte(cpu, ds, profile.data_bar_highlight, highlight) ||
       highlight < bar.fix_group || highlight > bar.groups + 1) {
     return;
   }
-  static_cast<void>(write_byte(cpu, ds, data_bar_highlight,
+  static_cast<void>(write_byte(cpu, ds, profile.data_bar_highlight,
                                static_cast<std::uint8_t>(highlight - 1)));
 }
 
@@ -1384,8 +1334,8 @@ struct roster_reading {
   roster_reading out;
   std::uint16_t offset = 0;
   std::uint16_t segment = 0;
-  if (!read_word(cpu, ds, data_roster_head, offset) ||
-      !read_word(cpu, ds, word_after(data_roster_head, 2), segment)) {
+  if (!read_word(cpu, ds, profile.data_roster_head, offset) ||
+      !read_word(cpu, ds, word_after(profile.data_roster_head, 2), segment)) {
     return out;
   }
 
@@ -1410,7 +1360,8 @@ struct roster_reading {
     who.segment = segment;
 
     std::uint8_t status = 0;
-    if (!read_byte(cpu, segment, word_after(offset, rec_status), status)) {
+    if (!read_byte(cpu, segment, word_after(offset, profile.record_status),
+                   status)) {
       return out;
     }
     who.status = status;
@@ -1420,7 +1371,7 @@ struct roster_reading {
     // refuses must not lengthen the rest — but the report names them,
     // and a line that could not say where somebody is would be worse
     // than no line.
-    if (!read_byte(cpu, segment, word_after(offset, rec_hit_points),
+    if (!read_byte(cpu, segment, word_after(offset, profile.record_hit_points),
                    who.points) ||
         !read_byte(cpu, segment, word_after(offset, rec_max_hit_points),
                    who.most_points)) {
@@ -1438,7 +1389,8 @@ struct roster_reading {
     // program's own: an animated body does not act, and neither does
     // anyone whose act byte is clear.
     std::uint8_t acts = 0;
-    if (!read_byte(cpu, segment, word_after(offset, rec_can_act), acts)) {
+    if (!read_byte(cpu, segment, word_after(offset, profile.record_held),
+                   acts)) {
       return out;
     }
     who.can_act = acts != 0 && status != status_animated;
@@ -1478,9 +1430,9 @@ struct roster_reading {
 
     std::uint16_t next_offset = 0;
     std::uint16_t next_segment = 0;
-    if (!read_word(cpu, segment, word_after(offset, rec_next_offset),
+    if (!read_word(cpu, segment, word_after(offset, profile.record_next),
                    next_offset) ||
-        !read_word(cpu, segment, word_after(offset, rec_next_offset + 2),
+        !read_word(cpu, segment, word_after(offset, profile.record_next + 2),
                    next_segment)) {
       return out;
     }
@@ -1528,8 +1480,8 @@ struct roster_reading {
 [[nodiscard]] bool casting_allowed(cpu::processor& cpu, std::uint16_t ds) {
   std::uint16_t offset = 0;
   std::uint16_t segment = 0;
-  if (!read_word(cpu, ds, data_area_record, offset) ||
-      !read_word(cpu, ds, word_after(data_area_record, 2), segment) ||
+  if (!read_word(cpu, ds, profile.data_area_record, offset) ||
+      !read_word(cpu, ds, word_after(profile.data_area_record, 2), segment) ||
       segment == 0) {
     return false;
   }
@@ -1684,8 +1636,8 @@ struct clock_reading {
 [[nodiscard]] clock_reading read_clock(cpu::processor& cpu, std::uint16_t ds) {
   std::uint16_t offset = 0;
   std::uint16_t segment = 0;
-  if (!read_word(cpu, ds, data_area_record, offset) ||
-      !read_word(cpu, ds, word_after(data_area_record, 2), segment) ||
+  if (!read_word(cpu, ds, profile.data_area_record, offset) ||
+      !read_word(cpu, ds, word_after(profile.data_area_record, 2), segment) ||
       segment == 0) {
     return {};
   }
@@ -1842,7 +1794,7 @@ enum class summary_shape : std::uint8_t { whole, terse, no_spells, bare };
   }
   const std::array<std::uint16_t, 5> where{column, row, colour, segment,
                                            offset};
-  return ctx.call_program(image, image_draw_string, where);
+  return ctx.call_program(image, profile.draw_string_entry, where);
 }
 
 /// The same, for a string already in the program's memory — the
@@ -1855,7 +1807,7 @@ enum class summary_shape : std::uint8_t { whole, terse, no_spells, bare };
                                        std::uint16_t column) {
   const std::array<std::uint16_t, 5> where{column, row, colour, segment,
                                            offset};
-  return ctx.call_program(image, image_draw_string, where);
+  return ctx.call_program(image, profile.draw_string_entry, where);
 }
 
 /// One exception line, up to its reason: the name out of the record, then
@@ -1935,7 +1887,7 @@ enum class summary_shape : std::uint8_t { whole, terse, no_spells, bare };
       cast_region_left,   cast_region_top,   cast_region_right,
       cast_region_bottom, cast_region_style, report_frame_colour,
       empty_segment,      empty_offset};
-  if (!ctx.call_program(image, image_draw_frame, frame)) {
+  if (!ctx.call_program(image, profile.draw_frame_entry, frame)) {
     return false;
   }
 
@@ -2240,7 +2192,8 @@ void offer_the_fix(machine& box, seam_context& ctx) {
   const std::uint16_t ds = regs[cpu::sreg::ds];
 
   std::uint8_t mode = 0;
-  if (!read_byte(cpu, ds, data_game_mode, mode) || mode != mode_camp) {
+  if (!read_byte(cpu, ds, profile.data_game_mode, mode) ||
+      mode != profile.mode_camp) {
     // The address says this is the camp loop; the mode byte is what says
     // the machine agrees. A point that fires anywhere else is a fact that
     // has gone wrong, and the fail-closed direction is to draw nothing.
@@ -2332,8 +2285,9 @@ void offer_the_fix(machine& box, seam_context& ctx) {
 
   // Who is casting, and at whom. Both are far pointers the program's own
   // screens write before they hand over.
-  cpu.write_word(ds, data_current_member, caster->offset);
-  cpu.write_word(ds, word_after(data_current_member, 2), caster->segment);
+  cpu.write_word(ds, profile.data_current_member, caster->offset);
+  cpu.write_word(ds, word_after(profile.data_current_member, 2),
+                 caster->segment);
   cpu.write_word(ds, data_cast_anchor, target->offset);
   cpu.write_word(ds, word_after(data_cast_anchor, 2), target->segment);
 
@@ -2380,7 +2334,7 @@ void offer_the_fix(machine& box, seam_context& ctx) {
                        static_cast<std::uint16_t>(module_sort_spell_slots),
                        nothing) &&
       ctx.call_program(image, image_frame_border, border) &&
-      ctx.call_program(image, image_clear_region, clear) &&
+      ctx.call_program(image, profile.clear_region_entry, clear) &&
       ctx.call_program(
           static_cast<std::uint16_t>(image + cast_driver_stub_paragraph),
           cast_driver_entry, cast);
@@ -2606,7 +2560,8 @@ void leave_the_camp(machine& box, seam_context& ctx) {
   const std::uint16_t ds = regs[cpu::sreg::ds];
 
   std::uint8_t mode = 0;
-  if (!read_byte(cpu, ds, data_game_mode, mode) || mode != mode_camp) {
+  if (!read_byte(cpu, ds, profile.data_game_mode, mode) ||
+      mode != profile.mode_camp) {
     // The teardown has not restored the mode byte yet, so it still reads
     // camp here. If it does not, this is not the instruction the facts
     // describe and nothing is drawn — or mapped.
@@ -2676,16 +2631,16 @@ void leave_the_camp(machine& box, seam_context& ctx) {
 /// Four points, all with addresses, all in the camp screen's overlay and
 /// all resolved through the program's own note of where that overlay is.
 constexpr std::array<seam_point, 4> encamp_fix_points{
-    {{.module = camp_module,
+    {{.module = profile.camp_overlay,
       .offset = camp_menu_before_input,
       .run = &offer_the_fix},
-     {.module = camp_module,
+     {.module = profile.camp_overlay,
       .offset = camp_menu_after_input,
       .run = &take_the_answer},
-     {.module = camp_module,
+     {.module = profile.camp_overlay,
       .offset = rest_command_entry,
       .run = &start_the_rest},
-     {.module = camp_module,
+     {.module = profile.camp_overlay,
       .offset = camp_menu_exit,
       .run = &leave_the_camp}}};
 

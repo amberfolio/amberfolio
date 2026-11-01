@@ -22,10 +22,8 @@
 // widens.
 //
 // The facts this reads are `docs/explored-overlay.md` §2, each with the
-// second route that agreed. They are restated here rather than shared
-// with `seam_automap.cpp`: a fact table belongs to the file that acts on
-// it, which is the house pattern (`0x49F3` is spelled in three seams
-// already).
+// second route that agreed. The ones the automap and the scene read too
+// are the profile's (program_profile.h); the rest are this file's own.
 
 #pragma once
 

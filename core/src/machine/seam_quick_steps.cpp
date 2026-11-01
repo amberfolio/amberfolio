@@ -105,28 +105,26 @@
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/overlay.h"
+#include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/seam.h"
 #include "seam_builtin.h"
 
 namespace amberfolio::machine {
 namespace {
 
-/// The SHA-256 of the program image these offsets are facts about: the
-/// baseline edition (edition.h), and only it.
-constexpr std::array<std::string_view, 1> quick_steps_binaries{
-    "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd"};
+/// The program this seam's facts are about (program_profile.h): the
+/// baseline edition, and only it. The seam is available on it and on no
+/// other binary.
+constexpr const program_profile& profile = pool_of_radiance;
+constexpr auto quick_steps_binaries = fingerprints_of(std::array{&profile});
 
 /// The dispatch entry's busy-word test, and its `pop bp; retf 2`, both from
 /// the image segment.
 constexpr std::uint32_t bracket_offset = 0x8C36;
 constexpr std::uint32_t epilogue_offset = 0x8C57;
 
-/// The data segment is the image's paragraph `0xC7C` on.
-constexpr std::uint16_t dgroup_paragraphs = 0xC7C;
-
-/// The driver's busy word, which the test's operand names, and the word
-/// the walk's clicks are requested with.
-constexpr std::uint16_t data_busy = 0x5374;
+/// The word the walk's clicks are requested with. The driver's busy word,
+/// which the test's operand names, is the profile's.
 constexpr std::uint16_t data_footstep = 0x2628;
 
 /// The far return and the request, in the dispatch entry's frame.
@@ -136,19 +134,16 @@ constexpr std::uint16_t frame_request = 6;
 /// A call site whose wait is skipped: the word its overlay's segment is
 /// kept in, from the image segment, and the offset the call returns to.
 struct call_site {
-  std::uint16_t load_segment_at;
+  std::uint32_t load_segment_at;
   std::uint16_t return_offset;
 };
 
-constexpr std::uint16_t adventure_input_load_segment_at = 0x730;  // overlay 14
-constexpr std::uint16_t adventure_loop_load_segment_at = 0x200;   // overlay 3
-
 constexpr std::array<call_site, 3> skipped_sites{{
-    {.load_segment_at = adventure_input_load_segment_at,
+    {.load_segment_at = profile.adventure_overlay.load_segment_at,
      .return_offset = 0x0B19},  // turn left
-    {.load_segment_at = adventure_input_load_segment_at,
+    {.load_segment_at = profile.adventure_overlay.load_segment_at,
      .return_offset = 0x0B5E},  // turn right
-    {.load_segment_at = adventure_loop_load_segment_at,
+    {.load_segment_at = profile.interpreter_overlay.load_segment_at,
      .return_offset = 0x34D8},  // after the step's redraw
 }};
 
@@ -161,7 +156,8 @@ constexpr std::array<call_site, 3> skipped_sites{{
     if (offset != site.return_offset) {
       continue;
     }
-    const std::uint16_t loaded = cpu.read_word(image, site.load_segment_at);
+    const std::uint16_t loaded =
+        cpu.read_word(image, static_cast<std::uint16_t>(site.load_segment_at));
     if (loaded != 0 && loaded == segment) {
       return true;
     }
@@ -179,10 +175,11 @@ void skip_the_wait(machine& box, seam_context& ctx) {
   const std::uint16_t bp = regs[cpu::reg16::bp];
 
   // DS first: every read below goes through it.
-  const auto dgroup =
-      static_cast<std::uint16_t>((ctx.image_base() >> 4U) + dgroup_paragraphs);
+  const auto dgroup = static_cast<std::uint16_t>((ctx.image_base() >> 4U) +
+                                                 profile.dgroup_paragraphs);
   if (ds != dgroup ||
-      cpu.read_word(cs, static_cast<std::uint16_t>(ip + 2)) != data_busy ||
+      cpu.read_word(cs, static_cast<std::uint16_t>(ip + 2)) !=
+          profile.data_sound_busy ||
       bp != regs[cpu::reg16::sp]) {
     ctx.decline(seam_reason::point_not_recognized);
     return;

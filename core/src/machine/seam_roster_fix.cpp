@@ -115,6 +115,7 @@
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/memory_map.h"
 #include "amberfolio/machine/overlay.h"
+#include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/vfs.h"
 #include "seam_builtin.h"
@@ -122,23 +123,14 @@
 namespace amberfolio::machine {
 namespace {
 
-/// The baseline edition's program image (edition.h). The store copies boot
-/// the same one, and their GAME.OVR differs from it only in overlay 2.
-constexpr std::array<std::string_view, 1> roster_binaries{
-    "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd"};
+/// The program this seam's facts are about (program_profile.h): the
+/// baseline edition, and only it. The seam is available on it and on no
+/// other binary. The store copies boot the same image, and their GAME.OVR
+/// differs from it only in overlay 2.
+constexpr const program_profile& profile = pool_of_radiance;
+constexpr auto roster_binaries = fingerprints_of(std::array{&profile});
 
-// --- The module the list routine lives in ----------------------------------
-
-/// Overlay 17: file offset 122854 (`0x1DFE6`), 9189 bytes (`0x23E5`), the
-/// load-segment word at image `0x07D0` (the manager's record is at
-/// `0x07C0`, the one match of the search `seam_cheats.cpp` documents).
-constexpr seam_module list_module{
-    .file = "GAME.OVR",
-    .file_offset = 122854,
-    .length = 9189,
-    .digest =
-        "30da2d2a28149942431395bf59511b55a9eab4d8f728bff625c5a22d81638882",
-    .load_segment_at = 0x7D0};
+// --- The list routine, in the slots overlay (the profile's) ---------------
 
 /// The list routine's one exit, `mov sp, bp`: the frame is still up.
 constexpr std::uint32_t list_exit = 0x0191;
@@ -382,7 +374,7 @@ void leave_out_the_stranded(machine& box, seam_context& ctx) {
 }
 
 constexpr std::array<seam_point, 1> roster_fix_points{
-    {{.module = list_module,
+    {{.module = profile.slots_overlay,
       .offset = list_exit,
       .run = &leave_out_the_stranded}}};
 
