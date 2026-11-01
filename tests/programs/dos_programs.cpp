@@ -155,6 +155,29 @@ void load_word(assembler& a, std::string_view label) {
   return raw_program(a);
 }
 
+// --- Free space: AH=36h -------------------------------------------------
+//
+//         mov  dl, 3 / mov ah, 36h / int 21h   ; C
+//         <store ax, bx, cx, dx>
+//         mov  dl, 1 / mov ah, 36h / int 21h   ; A, which is not there
+//         <store ax>
+//         <exit 5Fh>
+
+[[nodiscard]] std::vector<std::uint8_t> dosfree_code() {
+  assembler a;
+  a.db({0xB2, 0x03});  // mov dl, 3
+  int21(a, 0x36);
+  store(a, 0, reg_ax);
+  store(a, 1, reg_bx);
+  store(a, 2, reg_cx);
+  store(a, 3, reg_dx);
+  a.db({0xB2, 0x01});  // mov dl, 1
+  int21(a, 0x36);
+  store(a, 4, reg_ax);
+  exit_with(a, 0x5F);
+  return raw_program(a);
+}
+
 // --- The current directory: AH=47h --------------------------------------
 //
 // Run with `\GAMES\CURSE` current, as a launcher leaves it; ask for it on
@@ -316,6 +339,23 @@ void append_dos_service_programs(std::vector<machine_program>& list) {
     p.setup.step_cap = 10'000;
     p.results = {{.what = "the current drive, zero-based: C", .value = 2}};
     p.exit_code = 0x5C;
+    list.push_back(std::move(p));
+  }
+
+  {
+    machine_program p;
+    p.name = "dosfree";
+    p.about = "INT 21h AH=36h states the drive and counts what is on it";
+    p.setup.code = dosfree_code();
+    p.setup.step_cap = 10'000;
+    p.results = {
+        {.what = "sectors per cluster", .value = 8},
+        {.what = "free clusters: all, on a drive with no files", .value = 8192},
+        {.what = "bytes per sector", .value = 512},
+        {.what = "clusters in all", .value = 8192},
+        {.what = "drive A: not there", .value = 0xFFFF},
+    };
+    p.exit_code = 0x5F;
     list.push_back(std::move(p));
   }
 

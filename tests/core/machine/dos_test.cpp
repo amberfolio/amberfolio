@@ -1554,5 +1554,37 @@ TEST(dos_search, the_state_moves_only_once_a_program_has_searched) {
   EXPECT_EQ(r.pc().dos().searched_directory(0), nullptr);
 }
 
+// --- Free space: AH=36h ----------------------------------------------------
+
+TEST(dos_free_space, ah36_states_the_drive_and_counts_what_is_on_it) {
+  const rig r;
+  r.call(ah(0x36), 0, 0, 0x0003);  // DL=3: C.
+  EXPECT_FALSE(r.pc().stopped());
+  EXPECT_FALSE(r.carry());
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 8U);     // sectors per cluster
+  EXPECT_EQ(r.regs()[cpu::reg16::bx], 8192U);  // free clusters: all of them
+  EXPECT_EQ(r.regs()[cpu::reg16::cx], 512U);   // bytes per sector
+  EXPECT_EQ(r.regs()[cpu::reg16::dx], 8192U);  // clusters in all
+
+  // A file takes whole clusters, in any directory: 1 + 2 + 1.
+  ASSERT_EQ(r.fs->mkdir(path_named("\\SAVE")), vfs_error::none);
+  put_file(r, "\\GAME.DAT", 1);
+  put_file(r, "\\SAVE\\SLOT.DAT", 4097);
+  put_file(r, "\\SAVE\\HERO.SAV", 4096);
+  put_file(r, "\\SAVE\\EMPTY", 0);
+  r.call(ah(0x36), 0, 0, 0x0000);  // DL=0: the current drive.
+  EXPECT_FALSE(r.carry());
+  EXPECT_EQ(r.regs()[cpu::reg16::bx], 8192U - 4U);
+  EXPECT_EQ(r.regs()[cpu::reg16::dx], 8192U);
+}
+
+TEST(dos_free_space, ah36_answers_ffff_for_a_drive_that_is_not_there) {
+  const rig r;
+  r.call(ah(0x36), 0x1234, 0, 0x0001);  // DL=1: A.
+  EXPECT_FALSE(r.pc().stopped());
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0xFFFFU);
+  EXPECT_EQ(r.regs()[cpu::reg16::bx], 0x1234U) << "nothing else is answered";
+}
+
 }  // namespace
 }  // namespace amberfolio::machine
