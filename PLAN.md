@@ -1,8 +1,10 @@
 # Amber Folio — Project Plan
 
-*v1 target: Pool of Radiance. Last revised 2026-09-06.*
+*Current milestone: M9, Curse of the Azure Bonds. Last revised 2026-11-01.*
 
-This is the engineering plan for the first release. Governance (license,
+This is the engineering plan. v1, Pool of Radiance, shipped as 1.0 and
+1.1; M9 brings Curse of the Azure Bonds to the same bar (§1, §7).
+Governance (license,
 contributions, clean-content rule, trademarks) is settled in the repository
 root documents and is not restated here — but two of its rules shape
 everything below: the emulator ships **none of the original games'
@@ -10,9 +12,9 @@ expression**, and enhancements are **strictly opt-in**.
 
 ## 1. Goal
 
-Ship a v1 that plays **Pool of Radiance** end-to-end — party creation,
-city and dungeon exploration, story events, combat, shops, save/load —
-on four targets, from the player's own copy of the game:
+Play the SSI Gold Box games end-to-end — party creation, city and
+dungeon exploration, story events, combat, shops, save/load — on four
+targets, from the player's own copy of the game:
 
 - **Windows** (x86-64)
 - **macOS** (universal: arm64 + x86-64)
@@ -22,11 +24,21 @@ on four targets, from the player's own copy of the game:
 Native targets are 64-bit only. The codebase is modern C++ (C++23,
 falling back to C++20 where a platform toolchain lags), built with CMake.
 
-**Release gate:** the game is verifiably playable end-to-end — a real
-playthrough sweep across all major systems, not just a booting title
-screen — and the v1 enhancement set below works. Milestones are ordered
-by dependency, not calendar; **1.0** ships when the gate is green, with
-tagged 0.x pre-releases at milestone exits along the way (§7).
+**Pool of Radiance** is v1: 1.0 shipped when the gate below was green
+for it, and 1.1 added the controller layer (M8). **Curse of the Azure
+Bonds** is M9, and the goal now: the same game, played to the same bar.
+
+**Release gate, per game:** the game is verifiably playable end-to-end —
+a real playthrough sweep across all major systems, not just a booting
+title screen — and its enhancement set works. For Curse the bar is
+everything Pool of Radiance has, including what it gained past its own
+1.0: the store copy boots, plays and saves as sold; Tandy sound; the
+host surfaces (onboarding, the config file, the toggle panel, the
+document control, the key card, the on-screen keyboard, screen text,
+the scene, per-slot sidecars); and every enhancement M9 ports (§7), off
+by default, each with its session pair. Milestones are ordered by
+dependency, not calendar; M9 ships as **1.2** when the gate is green for
+both games.
 
 ## 2. What the player supplies
 
@@ -102,8 +114,9 @@ special handling beyond working DOS file I/O.
 The scope is deliberately the surface *this game* exercises — but the
 Gold Box family shares its toolchain and engine lineage, so the machine
 is built as a general small-PC core with the game-specific knowledge
-confined to the seam layer (§5). Sibling titles later mean new seam
-sets and incremental device modules, not a new machine.
+confined to the seam layer (§5). Curse of the Azure Bonds (M9) is the
+first sibling, and it means new seam facts and a few more DOS services,
+not a new machine.
 
 **Discipline rule carried from the machine's design into code review:**
 an unimplemented service or register is a loud log line and a clean
@@ -241,6 +254,8 @@ Design requirements:
 
 ### The v1 seam set
 
+Pool of Radiance's. Which of them Curse gets, and why, is §7, M9.
+
 1. **Answer the code wheel once** — **it asks once** (#290, #291). With the seam
    on, the first launch is the machine's own: the challenge appears and
    the seam only watches. When the player answers it correctly, off
@@ -298,10 +313,9 @@ Save and roster management was withdrawn from v1 by decision (#176); a
 machine-state export/import (#209) and a host-supplied VFS adapter (#206)
 were declined.
 
-Known engine bug-fix seams (roster and money-handling bugs, a map-edge
-transition trap) are a documented fast-follow after v1, on the same
-seam machinery. So is the controller layer (§7, M8), which is an
-enhancement of this kind rather than a host feature: it moves the
+Engine bugs no player could want are answered by **built-in fixes** on
+the same machinery (`docs/seams.md` §7). The controller layer (§7, M8)
+is an enhancement of this kind rather than a host feature: it moves the
 program's own bar highlight and takes the program's own commands, which
 is seam work and lives under every rule above.
 
@@ -334,80 +348,177 @@ that line:
 
 ## 7. Milestones
 
-Ordered by dependency; each has a crisp exit criterion. From M3 on,
-every milestone exit is tagged as a **0.x pre-release** (M3 → 0.1
-"boots", M4 → 0.2 "playable", M5 → 0.3 "enhanced", M6 → 0.6
-"onboarded"), so there is always a current, runnable tag while the work
-converges on **1.0** — the release the gate in §1 defines. M8 is the
-first milestone *past* it, and exits as 1.1. A milestone takes the next
-0.x free when it exits rather than a number reserved in advance: 0.4 and
-0.5 were cut during M6, because a tag is made whenever the build is worth
-pinning and not only at a milestone.
+Ordered by dependency; each has a crisp exit criterion. Every milestone
+exit is tagged, and a tag is also cut whenever the build is worth
+pinning, so there is always a current, runnable release. M0–M8 are
+done.
 
-- **M0 — Bootstrap.** CMake + presets, CI matrix for all four targets,
-  unit-test rig, format/lint/sanitizer gates, DCO check, and automatic
-  deployment of the wasm host to a public URL on every push. *Exit: an
-  empty core library + hosts build green on all targets in CI, and the
-  wasm host is published from `main` with no human step.*
-- **M1 — CPU core.** 8086 interpreter with exact flag semantics and
-  interrupt delivery. *Exit: public single-step conformance suite
+### Done: Pool of Radiance (M0–M8)
+
+- **M0 — Bootstrap.** *Exit: an empty core library + hosts build green
+  on all targets in CI, and the wasm host is published from `main` with
+  no human step.*
+- **M1 — CPU core.** *Exit: the public single-step conformance suite
   passes in CI.*
-- **M2 — Machine.** Memory map, MZ loader with relocations, PIT +
-  timer interrupt, EGA device + renderer, speaker audio path, DOS
-  service layer + VFS, keyboard services; a machine harness that runs
-  small test programs; a bare dev page proving the wasm target. *Exit:
-  self-written real-mode test programs run correctly on all targets.*
-- **M3 — First light.** The game boots from a player-supplied copy:
-  its unpacker and overlay manager run as-is, the title sequence
-  renders, menus respond. *Exit: title → party roster reachable,
-  verified locally on desktop + web.*
-- **M4 — Playable + seam engine.** Full game loop: exploration, story
-  events, combat, shops, save/load; audio; speed calibration. The seam
-  engine lands here, and debug cheats land first to power the sweep.
-  Replay harness + first goldens. *Exit: a full playthrough sweep
-  passes on all targets; cheats seam toggleable end-to-end.*
-- **M5 — Player enhancements.** Answer the code wheel once, journal (OCR
-  ingestion + in-game reader + auto-open), automap panel, Encamp
-  (F)ix, explored overlay — each individually toggleable, each off by
-  default, each native in feel (§5). *Exit: all six v1 seams work and
-  toggle independently on desktop + web.*
-- **M6 — Onboarding and shells.** The reference web shell (file-picker
-  / drag-drop onboarding, artifact fingerprinting with a clear
-  unrecognized-edition path, IndexedDB persistence, touch controls,
-  toggle panel), the on-screen keyboard on both hosts — a layout that
-  is data rather than one shell's DOM, with a layout per context — and
-  desktop onboarding polish (first-run pointing at the game directory,
-  config file). *Exit: a new player goes from artifacts-in-hand to
-  playing without reading source code, and the game is fully playable,
-  text entry included, on a device with no keyboard attached to it.*
-- **M7 — Release 1.0.** Versioning, a GitHub Release carrying the
-  wasm bundle a site pins by hash, the README/docs refresh. The desktop
-  host is built from source; prebuilt desktop binaries are left for a
-  later release. Where a player's copy goes is `docs/hosts.md` §2c on
-  the desktop and the page's own onboarding in a browser. *Exit: tagged
-  1.0 release, release gate (§1) green.*
-- **M8 — A controller.** One thing 1.0 ships without, deliberately.
+- **M2 — Machine.** Memory map, MZ loader, PIT, EGA, speaker, DOS
+  services over a VFS, keyboard, and a harness for small test programs.
+  *Exit: self-written real-mode test programs run correctly on all
+  targets.*
+- **M3 — First light.** *Exit: title → party roster reachable, verified
+  locally on desktop **and** web* (0.1).
+- **M4 — Playable + seam engine.** *Exit: a full playthrough sweep
+  passes on all targets; the cheats seam toggles end-to-end* (0.2).
+- **M5 — Player enhancements.** *Exit: all six v1 seams work and toggle
+  independently on desktop + web* (0.3).
+- **M6 — Onboarding and shells.** *Exit: a new player goes from
+  artifacts-in-hand to playing without reading source code, fully
+  playable, text entry included, with no keyboard attached* (0.6).
+- **M7 — Release 1.0.** *Exit: tagged 1.0, the gate in §1 green.* The
+  desktop host is built from source.
+- **M8 — A controller.** The game's own command bar is something a
+  controller selects from (`modern-controls`, with the site's pad
+  driving real keys). *Exit: 1.1.*
 
-  **Native controller support** is an *enhancement*, on the seam
-  machinery of §5 and under all of its rules. The point is not a pad
-  that types: a mapping from a stick to the arrow keys would leave a
-  player driving a keyboard through a controller, one letter at a time,
-  which is the thing worth not building. The point is that the game's
-  own command bar becomes something a controller **selects** from — the
-  highlight moves under the stick and a button takes the entry the
-  program itself would have taken — and that movement, the bars, combat
-  and the camp are reachable without a player ever learning which
-  letter a command hides behind. The program's own bar, its own
-  highlight and its own commands: the seam changes how a person reaches
-  them, not what they are. Off by default and individually toggleable,
-  like every other seam, and with the same obligation to be *native in
-  feel* — a controller layer that looks bolted on is a failed one. Text
-  the player has to spell is still text: a character's name goes
-  through M6's on-screen keyboard (§7, M6), driven by the pad.
+### M9 — Curse of the Azure Bonds (current)
 
-  *Exit: a player reaches every command, every movement and every fight
-  from a controller — text entry included — without the seam ever
-  telling them which key it stands for.*
+Bring the second Gold Box game to the bar Pool of Radiance meets (§1):
+the store copy boots, plays and saves as sold; a playthrough sweep
+passes on all targets; every enhancement that fits Curse is ported; and
+the shells carry it. It exits as **1.2**. Tracking: #557.
+
+**Known at the start.** These facts were measured on the Steam copy on
+2026-11-01.
+
+- The store copy identifies itself as **v1.3**. Its `START.EXE` is
+  EXEPACK-packed and 57,789 bytes. The launcher installs the game at
+  `C:\CURSE` and starts it there. The GOG copy is owned but not yet
+  captured.
+- `CURSE.CFG` has four lines: graphics, sound (already `T` on Steam),
+  **the save directory on line 3**, and a flag. `POOL.CFG` has five,
+  with the save directory on line 4.
+- **No new video device.** The program's own setup offers CGA, EGA and
+  Tandy, and it draws in the EGA mode the machine already has. A store
+  page's "VGA" means a VGA card running that mode. The program sets
+  text mode 3 at startup, which is a notice and not a stop.
+- **The boot is unrecognized today.** It stops cleanly at
+  `INT 21h AH=1Ah`, the start of a directory enumeration, well under a
+  virtual second in. The program also references `0Eh 19h 2Bh 2Dh 30h
+  36h 3Ah 3Bh 47h 4Eh 4Fh 54h 56h`, none of which is implemented. The
+  roster, the saves and character import all enumerate directories.
+- **The camp has its own Fix command.** The program keeps no roster
+  file; it enumerates its save directory instead.
+- **Characters cross between the games.** The program imports Pool of
+  Radiance characters from a directory the player names. The shipped
+  `COPYCURS.EXE` moves characters between the games' save directories,
+  and looks for Pool of Radiance at `C:\POOLRAD` by default.
+- The shipped `SAVE\` holds slots A and B, six characters each, in
+  422-byte records. The sound driver is Pool of Radiance's, relocated.
+- Steam's Adventurer's Journal for Curse is typeset, with pictures. It
+  takes the text route (#398) and the picture route (#328, #345), and
+  needs no OCR.
+
+**Carried from Pool of Radiance.**
+
+- Facts come from the store copies, never from a repack (#396–#398).
+  GOG and Steam are compared byte for byte first.
+- **Launcher facts are edition facts.** The config file's name, which
+  line says what, and the install directory move out of code and into
+  the edition row. Today `POOL.CFG` and its line 4 are spelled out in
+  core and in both hosts.
+- **One place per fact** (the program profile, below). Today shared
+  facts are copied between seam files; the game-mode byte appears in
+  nine of them.
+- Every fact is checked twice from the artifact and confirmed by a
+  driven run. Overlaid points resolve from the program's own
+  load-segment word (`docs/seams.md` §8.1, #131).
+- The snapshot disks are made first and never played in. The shipped
+  slots are read before any leg is planned.
+- Every seam port brings its `identical`/`contrast` pair, recorded on a
+  Curse disk. With every seam off, Curse is a plain machine, and that
+  is a test.
+- Before a visible seam is done, a person looks at it on the web build
+  (#263, #345).
+- The site agrees any ABI change before it ships (#375). Nothing
+  game-specific goes into a host's `main.cpp`.
+
+**The program profile.** Today each seam holds its own fact table and
+fingerprint list. M9 separates mechanism from facts:
+
+- one table per program image for the facts several seams read: the
+  game-mode byte, the party records, the bar highlight, the key-read
+  and box-printer routines, the overlay stub table, the load-segment
+  words, the config layout and the save-file family;
+- a per-program table for each seam's own facts.
+
+A seam is available on the programs whose facts it has, which is §5's
+per-binary rule, unchanged. Mechanism is shared only where the
+programs behave the same; where Curse differs, the seam differs or is
+not ported. The refactor lands alone, before any Curse behaviour, and
+every Pool of Radiance session must verify with unchanged hashes.
+
+**Phases.** Each may take an interim tag.
+
+- **C0 — Ready** (#551, #552).
+  - Curse edition rows from both stores (`data/editions.json`,
+    `machine/edition.cpp`).
+  - The config file's name and line roles per edition.
+  - The snapshot disks.
+  - The program profile.
+
+  *Exit: Curse is recognized by name, with no seams available, and
+  stops cleanly at its first unimplemented service. Pool of Radiance is
+  byte-identical.*
+- **C1 — First light** (#553).
+  - The DOS services the boot reaches, one per change, each with a
+    `tests/programs` fixture and a synthetic-VFS test.
+  - Directory enumeration in the VFS's own order.
+  - Tandy sound and the speed presets checked on Curse.
+
+  *Exit: title → party roster on desktop and web from the store copy,
+  with every seam off.*
+- **C2 — Playable** (#554).
+  - The debug cheats first.
+  - The legs, in `docs/playable-curse.md`: a new party, loading slots
+    A and B, the town and a story event, a fight, a shop and the temple,
+    a camp with the game's own Fix, save and load, and the wilderness.
+  - A Curse session library pinned to the Curse snapshots.
+  - The save-layer row and per-slot sidecars for Curse.
+
+  *Exit: a playthrough sweep passes on all targets, and the cheats
+  toggle end-to-end.*
+- **C3 — Enhanced** (#555). The seams below, in the table's order. *Exit: each
+  works and toggles independently on desktop and web, with its pair,
+  its leg and a person's look.*
+- **C4 — Onboarded** (#556).
+  - Both shells recognize a Curse copy.
+  - The toggle panel, the key card and the controls page are per game.
+  - The document control knows Curse's journals.
+  - The player's Pool of Radiance folder can be mounted at `C:\POOLRAD`
+    beside `C:\CURSE`, so the game's own import and `COPYCURS.EXE` find
+    it where they look.
+
+  *Exit: a new player goes from a Curse copy to playing without reading
+  source, and a Pool of Radiance party carries over.*
+- **C5 — Release 1.2.** The docs and the release bundle. *Exit: the
+  gate in §1 is green for both games.*
+
+**The seams on Curse**, in C3's order:
+
+| Seam | On Curse |
+|---|---|
+| `code-wheel` | Port. First find whether the store copy accepts any answer, as Pool of Radiance's does (`docs/seams.md` §5). |
+| screen text, scene, aim, text entry | Port the facts. The controls and the site both read them. |
+| `modern-controls` | Port. It is the largest fact set. |
+| `font-sans`, `font-chisel` | Port. |
+| `quick-steps`, and the timer fix | Port, if the driver needs the fix the same way. |
+| `message-pause` | Port, and re-measure the pause. |
+| `automap` | Port. |
+| `explored` | Port, onto Curse's overland view. |
+| journal | Port. It is the largest item. |
+| debug cheats | Port, first (C2). |
+| Encamp (F)ix | **Not ported:** the game has its own Fix. |
+| roster fix | Not ported unless Curse has the failure; it keeps no roster file. |
+| `fanfare` | Not ported, for now. |
 
 ## 8. Risks and mitigations
 
@@ -425,22 +536,28 @@ pinning and not only at a milestone.
 - **macOS distribution.** Signing/notarization needs an Apple developer
   account. 1.0 ships no desktop binaries, so the question waits for
   the release that does (below).
-- **Scope creep toward the family.** Sibling titles are tempting and
-  the machine is family-shaped by design — but v1 is Pool of Radiance
-  only; family work starts after 1.0 ships.
+- **A second program perturbing the first.** The program profile (§7,
+  M9) touches every Pool of Radiance seam. It lands alone, before any
+  Curse behaviour, gated on every session verifying with unchanged
+  hashes.
+- **Curse's DOS surface past its first stop is unknown.** Each stop is
+  one service with its own fixture, never a guessed answer.
+- **The journal's cost is per edition** (#357, #361), though Steam's
+  Curse edition needs no OCR.
+- **Scope creep toward the rest of the family.** Secret of the Silver
+  Blades and Pools of Darkness share the engine lineage, but they start
+  after M9 ships. Pools of Darkness's 256-colour VGA would be a new
+  device module.
 
-## 9. Out of scope for v1
+## 9. Out of scope
 
 - The amberfolio.org website and hosted player (separate initiative;
   the reference shell here is its future substrate).
-- Other Gold Box titles (the design keeps the door open; the work
-  starts post-v1).
+- Gold Box titles past Curse of the Azure Bonds. They start after M9.
+- Hillsfar character import into Curse, and a fanfare on Curse.
 - Other audio hardware (Ad Lib, Roland), mouse support, other
   video modes (CGA/MCGA/Hercules), machine save-states, localization,
   32-bit builds.
-- Native controller support is **deferred rather than dropped**: it is
-  M8 (§7), the first milestone past 1.0. 1.0 is playable with a
-  keyboard, real or on-screen.
 - A CRT presentation filter. What a frame looks like on the way to a
   screen is a host's to decide, and amberfolio.org has its own; the
   hosts here show the frame the machine drew.
@@ -450,16 +567,18 @@ pinning and not only at a milestone.
 - macOS signing/notarization for the first release with desktop
   binaries: acquire the developer account, or ship unsigned with
   instructions?
-- Which game-binary editions to fingerprint beyond the one there is.
-  One START.EXE is known, and it is two releases: the one sold on GOG
-  and Steam (the baseline row) and a third-party repack of it, which
+- Which game-binary editions to fingerprint beyond the known ones.
+  Pool of Radiance has one START.EXE in two releases: the one sold on
+  GOG and Steam (the baseline row) and a third-party repack of it. They
   differ only in two bytes of the copy-protection overlay and in files
-  the repack adds; every seam is valid on both (`docs/seams.md` §5,
-  #396). Other builds of the program are open.
+  the repack adds, and every seam is valid on both (`docs/seams.md` §5,
+  #396). Curse has the Steam v1.3 copy; the GOG copy is captured in C0
+  (§7, M9). Other builds of either program are open.
 - Which **document** editions to fingerprint. The table
   (`machine/document.cpp`) has a code wheel (a fact; it gates nothing
   since #290) and an Adventurer's Journal for each of the GOG and Steam
   releases: the GOG journal is scans, read by OCR (#214), and the Steam
   collection's is text, read out of the document (#398). Every other
   journal is refused as unrecognized, which is the fail-closed direction.
-  Which re-scans or reissues to add is open.
+  Curse's journals join the table in M9. Which re-scans or reissues to
+  add is open.
