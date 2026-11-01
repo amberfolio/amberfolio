@@ -743,6 +743,17 @@ void seek_fn(service_floor& floor) {
   floor.set_caller_carry(false);
 }
 
+// --- The drive: AH=19h --------------------------------------------------
+//
+// The current drive, zero-based. There is one, C (vfs.h, `only_drive`),
+// so it is the answer, and not a choice: no function this layer has can
+// select another, and a name on any other drive does not resolve.
+
+void current_drive_fn(service_floor& floor) {
+  floor.box().processor().regs().set(reg8::al, only_drive);
+  succeed(floor);
+}
+
 // --- Date/time: AH=2Ah, AH=2Ch ------------------------------------------
 
 void get_date_fn(service_floor& floor) {
@@ -1174,6 +1185,9 @@ void int21_dispatch(service_floor& floor, std::uint8_t /*vector*/) {
       return;
     case 0x09:
       print_string(floor);
+      return;
+    case 0x19:
+      current_drive_fn(floor);
       return;
     case 0x1A:
       set_dta_fn(floor);

@@ -1016,6 +1016,15 @@ TEST(dos_dispatch, the_date_time_setters_are_deferred) {
   EXPECT_EQ(r.pc().stop().reason, stop_reason::unimplemented_service);
 }
 
+TEST(dos_drive, ah19_answers_the_one_drive) {
+  const rig r;
+  r.call(ah(0x19) | 0x2A);
+  EXPECT_FALSE(r.pc().stopped());
+  EXPECT_FALSE(r.carry());
+  EXPECT_EQ(r.regs().get(cpu::reg8::al), 2);  // Zero-based: C.
+  EXPECT_EQ(r.regs().get(cpu::reg8::ah), 0x19);
+}
+
 // --- Ctrl-Break, the DOS half -------------------------------------------
 
 TEST(dos_break, a_console_call_detours_through_a_hooked_int23h) {

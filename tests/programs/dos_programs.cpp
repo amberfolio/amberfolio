@@ -139,6 +139,21 @@ void load_word(assembler& a, std::string_view label) {
   return raw_program(a);
 }
 
+// --- The current drive: AH=19h -----------------------------------------
+//
+//         mov  ah, 19h / int 21h
+//         xor  ah, ah                     ; AL alone is the answer
+//         <exit 5Ch>
+
+[[nodiscard]] std::vector<std::uint8_t> dosdrive_code() {
+  assembler a;
+  int21(a, 0x19);
+  a.db({0x32, 0xE4});  // xor ah, ah
+  store(a, 0, reg_ax);
+  exit_with(a, 0x5C);
+  return raw_program(a);
+}
+
 }  // namespace
 
 void append_dos_service_programs(std::vector<machine_program>& list) {
@@ -172,6 +187,17 @@ void append_dos_service_programs(std::vector<machine_program>& list) {
     p.exit_code = 0x5B;
     p.file_trace = {"find \\", "find \\NOPE path_not_found",
                     "find \\ no_more_files", "mkdir \\SUB", "find \\SUB"};
+    list.push_back(std::move(p));
+  }
+
+  {
+    machine_program p;
+    p.name = "dosdrive";
+    p.about = "INT 21h AH=19h answers the one drive";
+    p.setup.code = dosdrive_code();
+    p.setup.step_cap = 10'000;
+    p.results = {{.what = "the current drive, zero-based: C", .value = 2}};
+    p.exit_code = 0x5C;
     list.push_back(std::move(p));
   }
 }
