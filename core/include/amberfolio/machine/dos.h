@@ -155,18 +155,18 @@
 // there, and a relative open at the root would find nothing.
 //
 // **Set by the host before the load, once, and never by the program.**
-// AH=3Bh (change directory) and AH=47h (get it) are not in this subset;
-// no edition this build knows calls either, and one that did would stop
-// on them like any other unbacked function. So the directory is how the
-// machine was set up, exactly as the program it was told to load is:
-// `reset()` leaves it, `save_state()` does not write it, and a recording
-// names it in its preamble instead (`docs/replay.md`). The day a program
-// can change it, it becomes state and the state layout moves.
+// AH=47h reads it back (Curse of the Azure Bonds asks, #553); AH=3Bh,
+// which would change it, is not in this subset, and a program that called
+// it would stop like on any other unbacked function. So the directory is
+// how the machine was set up, exactly as the program it was told to load
+// is: `reset()` leaves it, `save_state()` does not write it, and a
+// recording names it in its preamble instead (`docs/replay.md`). The day
+// a program can change it, it becomes state and the state layout moves.
 //
 // Nothing else DOS keeps sees it. The loader builds no environment block
 // and fills no parent PSP (loader.h), so a program's own path is nowhere
 // in memory; the directory is observable only through what a relative
-// name opens, which is also all DOS itself makes of it without AH=47h.
+// name opens and what AH=47h answers.
 //
 // The root is the default, and a machine whose directory is the root
 // canonicalizes every path exactly as it did before there was one.

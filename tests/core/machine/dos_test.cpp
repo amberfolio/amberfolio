@@ -1167,6 +1167,53 @@ TEST(dos_current_directory, refuses_a_directory_that_is_not_there) {
   EXPECT_TRUE(r.pc().dos().current_directory().is_root());
 }
 
+/// AH=47h for drive `dl`, into `data_area`, and the string it left there.
+[[nodiscard]] std::string current_directory_text(const rig& r,
+                                                 std::uint8_t dl) {
+  r.poke(data_area, {0xEE, 0xEE});  // Not a terminator, so one must be put.
+  r.program();
+  r.regs()[cpu::reg16::ax] = ah(0x47);
+  r.regs().set(cpu::reg8::dl, dl);
+  r.regs()[cpu::reg16::si] = data_area;
+  r.regs()[cpu::sreg::ds] = code_segment;
+  r.run();
+  std::string text;
+  for (std::uint16_t i = 0; i < 64 && r.byte_at(data_area + i) != 0; ++i) {
+    text.push_back(static_cast<char>(r.byte_at(data_area + i)));
+  }
+  return text;
+}
+
+TEST(dos_current_directory, ah47_answers_the_root_as_an_empty_string) {
+  const rig r;
+  EXPECT_EQ(current_directory_text(r, 0), "");
+  EXPECT_FALSE(r.carry());
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x0100);
+  EXPECT_FALSE(r.pc().stopped());
+}
+
+TEST(dos_current_directory, ah47_answers_it_without_drive_or_leading_slash) {
+  const rig r;
+  ASSERT_EQ(r.fs->mkdir(path_named("\\GAMES")), vfs_error::none);
+  ASSERT_EQ(r.fs->mkdir(path_named("\\GAMES\\CURSE")), vfs_error::none);
+  ASSERT_EQ(
+      r.pc().dos().set_current_directory(*r.fs, path_named("\\GAMES\\CURSE")),
+      vfs_error::none);
+  EXPECT_EQ(current_directory_text(r, 0), "GAMES\\CURSE");
+  EXPECT_FALSE(r.carry());
+  EXPECT_EQ(current_directory_text(r, 3), "GAMES\\CURSE");  // C, by number.
+  EXPECT_FALSE(r.carry());
+}
+
+TEST(dos_current_directory, ah47_refuses_a_drive_that_is_not_c) {
+  const rig r;
+  for (const std::uint8_t dl : std::array<std::uint8_t, 4>{1, 2, 4, 26}) {
+    static_cast<void>(current_directory_text(r, dl));
+    EXPECT_TRUE(r.carry()) << int{dl};
+    EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x0F) << int{dl};
+  }
+}
+
 TEST(dos_current_directory, survives_a_reset_and_is_not_in_the_state) {
   // How the machine was set up, like the program it was told to load: a
   // warm reset keeps it, and the state a checkpoint hashes does not carry

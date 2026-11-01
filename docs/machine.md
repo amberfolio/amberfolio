@@ -187,11 +187,11 @@ Read `platform.h`'s design essay first.
   and a machine left there resolves every name as before. The storefront
   copies need it: their launchers mount the copy at `C:\POOLRAD` and run
   `START` from there, and the program opens its own files by bare name.
-  AH=3Bh and AH=47h are not in the subset and nothing this build runs
-  calls them, so the program cannot move it: it is how the machine was
-  set up, like the program it loaded. `reset()` keeps it, the state hash
+  AH=47h reads it back; AH=3Bh is not in the subset and nothing this
+  build runs calls it, so the program cannot move it: it is how the
+  machine was set up, like the program it loaded. `reset()` keeps it, the state hash
   does not carry it, and a recording names it in its preamble
-  (`docs/replay.md`). Nothing else sees it — the loader builds no
+  (`docs/replay.md`). Nothing else sees it but AH=47h — the loader builds no
   environment block and no parent PSP, so the program's own path is
   nowhere in memory.
 

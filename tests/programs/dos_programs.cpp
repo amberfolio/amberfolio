@@ -7,6 +7,7 @@
 // `append_dos_service_programs()`.
 
 #include <cstdint>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -154,6 +155,92 @@ void load_word(assembler& a, std::string_view label) {
   return raw_program(a);
 }
 
+// --- The current directory: AH=47h --------------------------------------
+//
+// Run with `\GAMES\CURSE` current, as a launcher leaves it; ask for it on
+// the current drive and on C by number, and on A, which is not there.
+//
+//         mov  si, offset buffer / xor dl, dl / mov ah, 47h / int 21h
+//         mov  si, offset buffer2 / mov dl, 3 / mov ah, 47h / int 21h
+//         mov  dl, 1 / mov ah, 47h / int 21h          ; 0Fh
+//         <exit 5Dh>
+
+/// What the program leaves current, and the answer it must get back.
+constexpr std::string_view cwd_directory = "\\GAMES\\CURSE";
+constexpr std::string_view cwd_answer = "GAMES\\CURSE";
+
+///     mov  si, offset <label>            ; BE iw
+void mov_si_offset(assembler& a, std::string_view label) {
+  a.db({0xBE});
+  a.dw_label(label);
+}
+
+/// The sum of the bytes at `label`, up to and including its terminator,
+/// and the terminator's offset from `label`, in AX and CX:
+///
+///         mov  si, offset label / xor ax, ax / xor bx, bx / xor cx, cx
+///  sum:   mov  bl, [si] / add ax, bx / inc si / or bl, bl / jz done
+///         inc  cx / jmp sum
+///  done:
+void sum_asciz(assembler& a, std::string_view label, std::string_view tag) {
+  const std::string top = std::string(tag) + "_sum";
+  const std::string done = std::string(tag) + "_done";
+  mov_si_offset(a, label);
+  a.db({0x31, 0xC0, 0x31, 0xDB, 0x31, 0xC9});
+  a.label(top);
+  a.db({0x8A, 0x1C, 0x01, 0xD8, 0x46, 0x08, 0xDB});
+  a.jump(0x74, done);
+  a.db({0x41});
+  a.jump(0xEB, top);
+  a.label(done);
+}
+
+[[nodiscard]] std::uint16_t asciz_sum(std::string_view text) {
+  std::uint16_t sum = 0;
+  for (const char c : text) {
+    sum = static_cast<std::uint16_t>(sum + static_cast<std::uint8_t>(c));
+  }
+  return sum;
+}
+
+[[nodiscard]] std::vector<std::uint8_t> doscwd_code() {
+  assembler a;
+
+  mov_si_offset(a, "buffer");
+  a.db({0x30, 0xD2});  // xor dl, dl — the current drive
+  int21(a, 0x47);
+  answer_or_zero(a, "current_ok");
+  store(a, 0, reg_ax);
+  sum_asciz(a, "buffer", "current");
+  store(a, 1, reg_ax);
+  store(a, 2, reg_cx);
+
+  mov_si_offset(a, "buffer2");
+  a.db({0xB2, 0x03});  // mov dl, 3 — C, one-based
+  int21(a, 0x47);
+  answer_or_zero(a, "c_ok");
+  store(a, 3, reg_ax);
+  sum_asciz(a, "buffer2", "c");
+  store(a, 4, reg_ax);
+
+  a.db({0xB2, 0x01});  // mov dl, 1 — A
+  int21(a, 0x47);
+  error_or_zero(a, "a_refused");
+  store(a, 5, reg_ax);
+
+  exit_with(a, 0x5D);
+
+  a.label("buffer");
+  for (int i = 0; i < 64; ++i) {
+    a.db({0xEE});  // Not zero, so a missing terminator shows.
+  }
+  a.label("buffer2");
+  for (int i = 0; i < 64; ++i) {
+    a.db({0xEE});
+  }
+  return raw_program(a);
+}
+
 }  // namespace
 
 void append_dos_service_programs(std::vector<machine_program>& list) {
@@ -198,6 +285,25 @@ void append_dos_service_programs(std::vector<machine_program>& list) {
     p.setup.step_cap = 10'000;
     p.results = {{.what = "the current drive, zero-based: C", .value = 2}};
     p.exit_code = 0x5C;
+    list.push_back(std::move(p));
+  }
+
+  {
+    machine_program p;
+    p.name = "doscwd";
+    p.about = "INT 21h AH=47h reads back the directory the host set";
+    p.setup.code = doscwd_code();
+    p.setup.current_directory = cwd_directory;
+    p.setup.step_cap = 20'000;
+    p.results = {
+        {.what = "the current drive's directory: MS-DOS's AX", .value = 0x0100},
+        {.what = "its bytes, summed", .value = asciz_sum(cwd_answer)},
+        {.what = "its length: no drive, no leading backslash",
+         .value = static_cast<std::uint16_t>(cwd_answer.size())},
+        {.what = "C's, by number", .value = 0x0100},
+        {.what = "the same bytes", .value = asciz_sum(cwd_answer)},
+        {.what = "A's: a drive this machine does not have", .value = 0x0F}};
+    p.exit_code = 0x5D;
     list.push_back(std::move(p));
   }
 }

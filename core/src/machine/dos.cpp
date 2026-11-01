@@ -259,8 +259,8 @@ void succeed_with(service_floor& floor, std::uint16_t ax) {
 
 /// Read an ASCIZ pathname from DS:DX and canonicalize it against the
 /// current directory the host set before the load (dos.h's top comment,
-/// #397). The program cannot change it — AH=3Bh/47h are not in this
-/// subset — so this is the one place it is read.
+/// #397). The program cannot change it — AH=3Bh is not in this subset —
+/// so this and AH=47h are the only places it is read.
 ///
 /// `what` is the naming call this is being read for, and it is here
 /// because a name that does not canonicalize at all — a drive letter that
@@ -754,6 +754,61 @@ void current_drive_fn(service_floor& floor) {
   succeed(floor);
 }
 
+// --- The current directory: AH=47h --------------------------------------
+//
+// DS:SI is a 64-byte buffer; DOS fills it with the current directory of
+// drive DL (0 the current drive, 1 A, 2 B, ...) without the drive and
+// without the leading `\`, so the root is an empty string. The directory
+// is the one the host set before the load (dos.h's top comment). Any
+// drive but C is DOS's invalid-drive error, as a name on one is.
+
+/// The buffer AH=47h fills: 64 bytes, the terminator included, which is
+/// the longest current directory DOS keeps.
+constexpr std::size_t current_directory_buffer = 64;
+
+/// DL as AH=47h numbers drives: zero for the current one, then one-based.
+constexpr std::uint8_t default_drive_number = 0;
+constexpr std::uint8_t one_based_only_drive = only_drive + 1;
+
+void get_current_directory_fn(service_floor& floor) {
+  cpu::processor& cpu = floor.box().processor();
+  const std::uint8_t drive = cpu.regs().get(reg8::dl);
+  if (drive != default_drive_number && drive != one_based_only_drive) {
+    fail(floor, vfs_error::invalid_drive);
+    return;
+  }
+
+  std::array<char, current_directory_buffer> text{};
+  std::size_t length = 0;
+  const dos_path& directory = floor.box().dos().current_directory();
+  for (std::size_t i = 0; i < directory.depth(); ++i) {
+    const std::span<const char> name = directory.component(i).text();
+    const std::size_t separator = i == 0 ? 0 : 1;
+    if (length + separator + name.size() >= text.size()) {
+      // Deeper than DOS could hold. Only a host can set such a directory,
+      // and cutting it short would answer a different one.
+      floor.box().stop_unsupported_request(
+          cpu::physical_address(floor.caller_cs(), floor.caller_ip()));
+      return;
+    }
+    if (separator != 0) {
+      text[length++] = '\\';
+    }
+    for (const char c : name) {
+      text[length++] = c;
+    }
+  }
+
+  const std::uint16_t segment = cpu.regs()[sreg::ds];
+  const std::uint16_t offset = cpu.regs()[reg16::si];
+  for (std::size_t i = 0; i <= length; ++i) {
+    cpu.write_byte(segment, static_cast<std::uint16_t>(offset + i),
+                   static_cast<std::uint8_t>(text[i]));
+  }
+  // MS-DOS leaves 0100h in AX on success; CF clear is the contract.
+  succeed_with(floor, 0x0100);
+}
+
 // --- Date/time: AH=2Ah, AH=2Ch ------------------------------------------
 
 void get_date_fn(service_floor& floor) {
@@ -1230,6 +1285,9 @@ void int21_dispatch(service_floor& floor, std::uint8_t /*vector*/) {
       return;
     case 0x44:
       ioctl_fn(floor);
+      return;
+    case 0x47:
+      get_current_directory_fn(floor);
       return;
     case 0x4C:
       terminate(floor, floor.box().processor().regs().get(reg8::al));

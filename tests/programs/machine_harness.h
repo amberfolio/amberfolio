@@ -186,6 +186,11 @@ struct machine_setup {
   /// Files the filesystem holds before the program runs.
   std::vector<staged_file> files;
 
+  /// A directory the harness makes, one level at a time, and sets current
+  /// before the program runs, the way a host's `--install` does
+  /// (`dos_services::set_current_directory`). Empty leaves the root.
+  std::string_view current_directory{};
+
   /// Key events, in the order they are posted. Need not be sorted; the
   /// harness posts each one once its tick has arrived.
   std::vector<scripted_key> keys;
