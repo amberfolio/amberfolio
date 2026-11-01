@@ -161,8 +161,8 @@ TEST(LauncherView, AHostReadsWhatTheFileSays) {
   const std::optional<configured_sound> said =
       read_configured_sound(disk, dos_path{});
   ASSERT_TRUE(said.has_value());
-  EXPECT_EQ(said->file, "POOL.CFG");
-  EXPECT_EQ(said->letter, 'P');
+  EXPECT_EQ(said.value_or(configured_sound{}).file, "POOL.CFG");
+  EXPECT_EQ(said.value_or(configured_sound{}).letter, 'P');
 
   auto none = std::make_unique<memory_filesystem>();
   memory_filesystem& empty = *none;
@@ -192,8 +192,8 @@ TEST(LauncherView, CursesFileIsReadAsTandyToo) {
   const std::optional<configured_sound> said =
       read_configured_sound(disk, path_of("CURSE"));
   ASSERT_TRUE(said.has_value());
-  EXPECT_EQ(said->file, "CURSE.CFG");
-  EXPECT_EQ(said->letter, 'P');
+  EXPECT_EQ(said.value_or(configured_sound{}).file, "CURSE.CFG");
+  EXPECT_EQ(said.value_or(configured_sound{}).letter, 'P');
 }
 
 TEST(LauncherView, EachProgramsFileIsFoundWhereItIsStarted) {
