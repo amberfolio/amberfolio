@@ -1281,8 +1281,10 @@ constexpr std::uint16_t boot_payload_offset = 0x0500;
 constexpr std::uint16_t boot_overlay_offset = 0x0680;
 
 /// Where the payload points the DTA to find its overlay: past the most
-/// the overlay read can fill, below the result block.
+/// the overlay read can fill, below the result block. AH=47h's 64-byte
+/// buffer follows it.
 constexpr std::uint16_t boot_dta_offset = 0x06C0;
+constexpr std::uint16_t boot_directory_offset = 0x0700;
 
 /// The room the payload and its packed form each have. Checked at build
 /// time rather than trusted: a payload that outgrew its landing zone
@@ -1358,6 +1360,9 @@ enum boot_result : std::uint8_t {
   boot_glyph_second_line,
   boot_retrace_seen,
   boot_overlay_found_size,
+  boot_current_drive,
+  boot_current_directory_call,
+  boot_current_directory_first,
   boot_overlay_bytes,
   boot_overlay_ran,
   boot_timer_ticked,
@@ -1463,6 +1468,15 @@ void interrupt(assembler& a, std::uint8_t vector) { a.db({0xCD, vector}); }
   mov_ax(a, 0x0F00);
   interrupt(a, 0x10);
   store(a, boot_mode_after_text, reg_ax);
+
+  // Clear the whole text screen, the way Curse's boot opens (#553): a
+  // scroll of zero lines, to a page nothing answers for.
+  mov_ax(a, 0x0600);
+  mov_bx(a, 0x0700);   // BH = 07h, the blank's attribute
+  a.db({0x31, 0xC9});  // xor cx, cx
+  a.db({0xBA});
+  a.dw(0x184F);  // mov dx, 184Fh
+  interrupt(a, 0x10);
 
   // The character under the cursor, out of a text page nothing in this
   // machine answers for: open bus floats high, and that is the answer.
@@ -1584,6 +1598,21 @@ void interrupt(assembler& a, std::uint8_t vector) { a.db({0xCD, vector}); }
   a.db({0xA1});
   a.dw(boot_dta_offset + 0x1A);  // mov ax, [dta+1Ah] — the size found
   store(a, boot_overlay_found_size, reg_ax);
+
+  // The drive and the directory, which Curse asks for next (#553).
+  a.db({0xB4, 0x19});  // mov ah, 19h
+  interrupt(a, 0x21);
+  a.db({0x32, 0xE4});  // xor ah, ah
+  store(a, boot_current_drive, reg_ax);
+  a.db({0xBE});
+  a.dw(boot_directory_offset);  // mov si, buffer
+  a.db({0x30, 0xD2});           // xor dl, dl
+  a.db({0xB4, 0x47});           // mov ah, 47h
+  interrupt(a, 0x21);
+  store(a, boot_current_directory_call, reg_ax);
+  a.db({0x31, 0xC0, 0xA0});
+  a.dw(boot_directory_offset);  // xor ax, ax / mov al, [buffer]
+  store(a, boot_current_directory_first, reg_ax);
 
   a.db({0xBA});
   a.dw(boot_name_offset);  // mov dx, filename
@@ -4571,6 +4600,9 @@ constexpr std::array<machine::seam_point, 1> door_points{
         {.what = "retrace both ended and began again", .value = 1},
         {.what = "the overlay's size, as find first reported it",
          .value = static_cast<std::uint16_t>(boot_overlay_module().size())},
+        {.what = "the current drive, zero-based: C", .value = 2},
+        {.what = "the current directory: MS-DOS's AX", .value = 0x0100},
+        {.what = "the root's name: an empty string", .value = 0x0000},
         {.what = "bytes of the overlay module read in",
          .value = static_cast<std::uint16_t>(boot_overlay_module().size())},
         {.what = "the overlay ran and returned", .value = boot_overlay_mark},

@@ -211,7 +211,10 @@ not exist**; the smoke test checks the export list.
   `ctest --preset wasm` runs the interpreter. `synthetic_boot` is shaped
   like a real boot (self-unpacking, a module loaded off the filesystem
   and far-called through a relocated pointer, every service the real
-  boot needed) and is extended in the same change as any new service.
+  boots needed) and is extended in the same change as any new service.
+  A service's own program goes in `dos_programs.cpp`, beside them:
+  `machine_programs.cpp` is at the content guard's size cap, and the
+  idioms both use are in `machine_idioms.h`.
 - **Host smoke tests** run a program through a host headlessly.
 
 **A hash tells you something changed; it never tells you the thing was
