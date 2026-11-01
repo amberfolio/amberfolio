@@ -321,7 +321,9 @@ TEST(EditionFacts, CursesSteamRowIsTheDiskItsSessionsPin) {
       std::string size;
       std::string sha;
       ASSERT_TRUE(static_cast<bool>(descriptor >> name >> size >> sha));
-      pinned.emplace(name, size + " " + sha);
+      std::string pin(size);
+      pin.append(" ").append(sha);
+      pinned.emplace(name, pin);
     } else {
       descriptor.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
     }

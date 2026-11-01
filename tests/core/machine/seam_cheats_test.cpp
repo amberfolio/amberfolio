@@ -1205,9 +1205,9 @@ constexpr std::uint16_t combat_load_word = 0x0580;
 struct curse_rig : rig {
   curse_rig() { box->seams().loaded(curse_digest(), image_load_segment); }
 
-  void record(std::uint16_t offset, std::uint8_t side, bool standing,
-              std::uint8_t hp, std::uint16_t scratch_offset,
-              std::uint16_t next_offset) const {
+  void curse_record(std::uint16_t offset, std::uint8_t side, bool standing,
+                    std::uint8_t hp, std::uint16_t scratch_offset,
+                    std::uint16_t next_offset) const {
     const auto at = [offset](std::uint16_t field) {
       return static_cast<std::uint16_t>(offset + field);
     };
@@ -1246,7 +1246,7 @@ TEST(SeamCheatsOnCurse, AreAvailableWithPointsOfTheirOwn) {
 TEST(SeamCheatsOnCurse, InvulnerableZeroesAPartyMembersDamage) {
   const curse_rig r;
   ASSERT_EQ(r.pc().seams().enable("cheat-invulnerable"), seam_reason::none);
-  r.record(0x0100, 0, true, 20, 0, 0);
+  r.curse_record(0x0100, 0, true, 20, 0, 0);
   constexpr std::uint16_t sp = 0x0400;
   r.put_word(data_segment, sp + 4, 7);
   r.put_word(data_segment, sp + 6, 0x0100);
@@ -1257,7 +1257,7 @@ TEST(SeamCheatsOnCurse, InvulnerableZeroesAPartyMembersDamage) {
   EXPECT_EQ(r.word_at(data_segment, sp + 4), 0u);
 
   // An enemy's, at the same entry, is left alone.
-  r.record(0x0100, 1, true, 20, 0, 0);
+  r.curse_record(0x0100, 1, true, 20, 0, 0);
   r.put_word(data_segment, sp + 4, 7);
   r.halt_at(image_load_segment, curse::damage_entry, data_segment, data_segment,
             sp);
@@ -1268,7 +1268,7 @@ TEST(SeamCheatsOnCurse, InvulnerableZeroesAPartyMembersDamage) {
 TEST(SeamCheatsOnCurse, PoolOfRadiancesEntryIsNotAPointHere) {
   const curse_rig r;
   ASSERT_EQ(r.pc().seams().enable("cheat-invulnerable"), seam_reason::none);
-  r.record(0x0100, 0, true, 20, 0, 0);
+  r.curse_record(0x0100, 0, true, 20, 0, 0);
   constexpr std::uint16_t sp = 0x0400;
   r.put_word(data_segment, sp + 4, 7);
   r.put_word(data_segment, sp + 6, 0x0100);
@@ -1291,8 +1291,8 @@ TEST(SeamCheatsOnCurse, KillAllDownsTheEnemiesAtTheEndCheck) {
   r.put_word(data_segment, curse::data_roster_head + 2, record_segment);
   r.put_byte(data_segment, curse::data_side_counts + 0, 1);
   r.put_byte(data_segment, curse::data_side_counts + 1, 1);
-  r.record(0x0100, 0, true, 20, 0, 0x0300);
-  r.record(0x0300, 1, true, 9, 0x0040, 0);
+  r.curse_record(0x0100, 0, true, 20, 0, 0x0300);
+  r.curse_record(0x0300, 1, true, 9, 0x0040, 0);
   r.put_byte(scratch_segment, 0x0040 + 3, 0x55);
 
   r.halt_at(overlay_segment, curse::end_check, data_segment, data_segment,
@@ -1314,8 +1314,8 @@ TEST(SeamCheatsOnCurse, WoundPartyLeavesThePartyOnOneAtCamp) {
   r.put_byte(data_segment, curse::data_mode, 2);
   r.put_word(data_segment, curse::data_roster_head, 0x0100);
   r.put_word(data_segment, curse::data_roster_head + 2, record_segment);
-  r.record(0x0100, 0, true, 30, 0, 0x0300);
-  r.record(0x0300, 0, true, 12, 0, 0);
+  r.curse_record(0x0100, 0, true, 30, 0, 0x0300);
+  r.curse_record(0x0300, 0, true, 12, 0, 0);
   r.step_anywhere();
   EXPECT_EQ(r.byte_at(record_segment, 0x0100 + curse::rec_hp), 1u);
   EXPECT_EQ(r.byte_at(record_segment, 0x0300 + curse::rec_hp), 1u);
