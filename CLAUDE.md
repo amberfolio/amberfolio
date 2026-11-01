@@ -6,11 +6,12 @@ Guidance for Claude Code working in this repository.
 
 Amber Folio is a purpose-built low-level emulator for the machine the SSI
 Gold Box CRPGs ran on (real-mode 8086, EGA, PC speaker), for
-Windows/macOS/Linux (64-bit) and WebAssembly. v1 targets Pool of
-Radiance. **PLAN.md is the plan of record**: scope, architecture,
+Windows/macOS/Linux (64-bit) and WebAssembly. v1 was Pool of Radiance;
+**the current milestone is M9, Curse of the Azure Bonds at the same bar**
+(PLAN.md §7). **PLAN.md is the plan of record**: scope, architecture,
 milestones and settled decisions live there. Don't re-litigate them.
 
-**Status.** M0–M7 are done, `v1.0.0` is the release PLAN.md §1's gate
+**Status.** M0–M8 are done, `v1.0.0` is the release PLAN.md §1's gate
 defines, and `v1.1.4` is the current tag. A release carries the web
 build; the desktop host is built from source. The game boots, plays end
 to end, all six v1
