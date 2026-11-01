@@ -117,6 +117,38 @@ TEST(SaveLayer, TheConfigurationRowIsTheFileItsProgramReads) {
   }
 }
 
+TEST(SaveLayer, CursesSlotIsItsRecordsAndTheirEffects) {
+  // Watched on the Steam copy (#554): a save to slot C writes these.
+  sha256_digest curse;
+  ASSERT_TRUE(parse_digest(
+      "42fcefd6785679568b00bc1fb5b1d81ac2773416be4a35e0363920ddf6b78acd",
+      curse));
+  const save_layer* layer = save_layer_for(curse);
+  ASSERT_NE(layer, nullptr);
+  const save_layer_places steam{.save_directory = path_of("CURSE\\SAVE"),
+                                .current_directory = path_of("CURSE")};
+  const auto row = [&](std::string_view path) {
+    return match_save_file(*layer, steam, path_of(path));
+  };
+  EXPECT_EQ(row("CURSE\\SAVE\\SAVGAMC.DAT").file->kind, save_file_kind::slot);
+  EXPECT_EQ(row("CURSE\\SAVE\\SAVGAMC.DAT").slot, 'C');
+  const save_layer_row member = row("CURSE\\SAVE\\CHRDATC4.FX");
+  ASSERT_NE(member.file, nullptr);
+  EXPECT_EQ(member.file->kind, save_file_kind::member);
+  EXPECT_EQ(member.member, 4);
+  EXPECT_EQ(row("CURSE\\SAVE\\CHRDATC4.SAV").file->kind,
+            save_file_kind::member);
+  EXPECT_EQ(row("CURSE\\SAVE\\CHRDATC4.SWG").file->kind,
+            save_file_kind::member);
+  EXPECT_EQ(row("CURSE\\SAVE\\HERO.GUY").file->kind, save_file_kind::character);
+  EXPECT_EQ(row("CURSE\\CURSE.CFG").file->kind, save_file_kind::config);
+  EXPECT_EQ(row("CURSE\\SAVE\\AFMAPC.DAT").file->kind, save_file_kind::sidecar);
+  // Pool of Radiance's names are not Curse's.
+  EXPECT_EQ(row("CURSE\\SAVE\\CHRDATC4.ITM").file, nullptr);
+  EXPECT_EQ(row("CURSE\\SAVE\\CHARLIST.TXT").file, nullptr);
+  EXPECT_EQ(row("CURSE\\GAME.OVR").file, nullptr);
+}
+
 // --- The rows ------------------------------------------------------------
 
 TEST(SaveLayer, EveryRowIsWellFormed) {

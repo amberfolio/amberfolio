@@ -522,11 +522,7 @@ TEST(EditionFacts, NoFileAnEditionShipsIsEverAPlaythroughs) {
   for (const edition_requirements& edition : edition_requirements_table()) {
     const machine::save_layer* layer =
         machine::save_layer_for(digest_of(edition.fingerprint));
-    if (layer == nullptr) {
-      // A program this build has no save layer for claims no file at
-      // all (machine/save_layer.h), which is the property held here.
-      continue;
-    }
+    ASSERT_NE(layer, nullptr) << edition.id;
     const machine::vfs_result<machine::dos_path> install =
         machine::canonicalize_host_path(
             {edition.install.data(), edition.install.size()});
