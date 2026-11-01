@@ -55,6 +55,43 @@ TEST(EditionTable, EveryEntryHasAWellFormedFingerprintAndAName) {
   }
 }
 
+TEST(EditionTable, KnowsCurseByItsFingerprint) {
+  // The Steam release's START.EXE, v1.3 (PLAN.md §7, M9).
+  sha256_digest digest;
+  ASSERT_TRUE(parse_digest(
+      "42fcefd6785679568b00bc1fb5b1d81ac2773416be4a35e0363920ddf6b78acd",
+      digest));
+  const edition* found = find_edition(digest);
+  ASSERT_NE(found, nullptr);
+  EXPECT_EQ(found->name, "Curse of the Azure Bonds (START.EXE)");
+  EXPECT_EQ(found->configuration.file, "CURSE.CFG");
+  EXPECT_EQ(found->configuration.sound_line, 2U);
+  EXPECT_EQ(found->configuration.save_line, 3U);
+}
+
+TEST(EditionTable, EachProgramReadsAConfigurationFileOfItsOwn) {
+  // The baseline's layout, unchanged: sound on line 2, saves on line 4.
+  EXPECT_EQ(baseline().configuration.file, "POOL.CFG");
+  EXPECT_EQ(baseline().configuration.sound_line, 2U);
+  EXPECT_EQ(baseline().configuration.save_line, 4U);
+
+  // No two programs read one name, so a file's name says whose it is.
+  const std::span<const edition> table = known_editions();
+  for (std::size_t i = 0; i < table.size(); ++i) {
+    const launcher_configuration& mine = table[i].configuration;
+    EXPECT_FALSE(mine.file.empty()) << table[i].name;
+    EXPECT_GT(mine.sound_line, 0U) << table[i].name;
+    EXPECT_GT(mine.save_line, 0U) << table[i].name;
+    EXPECT_NE(mine.sound_line, mine.save_line) << table[i].name;
+    EXPECT_EQ(find_configuration(mine.file), &mine) << table[i].name;
+    for (std::size_t j = i + 1; j < table.size(); ++j) {
+      EXPECT_NE(mine.file, table[j].configuration.file);
+    }
+  }
+  EXPECT_EQ(find_configuration("OTHER.CFG"), nullptr);
+  EXPECT_EQ(find_configuration("pool.cfg"), nullptr) << "names are upper case";
+}
+
 // --- The hex helpers -----------------------------------------------------
 
 TEST(DigestText, RoundTripsThroughFormatHex) {

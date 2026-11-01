@@ -63,8 +63,9 @@
 // A pattern is a **leaf**, and every row says which directory it is a
 // leaf of: the **save directory** or the **current directory**
 // (`save_file_anchor`). Neither is a constant, because the program does
-// not have one. It reads its save directory out of line 4 of its own
-// configuration file, `POOL.CFG`, which it opens relative to the
+// not have one. It reads its save directory out of one line of its own
+// configuration file (`launcher_configuration`, edition.h: line 4 of
+// `POOL.CFG`, line 3 of `CURSE.CFG`), which it opens relative to the
 // directory it was started in (`dos.h`, "The current directory") — and
 // the copies on sale spell that line differently:
 //
@@ -75,8 +76,9 @@
 //
 // So `save_layer_places` carries both directories and
 // `read_save_directory()` answers the first one the way the program
-// would: `POOL.CFG` read relative to the current directory, line 4
-// canonicalized against it. A configuration file that is absent or that
+// would: the configuration file read relative to the current directory,
+// its save line canonicalized against it. A configuration file that is
+// absent or that
 // does not say is **said**, never filled in with a likely directory — a
 // host that cannot be told where the saves are should persist nothing
 // rather than persist a guess, which is the rule for a program with no
@@ -85,7 +87,7 @@
 // **The first-match rule has a second job when the two directories are
 // one.** A copy whose saves are beside its game files puts the
 // configuration file in the save directory, and that file must still be
-// the program's and not a playthrough's — so the `POOL.CFG` row sits
+// the program's and not a playthrough's — so the configuration row sits
 // ahead of the three `<NAME>` rows, and no pattern in the table can
 // equal a file the publisher ships (a test holds that against every
 // edition's file list).
@@ -146,6 +148,7 @@
 #include <span>
 #include <string_view>
 
+#include "amberfolio/machine/edition.h"
 #include "amberfolio/machine/vfs.h"
 #include "amberfolio/sha256.h"
 
@@ -182,7 +185,7 @@ enum class save_file_kind : std::uint8_t {
 /// Which directory a row's pattern is a leaf of (see "Where the rows
 /// are" above).
 enum class save_file_anchor : std::uint8_t {
-  /// The directory the program saves into: line 4 of its configuration
+  /// The directory the program saves into: the save line of its configuration
   /// file.
   save_directory,
   /// The directory the program was started in (`dos.h`).
@@ -286,13 +289,6 @@ std::size_t spell_save_pattern(const save_file& file,
 
 // --- Where the program saves -------------------------------------------
 
-/// The program's configuration file, opened relative to the directory
-/// it was started in, and the line of it that names the save directory
-/// (one-based). Facts about every edition this build knows, gathered the
-/// way the rows were: by watching a real copy open them.
-inline constexpr std::string_view save_layer_config_file = "POOL.CFG";
-inline constexpr std::size_t save_layer_config_save_line = 4;
-
 /// Why `read_save_directory()` could not say.
 enum class save_directory_trouble : std::uint8_t {
   /// It could: the answer is the directory.
@@ -318,6 +314,8 @@ enum class save_directory_trouble : std::uint8_t {
 struct save_directory_answer {
   dos_path directory{};
   save_directory_trouble trouble{save_directory_trouble::no_config};
+  /// The configuration file it read, or null for `no_config`.
+  const launcher_configuration* configuration{nullptr};
 
   [[nodiscard]] bool ok() const noexcept {
     return trouble == save_directory_trouble::none;
@@ -325,9 +323,10 @@ struct save_directory_answer {
 };
 
 /// The directory the program saves into on `fs`, started in
-/// `current_directory`: `save_layer_config_file` opened relative to it,
-/// line `save_layer_config_save_line` canonicalized against it — the two
-/// resolutions the program's own opens make. Nothing else is consulted
+/// `current_directory`: the configuration file there
+/// (`find_configuration_in()`, launcher_view.h) opened relative to it, its
+/// save line canonicalized against it — the two resolutions the program's
+/// own opens make. Nothing else is consulted
 /// and nothing is assumed: an absent or malformed file answers its
 /// trouble, and the root beside it is not a claim.
 ///

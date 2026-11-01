@@ -1168,11 +1168,12 @@ uint32_t af_machine_current_directory(const af_machine* box, char* out,
                                       uint32_t max);
 
 /// Where the program will save, read the way it reads it: its
-/// configuration file (`POOL.CFG`) opened relative to the current
-/// directory, and the line that names the save directory canonicalized
-/// against the same. `\SAVE` on the archive release, `\POOLRAD` and
-/// `\POOLRAD\SAVE` on the two storefront copies, NUL-terminated into
-/// `out`; answers its length.
+/// configuration file (`POOL.CFG`, `CURSE.CFG`; machine/edition.h)
+/// opened relative to the current directory, and the line that names the
+/// save directory canonicalized against the same. `\SAVE` on Pool of
+/// Radiance's archive release, `\POOLRAD` and `\POOLRAD\SAVE` on its two
+/// storefront copies, `\CURSE\SAVE` on Curse of the Azure Bonds',
+/// NUL-terminated into `out`; answers its length.
 ///
 /// Zero when that file is not there or does not say, and then
 /// `af_machine_save_directory_trouble` says which. Nothing is assumed in

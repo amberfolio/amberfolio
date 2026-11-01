@@ -1080,7 +1080,7 @@ export class Machine {
     );
   }
 
-  /// Where the program will save, read the way it reads it — `POOL.CFG`
+  /// Where the program will save, read the way it reads it — its configuration file
   /// in the current directory, its save-directory line against the same:
   /// `{ directory: '\\POOLRAD\\SAVE', trouble: 'none' }`, or
   /// `{ directory: null, trouble }` with `no-config`, `unreadable`,

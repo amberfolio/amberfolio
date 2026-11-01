@@ -8,58 +8,69 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string_view>
 
-#include "amberfolio/machine/save_layer.h"
+#include "amberfolio/machine/edition.h"
 #include "amberfolio/machine/vfs.h"
 
 namespace amberfolio::machine {
 
 namespace {
 
-/// Whether `path` names the configuration file, in whatever directory.
-[[nodiscard]] bool is_configuration(const dos_path& path) noexcept {
+/// The configuration `path` names, in whatever directory, or null.
+[[nodiscard]] const launcher_configuration* configuration_of(
+    const dos_path& path) noexcept {
   if (path.is_root()) {
-    return false;
+    return nullptr;
   }
   const std::span<const char> leaf = path.leaf().text();
-  if (leaf.size() != save_layer_config_file.size()) {
-    return false;
-  }
-  for (std::size_t i = 0; i < leaf.size(); ++i) {
-    if (leaf[i] != save_layer_config_file[i]) {
-      return false;
-    }
-  }
-  return true;
+  return find_configuration(std::string_view(leaf.data(), leaf.size()));
 }
 
 }  // namespace
 
-std::optional<std::size_t> configured_sound_offset(
-    std::span<const std::uint8_t> bytes) noexcept {
-  for (std::size_t i = 0; i < bytes.size(); ++i) {
-    if (bytes[i] != '\n') {
-      continue;
-    }
-    const std::size_t at = i + 1;
-    if (at >= bytes.size() || bytes[at] == '\r' || bytes[at] == '\n') {
-      return std::nullopt;
-    }
-    return at;
+std::optional<std::size_t> configured_line_offset(
+    std::span<const std::uint8_t> bytes, std::size_t line) noexcept {
+  if (line == 0) {
+    return std::nullopt;
   }
-  return std::nullopt;
+  std::size_t at = 0;
+  std::size_t breaks = line - 1;
+  for (std::size_t i = 0; i < bytes.size() && breaks > 0; ++i) {
+    if (bytes[i] == '\n') {
+      --breaks;
+      at = i + 1;
+    }
+  }
+  if (breaks > 0 || at >= bytes.size() || bytes[at] == '\r' ||
+      bytes[at] == '\n') {
+    return std::nullopt;
+  }
+  return at;
 }
 
-std::optional<std::uint8_t> read_configured_sound(
+found_configuration find_configuration_in(const filesystem& fs,
+                                          const dos_path& directory) {
+  for (const edition& known : known_editions()) {
+    const std::string_view name = known.configuration.file;
+    const vfs_result<dos_path> path = canonicalize(
+        directory, std::span<const char>(name.data(), name.size()));
+    if (path.ok() && fs.exists(path.value)) {
+      return {.layout = &known.configuration, .path = path.value};
+    }
+  }
+  return {};
+}
+
+std::optional<configured_sound> read_configured_sound(
     filesystem& fs, const dos_path& current_directory) {
-  const vfs_result<dos_path> config = canonicalize(
-      current_directory, std::span<const char>(save_layer_config_file.data(),
-                                               save_layer_config_file.size()));
-  if (!config.ok()) {
+  const found_configuration config =
+      find_configuration_in(fs, current_directory);
+  if (!config.found()) {
     return std::nullopt;
   }
   const vfs_result<file_handle> file =
-      fs.open(config.value, open_mode::read_only);
+      fs.open(config.path, open_mode::read_only);
   if (!file.ok()) {
     return std::nullopt;
   }
@@ -69,12 +80,12 @@ std::optional<std::uint8_t> read_configured_sound(
   if (!got.ok()) {
     return std::nullopt;
   }
-  const std::optional<std::size_t> at =
-      configured_sound_offset(std::span(bytes.data(), got.value));
+  const std::optional<std::size_t> at = configured_line_offset(
+      std::span(bytes.data(), got.value), config.layout->sound_line);
   if (!at) {
     return std::nullopt;
   }
-  return bytes[*at];
+  return configured_sound{.file = config.layout->file, .letter = bytes[*at]};
 }
 
 launcher_view::shown_file* launcher_view::shown_of(
@@ -90,7 +101,8 @@ launcher_view::shown_file* launcher_view::shown_of(
 vfs_result<file_handle> launcher_view::open(const dos_path& path,
                                             open_mode mode) {
   const vfs_result<file_handle> inner = inner_->open(path, mode);
-  if (!inner.ok() || mode != open_mode::read_only || !is_configuration(path)) {
+  const launcher_configuration* layout = configuration_of(path);
+  if (!inner.ok() || mode != open_mode::read_only || layout == nullptr) {
     return inner;
   }
 
@@ -103,7 +115,8 @@ vfs_result<file_handle> launcher_view::open(const dos_path& path,
     return inner;
   }
   const std::span<const std::uint8_t> whole(bytes.data(), got.value);
-  const std::optional<std::size_t> at = configured_sound_offset(whole);
+  const std::optional<std::size_t> at =
+      configured_line_offset(whole, layout->sound_line);
   if (!at || bytes[*at] == sound_for_this_machine) {
     static_cast<void>(inner_->seek(inner.value, seek_origin::begin, 0));
     return inner;

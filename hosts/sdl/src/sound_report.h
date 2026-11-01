@@ -20,12 +20,14 @@
 #include <optional>
 #include <string>
 
+#include "amberfolio/machine/launcher_view.h"
+
 namespace amberfolio::sdl {
 
 /// The first line, newline included, or empty when there is nothing to
-/// say: no line 2, or one that already names the Tandy chip.
+/// say: no sound line, or one that already names the Tandy chip.
 [[nodiscard]] std::string started_sound_line(
-    std::optional<std::uint8_t> configured);
+    std::optional<machine::configured_sound> configured);
 
 /// The second line, newline included, or empty for a run that never
 /// wrote the chip and dropped nothing.

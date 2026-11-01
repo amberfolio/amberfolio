@@ -46,6 +46,18 @@
 // answers the baseline for that fingerprint; `match_edition()` picks
 // the row the offered files belong to.
 //
+// The third and fourth rows are a second program, Curse of the Azure
+// Bonds, as Steam (`curse-steam`) and GOG (`curse-gog`) sell it (#551).
+// Every program and data file of the two is byte-identical; they differ
+// in where the copy is installed (`\CURSE` and the root), in the
+// `CURSE.CFG` each seller ships, and in the saved games each ships in
+// its SAVE directory, which are the player's and not artifacts
+// (`docs/hosts.md` §5). So the configuration file is what tells them
+// apart: each row's carries the digest its seller ships it with, and a
+// copy whose file still has those bytes counts it toward that row. A
+// copy whose player has changed it ties, and the earlier row, Steam's,
+// is the answer.
+//
 //
 // Nothing here reproduces anything
 // --------------------------------
@@ -74,9 +86,12 @@ enum class artifact_kind : std::uint8_t {
   /// digest.
   file,
   /// A file the copy is launched with rather than one the release ships
-  /// the same bytes of: POOL.CFG, which each seller's launcher writes
-  /// for its own install. Required **by name** — no size, no digest —
-  /// because a player's copy carries whatever their launcher wrote.
+  /// the same bytes of: POOL.CFG or CURSE.CFG, which each seller's
+  /// launcher writes for its own install. Required **by name**, with no
+  /// size, because a player's copy carries whatever their launcher wrote.
+  /// It may carry the digest its seller ships it with, and then a file
+  /// with those bytes counts toward choosing this row; one without them
+  /// still answers for it by name.
   configuration,
   /// Something the player *holds* rather than something the machine
   /// runs (`machine/document.h`): a digest, no filename, and never
@@ -181,7 +196,7 @@ struct offered_file {
 /// **A configuration row is matched on the name**, case-insensitively
 /// and on the last path component, because its bytes are whatever the
 /// player's launcher wrote. It is matched only once a row has been
-/// chosen by digest: a directory holding a POOL.CFG and nothing else is
+/// chosen by digest: a directory holding a configuration file and nothing else is
 /// not a copy of anything.
 struct edition_match {
   /// The closest edition — the one the most of these files belong to by

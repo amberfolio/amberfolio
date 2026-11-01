@@ -13,6 +13,7 @@
 #include <string_view>
 
 #include "amberfolio/machine/edition.h"
+#include "amberfolio/machine/launcher_view.h"
 #include "amberfolio/machine/vfs.h"
 
 namespace amberfolio::machine {
@@ -63,7 +64,7 @@ constexpr std::array<save_file, 11> baseline_files{{
      .required = false,
      .about = "this build's own: which journal entries the game had cited "
               "when slot <S> was written"},
-    {.pattern = save_layer_config_file,
+    {.pattern = "POOL.CFG",
      .kind = save_file_kind::config,
      .required = false,
      .about = "the program's settings, read at boot and written only by the "
@@ -262,20 +263,21 @@ const char* save_directory_trouble_name(save_directory_trouble what) noexcept {
 save_directory_answer read_save_directory(filesystem& fs,
                                           const dos_path& current_directory) {
   save_directory_answer answer;
-  const vfs_result<dos_path> config = canonicalize(
-      current_directory, std::span<const char>(save_layer_config_file.data(),
-                                               save_layer_config_file.size()));
-  if (!config.ok() || !fs.exists(config.value)) {
+  const found_configuration config =
+      find_configuration_in(fs, current_directory);
+  if (!config.found()) {
     answer.trouble = save_directory_trouble::no_config;
     return answer;
   }
+  answer.configuration = config.layout;
+  const std::size_t save_line = config.layout->save_line;
 
   // The line wanted is short and near the top; this is far more than the
   // four lines before its end have ever needed. A line that runs off the
   // end of it is not read as if it had ended there.
   std::array<std::uint8_t, 512> bytes{};
   const vfs_result<file_handle> file =
-      fs.open(config.value, open_mode::read_only);
+      fs.open(config.path, open_mode::read_only);
   if (!file.ok()) {
     answer.trouble = save_directory_trouble::unreadable;
     return answer;
@@ -296,7 +298,7 @@ save_directory_answer read_save_directory(filesystem& fs,
     if (bytes[i] != '\n') {
       continue;
     }
-    if (line == save_layer_config_save_line) {
+    if (line == save_line) {
       ends = i;
       terminated = true;
       break;
@@ -305,7 +307,7 @@ save_directory_answer read_save_directory(filesystem& fs,
     begins = i + 1;
   }
   const bool whole_file = got.value < bytes.size();
-  if (line != save_layer_config_save_line || (!terminated && !whole_file)) {
+  if (line != save_line || (!terminated && !whole_file)) {
     answer.trouble = save_directory_trouble::too_short;
     return answer;
   }

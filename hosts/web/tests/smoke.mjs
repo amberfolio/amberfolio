@@ -633,7 +633,7 @@ if (core !== null) {
       .filter((artifact) => artifact.kind === 'file' || artifact.kind === 'configuration')
       .map((artifact) => ({
         name: artifact.name,
-        sha256: artifact.kind === 'file' ? artifact.sha256 : 'e'.repeat(64),
+        sha256: artifact.sha256 ?? 'e'.repeat(64),
       }));
     const complete = matchEdition(editions, whole);
     check(

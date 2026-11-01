@@ -64,6 +64,9 @@ const edition_requirements& row(std::string_view id) {
 const edition_requirements& store() { return row("por-store"); }
 /// The third-party repack the session library was recorded on.
 const edition_requirements& repack() { return row("por-archive"); }
+/// Curse of the Azure Bonds as Steam sells it, and as GOG does (#551).
+const edition_requirements& curse() { return row("curse-steam"); }
+const edition_requirements& curse_gog() { return row("curse-gog"); }
 
 /// What a player's POOL.CFG hashes to: whatever their launcher wrote,
 /// which is nothing the table knows.
@@ -71,8 +74,9 @@ constexpr std::string_view players_config =
     "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
 /// A player's whole copy of `edition`, as a host that walked the
-/// directory would offer it: every file, and a configuration file of the
-/// player's own.
+/// directory would offer it: every file, and a configuration file as its
+/// seller ships it where the row says what that is, or of the player's
+/// own where it does not.
 std::vector<offered_file> whole_copy(const edition_requirements& edition) {
   std::vector<offered_file> offered;
   for (const edition_artifact& artifact : edition.artifacts) {
@@ -80,8 +84,10 @@ std::vector<offered_file> whole_copy(const edition_requirements& edition) {
       offered.push_back(
           {.name = artifact.name, .digest = digest_of(artifact.fingerprint)});
     } else if (artifact.kind == artifact_kind::configuration) {
-      offered.push_back(
-          {.name = artifact.name, .digest = digest_of(players_config)});
+      offered.push_back({.name = artifact.name,
+                         .digest = digest_of(artifact.fingerprint.empty()
+                                                 ? players_config
+                                                 : artifact.fingerprint)});
     }
   }
   return offered;
@@ -115,14 +121,20 @@ TEST(EditionFacts, EveryEditionIsOneTheMachineRecognizes) {
 TEST(EditionFacts, TheStoreReleaseIsTheBaselineAndTheRepackKeepsItsId) {
   const std::span<const edition_requirements> table =
       edition_requirements_table();
-  ASSERT_EQ(table.size(), 2U);
+  ASSERT_EQ(table.size(), 4U);
   EXPECT_EQ(&table[0], &store());
   // The site keys on ids and the session library pins this disk, so the
   // repack's id is the one it has always had.
   EXPECT_EQ(repack().id, "por-archive");
   // One program image, two releases.
   EXPECT_EQ(store().fingerprint, repack().fingerprint);
-  EXPECT_EQ(machine::known_editions().size(), 1U);
+  // And Curse of the Azure Bonds after them, a second program in two
+  // releases of one program image.
+  EXPECT_EQ(&table[2], &curse());
+  EXPECT_EQ(&table[3], &curse_gog());
+  EXPECT_NE(curse().fingerprint, store().fingerprint);
+  EXPECT_EQ(curse().fingerprint, curse_gog().fingerprint);
+  EXPECT_EQ(machine::known_editions().size(), 2U);
 }
 
 TEST(EditionFacts, EachRowStatesWhereItIsInstalled) {
@@ -131,6 +143,8 @@ TEST(EditionFacts, EachRowStatesWhereItIsInstalled) {
   // copy already is.
   EXPECT_EQ(store().install, "\\POOLRAD");
   EXPECT_EQ(repack().install, "\\");
+  EXPECT_EQ(curse().install, "\\CURSE");
+  EXPECT_EQ(curse_gog().install, "\\");
   for (const edition_requirements& edition : edition_requirements_table()) {
     ASSERT_THAT(edition.install, Not(IsEmpty())) << edition.id;
     EXPECT_EQ(edition.install.front(), '\\') << edition.id;
@@ -203,9 +217,16 @@ TEST(EditionFacts, TheConfigurationFileIsRequiredByNameAlone) {
         continue;
       }
       ++configurations;
-      EXPECT_EQ(artifact.name, "POOL.CFG") << edition.id;
+      // The file its program reads, by the name it reads it under.
+      const machine::edition* program =
+          machine::find_edition(digest_of(edition.fingerprint));
+      ASSERT_NE(program, nullptr) << edition.id;
+      EXPECT_EQ(artifact.name, program->configuration.file) << edition.id;
       EXPECT_TRUE(artifact.required) << edition.id;
-      EXPECT_THAT(artifact.fingerprint, IsEmpty()) << edition.id;
+      // A digest, when there is one, is the seller's own file (above).
+      EXPECT_TRUE(artifact.fingerprint.empty() ||
+                  artifact.fingerprint.size() == sha256_digest::text_length)
+          << edition.id;
       EXPECT_EQ(artifact.size, 0U) << edition.id;
     }
     EXPECT_EQ(configurations, 1U) << edition.id;
@@ -217,6 +238,20 @@ TEST(EditionFacts, TheStoreRowListsOnlyWhatTheStoresShip) {
     EXPECT_NE(artifact.name, "CFG.C");
     EXPECT_NE(artifact.name, "CFG.EXE");
     EXPECT_NE(artifact.name, "POOL.BAT");
+  }
+}
+
+TEST(EditionFacts, TheSavedGamesASellerShipsAreNotArtifacts) {
+  // Steam's Curse ships slots A and B in its SAVE directory. They are the
+  // player's from the first save on (docs/hosts.md §5), so a copy whose
+  // player has saved over them, or removed them, is still complete.
+  for (const edition_requirements& edition : edition_requirements_table()) {
+    for (const edition_artifact& artifact : edition.artifacts) {
+      EXPECT_EQ(artifact.name.find('/'), std::string_view::npos)
+          << edition.id << ": " << artifact.name;
+      EXPECT_EQ(artifact.name.find('\\'), std::string_view::npos)
+          << edition.id << ": " << artifact.name;
+    }
   }
 }
 
@@ -381,6 +416,55 @@ TEST(EditionMatch, TheOverlayTellsTheTwoReleasesApart) {
   EXPECT_TRUE(misses(match, "POOL.BAT"));
 }
 
+TEST(EditionMatch, TheShippedConfigurationTellsCursesTwoReleasesApart) {
+  // Every file but CURSE.CFG is the same in both, and the two install in
+  // different places, so the configuration file as each seller ships it
+  // decides.
+  for (const edition_requirements* edition : {&curse(), &curse_gog()}) {
+    const edition_match match = match_edition(whole_copy(*edition));
+    ASSERT_EQ(match.edition, edition) << edition->id;
+    EXPECT_TRUE(match.complete()) << edition->id;
+    EXPECT_THAT(match.unclaimed, IsEmpty()) << edition->id;
+  }
+  for (const edition_artifact& artifact : curse().artifacts) {
+    if (artifact.kind == artifact_kind::file) {
+      EXPECT_TRUE(std::ranges::any_of(curse_gog().artifacts,
+                                      [&](const edition_artifact& other) {
+                                        return other.name == artifact.name &&
+                                               other.fingerprint ==
+                                                   artifact.fingerprint &&
+                                               other.size == artifact.size;
+                                      }))
+          << artifact.name;
+    }
+  }
+  EXPECT_EQ(curse().artifacts.size(), curse_gog().artifacts.size());
+
+  // A file the player has changed answers for either row by name, and
+  // the earlier row is the answer, complete.
+  std::vector<offered_file> changed = whole_copy(curse_gog());
+  for (offered_file& file : changed) {
+    if (file.name == "CURSE.CFG") {
+      file.digest = digest_of(players_config);
+    }
+  }
+  const edition_match match = match_edition(changed);
+  ASSERT_EQ(match.edition, &curse());
+  EXPECT_TRUE(match.complete());
+  EXPECT_THAT(match.unclaimed, IsEmpty());
+
+  // The seller's bytes under another name are not the configuration file.
+  std::vector<offered_file> renamed = whole_copy(curse_gog());
+  for (offered_file& file : renamed) {
+    if (file.name == "CURSE.CFG") {
+      file.name = "OTHER.CFG";
+    }
+  }
+  const edition_match lost = match_edition(renamed);
+  ASSERT_EQ(lost.edition, &curse());
+  EXPECT_TRUE(misses(lost, "CURSE.CFG"));
+}
+
 TEST(EditionMatch, KnowsNothingRatherThanGuessingWhenNothingBelongs) {
   const std::vector<offered_file> offered = {
       {.name = "README.TXT", .digest = digest_of(std::string(64, 'c'))},
@@ -438,7 +522,11 @@ TEST(EditionFacts, NoFileAnEditionShipsIsEverAPlaythroughs) {
   for (const edition_requirements& edition : edition_requirements_table()) {
     const machine::save_layer* layer =
         machine::save_layer_for(digest_of(edition.fingerprint));
-    ASSERT_NE(layer, nullptr) << edition.id;
+    if (layer == nullptr) {
+      // A program this build has no save layer for claims no file at
+      // all (machine/save_layer.h), which is the property held here.
+      continue;
+    }
     const machine::vfs_result<machine::dos_path> install =
         machine::canonicalize_host_path(
             {edition.install.data(), edition.install.size()});
@@ -455,7 +543,7 @@ TEST(EditionFacts, NoFileAnEditionShipsIsEverAPlaythroughs) {
         }
         const machine::save_layer_row row = machine::match_save_file(
             *layer, places, inside(install.value, artifact.name));
-        if (artifact.name == machine::save_layer_config_file) {
+        if (artifact.kind == artifact_kind::configuration) {
           ASSERT_NE(row.file, nullptr) << edition.id;
           EXPECT_EQ(row.file->kind, machine::save_file_kind::config)
               << edition.id;

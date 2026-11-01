@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The launcher's view of `POOL.CFG` (launcher_view.h, #404): a read-only
-// open of the configuration file answers line 2 as the Tandy chip, and
+// The launcher's view of a configuration file (launcher_view.h, #404): a read-only
+// open of it answers the sound line as the Tandy chip, and
 // nothing else a program or a host can do sees anything but the file.
 
 #include "amberfolio/machine/launcher_view.h"
@@ -158,12 +158,77 @@ TEST(LauncherView, AHostReadsWhatTheFileSays) {
   auto owned = std::make_unique<memory_filesystem>();
   memory_filesystem& disk = *owned;
   put(disk, "POOL.CFG", speaker_config);
-  EXPECT_EQ(read_configured_sound(disk, dos_path{}),
-            std::optional<std::uint8_t>{'P'});
+  const std::optional<configured_sound> said =
+      read_configured_sound(disk, dos_path{});
+  ASSERT_TRUE(said.has_value());
+  EXPECT_EQ(said->file, "POOL.CFG");
+  EXPECT_EQ(said->letter, 'P');
 
   auto none = std::make_unique<memory_filesystem>();
   memory_filesystem& empty = *none;
-  EXPECT_EQ(read_configured_sound(empty, dos_path{}), std::nullopt);
+  EXPECT_FALSE(read_configured_sound(empty, dos_path{}).has_value());
+}
+
+// --- Curse of the Azure Bonds' file (#551) ---------------------------------
+
+/// What a Curse launcher that says the speaker would write: four lines,
+/// the save directory on the third.
+constexpr std::string_view curse_speaker_config =
+    "E\r\nP\r\nC:\\CURSE\\SAVE\\\r\nF\r\n";
+
+TEST(LauncherView, CursesFileIsReadAsTandyToo) {
+  auto owned = std::make_unique<memory_filesystem>();
+  memory_filesystem& disk = *owned;
+  ASSERT_EQ(disk.mkdir(path_of("CURSE")), vfs_error::none);
+  put(disk, "CURSE\\CURSE.CFG", curse_speaker_config);
+  launcher_view view(disk);
+
+  std::string tandy(curse_speaker_config);
+  tandy[3] = 'T';
+  EXPECT_EQ(read_all(view, "CURSE\\CURSE.CFG"), tandy);
+  EXPECT_EQ(view.shown(), 1u);
+  EXPECT_EQ(read_all(disk, "CURSE\\CURSE.CFG"), curse_speaker_config);
+
+  const std::optional<configured_sound> said =
+      read_configured_sound(disk, path_of("CURSE"));
+  ASSERT_TRUE(said.has_value());
+  EXPECT_EQ(said->file, "CURSE.CFG");
+  EXPECT_EQ(said->letter, 'P');
+}
+
+TEST(LauncherView, EachProgramsFileIsFoundWhereItIsStarted) {
+  auto owned = std::make_unique<memory_filesystem>();
+  memory_filesystem& disk = *owned;
+  ASSERT_EQ(disk.mkdir(path_of("CURSE")), vfs_error::none);
+  put(disk, "POOL.CFG", speaker_config);
+  put(disk, "CURSE\\CURSE.CFG", curse_speaker_config);
+
+  const found_configuration pool = find_configuration_in(disk, dos_path{});
+  ASSERT_TRUE(pool.found());
+  EXPECT_EQ(pool.layout->file, "POOL.CFG");
+  EXPECT_EQ(pool.layout->save_line, 4u);
+
+  const found_configuration curse =
+      find_configuration_in(disk, path_of("CURSE"));
+  ASSERT_TRUE(curse.found());
+  EXPECT_EQ(curse.layout->file, "CURSE.CFG");
+  EXPECT_EQ(curse.layout->save_line, 3u);
+  EXPECT_EQ(curse.path, path_of("CURSE\\CURSE.CFG"));
+
+  auto none = std::make_unique<memory_filesystem>();
+  EXPECT_FALSE(find_configuration_in(*none, dos_path{}).found());
+}
+
+TEST(LauncherView, ALineIsFoundByItsNumber) {
+  const std::string_view text = "E\r\nP\r\n\r\nF";
+  const std::span<const std::uint8_t> bytes(
+      reinterpret_cast<const std::uint8_t*>(text.data()), text.size());
+  EXPECT_EQ(configured_line_offset(bytes, 1), std::optional<std::size_t>{0});
+  EXPECT_EQ(configured_line_offset(bytes, 2), std::optional<std::size_t>{3});
+  EXPECT_EQ(configured_line_offset(bytes, 3), std::nullopt) << "empty";
+  EXPECT_EQ(configured_line_offset(bytes, 4), std::optional<std::size_t>{8});
+  EXPECT_EQ(configured_line_offset(bytes, 5), std::nullopt) << "past the end";
+  EXPECT_EQ(configured_line_offset(bytes, 0), std::nullopt);
 }
 
 }  // namespace
