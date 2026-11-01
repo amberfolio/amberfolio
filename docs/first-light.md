@@ -72,6 +72,39 @@ Answer the challenge from your own wheel, or skip it with
 a keystroke and the character-creation list takes another. That is the
 exit criterion.
 
+### Curse of the Azure Bonds
+
+The Steam copy (v1.3) runs from `C:\CURSE` with its own `CURSE.CFG`
+(`--install \CURSE`). It is not a recognized edition yet, so no seam is
+offered, and every figure below is with every seam off. Virtual time,
+read off `--dump-every 30` stills (to the half second):
+
+| `--speed` | loading line | publisher's logo | title | second title | credits | play or demo |
+|---|---|---|---|---|---|---|
+| `xt` | 0:04 | 0:38.5 | 1:17 | 1:40.5 | 1:52 | 2:02 |
+| `turbo` | 0:03 | 0:20 | 0:41.5 | 0:58 | 1:09 | 1:19 |
+| `at` | 0:02.5 | 0:11 | 0:24.5 | 0:37.5 | 0:48 | 0:58 |
+| `386` | 0:01.5 | 0:03.5 | 0:10 | 0:20.5 | 0:30.5 | 0:40.5 |
+
+From the title on, each screen holds for about ten seconds of the
+program's own timing; `--speed` shortens the computation before and
+between them. The last screen waits for a key, and after thirty seconds
+without one the program starts its demo. A key that chooses to play
+brings up the copy-protection challenge within a second; the Steam copy
+takes any letter and `Return`, and the party menu follows. At `386`:
+`--press P@2500 --press A@2650 --press Return@2700` reaches the party
+menu by frame 2730, on the desktop and under `hosts/web/tools/drive.mjs`
+alike, at the same step and with the same frame.
+
+The program clears an 80x25 text screen through `INT 10h AH=06h` before
+it sets mode 0Dh, and finds every file before it opens it
+(`INT 21h AH=4Eh`, a `file find` line naming the directory). Its log
+carries one notice Pool of Radiance's does not: a write to ports 00h and
+01h, the DMA controller's channel 0, which this machine does not have.
+`CURSE.CFG` says `T`, so the Tandy chip is written throughout the boot
+(about 82,000 writes in the first 45 seconds at `386`); it is heard once,
+as the second title screen comes up. The speaker is silent.
+
 ### Reading the boot log
 
 A healthy run prints a load line, three notices, and no stop:
@@ -162,7 +195,7 @@ challenge. It never answers the challenge for anybody.
 
 ## What first light does *not* cover
 
-Sound: the program makes none on this path, so a `--dump` is silent; the
+Sound: Pool of Radiance makes none on this path, so a `--dump` is silent; the
 speaker path is asserted by the `sound` machine program and
 `sdl-host-sounds-a-tone`. Anything past the roster is `docs/playable.md`.
 Timing is a fixed cost per step (`machine/clock.h`).
