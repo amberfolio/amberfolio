@@ -145,13 +145,14 @@ calls and 32 naming file calls, off unless asked (`machine/trace.h`).
 `next=` names the one thing to widen.
 
 **The file line.** The DOS layer reports the naming calls (`AH=39h/3Ch/
-3Dh/41h`, and `3Eh` because a save has to close) after the outcome, with
-the canonical path:
+3Dh/41h`, `4Eh` with the directory it searched, and `3Eh` because a save
+has to close) after the outcome, with the canonical path:
 
 ```
 amberfolio: file mkdir \SAVE handle=0000 access_denied from=0B58:1823
 amberfolio: file create \SAVE\SAVGAMA.DAT handle=0006 none from=0B58:1458
 amberfolio: file close \SAVE\SAVGAMA.DAT handle=0006 none from=0B58:14A8
+amberfolio: file find \CURSE handle=0000 none from=0873:0143
 ```
 
 Refusals are reported, including a name `canonicalize()` will not

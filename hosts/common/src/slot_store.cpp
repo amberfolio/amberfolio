@@ -228,6 +228,7 @@ void slot_store::saw(const machine::file_event& event) {
     }
     case machine::file_action::mkdir:
     case machine::file_action::unlink:
+    case machine::file_action::find:
       break;
   }
 }

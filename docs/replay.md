@@ -94,7 +94,9 @@ machine writes the order.
 **In**: everything the program can observe or that decides what it
 observes next: registers and interrupt latches, clock and step count,
 every byte of RAM, every device's architectural state in attach order,
-the armed deadlines, the DOS handle table and every open file's position,
+the armed deadlines, the DOS handle table and every open file's position
+(and the DTA and the directories searched, once a program has moved the
+one or made a search: before that they add nothing, `dos.h`),
 the wall seed, queued input, undrained console bytes, the speaker's edge
 list and the Tandy chip's writes as a count and a running digest each,
 the framebuffer and its generation, and the stop record.

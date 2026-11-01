@@ -242,6 +242,8 @@ const char* file_action_name(file_action what) noexcept {
       return "unlink";
     case file_action::close:
       return "close";
+    case file_action::find:
+      return "find";
   }
   return "unknown";
 }

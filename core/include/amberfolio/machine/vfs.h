@@ -436,6 +436,55 @@ inline constexpr std::size_t max_host_path_text =
 [[nodiscard]] vfs_result<dos_path> canonicalize_host_path(
     std::span<const char> raw) noexcept;
 
+// --- Search patterns (AH=4Eh/4Fh, #553) ---------------------------------
+
+/// A name in DOS's own fixed form: eight name bytes and three extension
+/// bytes, each blank-padded, no dot. It is the form a directory entry has
+/// on a FAT disk and the form a search compares in, which is why `?`
+/// matching a trailing blank — `A?.TXT` finding `A.TXT` — falls out of
+/// the comparison instead of being a rule of its own.
+using fcb_name = std::array<char, 11>;
+
+/// `name` in that form.
+[[nodiscard]] fcb_name fcb_form(const dos_name& name) noexcept;
+
+/// The last component of a FindFirst file specification, as DOS turns it
+/// into the eleven bytes it compares every directory entry against.
+///
+/// The rule is DOS's (any DOS technical reference states it): the name
+/// part fills eight positions and the extension three; a `*` fills the
+/// rest of its part with `?` and anything after it in that part is
+/// ignored; a `?` stays a `?`; every other character is upper-cased and
+/// must be one a short name may hold. One component, so no `\` and no
+/// drive: the caller splits those off and canonicalizes them as a
+/// directory.
+///
+/// `vfs_error::path_not_found` for what no entry could ever answer: an
+/// empty pattern, a second dot, a part longer than its field, or a
+/// character no short name holds. That is the code `dos_name::parse()`
+/// gives the same faults in an ordinary name, and for the same reason.
+class search_pattern {
+ public:
+  [[nodiscard]] static vfs_result<search_pattern> parse(
+      std::span<const char> raw) noexcept;
+
+  /// The pattern from its eleven bytes, as a search record stores them
+  /// between FindFirst and FindNext. Taken as they are: a record a
+  /// program scribbled on matches what its bytes say, as on DOS.
+  [[nodiscard]] static search_pattern from_fcb(const fcb_name& bytes) noexcept;
+
+  /// Whether an entry whose name is `name` (in `fcb_form()`) matches.
+  [[nodiscard]] bool matches(const fcb_name& name) const noexcept;
+
+  [[nodiscard]] const fcb_name& fcb() const noexcept { return chars_; }
+
+  friend bool operator==(const search_pattern&,
+                         const search_pattern&) = default;
+
+ private:
+  fcb_name chars_{};
+};
+
 // --- The filesystem interface -------------------------------------------
 
 /// A backend-assigned identifier for one open file, opaque outside the
