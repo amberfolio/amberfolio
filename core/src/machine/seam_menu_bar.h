@@ -28,42 +28,21 @@
 #include "amberfolio/machine/journal.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/overlay.h"
+#include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/service_floor.h"
 
 namespace amberfolio::machine::menu_bar {
 
-// --- The module the menu-bar routine lives in ------------------------------
-
-/// Where the program keeps overlay 25's load segment: the module is the one
-/// `list-arrows` documents (docs/seams.md §10).
-constexpr std::uint32_t load_segment_at = 0x3C60;
-
-constexpr seam_module module{
-    .file = "GAME.OVR",
-    .file_offset = 182479,
-    .length = 4682,
-    .digest =
-        "175454bc2f527dd6757c89eaa50a6cdd27a9cf5d3aaa197b33a140f5b09a3901",
-    .load_segment_at = load_segment_at};
-
-/// In the menu-bar routine: the call into the key-read routine, reached
-/// only when the key-pending routine has said a key is waiting. Offset from
-/// the module's start. A handler here runs before the call, so nothing has
-/// been read yet.
-constexpr std::uint32_t key_read_call = 0x0572;
+/// The program this file's facts are about (program_profile.h): the
+/// baseline edition, and only it.
+inline constexpr const program_profile& profile = pool_of_radiance;
 
 // --- The routine's frame ---------------------------------------------------
 
 /// Above BP: the caller's return address, offset then segment.
 constexpr std::uint16_t frame_return_ip = 2;
 constexpr std::uint16_t frame_return_cs = 4;
-
-// --- The data segment ------------------------------------------------------
-
-/// The program's one-byte pushback slot for an extended key's second half.
-/// While it is armed the head of the ring is not the key about to be read.
-constexpr std::uint16_t data_key_pushback = 0x8501;
 
 // --- The callers -----------------------------------------------------------
 
@@ -73,27 +52,6 @@ struct caller {
   std::uint32_t load_segment_at;
   std::uint16_t return_offset;
 };
-
-/// The words the program's overlay manager keeps the modules' load
-/// segments in. Each is the manager's record of the module (its file offset
-/// and length, from the overlay table) and the word sixteen bytes into it,
-/// found by searching the resident image: one match each. The adventuring
-/// loop's and the camp screen's are the words `journal` and `encamp-fix`
-/// resolve their own points through; the combat overlay's is
-/// `cheat-kill-all`'s.
-constexpr std::uint32_t temple_load_segment_at = 0x230;       // overlay 4
-constexpr std::uint32_t post_combat_load_segment_at = 0x260;  // overlay 5
-constexpr std::uint32_t shop_load_segment_at = 0x290;         // overlay 6
-constexpr std::uint32_t script_load_segment_at = 0x2C0;       // overlay 7
-constexpr std::uint32_t combat_load_segment_at = 0x360;       // overlay 8
-constexpr std::uint32_t aim_load_segment_at = 0x690;          // overlay 13
-constexpr std::uint32_t adventure_load_segment_at = 0x730;    // overlay 14
-constexpr std::uint32_t camp_load_segment_at = 0x760;         // overlay 15
-constexpr std::uint32_t roster_load_segment_at = 0x790;       // overlay 16
-constexpr std::uint32_t slots_load_segment_at = 0x7D0;        // overlay 17
-constexpr std::uint32_t view_load_segment_at = 0x860;         // overlay 19
-constexpr std::uint32_t rest_load_segment_at = 0x8D0;         // overlay 20
-constexpr std::uint32_t appraise_load_segment_at = 0x900;     // overlay 21
 
 /// The segment the program says `at` is loaded at now; zero while it is
 /// not loaded.
@@ -192,7 +150,8 @@ struct pending_key {
   if (box.journal().reader_open()) {
     return std::nullopt;
   }
-  if (cpu.read_byte(cpu.regs()[cpu::sreg::ds], data_key_pushback) != 0) {
+  if (cpu.read_byte(cpu.regs()[cpu::sreg::ds], profile.data_key_pushback) !=
+      0) {
     return std::nullopt;
   }
   return pending_key{.at = head, .key = key};

@@ -298,6 +298,7 @@
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/memory_map.h"
 #include "amberfolio/machine/overlay.h"
+#include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/service_floor.h"
 #include "amberfolio/machine/text_face.h"
@@ -313,141 +314,39 @@ namespace {
 // The facts
 // ---------------------------------------------------------------------------
 
-/// The SHA-256 of the program image every offset below is a fact about —
-/// the baseline edition (edition.h), and only it.
-constexpr std::array<std::string_view, 1> automap_binaries{
-    "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd"};
+/// The program this seam's facts are about (program_profile.h): the
+/// baseline edition, and only it. The seam is available on it and on no
+/// other binary.
+constexpr const program_profile& profile = pool_of_radiance;
+constexpr auto automap_binaries = fingerprints_of(std::array{&profile});
 
-/// **The points**, as offsets from the image segment. All five are in the
-/// resident image: the keyboard, framing and roster routines are the
-/// program's own substrate and are never overlaid.
-///
-/// Each was read off the disassembly and each has a second route. The two
-/// keyboard entries are confirmed by a driven run's own stop line, which
-/// names the far address of the instruction after the second one's INT
-/// 16h; the box-region clear is `0x4047` in `seam_encamp_fix.cpp` too,
-/// found independently for a different purpose; and the frame border
-/// beside it at `0x3F10` puts the whole segment where both agree it is.
-constexpr std::uint32_t key_pending_entry = 0xA6FD;
-constexpr std::uint32_t key_read_entry = 0xA70F;
-constexpr std::uint32_t clear_region_entry = 0x4047;
-constexpr std::uint32_t clear_screen_entry = 0x7D3B;
-
-/// The resident thunk of the program's **one** menu-bar input routine
-/// (M5-E2d): every bar the game puts on the screen and every key it reads
-/// through one goes past here, with the bar itself as an argument. A far
-/// jump into the overlay that holds the routine, so at its entry the
-/// stack is still the caller's frame.
-///
-/// This is how the panel knows whose screen it is on. Three points tell
-/// it when something has taken its *cells*, which is enough for anything
-/// that takes the screen — a character sheet, a shop, a fight. It is not
-/// enough for a vendor's question, which leaves the game mode at
-/// "adventuring", draws its portrait in the viewport and its question on
-/// the message row, and touches not one cell of the panel. The bar does
-/// say: the adventuring screen's own is a pointer into the data segment,
-/// and everybody else's is a string they built on the stack.
-constexpr std::uint32_t command_bar_entry = 0x3C7A;
-
-/// Where the bar is in that frame, and the two data-segment offsets that
-/// say it is the party's own, are `automap_overland.h`'s: the explored
-/// overlay (#179) has the same point for the same reason, and one reader
-/// is what stops the two seams coming to different conclusions about
-/// whose screen this is.
-
-/// The far return of the routine that draws the party roster — its
-/// `retf`, not its entry. The entry would be the wrong place: that
-/// routine clears each of its own rows through the box-region clear
-/// above, so a point at its head would say "the roster is back" and then
-/// immediately be contradicted by its own clears. At the return the list
-/// is on the screen and every clear it made is behind it.
-constexpr std::uint32_t roster_drawn_return = 0x148A;
-
-/// The routine that draws the party roster, and how to reach it. Its own
-/// far return is `roster_drawn_return` above, which is this seam's fifth
-/// point: the seam both watches this routine and calls it.
-///
-/// It takes one argument, a far pointer to the current party member, and
-/// cleans four bytes on the way out. All it does with the pointer is
-/// decide which row is drawn white — the list itself it walks from the
-/// party head, which it reads for itself.
-///
-/// **A paragraph and an offset, not a flat image offset**, and that is
-/// the fact rather than a spelling. This routine reaches its own literals
-/// as `CS:<constant>` and its own siblings as `push cs` plus a near call —
-/// which is what a compiler of this era emits inside a segment — so it
-/// only works when CS is the segment it was linked at. The screen
-/// composer this seam used to call sits in the same segment and has the
-/// same property: called at `image_base:0x3379` the same bytes executed
-/// and drew the roster out of whatever happened to be sixteen kilobytes
-/// lower down, which looked like a corrupted machine. It is written here
-/// rather than in a commit message because the next routine a seam calls
-/// will have it too (`docs/seams.md` §8.4).
-constexpr std::uint16_t roster_draw_paragraph = 0x0BA;
-constexpr std::uint16_t roster_draw_offset = 0x0767;
-
-/// The box-region clear again, as a call target rather than as a place to
-/// stop: the panel's own rect is cleared before the roster is drawn back
-/// over it (see `give_the_roster_back()`). One address, named twice,
-/// because a point is a `std::uint32_t` offset into a module and a call is
-/// a `std::uint16_t` offset into a segment.
-constexpr auto image_clear_region =
-    static_cast<std::uint16_t>(clear_region_entry);
-
-/// Where the data segment begins, as an offset in the image. The seam
-/// reads DS at its points the way the rest of this tree does, and checks
-/// it against this — which is the two-route rule applied to the one fact
-/// every other fact below is relative to.
-constexpr std::uint32_t dgroup_offset = 0xC7C0;
+// **The points** are all in the resident image, and all five are the
+// profile's: the keyboard's two entries, the box-region clear and the
+// screen clear, the command-bar thunk and the roster drawer's far return.
+// The keyboard, framing and roster routines are the program's own
+// substrate and are never overlaid. This seam calls two of them as well:
+// the box-region clear, to clear the panel's own rect before the roster is
+// drawn back over it, and the roster drawer (see
+// `give_the_roster_back()`).
+//
+// The command-bar thunk is how the panel knows whose screen it is on.
+// Three points tell it when something has taken its *cells*, which is
+// enough for anything that takes the screen — a character sheet, a shop,
+// a fight. It is not enough for a vendor's question, which leaves the
+// game mode at "adventuring", draws its portrait in the viewport and its
+// question on the message row, and touches not one cell of the panel.
+// The bar does say. Where the bar is in the thunk's frame, and whether it
+// is the party's own, is `automap_overland.h`'s: the explored overlay
+// (#179) has the same point for the same reason, and one reader is what
+// stops the two seams coming to different conclusions about whose screen
+// this is.
 
 // --- Offsets in the data segment -------------------------------------------
-
-/// The game mode byte, and the values that matter here. Already in this
-/// tree twice (`seam_cheats.cpp`, `seam_encamp_fix.cpp`) and in
-/// `docs/playable.md`'s watch list.
-constexpr std::uint16_t data_game_mode = 0x49F3;
-constexpr std::uint8_t mode_camp = 2;
-constexpr std::uint8_t mode_adventure_flat = 3;
-constexpr std::uint8_t mode_adventure = 4;
-
-/// Which kind of view the program is showing. 1 is the sixteen-by-sixteen
-/// interior grid this panel is a map of; the overland screens are not,
-/// which is why the panel does not appear on them (that map is the
-/// explored overlay's, #179).
-constexpr std::uint16_t data_view_kind = 0x49FA;
-constexpr std::uint8_t view_kind_area = 1;
-
-/// Non-zero while the program is running a scripted move between areas.
-/// The party's position words are not to be believed while it is.
-constexpr std::uint16_t data_in_transition = 0x442F;
-
-/// The current party member: a far pointer, offset then segment. The one
-/// argument the roster drawer takes.
-constexpr std::uint16_t data_current_member = 0x5D92;
-
-/// The current area record: a far pointer, offset then segment. Already
-/// in this tree (`seam_encamp_fix.cpp` reads the game clock through it).
-constexpr std::uint16_t data_area_record = 0x49D2;
-
-/// Which geometry block of the area's file is loaded, inside that record.
-/// The third byte of a map's identity (automap.h).
-constexpr std::uint16_t record_geometry_block = 0x18A;
-
-/// Which disk's files the area comes from, and the area's own id.
-constexpr std::uint16_t data_disk_number = 0x5376;
-constexpr std::uint16_t data_area_id = 0x84DC;
-
-/// The party's cell and which way it faces. `docs/playable.md`'s watch
-/// list is the second route for all three: `6AAD`, `6AAE`, `6AAF`, with
-/// facing 0 north, 2 east, 4 south, 6 west.
-constexpr std::uint16_t data_party_x = 0x6AAD;
-constexpr std::uint16_t data_party_y = 0x6AAE;
-constexpr std::uint16_t data_party_facing = 0x6AAF;
-
-/// The loaded map: a far pointer, offset then segment. A zero segment is
-/// "no map", which is the state every screen that is not the adventure
-/// screen leaves it in.
-constexpr std::uint16_t data_map_pointer = 0x6A5C;
+//
+// The game mode, the view kind, the transition flag, the current member,
+// the area record and its geometry block, the disk and area ids, the
+// party's cell and facing, the loaded map, the keyboard pushback slot and
+// the font are the profile's; these are the automap's own.
 
 /// The **shape-tile table**: a far pointer to the buffer the wall sets are
 /// loaded into. Row `n - 1` of it, stride `shape_row_bytes`, is the list
@@ -481,12 +380,8 @@ constexpr std::uint16_t data_bank_first_tile = 0x2722;
 constexpr std::uint16_t data_frame_colour = 0x6A60;
 constexpr std::uint16_t data_ground_colour = 0x6A63;
 
-/// The program's own one-byte keyboard pushback slot: non-zero while the
-/// second half of an extended key is waiting to be handed over.
-constexpr std::uint16_t data_key_pushback = 0x8501;
-
-/// The 8x8 font the program draws every menu and message with, as a far
-/// pointer in the data segment (M5-E2b): sixty-four glyphs of eight
+/// The 8x8 font the program draws every menu and message with, behind the
+/// profile's `data_font_pointer` (M5-E2b): sixty-four glyphs of eight
 /// bytes, one byte to a scanline, bit 0x80 the leftmost pixel, indexed by
 /// the character upper-cased and taken modulo sixty-four.
 ///
@@ -494,7 +389,6 @@ constexpr std::uint16_t data_key_pushback = 0x8501;
 /// "the font has not been loaded yet" and draws nothing at all. So does
 /// this: a label rasterized out of an empty buffer would be a black
 /// rectangle, and the panel's black already means something.
-constexpr std::uint16_t data_font_pointer = 0x5E20;
 constexpr std::uint16_t font_glyphs = 64;
 constexpr std::uint16_t font_glyph_bytes = 8;
 constexpr std::uint16_t font_bytes = font_glyphs * font_glyph_bytes;
@@ -559,8 +453,8 @@ constexpr std::uint8_t colour_white = 15;
 /// decline.
 [[nodiscard]] std::uint16_t data_segment(cpu::processor& cpu,
                                          const seam_context& ctx) noexcept {
-  const auto expected =
-      static_cast<std::uint16_t>((ctx.image_base() + dgroup_offset) / 16U);
+  const auto expected = static_cast<std::uint16_t>(
+      (ctx.image_base() + profile.dgroup_offset()) / 16U);
   const std::uint16_t ds = cpu.regs()[cpu::sreg::ds];
   return ds == expected ? ds : 0;
 }
@@ -990,7 +884,7 @@ constexpr int glyph_columns = 8;
 /// a pointer it has not set up can point somewhere a seam must not read.
 [[nodiscard]] bool read_font(cpu::processor& cpu, std::uint16_t ds,
                              font_table& font) {
-  const far_pointer pointer = far_at(cpu, ds, data_font_pointer);
+  const far_pointer pointer = far_at(cpu, ds, profile.data_font_pointer);
   if (!followable(pointer, font_bytes)) {
     return false;
   }
@@ -1498,7 +1392,7 @@ enum class claimable : std::uint8_t {
 /// would have found it.
 [[nodiscard]] claimable claim_key(cpu::processor& cpu, std::uint16_t ds,
                                   bool want_panel, bool want_cursor) {
-  if (cpu.read_byte(ds, data_key_pushback) != 0) {
+  if (cpu.read_byte(ds, profile.data_key_pushback) != 0) {
     // The second half of an extended key is waiting. The two halves have
     // to stay adjacent, so nothing is touched on this pass.
     return claimable::none;
@@ -1542,10 +1436,10 @@ enum class claimable : std::uint8_t {
 /// Whether the program is on the screen this panel is a map of, with a
 /// map loaded and nothing scripted in flight.
 [[nodiscard]] bool adventuring(cpu::processor& cpu, std::uint16_t ds) {
-  return cpu.read_byte(ds, data_game_mode) == mode_adventure &&
-         cpu.read_byte(ds, data_view_kind) == view_kind_area &&
-         cpu.read_byte(ds, data_in_transition) == 0 &&
-         cpu.read_word(ds, at(data_map_pointer, 2)) != 0;
+  return cpu.read_byte(ds, profile.data_game_mode) == profile.mode_adventure &&
+         cpu.read_byte(ds, profile.data_view_kind) == profile.view_kind_grid &&
+         cpu.read_byte(ds, profile.data_in_transition) == 0 &&
+         cpu.read_word(ds, at(profile.data_map_pointer, 2)) != 0;
 }
 
 /// Everything one pass needs off the data segment. The geometry block
@@ -1553,24 +1447,25 @@ enum class claimable : std::uint8_t {
 /// it is followed: nothing lives in segment zero.
 [[nodiscard]] bool take_sample(cpu::processor& cpu, std::uint16_t ds,
                                sample& out) {
-  const std::uint16_t record_offset = cpu.read_word(ds, data_area_record);
+  const std::uint16_t record_offset =
+      cpu.read_word(ds, profile.data_area_record);
   const std::uint16_t record_segment =
-      cpu.read_word(ds, at(data_area_record, 2));
+      cpu.read_word(ds, at(profile.data_area_record, 2));
   if (record_segment == 0) {
     return false;
   }
 
-  out.disk = cpu.read_byte(ds, data_disk_number);
-  out.area = cpu.read_byte(ds, data_area_id);
-  out.geo =
-      cpu.read_byte(record_segment, at(record_offset, record_geometry_block));
-  out.x = cpu.read_byte(ds, data_party_x);
-  out.y = cpu.read_byte(ds, data_party_y);
-  out.facing = cpu.read_byte(ds, data_party_facing);
+  out.disk = cpu.read_byte(ds, profile.data_disk_number);
+  out.area = cpu.read_byte(ds, profile.data_area_id);
+  out.geo = cpu.read_byte(record_segment,
+                          at(record_offset, profile.area_geometry_block));
+  out.x = cpu.read_byte(ds, profile.data_party_x);
+  out.y = cpu.read_byte(ds, profile.data_party_y);
+  out.facing = cpu.read_byte(ds, profile.data_party_facing);
   out.floor_colour = cpu.read_byte(ds, data_ground_colour);
   out.frame_colour = cpu.read_byte(ds, data_frame_colour);
-  out.map_offset = cpu.read_word(ds, data_map_pointer);
-  out.map_segment = cpu.read_word(ds, at(data_map_pointer, 2));
+  out.map_offset = cpu.read_word(ds, profile.data_map_pointer);
+  out.map_segment = cpu.read_word(ds, at(profile.data_map_pointer, 2));
 
   // The facing byte indexes the map's own lane numbering, and only the
   // four cardinals are in it. Anything else is not a party facing.
@@ -1642,9 +1537,9 @@ void give_the_roster_back(machine& box, seam_context& ctx, std::uint16_t ds) {
   state.set_drawn_signature(0);
 
   cpu::processor& cpu = box.processor();
-  const std::uint8_t mode = cpu.read_byte(ds, data_game_mode);
-  if (mode != mode_camp && mode != mode_adventure_flat &&
-      mode != mode_adventure) {
+  const std::uint8_t mode = cpu.read_byte(ds, profile.data_game_mode);
+  if (mode != profile.mode_camp && mode != profile.mode_travel &&
+      mode != profile.mode_adventure) {
     // Belt and braces, and the program's own rule: the roster is only
     // there to be redrawn on the modes that have one. A repaint the
     // program cannot perform would leave a corrupted screen, which is a
@@ -1657,12 +1552,12 @@ void give_the_roster_back(machine& box, seam_context& ctx, std::uint16_t ds) {
       automap_panel_left_col, automap_panel_top_row, automap_panel_right_col,
       automap_panel_bottom_row};
   const std::array<std::uint16_t, 2> current{
-      cpu.read_word(ds, at(data_current_member, 2)),
-      cpu.read_word(ds, data_current_member)};
-  (void)(ctx.call_program(image, image_clear_region, clear) &&
+      cpu.read_word(ds, at(profile.data_current_member, 2)),
+      cpu.read_word(ds, profile.data_current_member)};
+  (void)(ctx.call_program(image, profile.clear_region_entry, clear) &&
          ctx.call_program(
-             static_cast<std::uint16_t>(image + roster_draw_paragraph),
-             roster_draw_offset, current));
+             static_cast<std::uint16_t>(image + profile.screen_paragraph),
+             profile.roster_draw_offset, current));
 }
 
 /// Take the panel off the screen because somebody other than the
@@ -1819,7 +1714,7 @@ void at_key_pending(machine& box, seam_context& ctx) {
   drawn = mix(drawn, banks);
   // And whether the glyphs are there, so a panel first drawn with an empty
   // band gets its label the moment the program installs its font.
-  drawn = mix(drawn, cpu.read_word(ds, at(data_font_pointer, 2)));
+  drawn = mix(drawn, cpu.read_word(ds, at(profile.data_font_pointer, 2)));
   // And the face the label is lettered in (text_face.h), so a switch
   // re-letters it. Mixed only when there is one, so a panel with no face
   // on signs exactly as it always has.
@@ -2016,20 +1911,22 @@ void at_roster_drawn(machine& box, seam_context& ctx) {
 
 constexpr std::array<seam_point, 6> automap_points{
     {{.module = resident_image,
-      .offset = key_pending_entry,
+      .offset = profile.key_pending_entry,
       .run = &at_key_pending},
-     {.module = resident_image, .offset = key_read_entry, .run = &at_key_read},
      {.module = resident_image,
-      .offset = clear_region_entry,
+      .offset = profile.key_read_entry,
+      .run = &at_key_read},
+     {.module = resident_image,
+      .offset = profile.clear_region_entry,
       .run = &at_clear_region},
      {.module = resident_image,
-      .offset = clear_screen_entry,
+      .offset = profile.clear_screen_entry,
       .run = &at_clear_screen},
      {.module = resident_image,
-      .offset = roster_drawn_return,
+      .offset = profile.roster_drawn_return,
       .run = &at_roster_drawn},
      {.module = resident_image,
-      .offset = command_bar_entry,
+      .offset = profile.command_bar_entry,
       .run = &at_command_bar}}};
 
 constexpr seam_definition automap_definition{

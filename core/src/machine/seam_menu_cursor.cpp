@@ -151,6 +151,7 @@
 #include "amberfolio/machine/journal.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/overlay.h"
+#include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/service_floor.h"
 #include "seam_builtin.h"
@@ -159,35 +160,11 @@
 namespace amberfolio::machine {
 namespace {
 
-// --- The module the menu-bar routine lives in ------------------------------
+/// The program this file's facts are about (program_profile.h): the
+/// baseline edition, and only it.
+constexpr const program_profile& profile = pool_of_radiance;
 
-/// Overlay 25, the module `bar-keys` and `list-arrows` are in (docs/seams.md
-/// §10 has the facts and the checks).
-constexpr std::uint32_t menu_load_segment_at = 0x3C60;
-
-constexpr seam_module menu_module{
-    .file = "GAME.OVR",
-    .file_offset = 182479,
-    .length = 4682,
-    .digest =
-        "175454bc2f527dd6757c89eaa50a6cdd27a9cf5d3aaa197b33a140f5b09a3901",
-    .load_segment_at = menu_load_segment_at};
-
-/// In the menu-bar routine: the call into the key-read routine. The
-/// handler runs before the call, so nothing has been read yet.
-constexpr std::uint32_t key_read_call = 0x0572;
-
-/// Overlay 16, the party-setup loop's: file offset 104831 (`0x1997F`),
-/// 17497 bytes (`0x4459`), the load-segment word at image `0x0790` (the
-/// manager's record is at `0x0784`, by the search `seam_cheats.cpp`
-/// documents).
-constexpr seam_module loop_module{
-    .file = "GAME.OVR",
-    .file_offset = 104831,
-    .length = 17497,
-    .digest =
-        "232c6aa60fda1a475d7933aabc97b598fba93d8e4af4026e3551bb0ef06045a0",
-    .load_segment_at = 0x790};
+// --- The party-setup loop, in the roster overlay (the profile's) --------
 
 /// In the loop: the far call into the menu-bar routine, after the menu is
 /// drawn and the arguments are pushed.
@@ -198,17 +175,10 @@ constexpr std::uint32_t loop_call = 0x02F8;
 constexpr std::uint16_t frame_return_ip = 2;
 constexpr std::uint16_t frame_return_cs = 4;
 
-/// Below BP: the routine's copy of the bar, a Pascal string whose
-/// characters are numbered from one, and its length byte's own bound.
-constexpr std::uint16_t local_bar = 0x53;
-constexpr std::uint8_t max_bar_length = 40;
-
 // --- The main menu's call --------------------------------------------------
 
-/// The word the program's overlay manager keeps overlay 16's load segment
-/// in (the module the party-setup loop is in), and the offset of the
-/// instruction after the loop's call into the menu-bar routine.
-constexpr std::uint32_t loop_load_segment_at = 0x790;
+/// The offset of the instruction after the loop's call into the menu-bar
+/// routine.
 constexpr std::uint16_t loop_return_offset = 0x02FD;
 
 // --- The data segment ------------------------------------------------------
@@ -226,13 +196,6 @@ constexpr std::uint8_t max_record_text = 0x28;
 /// on with a party member) and the eighth (Load, on without).
 constexpr std::uint8_t record_with_member = 1;
 constexpr std::uint8_t record_without_member = 7;
-
-/// The program's one-byte pushback slot for an extended key's second half.
-constexpr std::uint16_t data_key_pushback = 0x8501;
-
-/// The data segment is the image's paragraph `0xC7C` on: image offset
-/// `0xC7C0`, which is DS `0x0CDC` where the image is at `0x60`.
-constexpr std::uint16_t dgroup_paragraphs = 0xC7C;
 
 /// The loop's call into the menu-bar routine, from the top of the stack:
 /// the offset and the segment of the out-parameter, the animation flag,
@@ -267,11 +230,6 @@ constexpr std::uint16_t rest_column = 3;
 constexpr std::uint16_t colour_letter = 0x0F;
 constexpr std::uint16_t colour_rest = 0x0A;
 constexpr std::uint16_t colour_selected = 0x0E;
-
-/// The program's string drawer, as an offset from the image base: draws a
-/// Pascal string at a cell. `retf 0Ah`, arguments pushed column, row,
-/// colour, then the string's segment and offset (docs/seams.md §3).
-constexpr std::uint16_t image_draw_string = 0x076B6;
 
 // --- The keys, as the BIOS ring holds them: scan code high, character low --
 
@@ -314,7 +272,8 @@ constexpr std::uint16_t scan_enter = 0x1C00;
   if (ip != loop_return_offset) {
     return false;
   }
-  const std::uint16_t segment = loaded_at(cpu, ctx, loop_load_segment_at);
+  const std::uint16_t segment =
+      loaded_at(cpu, ctx, profile.roster_overlay.load_segment_at);
   return segment != 0 && segment == cs;
 }
 
@@ -407,15 +366,16 @@ struct menu_reading {
 
   // The routine takes a letter that is in the bar it was handed, and reads
   // the bar from a copy in its own frame: look where it looks.
-  const std::uint8_t length =
-      cpu.read_byte(ss, static_cast<std::uint16_t>(bp - local_bar));
-  if (length == 0 || length > max_bar_length) {
+  const std::uint8_t length = cpu.read_byte(
+      ss, static_cast<std::uint16_t>(bp - profile.menu_local_bar));
+  if (length == 0 || length > profile.menu_bar_capacity) {
     ctx.decline(seam_reason::point_not_recognized);
     return 0;
   }
   for (std::uint8_t position = 1; position <= length; ++position) {
     const std::uint8_t c = cpu.read_byte(
-        ss, static_cast<std::uint16_t>((bp - local_bar) + position));
+        ss,
+        static_cast<std::uint16_t>((bp - profile.menu_local_bar) + position));
     if (c == letter) {
       return static_cast<std::uint16_t>(scan_enter | letter);
     }
@@ -433,7 +393,7 @@ struct menu_reading {
                         std::uint16_t offset) {
   const std::array<std::uint16_t, 5> where{column, row, colour, segment,
                                            offset};
-  return ctx.call_program(image, image_draw_string, where);
+  return ctx.call_program(image, profile.draw_string_entry, where);
 }
 
 /// Draw the word `row` stands for the way the menu draws it: the first
@@ -527,7 +487,7 @@ void at_key_read(machine& box, seam_context& ctx) {
     return;
   }
   const std::uint16_t ds = regs[cpu::sreg::ds];
-  if (cpu.read_byte(ds, data_key_pushback) != 0) {
+  if (cpu.read_byte(ds, profile.data_key_pushback) != 0) {
     // The head of the ring is not the key about to be read.
     return;
   }
@@ -609,7 +569,7 @@ void at_menu_drawn(machine& box, seam_context& ctx) {
   // mode set, in the data segment the facts name.
   const bool is_the_call =
       ds == static_cast<std::uint16_t>((ctx.image_base() >> 4U) +
-                                       dgroup_paragraphs) &&
+                                       profile.dgroup_paragraphs) &&
       top(call_out_segment) == ss && top_byte(call_anim) == 0 &&
       top_byte(call_raw) == 1 && top_byte(call_colour_hi) == 0 &&
       top_byte(call_colour_lo) == 0 &&
@@ -639,8 +599,12 @@ void at_menu_drawn(machine& box, seam_context& ctx) {
 }
 
 constexpr std::array<seam_point, 2> menu_cursor_point_table{
-    {{.module = menu_module, .offset = key_read_call, .run = &at_key_read},
-     {.module = loop_module, .offset = loop_call, .run = &at_menu_drawn}}};
+    {{.module = profile.menu_overlay,
+      .offset = profile.menu_key_read_call,
+      .run = &at_key_read},
+     {.module = profile.roster_overlay,
+      .offset = loop_call,
+      .run = &at_menu_drawn}}};
 static_assert(menu_cursor_point_table.size() == menu_cursor_point_count);
 
 }  // namespace

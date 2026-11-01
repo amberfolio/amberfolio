@@ -139,6 +139,7 @@
 #include "amberfolio/cpu/processor.h"
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/service_floor.h"
 #include "seam_builtin.h"
@@ -146,10 +147,11 @@
 namespace amberfolio::machine {
 namespace {
 
-/// The SHA-256 of the program image these offsets are facts about: the
-/// baseline edition (edition.h), and only it.
-constexpr std::array<std::string_view, 1> message_pause_binaries{
-    "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd"};
+/// The program this seam's facts are about (program_profile.h): the
+/// baseline edition, and only it. The seam is available on it and on no
+/// other binary.
+constexpr const program_profile& profile = pool_of_radiance;
+constexpr auto message_pause_binaries = fingerprints_of(std::array{&profile});
 
 /// The pause's `push ax`, and the far return of its call to `Delay`, from
 /// the image segment.
@@ -159,28 +161,12 @@ constexpr std::uint32_t pause_return_offset = 0x7E61;
 /// `Delay`'s `dec dx`, from the image segment.
 constexpr std::uint32_t countdown_offset = 0xA6B7;
 
-/// The data segment is the image's paragraph `0xC7C` on.
-constexpr std::uint16_t dgroup_paragraphs = 0xC7C;
-
-/// The script opcode's call: its overlay's load-segment word, from the
-/// image segment, and the offset the call returns to.
-constexpr std::uint16_t script_load_segment_at = 0x200;  // overlay 3
+/// The script opcode's call, in the interpreter overlay (the profile's):
+/// the offset the call returns to.
 constexpr std::uint16_t script_return_offset = 0x272B;
 
-/// Overlay 3, the script interpreter's: file offset 3398 (`0xD46`), 13581
-/// bytes (`0x350D`), the load-segment word above (the manager's record
-/// for those two numbers is the one match of the search
-/// `seam_cheats.cpp` documents).
-constexpr seam_module script_module{
-    .file = "GAME.OVR",
-    .file_offset = 3398,
-    .length = 13581,
-    .digest =
-        "56c6135af78c125823c0d8066fcfeefc7cfd1121d752ca398fed5c37fa17182a",
-    .load_segment_at = script_load_segment_at};
-
-/// In it: the print opcode's two calls to the box printer, and the
-/// encounter menu's.
+/// In the same overlay: the print opcode's two calls to the box printer,
+/// and the encounter menu's.
 constexpr std::uint32_t print_append_call = 0x0A69;
 constexpr std::uint32_t print_clear_call = 0x0A91;
 constexpr std::uint32_t encounter_print_call = 0x2176;
@@ -191,8 +177,8 @@ constexpr std::uint16_t data_print_line = 0x70C8;
 /// The encounter menu's call: the clear flag is the fourth word pushed.
 constexpr std::uint16_t call_clear_flag = 4;
 
-/// The runtime's `ReadKey`, and `Delay`, from the image segment.
-constexpr std::uint32_t read_key_offset = 0xA70F;
+/// `Delay`, from the image segment. The runtime's `ReadKey` is the
+/// profile's `key_read_entry`.
 constexpr std::uint16_t delay_paragraphs = 0xA40;
 constexpr std::uint16_t delay_offset = 0x029C;
 
@@ -203,9 +189,8 @@ constexpr std::uint16_t wait_slice = 50;
 constexpr unsigned word_unread = 0;     // a line printed, not yet waited on
 constexpr unsigned word_remaining = 1;  // of the wait before the menu, ms
 
-/// The death routine's calls: its overlay's load-segment word, from the
-/// image segment, and the offsets the calls return to.
-constexpr std::uint16_t death_load_segment_at = 0x3E10;  // overlay 31
+/// The death routine's calls, in the module whose load-segment word is the
+/// profile's `death_load_segment_at`: the offsets the calls return to.
 constexpr std::array<std::uint16_t, 2> death_return_offsets{
     0x1018,  // in a fight
     0x0E34,  // anywhere else
@@ -227,7 +212,7 @@ constexpr std::uint16_t pause_initial = 1500;
 
 [[nodiscard]] std::uint16_t dgroup_of(const seam_context& ctx) {
   return static_cast<std::uint16_t>((ctx.image_base() >> 4U) +
-                                    dgroup_paragraphs);
+                                    profile.dgroup_paragraphs);
 }
 
 [[nodiscard]] std::uint32_t linear(std::uint16_t segment,
@@ -241,7 +226,9 @@ constexpr std::uint16_t pause_initial = 1500;
                                  std::uint16_t ds, std::uint16_t segment,
                                  std::uint16_t offset) {
   const auto image = static_cast<std::uint16_t>(ctx.image_base() >> 4U);
-  const std::uint16_t script = cpu.read_word(image, script_load_segment_at);
+  const std::uint16_t script = cpu.read_word(
+      image,
+      static_cast<std::uint16_t>(profile.interpreter_overlay.load_segment_at));
   if (script == 0 ||
       linear(segment, offset) != linear(script, script_return_offset)) {
     return false;
@@ -264,7 +251,8 @@ constexpr std::uint16_t pause_initial = 1500;
 [[nodiscard]] bool death_sound(cpu::processor& cpu, const seam_context& ctx,
                                std::uint16_t segment, std::uint16_t offset) {
   const auto image = static_cast<std::uint16_t>(ctx.image_base() >> 4U);
-  const std::uint16_t death = cpu.read_word(image, death_load_segment_at);
+  const std::uint16_t death =
+      cpu.read_word(image, profile.death_load_segment_at);
   if (death == 0) {
     return false;
   }
@@ -433,15 +421,15 @@ constexpr std::array<seam_point, 6> message_pause_points{{
      .offset = countdown_offset,
      .run = &end_on_a_key},
     {.module = resident_image,
-     .offset = read_key_offset,
+     .offset = profile.key_read_entry,
      .run = &note_a_key_read},
-    {.module = script_module,
+    {.module = profile.interpreter_overlay,
      .offset = print_append_call,
      .run = &note_a_printed_line},
-    {.module = script_module,
+    {.module = profile.interpreter_overlay,
      .offset = print_clear_call,
      .run = &note_a_printed_line},
-    {.module = script_module,
+    {.module = profile.interpreter_overlay,
      .offset = encounter_print_call,
      .run = &wait_before_the_menu},
 }};

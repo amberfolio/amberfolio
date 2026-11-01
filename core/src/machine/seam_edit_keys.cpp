@@ -117,11 +117,16 @@
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/overlay.h"
+#include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/seam.h"
 #include "seam_builtin.h"
 
 namespace amberfolio::machine {
 namespace {
+
+/// The program this file's facts are about (program_profile.h): the
+/// baseline edition, and only it.
+constexpr const program_profile& profile = pool_of_radiance;
 
 // --- The editor ------------------------------------------------------------
 
@@ -131,12 +136,6 @@ namespace {
 constexpr std::uint32_t editor_after_read = 0x7AC0;
 
 // --- The data segment ------------------------------------------------------
-
-/// The data segment's distance from the image segment, in paragraphs.
-constexpr std::uint16_t dgroup_paragraphs = 0xC7C;
-
-/// The keyboard read's one-byte slot for an extended key's second half.
-constexpr std::uint16_t data_key_pushback = 0x8501;
 
 /// The editor has just been handed AL by the program's key read. If it is
 /// the zero that starts an extended key, and the read has kept the scan code
@@ -149,15 +148,15 @@ void drop_the_scan_code(machine& box, seam_context& ctx) {
   }
   const std::uint16_t ds = regs[cpu::sreg::ds];
   if (ds != static_cast<std::uint16_t>((ctx.image_base() >> 4U) +
-                                       dgroup_paragraphs)) {
+                                       profile.dgroup_paragraphs)) {
     // Not the data segment the facts put the slot in.
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
-  if (cpu.read_byte(ds, data_key_pushback) == 0) {
+  if (cpu.read_byte(ds, profile.data_key_pushback) == 0) {
     return;
   }
-  cpu.write_byte(ds, data_key_pushback, 0);
+  cpu.write_byte(ds, profile.data_key_pushback, 0);
 }
 
 constexpr std::array<seam_point, 1> edit_keys_point_table{

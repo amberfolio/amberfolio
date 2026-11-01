@@ -68,8 +68,8 @@
 // loop calls an end check that lives in an overlaid code module; it
 // consults each side's body count and answers "over" when one of them has
 // reached zero. The overlay manager loads that module with one read —
-// `overlay_module` below is the file, the offset and the length of that
-// read, and the SHA-256 of the bytes it delivers, as the tracker records
+// the profile's `combat_overlay` is the file, the offset and the length of
+// that read, and the SHA-256 of the bytes it delivers, as the tracker records
 // it (overlay.h).
 //
 // Which module that is comes from the overlay file's **own table**, and
@@ -83,7 +83,7 @@
 // **And where it is comes from the program, not from the read.** The
 // manager moves a resident module inside its arena without reading it
 // again, so the address the read landed at is not the address the
-// routine runs from; that is #131, and `overlay_load_segment_at` below
+// routine runs from; that is #131, and the module's `load_segment_at`
 // is the answer to it — the word the manager itself keeps the module's
 // current segment in.
 //
@@ -215,54 +215,51 @@
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/overlay.h"
+#include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/seam.h"
 #include "seam_builtin.h"
 
 namespace amberfolio::machine {
 namespace {
 
-/// The SHA-256 of the program image these offsets are facts about — the
-/// baseline edition (edition.h), and only it.
-constexpr std::array<std::string_view, 1> cheat_binaries{
-    "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd"};
+/// The program this seam's facts are about (program_profile.h): the
+/// baseline edition, and only it. The seam is available on it and on no
+/// other binary.
+constexpr const program_profile& profile = pool_of_radiance;
+constexpr auto cheat_binaries = fingerprints_of(std::array{&profile});
 
 // --- The character record ----------------------------------------------
+//
+// The record's offsets are the profile's (program_profile.h). Two of them
+// carry this file's own reasoning.
+//
+// **The held byte** (`record_held`) is whether this record is in its
+// side's body count. **Not** a liveness flag, whatever it looks like: the
+// routine that downs a combatant clears it, but a combatant is not up
+// because it is set — `still_standing()` below is that test. What it *is*
+// is the program's own ledger entry for the count: each side's count is
+// **rebuilt** from these bytes, by a walk of this same roster, at the top
+// of every round *and* inside the end check itself, immediately before the
+// count is read. Between those rebuilds the program keeps the count by
+// hand, decrementing as bodies drop. So clearing this is what actually
+// ends a combat, and the decrement that goes with it is faithfulness
+// rather than mechanism (#99).
+//
+// **The current hit points** (`record_hit_points`) are **a byte** — which
+// is a claim worth stating out loud, because until #163 nothing in this
+// tree depended on it. The only write this file ever made there was a
+// zero, and a zero written as a byte is indistinguishable from a zero
+// written as a word whenever the byte above it is already zero, so a field
+// that was really wider would have gone unnoticed. Dealing damage writes a
+// non-zero remainder and does depend on it. What is known: the record is
+// one of single-byte fields — status, held, side — and this one is read
+// and written as a byte here and has been since #99. What is *not* known
+// is that a record whose hit points exceed 255 could not exist; nobody has
+// watched one. The failure that would follow is bounded in the one
+// direction that matters, and `debug_damage` says how.
 
-/// Offsets into a character record.
-constexpr std::uint16_t rec_next_offset = 0x104;     // far ptr: next record
-constexpr std::uint16_t rec_scratch_offset = 0x108;  // far ptr: combat scratch
-constexpr std::uint16_t rec_status = 0x10C;          // wound status
-/// The held flag: whether this record is in its side's body count.
-///
-/// **Not** a liveness flag, whatever it looks like: the routine that
-/// downs a combatant clears it, but a combatant is not up because it is
-/// set — `still_standing()` below is that test. What it *is* is the
-/// program's own ledger entry for the count: each side's count is
-/// **rebuilt** from these bytes, by a walk of this same roster, at the
-/// top of every round *and* inside the end check itself, immediately
-/// before the count is read. Between those rebuilds the program keeps
-/// the count by hand, decrementing as bodies drop.
-///
-/// So clearing this is what actually ends a combat, and the decrement
-/// that goes with it is faithfulness rather than mechanism (#99).
-constexpr std::uint16_t rec_held = 0x10D;
-constexpr std::uint16_t rec_side = 0x10E;  // combat side, signed
-
-/// The current hit points, and **a byte** — which is a claim worth
-/// stating out loud, because until #163 nothing in this tree depended on
-/// it. The only write this file ever made here was a zero, and a zero
-/// written as a byte is indistinguishable from a zero written as a word
-/// whenever the byte above it is already zero, so a field that was
-/// really wider would have gone unnoticed. Dealing damage writes a
-/// non-zero remainder and does depend on it.
-///
-/// What is known: the fact table describes a record of single-byte
-/// fields — status, held, side — and this one is read and written as a
-/// byte here and has been since #99. What is *not* known is that a
-/// record whose hit points exceed 255 could not exist; nobody has
-/// watched one. The failure that would follow is bounded in the one
-/// direction that matters, and `debug_damage` says how.
-constexpr std::uint16_t rec_hit_points = 0x11B;
+/// The combat scratch block's far pointer, in a character record.
+constexpr std::uint16_t rec_scratch_offset = 0x108;
 
 /// The wound status that means slain.
 constexpr std::uint8_t status_slain = 6;
@@ -280,12 +277,6 @@ constexpr std::uint8_t status_slain = 6;
 [[nodiscard]] constexpr bool still_standing(std::uint8_t status) noexcept {
   return status == 0 /* unhurt */ || status == 1 /* animated */;
 }
-
-/// The game mode byte's value while the camp screen is up
-/// (`seam_encamp_fix.cpp`, and `docs/playable.md` records the same byte
-/// found by watching a run). The wounding cheat's whole guard, for the
-/// reasons written at `party_is_at_camp()`.
-constexpr std::uint8_t mode_camp = 2;
 
 /// What a wounded party is left on: **one hit point each**, and nobody
 /// is ever downed.
@@ -332,13 +323,6 @@ constexpr std::uint8_t debug_damage = 120;
 //
 // Offsets in the data segment DS addresses throughout the program.
 
-/// The game mode byte, and the value it reads during tactical combat.
-constexpr std::uint16_t data_game_mode = 0x49F3;
-constexpr std::uint8_t mode_combat = 5;
-
-/// The roster list's head: a far pointer, offset then segment.
-constexpr std::uint16_t data_roster_head = 0x5D96;
-
 /// One byte per combat side: how many are still standing.
 constexpr std::uint16_t data_side_counts = 0x6814;
 
@@ -375,46 +359,10 @@ constexpr std::uint16_t frame_record_segment = 8;
 
 // --- Where combat ends -----------------------------------------------------
 
-/// Where the program keeps this module's load segment: the offset, in
-/// the resident image, of one word (overlay.h,
-/// `seam_module::load_segment_at`). It reads zero while the module is
-/// not loaded and the segment the module currently begins at while it
-/// is, and the overlay manager maintains it — including when it moves
-/// the module, which is the whole reason this field exists (#131).
-///
-/// It sits inside the manager's own record for this module, which
-/// begins sixteen bytes earlier at image offset 0x350 and carries, in
-/// order, the offset and length above. That is how this offset was
-/// found and how it is checked: search the resident image for the
-/// record whose file offset is 38919 and whose length is 4735 — one
-/// match — and take the word sixteen bytes past its start.
-constexpr std::uint32_t overlay_load_segment_at = 0x360;
-
-/// The module the end check lives in: one read, whose facts the tracker
-/// records (overlay.h), plus the word above. The digest is of those
-/// bytes as read, so a copy whose overlay file does not match is not
-/// this module.
-///
-/// Both qualifiers, because they answer different questions. The read's
-/// facts say *which* module this is, and are what a person checks
-/// against the overlay file's own table. The word says *where it is
-/// now*, which the read cannot: driven through a wilderness encounter on
-/// a player-supplied copy, this module was read once and landed at
-/// 279D:0000, and was running from 279E:0000 nineteen frames later —
-/// and in a later fight it sat 0x73 paragraphs from where its read had
-/// put it. The engine arms against the word and never against the
-/// landing.
-constexpr seam_module overlay_module{
-    .file = "GAME.OVR",
-    .file_offset = 38919,
-    .length = 4735,
-    .digest =
-        "5d07a6b3fedb56509214f24bdbdbc3b8625ddf6b2ce4d6274e6e89b26c563930",
-    .load_segment_at = overlay_load_segment_at};
-
-/// The end check's entry, as an offset from the start of the module —
-/// which is to say from the segment the word above holds, wherever
-/// the manager has most recently put it.
+/// The end check's entry, in the combat overlay (the profile's), as an
+/// offset from the start of the module — which is to say from the segment
+/// the module's load-segment word holds, wherever the manager has most
+/// recently put it.
 constexpr std::uint32_t end_check_offset = 0x0880;
 
 // --- The handlers ------------------------------------------------------------
@@ -459,8 +407,8 @@ void spare_the_party(machine& box, seam_context& ctx) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
-  const auto side = static_cast<std::int8_t>(
-      cpu.read_byte(record_segment, word_after(record_offset, rec_side)));
+  const auto side = static_cast<std::int8_t>(cpu.read_byte(
+      record_segment, word_after(record_offset, profile.record_side)));
   if (side != side_party) {
     // An enemy's damage is the program's business.
     return;
@@ -476,8 +424,9 @@ void spare_the_party(machine& box, seam_context& ctx) {
 /// Both of this seam's points do this and nothing else; what differs
 /// between them is what each is willing to believe before calling it.
 void strike_the_enemies(cpu::processor& cpu, std::uint16_t ds) {
-  std::uint16_t offset = cpu.read_word(ds, data_roster_head);
-  std::uint16_t segment = cpu.read_word(ds, word_after(data_roster_head, 2));
+  std::uint16_t offset = cpu.read_word(ds, profile.data_roster_head);
+  std::uint16_t segment =
+      cpu.read_word(ds, word_after(profile.data_roster_head, 2));
   for (unsigned walked = 0;
        walked < max_roster_walk && (offset != 0 || segment != 0); ++walked) {
     if (segment == 0) {
@@ -490,13 +439,13 @@ void strike_the_enemies(cpu::processor& cpu, std::uint16_t ds) {
       return;
     }
     const auto side = static_cast<std::int8_t>(
-        cpu.read_byte(segment, word_after(offset, rec_side)));
-    const bool standing =
-        still_standing(cpu.read_byte(segment, word_after(offset, rec_status)));
+        cpu.read_byte(segment, word_after(offset, profile.record_side)));
+    const bool standing = still_standing(
+        cpu.read_byte(segment, word_after(offset, profile.record_status)));
 
     if (side != side_party && standing) {
       const std::uint8_t hit_points =
-          cpu.read_byte(segment, word_after(offset, rec_hit_points));
+          cpu.read_byte(segment, word_after(offset, profile.record_hit_points));
       if (hit_points > debug_damage) {
         // Still in the fight, and therefore still in its side's count:
         // the remainder goes back and **nothing else changes**. That is
@@ -505,7 +454,7 @@ void strike_the_enemies(cpu::processor& cpu, std::uint16_t ds) {
         // hand stay right — the program decrements when a body drops, so
         // a seam that decremented for a survivor would put the count
         // below the number of bodies.
-        cpu.write_byte(segment, word_after(offset, rec_hit_points),
+        cpu.write_byte(segment, word_after(offset, profile.record_hit_points),
                        static_cast<std::uint8_t>(hit_points - debug_damage));
       } else {
         // Down, the way the routine downs one. Cleared **held** is what
@@ -522,9 +471,11 @@ void strike_the_enemies(cpu::processor& cpu, std::uint16_t ds) {
         // a "is anybody left" test — reads what this leaves. So the
         // decrement is load-bearing now, and the survivor branch above
         // not decrementing is half of the same rule.
-        cpu.write_byte(segment, word_after(offset, rec_status), status_slain);
-        cpu.write_byte(segment, word_after(offset, rec_held), 0);
-        cpu.write_byte(segment, word_after(offset, rec_hit_points), 0);
+        cpu.write_byte(segment, word_after(offset, profile.record_status),
+                       status_slain);
+        cpu.write_byte(segment, word_after(offset, profile.record_held), 0);
+        cpu.write_byte(segment, word_after(offset, profile.record_hit_points),
+                       0);
 
         // The side's body count, indexed by the signed side byte exactly
         // as the program indexes it.
@@ -546,9 +497,9 @@ void strike_the_enemies(cpu::processor& cpu, std::uint16_t ds) {
     }
 
     const std::uint16_t next_offset =
-        cpu.read_word(segment, word_after(offset, rec_next_offset));
+        cpu.read_word(segment, word_after(offset, profile.record_next));
     const std::uint16_t next_segment =
-        cpu.read_word(segment, word_after(offset, rec_next_offset + 2));
+        cpu.read_word(segment, word_after(offset, profile.record_next + 2));
     offset = next_offset;
     segment = next_segment;
   }
@@ -606,11 +557,12 @@ void strike_the_enemies(cpu::processor& cpu, std::uint16_t ds) {
 /// would never have held, this point would have declined and said so
 /// once, and the end check would have served the pull as it did before.
 [[nodiscard]] bool combat_roster_ready(cpu::processor& cpu, std::uint16_t ds) {
-  if (cpu.read_byte(ds, data_game_mode) != mode_combat) {
+  if (cpu.read_byte(ds, profile.data_game_mode) != profile.mode_combat) {
     return false;
   }
-  std::uint16_t offset = cpu.read_word(ds, data_roster_head);
-  std::uint16_t segment = cpu.read_word(ds, word_after(data_roster_head, 2));
+  std::uint16_t offset = cpu.read_word(ds, profile.data_roster_head);
+  std::uint16_t segment =
+      cpu.read_word(ds, word_after(profile.data_roster_head, 2));
 
   bool party_standing = false;
   bool enemy_standing = false;
@@ -625,9 +577,9 @@ void strike_the_enemies(cpu::processor& cpu, std::uint16_t ds) {
       return false;  // a link that is not a pointer
     }
     const auto side = static_cast<std::int8_t>(
-        cpu.read_byte(segment, word_after(offset, rec_side)));
-    if (still_standing(
-            cpu.read_byte(segment, word_after(offset, rec_status)))) {
+        cpu.read_byte(segment, word_after(offset, profile.record_side)));
+    if (still_standing(cpu.read_byte(
+            segment, word_after(offset, profile.record_status)))) {
       const auto count_at = static_cast<std::uint16_t>(
           static_cast<std::int32_t>(data_side_counts) + side);
       if (cpu.read_byte(ds, count_at) == 0) {
@@ -643,9 +595,9 @@ void strike_the_enemies(cpu::processor& cpu, std::uint16_t ds) {
       }
     }
     const std::uint16_t next_offset =
-        cpu.read_word(segment, word_after(offset, rec_next_offset));
+        cpu.read_word(segment, word_after(offset, profile.record_next));
     const std::uint16_t next_segment =
-        cpu.read_word(segment, word_after(offset, rec_next_offset + 2));
+        cpu.read_word(segment, word_after(offset, profile.record_next + 2));
     offset = next_offset;
     segment = next_segment;
   }
@@ -677,8 +629,8 @@ void fell_the_enemies_now(machine& box, seam_context& ctx) {
 void fell_the_enemies(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   const std::uint16_t ds = cpu.regs()[cpu::sreg::ds];
-  if (cpu.read_byte(ds, data_game_mode) != mode_combat ||
-      cpu.read_word(ds, word_after(data_roster_head, 2)) == 0) {
+  if (cpu.read_byte(ds, profile.data_game_mode) != profile.mode_combat ||
+      cpu.read_word(ds, word_after(profile.data_roster_head, 2)) == 0) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
@@ -706,11 +658,12 @@ void fell_the_enemies(machine& box, seam_context& ctx) {
 /// refused — it is **kept**, because a declined trigger keeps its latch
 /// (§3a), so pulling this and then pressing ENCAMP serves it.
 [[nodiscard]] bool party_is_at_camp(cpu::processor& cpu, std::uint16_t ds) {
-  if (cpu.read_byte(ds, data_game_mode) != mode_camp) {
+  if (cpu.read_byte(ds, profile.data_game_mode) != profile.mode_camp) {
     return false;
   }
-  std::uint16_t offset = cpu.read_word(ds, data_roster_head);
-  std::uint16_t segment = cpu.read_word(ds, word_after(data_roster_head, 2));
+  std::uint16_t offset = cpu.read_word(ds, profile.data_roster_head);
+  std::uint16_t segment =
+      cpu.read_word(ds, word_after(profile.data_roster_head, 2));
   if (offset == 0 && segment == 0) {
     return false;  // nobody to hurt
   }
@@ -724,9 +677,9 @@ void fell_the_enemies(machine& box, seam_context& ctx) {
       return false;  // a link that is not a pointer
     }
     const std::uint16_t next_offset =
-        cpu.read_word(segment, word_after(offset, rec_next_offset));
+        cpu.read_word(segment, word_after(offset, profile.record_next));
     const std::uint16_t next_segment =
-        cpu.read_word(segment, word_after(offset, rec_next_offset + 2));
+        cpu.read_word(segment, word_after(offset, profile.record_next + 2));
     offset = next_offset;
     segment = next_segment;
   }
@@ -756,24 +709,26 @@ void fell_the_enemies(machine& box, seam_context& ctx) {
 /// is the one input that makes the routine's own arithmetic decide the
 /// character is unconscious.
 void wound_the_party(cpu::processor& cpu, std::uint16_t ds) {
-  std::uint16_t offset = cpu.read_word(ds, data_roster_head);
-  std::uint16_t segment = cpu.read_word(ds, word_after(data_roster_head, 2));
+  std::uint16_t offset = cpu.read_word(ds, profile.data_roster_head);
+  std::uint16_t segment =
+      cpu.read_word(ds, word_after(profile.data_roster_head, 2));
   for (unsigned walked = 0;
        walked < max_roster_walk && (offset != 0 || segment != 0); ++walked) {
     if (segment == 0) {
       return;  // a link that is not a pointer
     }
     const std::uint8_t status =
-        cpu.read_byte(segment, word_after(offset, rec_status));
+        cpu.read_byte(segment, word_after(offset, profile.record_status));
     const std::uint8_t hit_points =
-        cpu.read_byte(segment, word_after(offset, rec_hit_points));
+        cpu.read_byte(segment, word_after(offset, profile.record_hit_points));
     if (still_standing(status) && hit_points > wounded_to) {
-      cpu.write_byte(segment, word_after(offset, rec_hit_points), wounded_to);
+      cpu.write_byte(segment, word_after(offset, profile.record_hit_points),
+                     wounded_to);
     }
     const std::uint16_t next_offset =
-        cpu.read_word(segment, word_after(offset, rec_next_offset));
+        cpu.read_word(segment, word_after(offset, profile.record_next));
     const std::uint16_t next_segment =
-        cpu.read_word(segment, word_after(offset, rec_next_offset + 2));
+        cpu.read_word(segment, word_after(offset, profile.record_next + 2));
     offset = next_offset;
     segment = next_segment;
   }
@@ -808,10 +763,10 @@ constexpr std::array<seam_point, 1> invulnerable_points{
 /// check, with a pull outstanding — is served by the point that answers
 /// what the person asked for.
 constexpr std::array<seam_point, 2> kill_all_points{
-    {{.module = overlay_module,
+    {{.module = profile.combat_overlay,
       .run = &fell_the_enemies_now,
       .at_every_step = true},
-     {.module = overlay_module,
+     {.module = profile.combat_overlay,
       .offset = end_check_offset,
       .run = &fell_the_enemies}}};
 

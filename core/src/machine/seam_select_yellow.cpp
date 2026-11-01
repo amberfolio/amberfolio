@@ -147,6 +147,7 @@
 #include "amberfolio/machine/ega.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/overlay.h"
+#include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/selection_margin.h"
 #include "amberfolio/machine/service_floor.h"
@@ -156,29 +157,16 @@
 namespace amberfolio::machine {
 namespace {
 
+/// The program this file's facts are about (program_profile.h): the
+/// baseline edition, and only it.
+constexpr const program_profile& profile = pool_of_radiance;
+
 // --- The program's colours --------------------------------------------------
 
 constexpr std::uint8_t colour_yellow = 0x0E;
 constexpr std::uint8_t colour_white = 0x0F;
 constexpr std::uint8_t colour_magenta = 0x0D;
 constexpr std::uint8_t colour_green = 0x0A;
-
-// --- The modules ------------------------------------------------------------
-
-/// Overlay 19, the character sheet's: file offset 135226 (`0x2103A`), 11026
-/// bytes (`0x2B12`). The manager's record for it is at image `0x0854` and
-/// the load-segment word sixteen bytes in, by the search `seam_cheats.cpp`
-/// documents (one match; the same search returns the known words for the
-/// other modules, docs/seams.md §10).
-constexpr std::uint32_t sheet_load_segment_at = 0x0860;
-
-constexpr seam_module sheet_module{
-    .file = "GAME.OVR",
-    .file_offset = 135226,
-    .length = 11026,
-    .digest =
-        "3011cde3c5b83ac154a7c9f735c4c95d5449154cf250a655992c1fcbb04911e1",
-    .load_segment_at = sheet_load_segment_at};
 
 // --- The points -------------------------------------------------------------
 
@@ -187,10 +175,10 @@ constexpr seam_module sheet_module{
 constexpr std::uint32_t bar_group_call = 0x0273;
 constexpr std::uint32_t list_row_call = 0x09FD;
 
-/// Overlay 25: the instruction after the pick-list routine's call into the
-/// menu-bar routine, which hands it the list's `Exit` bar (`list-arrows`
-/// and `bar-keys` name the same call).
-constexpr std::uint16_t list_bar_return = 0x0FE0;
+/// Overlay 25: two more of the bar leaf's calls. The instruction after the
+/// pick-list routine's call into the menu-bar routine, which hands it the
+/// list's `Exit` bar, is the profile's `pick_list_bar_return`
+/// (`list-arrows` and `bar-keys` name the same call).
 constexpr std::uint32_t bar_letter_call = 0x02CA;
 constexpr std::uint32_t bar_rest_call = 0x0305;
 
@@ -334,10 +322,9 @@ constexpr std::uint16_t picture_column = 0x0C;
 constexpr std::uint16_t picture_lines = 0;
 constexpr std::uint16_t picture_bytes = 2;
 
-/// The program's data segment, as paragraphs from the image, and in it the
-/// two display segments the blitter draws every glyph to. A page is
+/// In the program's data segment, the two display segments the blitter
+/// draws every glyph to. A page is
 /// `0xA000` and the next is `0x200` paragraphs on (the fill's page select).
-constexpr std::uint16_t dgroup_paragraphs = 0xC7C;
 constexpr std::array<std::uint16_t, 2> data_page_segments{0x4A16, 0x4A18};
 constexpr std::uint16_t first_page_segment = 0xA000;
 constexpr std::uint16_t page_paragraphs = 0x200;
@@ -585,8 +572,8 @@ constexpr std::uint8_t max_bar = 0x28;
   const std::uint16_t segment = s.cpu.read_word(
       s.ss, static_cast<std::uint16_t>(routine + caller_return_cs));
   const std::uint16_t list =
-      menu_bar::loaded_at(s.cpu, ctx, menu_bar::load_segment_at);
-  return back == list_bar_return && list != 0 && segment == list;
+      menu_bar::loaded_at(s.cpu, ctx, profile.menu_overlay.load_segment_at);
+  return back == profile.pick_list_bar_return && list != 0 && segment == list;
 }
 
 /// Whether a bar with one command lights the character this call draws:
@@ -753,7 +740,8 @@ void at_hit_points(machine& box, seam_context& ctx) {
 /// character of a selection.
 [[nodiscard]] bool draws_a_selection(const stack& s, const seam_context& ctx) {
   const std::uint32_t from = return_of(s, s.bp);
-  const std::uint32_t bar = module_start(s.cpu, ctx, menu_bar::load_segment_at);
+  const std::uint32_t bar =
+      module_start(s.cpu, ctx, profile.menu_overlay.load_segment_at);
 
   // A bar's character, drawn by the bar leaf a glyph at a time. The call's
   // words are the blitter's arguments and the leaf's frame is the one the
@@ -804,7 +792,8 @@ void at_hit_points(machine& box, seam_context& ctx) {
       returns_to(caller, ctx.image_base(), roster_selected_call)) {
     return true;
   }
-  const std::uint32_t sheet = module_start(s.cpu, ctx, sheet_load_segment_at);
+  const std::uint32_t sheet =
+      module_start(s.cpu, ctx, profile.view_overlay.load_segment_at);
   if (returns_to(caller, sheet, score_string_call) ||
       returns_to(caller, sheet, percentage_string_call) ||
       returns_to(caller, ctx.image_base(), hit_points_string_call)) {
@@ -1056,8 +1045,8 @@ void settle(machine& box, unsigned page, std::uint16_t segment,
 [[nodiscard]] std::array<std::uint16_t, 2> drawn_pages(const stack& s,
                                                        const seam_context& ctx,
                                                        std::size_t& count) {
-  const auto dgroup =
-      static_cast<std::uint16_t>((ctx.image_base() / 16U) + dgroup_paragraphs);
+  const auto dgroup = static_cast<std::uint16_t>((ctx.image_base() / 16U) +
+                                                 profile.dgroup_paragraphs);
   std::array<std::uint16_t, 2> out{};
   count = 0;
   for (const std::uint16_t word : data_page_segments) {
@@ -1183,22 +1172,28 @@ void at_picture_drawn(machine& box, seam_context& /*ctx*/) {
 // --- The definition ---------------------------------------------------------
 
 constexpr std::array<seam_point, 12> select_yellow_point_table{
-    {{.module = menu_bar::module,
+    {{.module = profile.menu_overlay,
       .offset = bar_group_call,
       .run = &at_bar_group},
-     {.module = menu_bar::module, .offset = list_row_call, .run = &at_list_row},
+     {.module = profile.menu_overlay,
+      .offset = list_row_call,
+      .run = &at_list_row},
      {.module = resident_image,
       .offset = roster_selected_call,
       .run = &at_selected_member,
       .inside_calls = true},
-     {.module = sheet_module, .offset = score_chosen, .run = &at_ability_score},
+     {.module = profile.view_overlay,
+      .offset = score_chosen,
+      .run = &at_ability_score},
      {.module = resident_image,
       .offset = hit_points_chosen,
       .run = &at_hit_points},
-     {.module = menu_bar::module,
+     {.module = profile.menu_overlay,
       .offset = bar_letter_call,
       .run = &at_bar_letter},
-     {.module = menu_bar::module, .offset = bar_rest_call, .run = &at_bar_rest},
+     {.module = profile.menu_overlay,
+      .offset = bar_rest_call,
+      .run = &at_bar_rest},
      // The stores run inside batches too: the roster is given back through
      // one, and the seams' own selections are drawn in one.
      {.module = resident_image,

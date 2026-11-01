@@ -276,6 +276,7 @@
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/memory_map.h"
 #include "amberfolio/machine/overlay.h"
+#include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/service_floor.h"
 #include "seam_builtin.h"
@@ -283,6 +284,10 @@
 
 namespace amberfolio::machine {
 namespace {
+
+/// The program this file's facts are about (program_profile.h): the
+/// baseline edition, and only it.
+constexpr const program_profile& profile = pool_of_radiance;
 
 // The module, the read point, the frame's return address and who called the
 // routine are shared with `list-arrows`, which has a point at the same
@@ -296,85 +301,90 @@ namespace {
 /// Pascal string whose characters are numbered from one.
 constexpr std::uint16_t local_enter_allowed = 0x8F;
 constexpr std::uint16_t local_group_count = 0x8E;
-constexpr std::uint16_t local_bar = 0x53;
 
 /// The table has room for twenty groups, and the bar copy is a
 /// `string[40]`.
 constexpr std::uint8_t max_groups = 20;
-constexpr std::uint8_t max_bar_length = 40;
-
-// --- The data segment ------------------------------------------------------
-
-/// The one-based index of the group a bar highlights, shared by every bar
-/// (docs/seams.md §10, the Encamp Fix, #304).
-constexpr std::uint16_t data_bar_highlight = 0x6B2B;
 
 // --- The callers that ignore Enter -----------------------------------------
 
-using menu_bar::adventure_load_segment_at;
-using menu_bar::aim_load_segment_at;
 using menu_bar::caller;
-using menu_bar::camp_load_segment_at;
-using menu_bar::combat_load_segment_at;
-using menu_bar::post_combat_load_segment_at;
-using menu_bar::roster_load_segment_at;
-using menu_bar::script_load_segment_at;
-
-using menu_bar::appraise_load_segment_at;
-using menu_bar::shop_load_segment_at;
-using menu_bar::slots_load_segment_at;
-using menu_bar::temple_load_segment_at;
-using menu_bar::view_load_segment_at;
 
 constexpr std::array<caller, 25> enter_callers{{
-    {.load_segment_at = menu_bar::load_segment_at, .return_offset = 0x111E},
-    {.load_segment_at = adventure_load_segment_at, .return_offset = 0x09D5},
-    {.load_segment_at = adventure_load_segment_at, .return_offset = 0x0C45},
-    {.load_segment_at = camp_load_segment_at, .return_offset = 0x1F24},
-    {.load_segment_at = camp_load_segment_at, .return_offset = 0x1447},
-    {.load_segment_at = camp_load_segment_at, .return_offset = 0x1CA4},
-    {.load_segment_at = camp_load_segment_at, .return_offset = 0x1DDF},
-    {.load_segment_at = camp_load_segment_at, .return_offset = 0x1B91},
-    {.load_segment_at = roster_load_segment_at, .return_offset = 0x3449},
-    {.load_segment_at = roster_load_segment_at, .return_offset = 0x39FE},
-    {.load_segment_at = shop_load_segment_at, .return_offset = 0x061F},
-    {.load_segment_at = temple_load_segment_at, .return_offset = 0x0DAA},
-    {.load_segment_at = post_combat_load_segment_at, .return_offset = 0x1024},
-    {.load_segment_at = post_combat_load_segment_at, .return_offset = 0x0D91},
-    {.load_segment_at = combat_load_segment_at, .return_offset = 0x0819},
-    {.load_segment_at = combat_load_segment_at, .return_offset = 0x0F70},
-    {.load_segment_at = combat_load_segment_at, .return_offset = 0x120C},
-    {.load_segment_at = view_load_segment_at, .return_offset = 0x0C9C},
-    {.load_segment_at = appraise_load_segment_at, .return_offset = 0x1C47},
-    {.load_segment_at = slots_load_segment_at, .return_offset = 0x16E2},
-    {.load_segment_at = menu_bar::rest_load_segment_at,
-     .return_offset = 0x076E},
-    {.load_segment_at = adventure_load_segment_at, .return_offset = 0x0EBF},
-    {.load_segment_at = adventure_load_segment_at, .return_offset = 0x0FFE},
-    {.load_segment_at = aim_load_segment_at, .return_offset = 0x2C31},
-    {.load_segment_at = slots_load_segment_at, .return_offset = 0x1DA1},
+    {.load_segment_at = profile.menu_overlay.load_segment_at,
+     .return_offset = 0x111E},
+    {.load_segment_at = profile.adventure_overlay.load_segment_at,
+     .return_offset = 0x09D5},
+    {.load_segment_at = profile.adventure_overlay.load_segment_at,
+     .return_offset = 0x0C45},
+    {.load_segment_at = profile.camp_overlay.load_segment_at,
+     .return_offset = 0x1F24},
+    {.load_segment_at = profile.camp_overlay.load_segment_at,
+     .return_offset = 0x1447},
+    {.load_segment_at = profile.camp_overlay.load_segment_at,
+     .return_offset = 0x1CA4},
+    {.load_segment_at = profile.camp_overlay.load_segment_at,
+     .return_offset = 0x1DDF},
+    {.load_segment_at = profile.camp_overlay.load_segment_at,
+     .return_offset = 0x1B91},
+    {.load_segment_at = profile.roster_overlay.load_segment_at,
+     .return_offset = 0x3449},
+    {.load_segment_at = profile.roster_overlay.load_segment_at,
+     .return_offset = 0x39FE},
+    {.load_segment_at = profile.shop_load_segment_at, .return_offset = 0x061F},
+    {.load_segment_at = profile.temple_load_segment_at,
+     .return_offset = 0x0DAA},
+    {.load_segment_at = profile.post_combat_load_segment_at,
+     .return_offset = 0x1024},
+    {.load_segment_at = profile.post_combat_load_segment_at,
+     .return_offset = 0x0D91},
+    {.load_segment_at = profile.combat_overlay.load_segment_at,
+     .return_offset = 0x0819},
+    {.load_segment_at = profile.combat_overlay.load_segment_at,
+     .return_offset = 0x0F70},
+    {.load_segment_at = profile.combat_overlay.load_segment_at,
+     .return_offset = 0x120C},
+    {.load_segment_at = profile.view_overlay.load_segment_at,
+     .return_offset = 0x0C9C},
+    {.load_segment_at = profile.appraise_load_segment_at,
+     .return_offset = 0x1C47},
+    {.load_segment_at = profile.slots_overlay.load_segment_at,
+     .return_offset = 0x16E2},
+    {.load_segment_at = profile.rest_load_segment_at, .return_offset = 0x076E},
+    {.load_segment_at = profile.adventure_overlay.load_segment_at,
+     .return_offset = 0x0EBF},
+    {.load_segment_at = profile.adventure_overlay.load_segment_at,
+     .return_offset = 0x0FFE},
+    {.load_segment_at = profile.aim_overlay.load_segment_at,
+     .return_offset = 0x2C31},
+    {.load_segment_at = profile.slots_overlay.load_segment_at,
+     .return_offset = 0x1DA1},
 }};
 
 /// The Yes/No prompt, and the script runner's call into the routine (the
 /// instruction after it, in overlay 7).
 constexpr std::array<caller, 1> yes_no_caller{
-    {{.load_segment_at = menu_bar::load_segment_at, .return_offset = 0x111E}}};
+    {{.load_segment_at = profile.menu_overlay.load_segment_at,
+      .return_offset = 0x111E}}};
 constexpr std::array<caller, 1> script_caller{
-    {{.load_segment_at = script_load_segment_at, .return_offset = 0x16EB}}};
+    {{.load_segment_at = profile.script_runner_load_segment_at,
+      .return_offset = 0x16EB}}};
 
 /// The pick-list's call into the routine (overlay 25). The list sets the
 /// bar's highlight to its first command each time it opens, so a highlight
 /// anywhere else is one the player moved, and Enter takes that command;
 /// on the first, Enter is the list's own and chooses the row.
 constexpr std::array<caller, 1> pick_list_caller{
-    {{.load_segment_at = menu_bar::load_segment_at, .return_offset = 0x0FE0}}};
+    {{.load_segment_at = profile.menu_overlay.load_segment_at,
+      .return_offset = 0x0FE0}}};
 
 /// The list routine's callers that drop the `0x0D` the list hands back, each
 /// named by the instruction after its call into the list routine: there
 /// Enter takes the lit command on the first command too. One: the Items
 /// screen (overlay 19), whose compares are its command letters only.
 constexpr std::array<caller, 1> list_callers_dropping_enter{
-    {{.load_segment_at = view_load_segment_at, .return_offset = 0x1294}}};
+    {{.load_segment_at = profile.view_overlay.load_segment_at,
+      .return_offset = 0x1294}}};
 
 /// Above the script runner's BP: its allow-Enter argument, a word of which
 /// the runner reads the low byte.
@@ -383,13 +393,20 @@ constexpr std::uint16_t runner_allow_enter = 8;
 // --- The callers that keep Left and Right ---------------------------------
 
 constexpr std::array<caller, 7> arrow_callers{{
-    {.load_segment_at = adventure_load_segment_at, .return_offset = 0x09D5},
-    {.load_segment_at = adventure_load_segment_at, .return_offset = 0x0C45},
-    {.load_segment_at = combat_load_segment_at, .return_offset = 0x0AC8},
-    {.load_segment_at = aim_load_segment_at, .return_offset = 0x3178},
-    {.load_segment_at = roster_load_segment_at, .return_offset = 0x216E},
-    {.load_segment_at = post_combat_load_segment_at, .return_offset = 0x0AF8},
-    {.load_segment_at = post_combat_load_segment_at, .return_offset = 0x14C7},
+    {.load_segment_at = profile.adventure_overlay.load_segment_at,
+     .return_offset = 0x09D5},
+    {.load_segment_at = profile.adventure_overlay.load_segment_at,
+     .return_offset = 0x0C45},
+    {.load_segment_at = profile.combat_overlay.load_segment_at,
+     .return_offset = 0x0AC8},
+    {.load_segment_at = profile.aim_overlay.load_segment_at,
+     .return_offset = 0x3178},
+    {.load_segment_at = profile.roster_overlay.load_segment_at,
+     .return_offset = 0x216E},
+    {.load_segment_at = profile.post_combat_load_segment_at,
+     .return_offset = 0x0AF8},
+    {.load_segment_at = profile.post_combat_load_segment_at,
+     .return_offset = 0x14C7},
 }};
 
 // --- The keys, as the BIOS ring holds them: scan code high, character low --
@@ -463,10 +480,10 @@ constexpr std::uint16_t scan_enter = 0x1C00;
   cpu::registers& regs = cpu.regs();
   const std::uint16_t ss = regs[cpu::sreg::ss];
   const std::uint16_t bp = regs[cpu::reg16::bp];
-  const auto bar = static_cast<std::uint16_t>(bp - local_bar);
+  const auto bar = static_cast<std::uint16_t>(bp - profile.menu_local_bar);
 
   const std::uint8_t length = cpu.read_byte(ss, bar);
-  if (length == 0 || length > max_bar_length) {
+  if (length == 0 || length > profile.menu_bar_capacity) {
     return false;
   }
   bool yes = false;
@@ -507,7 +524,7 @@ constexpr std::uint16_t scan_enter = 0x1C00;
   }
 
   const std::uint8_t group =
-      cpu.read_byte(regs[cpu::sreg::ds], data_bar_highlight);
+      cpu.read_byte(regs[cpu::sreg::ds], profile.data_bar_highlight);
   if (group == 0) {
     // The index is one-based: no bar has been stepped or chosen from yet,
     // so no group is the highlighted one and Enter has no command to take.
@@ -515,9 +532,9 @@ constexpr std::uint16_t scan_enter = 0x1C00;
   }
 
   const std::uint8_t groups = cpu.read_byte(ss, below(local_group_count));
-  const std::uint8_t length = cpu.read_byte(ss, below(local_bar));
+  const std::uint8_t length = cpu.read_byte(ss, below(profile.menu_local_bar));
   if (groups == 0 || groups > max_groups || length == 0 ||
-      length > max_bar_length || group > groups) {
+      length > profile.menu_bar_capacity || group > groups) {
     ctx.decline(seam_reason::point_not_recognized);
     return 0;
   }
@@ -529,8 +546,8 @@ constexpr std::uint16_t scan_enter = 0x1C00;
     return 0;
   }
   const auto bar_at = [&](std::uint8_t position) {
-    return cpu.read_byte(
-        ss, static_cast<std::uint16_t>(below(local_bar) + position));
+    return cpu.read_byte(ss, static_cast<std::uint16_t>(
+                                 below(profile.menu_local_bar) + position));
   };
   const std::uint8_t letter = bar_at(first);
   if (!is_command_letter(letter)) {
@@ -588,7 +605,8 @@ void at_key_read(machine& box, seam_context& ctx) {
     // command, or one whose own caller drops the row's Enter.
     const bool list_takes_command =
         menu_bar::called_from(cpu, ctx, pick_list_caller) &&
-        (cpu.read_byte(cpu.regs()[cpu::sreg::ds], data_bar_highlight) > 1 ||
+        (cpu.read_byte(cpu.regs()[cpu::sreg::ds], profile.data_bar_highlight) >
+             1 ||
          list_called_from(cpu, ctx, list_callers_dropping_enter));
     // The party-member picker, whose `Select` is its own Enter and whose
     // `Exit` is lit as often as not when it opens.
@@ -611,8 +629,8 @@ void at_key_read(machine& box, seam_context& ctx) {
 }
 
 constexpr std::array<seam_point, 1> bar_keys_point_table{
-    {{.module = menu_bar::module,
-      .offset = menu_bar::key_read_call,
+    {{.module = profile.menu_overlay,
+      .offset = profile.menu_key_read_call,
       .run = &at_key_read}}};
 static_assert(bar_keys_point_table.size() == bar_keys_point_count);
 

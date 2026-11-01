@@ -13,31 +13,19 @@
 #include "amberfolio/machine/automap.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/memory_map.h"
+#include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/seam.h"
 
 namespace amberfolio::machine {
 namespace {
 
+/// The program this file's facts are about (program_profile.h): the
+/// baseline edition, and only it.
+constexpr const program_profile& profile = pool_of_radiance;
+
 // ---------------------------------------------------------------------------
 // The facts (docs/explored-overlay.md §2)
 // ---------------------------------------------------------------------------
-
-/// The game mode, and the value that is the wilderness travel view.
-constexpr std::uint16_t data_game_mode = 0x49F3;
-constexpr std::uint8_t mode_overland = 3;
-
-/// Which view is up. 2, 3 and 4 are the three wilderness areas; 1 is the
-/// interior grid the automap panel is a map of.
-constexpr std::uint16_t data_view_kind = 0x49FA;
-constexpr std::uint8_t view_kind_first_overland = 2;
-constexpr std::uint8_t view_kind_last_overland = 4;
-
-/// Non-zero while the program is running a scripted move between areas.
-constexpr std::uint16_t data_in_transition = 0x442F;
-
-/// The disk the area's files come from, and the area's own id.
-constexpr std::uint16_t data_disk_number = 0x5376;
-constexpr std::uint16_t data_area_id = 0x84DC;
 
 /// **Which disk and area each view kind is**, from the automap's zone
 /// table: kind 2 is area 25 on disk 6, kind 3 area 26 on disk 7, kind 4
@@ -48,26 +36,9 @@ constexpr std::uint16_t data_area_id = 0x84DC;
 constexpr std::uint8_t first_overland_disk = 6;
 constexpr std::uint8_t first_overland_area = 25;
 
-/// The current area record: a far pointer, offset then segment.
-constexpr std::uint16_t data_area_record = 0x49D2;
-
-/// Inside that record: the party's overland column and row, each a word,
-/// and the word that says the program is showing these areas in the
-/// interior view instead.
-constexpr std::uint16_t record_overland_column = 0x186;
-constexpr std::uint16_t record_overland_row = 0x188;
-constexpr std::uint16_t record_shown_in_3d = 0x1CC;
-
 /// How far into the record this reads, which is what the bounds check
 /// below is about.
-constexpr std::uint16_t record_reach = record_shown_in_3d + 2;
-
-/// **The adventuring screen's own two command bars** (M5-E2d), as offsets
-/// in the data segment: one for the overhead view and one for the 3D
-/// view. Both are strings the program keeps; every other bar in the game
-/// is a copy built on the stack.
-constexpr std::uint16_t data_menu_area_view = 0x04B6;
-constexpr std::uint16_t data_menu_3d_view = 0x04DF;
+constexpr std::uint16_t record_reach = profile.area_shown_in_3d + 2;
 
 /// Where the bar is in the input routine's frame. It takes eleven words
 /// and cleans twenty-two bytes; its callers push them deepest-first, so
@@ -75,17 +46,6 @@ constexpr std::uint16_t data_menu_3d_view = 0x04DF;
 /// — the menu's far pointer is the fourth argument from the far end.
 constexpr std::uint16_t bar_frame_menu_offset = 18;
 constexpr std::uint16_t bar_frame_menu_segment = 20;
-
-/// **The adventuring loop's two calls into that routine**, as the far
-/// return address on top of the stack at the thunk's entry: the offsets of
-/// the instructions after the calls (city, wilderness) in overlay 14, and
-/// the word the program's overlay manager keeps that module's segment in.
-/// `modern-controls`' move mode hands these calls a copy of the bar on the
-/// stack (#479), so the call site says whose bar it is when the pointer no
-/// longer can.
-constexpr std::uint16_t adventure_city_return = 0x09D5;
-constexpr std::uint16_t adventure_wild_return = 0x0C45;
-constexpr std::uint16_t adventure_load_segment_at = 0x730;
 
 [[nodiscard]] std::uint16_t at(std::uint16_t base, std::uint16_t by) noexcept {
   return static_cast<std::uint16_t>(base + by);
@@ -100,20 +60,22 @@ overland_look observe_overland(machine& box, seam_context& ctx,
 
   // The cheap data-segment bytes first, and no pointer followed until
   // they hold (docs/seams.md §8.4's wild-read rule).
-  if (cpu.read_byte(ds, data_game_mode) != mode_overland) {
+  if (cpu.read_byte(ds, profile.data_game_mode) != profile.mode_travel) {
     return found;
   }
-  const std::uint8_t kind = cpu.read_byte(ds, data_view_kind);
-  if (kind < view_kind_first_overland || kind > view_kind_last_overland) {
+  const std::uint8_t kind = cpu.read_byte(ds, profile.data_view_kind);
+  if (kind < profile.view_kind_first_overland ||
+      kind > profile.view_kind_last_overland) {
     return found;
   }
-  if (cpu.read_byte(ds, data_in_transition) != 0) {
+  if (cpu.read_byte(ds, profile.data_in_transition) != 0) {
     return found;
   }
 
-  const std::uint16_t record_offset = cpu.read_word(ds, data_area_record);
+  const std::uint16_t record_offset =
+      cpu.read_word(ds, profile.data_area_record);
   const std::uint16_t record_segment =
-      cpu.read_word(ds, at(data_area_record, 2));
+      cpu.read_word(ds, at(profile.data_area_record, 2));
   if (record_segment == 0) {
     return found;
   }
@@ -132,15 +94,15 @@ overland_look observe_overland(machine& box, seam_context& ctx,
   // with the view-kind byte still reading 2, 3 or 4 — so a seam that
   // trusted the kind byte would be recording, and drawing, against a
   // screen that is not the travel view at all.
-  if (cpu.read_word(record_segment, at(record_offset, record_shown_in_3d)) !=
-      0) {
+  if (cpu.read_word(record_segment,
+                    at(record_offset, profile.area_shown_in_3d)) != 0) {
     return found;
   }
 
-  const std::uint16_t column =
-      cpu.read_word(record_segment, at(record_offset, record_overland_column));
-  const std::uint16_t row =
-      cpu.read_word(record_segment, at(record_offset, record_overland_row));
+  const std::uint16_t column = cpu.read_word(
+      record_segment, at(record_offset, profile.area_overland_column));
+  const std::uint16_t row = cpu.read_word(
+      record_segment, at(record_offset, profile.area_overland_row));
   if (column >= automap_overland_columns || row >= automap_overland_rows) {
     // The program clamps both in its own move step, so a position outside
     // them means this record is not the record these offsets are facts
@@ -149,9 +111,10 @@ overland_look observe_overland(machine& box, seam_context& ctx,
     return found;
   }
 
-  const std::uint8_t disk = cpu.read_byte(ds, data_disk_number);
-  const std::uint8_t area = cpu.read_byte(ds, data_area_id);
-  const auto band = static_cast<std::uint8_t>(kind - view_kind_first_overland);
+  const std::uint8_t disk = cpu.read_byte(ds, profile.data_disk_number);
+  const std::uint8_t area = cpu.read_byte(ds, profile.data_area_id);
+  const auto band =
+      static_cast<std::uint8_t>(kind - profile.view_kind_first_overland);
   if (disk != first_overland_disk + band ||
       area != first_overland_area + band) {
     // Halfway across a band edge: the three bytes do not yet name one
@@ -197,17 +160,21 @@ void note_command_bar(machine& box, const seam_context& ctx, std::uint16_t ds) {
   const std::uint16_t segment =
       cpu.read_word(ss, at(sp, bar_frame_menu_segment));
   const std::uint16_t offset = cpu.read_word(ss, at(sp, bar_frame_menu_offset));
-  const bool program_bar = segment == ds && (offset == data_menu_area_view ||
-                                             offset == data_menu_3d_view);
+  const bool program_bar = segment == ds && (offset == profile.data_area_bar ||
+                                             offset == profile.data_view_bar);
 
+  // The adventuring loop's two calls, by the far return on top of the
+  // stack: `modern-controls`' move mode hands them a copy of the bar on
+  // the stack (#479), so the call site says whose bar it is when the
+  // pointer no longer can.
   const std::uint16_t return_ip = cpu.read_word(ss, sp);
   const std::uint16_t return_cs = cpu.read_word(ss, at(sp, 2));
-  const std::uint16_t adventure =
-      cpu.read_word(static_cast<std::uint16_t>(ctx.image_base() >> 4U),
-                    adventure_load_segment_at);
+  const std::uint16_t adventure = cpu.read_word(
+      static_cast<std::uint16_t>(ctx.image_base() >> 4U),
+      static_cast<std::uint16_t>(profile.adventure_overlay.load_segment_at));
   const bool party_call = adventure != 0 && return_cs == adventure &&
-                          (return_ip == adventure_city_return ||
-                           return_ip == adventure_wild_return);
+                          (return_ip == profile.area_bar_return ||
+                           return_ip == profile.view_bar_return);
 
   box.automap().set_at_command_bar(program_bar || party_call);
 }

@@ -114,16 +114,18 @@
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/overlay.h"
+#include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/seam.h"
 #include "seam_builtin.h"
 
 namespace amberfolio::machine {
 namespace {
 
-/// The SHA-256 of the program image these offsets are facts about — the
-/// baseline edition (edition.h), and only it.
-constexpr std::array<std::string_view, 1> code_wheel_binaries{
-    "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd"};
+/// The program this seam's facts are about (program_profile.h): the
+/// baseline edition, and only it. The seam is available on it and on no
+/// other binary.
+constexpr const program_profile& profile = pool_of_radiance;
+constexpr auto code_wheel_binaries = fingerprints_of(std::array{&profile});
 
 /// The `REPE CMPSB` inside the program's string-compare routine, as an
 /// offset from the image segment.

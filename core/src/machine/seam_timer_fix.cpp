@@ -71,16 +71,18 @@
 #include "amberfolio/cpu/processor.h"
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/seam.h"
 #include "seam_builtin.h"
 
 namespace amberfolio::machine {
 namespace {
 
-/// The SHA-256 of the program image these offsets are facts about: the
-/// baseline edition (edition.h), the one quick steps runs on.
-constexpr std::array<std::string_view, 1> timer_fix_binaries{
-    "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd"};
+/// The program this seam's facts are about (program_profile.h): the
+/// baseline edition, the one quick steps runs on, and only it. The seam is
+/// available on it and on no other binary.
+constexpr const program_profile& profile = pool_of_radiance;
+constexpr auto timer_fix_binaries = fingerprints_of(std::array{&profile});
 
 /// The install routine's entry, from the image segment, and from there the
 /// `mov dx, imm16` that loads its handler's offset and its `retf`.
@@ -90,10 +92,6 @@ constexpr std::uint16_t install_return = 0x34;
 
 constexpr std::uint8_t mov_dx_imm16 = 0xBA;
 constexpr std::uint8_t retf = 0xCB;
-
-/// The data segment is the image's paragraph `0xC7C` on; the busy word.
-constexpr std::uint16_t dgroup_paragraphs = 0xC7C;
-constexpr std::uint16_t data_busy = 0x5374;
 
 /// The timer interrupt's vector, in the vector table at segment 0.
 constexpr std::uint16_t timer_vector = 0x08 * 4;
@@ -113,9 +111,9 @@ void hook_once(machine& box, seam_context& ctx) {
     return;
   }
 
-  const auto dgroup =
-      static_cast<std::uint16_t>((ctx.image_base() >> 4U) + dgroup_paragraphs);
-  if (cpu.read_word(dgroup, data_busy) == 0) {
+  const auto dgroup = static_cast<std::uint16_t>((ctx.image_base() >> 4U) +
+                                                 profile.dgroup_paragraphs);
+  if (cpu.read_word(dgroup, profile.data_sound_busy) == 0) {
     // The driver's resident mode: its own gate hooks, and is left to.
     return;
   }

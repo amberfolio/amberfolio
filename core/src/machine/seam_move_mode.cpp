@@ -147,6 +147,7 @@
 #include "amberfolio/machine/journal.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/overlay.h"
+#include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/service_floor.h"
 #include "seam_builtin.h"
@@ -157,22 +158,11 @@
 namespace amberfolio::machine {
 namespace {
 
+/// The program this file's facts are about (program_profile.h): the
+/// baseline edition, and only it.
+constexpr const program_profile& profile = pool_of_radiance;
+
 // --- The adventuring loop's module (overlay 14) ----------------------------
-
-/// The journal's module, restated: each seam carries its own fact table.
-constexpr seam_module adventure_module{
-    .file = "GAME.OVR",
-    .file_offset = 91851,
-    .length = 4268,
-    .digest =
-        "ce2018e8e9d51d422d12e2a8e60837322af70639bcbca2b9fe34ccfd333e2d3a",
-    .load_segment_at = menu_bar::adventure_load_segment_at};
-
-/// The call into the menu-bar routine and the instruction after it, per bar.
-constexpr std::uint32_t city_before = 0x09D0;
-constexpr std::uint32_t city_after = 0x09D5;
-constexpr std::uint32_t wild_before = 0x0C40;
-constexpr std::uint32_t wild_after = 0x0C45;
 
 /// The loop's out-parameter, below its BP: zero is a letter off the bar.
 constexpr std::uint16_t frame_out_flag = 0x04;
@@ -186,40 +176,27 @@ constexpr std::uint16_t stack_bar_segment = 16;
 
 /// The two callers, by the instruction after their call.
 constexpr std::array<menu_bar::caller, 2> adventure_callers{{
-    {.load_segment_at = menu_bar::adventure_load_segment_at,
-     .return_offset = city_after},
-    {.load_segment_at = menu_bar::adventure_load_segment_at,
-     .return_offset = wild_after},
+    {.load_segment_at = profile.adventure_overlay.load_segment_at,
+     .return_offset = profile.area_bar_return},
+    {.load_segment_at = profile.adventure_overlay.load_segment_at,
+     .return_offset = profile.view_bar_return},
 }};
 
 /// The door bars, locked and stuck, in the same module: a walk meets them,
 /// and answering one does not end it.
 constexpr std::array<menu_bar::caller, 2> door_callers{{
-    {.load_segment_at = menu_bar::adventure_load_segment_at,
+    {.load_segment_at = profile.adventure_overlay.load_segment_at,
      .return_offset = 0x0EBF},
-    {.load_segment_at = menu_bar::adventure_load_segment_at,
+    {.load_segment_at = profile.adventure_overlay.load_segment_at,
      .return_offset = 0x0FFE},
 }};
 
 // --- The data segment ------------------------------------------------------
 
-constexpr std::uint16_t data_city_bar = 0x04B6;
-constexpr std::uint16_t data_wild_bar = 0x04DF;
-constexpr std::uint16_t data_bar_highlight = 0x6B2B;
 constexpr std::uint16_t data_overhead_view = 0x6AAC;
 
 /// A bar's slot: a length byte and forty characters.
 constexpr std::uint8_t bar_capacity = 40;
-
-/// The program's screen composer, reached as paragraph plus offset (the
-/// journal's give-back, seam_journal.cpp, has why).
-constexpr std::uint16_t composer_paragraph = 0x0BA;
-constexpr std::uint16_t composer_offset = 0x27D9;
-
-// --- The menu-bar routine's frame (overlay 25), at its key read -----------
-
-/// The bar the routine parsed, a Pascal string below its BP (`bar-keys`).
-constexpr std::uint16_t local_bar = 0x53;
 
 // --- The words this piece adds ---------------------------------------------
 
@@ -306,8 +283,8 @@ void put(cpu::processor& cpu, std::uint16_t segment, std::uint16_t bar,
   const auto image = static_cast<std::uint16_t>(ctx.image_base() / 16U);
   const std::array<std::uint16_t, 0> nothing{};
   return ctx.call_program(
-      static_cast<std::uint16_t>(image + composer_paragraph), composer_offset,
-      nothing);
+      static_cast<std::uint16_t>(image + profile.screen_paragraph),
+      profile.screen_composer_offset, nothing);
 }
 
 /// The bar of this mode, made in the copy at `SS:copy` from the program's
@@ -384,11 +361,11 @@ void bar_before(machine& box, seam_context& ctx, std::uint16_t bar, bool city) {
   cpu.write_word(ss, at(sp, stack_bar_offset), copy);
   cpu.write_word(ss, at(sp, stack_bar_segment), ss);
 
-  const std::uint8_t entered = cpu.read_byte(ds, data_bar_highlight);
+  const std::uint8_t entered = cpu.read_byte(ds, profile.data_bar_highlight);
   ctx.set_scratch(scratch_highlight, entered);
   if (walking) {
     ctx.set_scratch(scratch_handed, as_word(handed::walking));
-    cpu.write_byte(ds, data_bar_highlight, 1);
+    cpu.write_byte(ds, profile.data_bar_highlight, 1);
     return;
   }
   ctx.set_scratch(scratch_handed, as_word(handed::menu));
@@ -402,7 +379,7 @@ void bar_before(machine& box, seam_context& ctx, std::uint16_t bar, bool city) {
   } else if (!city) {
     lit = static_cast<std::uint8_t>(entered + 1U);
   }
-  cpu.write_byte(ds, data_bar_highlight, lit);
+  cpu.write_byte(ds, profile.data_bar_highlight, lit);
 }
 
 // --- After it comes back ---------------------------------------------------
@@ -426,7 +403,7 @@ void bar_after(machine& box, seam_context& ctx, bool city) {
       static_cast<std::uint8_t>(ctx.scratch(scratch_highlight));
 
   if (carried == handed::walking) {
-    cpu.write_byte(ds, data_bar_highlight, entered);
+    cpu.write_byte(ds, profile.data_bar_highlight, entered);
     if (off_the_bar && letter == exit_letter) {
       ctx.set_scratch(scratch_walking, 0);
       ctx.set_scratch(scratch_move_lit, 1);
@@ -438,17 +415,17 @@ void bar_after(machine& box, seam_context& ctx, bool city) {
 
   if (off_the_bar && letter == notes_letter) {
     // The journal's: the highlight is what it was before (#330).
-    cpu.write_byte(ds, data_bar_highlight, entered);
+    cpu.write_byte(ds, profile.data_bar_highlight, entered);
     return;
   }
-  const std::uint8_t lit = cpu.read_byte(ds, data_bar_highlight);
+  const std::uint8_t lit = cpu.read_byte(ds, profile.data_bar_highlight);
   if (lit == 1) {
     ctx.set_scratch(scratch_move_lit, 1);
-    cpu.write_byte(ds, data_bar_highlight, entered);
+    cpu.write_byte(ds, profile.data_bar_highlight, entered);
   } else {
     ctx.set_scratch(scratch_move_lit, 0);
     if (!city) {
-      cpu.write_byte(ds, data_bar_highlight,
+      cpu.write_byte(ds, profile.data_bar_highlight,
                      static_cast<std::uint8_t>(lit - 1U));
     }
   }
@@ -458,13 +435,13 @@ void bar_after(machine& box, seam_context& ctx, bool city) {
 }
 
 void at_city_before(machine& box, seam_context& ctx) {
-  bar_before(box, ctx, data_city_bar, true);
+  bar_before(box, ctx, profile.data_area_bar, true);
 }
 void at_city_after(machine& box, seam_context& ctx) {
   bar_after(box, ctx, true);
 }
 void at_wild_before(machine& box, seam_context& ctx) {
-  bar_before(box, ctx, data_wild_bar, false);
+  bar_before(box, ctx, profile.data_view_bar, false);
 }
 void at_wild_after(machine& box, seam_context& ctx) {
   bar_after(box, ctx, false);
@@ -486,7 +463,8 @@ void at_wild_after(machine& box, seam_context& ctx) {
 [[nodiscard]] bool on_the_bar(cpu::processor& cpu, std::uint8_t letter) {
   cpu::registers& regs = cpu.regs();
   const std::uint16_t ss = regs[cpu::sreg::ss];
-  const auto bar = static_cast<std::uint16_t>(regs[cpu::reg16::bp] - local_bar);
+  const auto bar =
+      static_cast<std::uint16_t>(regs[cpu::reg16::bp] - profile.menu_local_bar);
   const std::uint8_t length = cpu.read_byte(ss, bar);
   if (length > bar_capacity) {
     return false;
@@ -562,7 +540,7 @@ void at_key_read(machine& box, seam_context& ctx) {
       cpu.read_word(bda::segment, bda::keyboard_buffer_head);
   if (head == cpu.read_word(bda::segment, bda::keyboard_buffer_tail) ||
       box.journal().reader_open() ||
-      cpu.read_byte(cpu.regs()[cpu::sreg::ds], menu_bar::data_key_pushback) !=
+      cpu.read_byte(cpu.regs()[cpu::sreg::ds], profile.data_key_pushback) !=
           0) {
     return;
   }
@@ -578,16 +556,20 @@ void at_key_read(machine& box, seam_context& ctx) {
 // --- The definition --------------------------------------------------------
 
 constexpr std::array<seam_point, 5> move_mode_point_table{
-    {{.module = adventure_module,
-      .offset = city_before,
+    {{.module = profile.adventure_overlay,
+      .offset = profile.area_bar_call,
       .run = &at_city_before},
-     {.module = adventure_module, .offset = city_after, .run = &at_city_after},
-     {.module = adventure_module,
-      .offset = wild_before,
+     {.module = profile.adventure_overlay,
+      .offset = profile.area_bar_return,
+      .run = &at_city_after},
+     {.module = profile.adventure_overlay,
+      .offset = profile.view_bar_call,
       .run = &at_wild_before},
-     {.module = adventure_module, .offset = wild_after, .run = &at_wild_after},
-     {.module = menu_bar::module,
-      .offset = menu_bar::key_read_call,
+     {.module = profile.adventure_overlay,
+      .offset = profile.view_bar_return,
+      .run = &at_wild_after},
+     {.module = profile.menu_overlay,
+      .offset = profile.menu_key_read_call,
       .run = &at_key_read}}};
 static_assert(move_mode_point_table.size() == move_mode_point_count);
 

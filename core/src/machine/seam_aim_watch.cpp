@@ -103,6 +103,7 @@
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/overlay.h"
+#include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/scene.h"
 #include "amberfolio/machine/seam.h"
 #include "seam_builtin.h"
@@ -110,16 +111,11 @@
 namespace amberfolio::machine {
 namespace {
 
-/// Overlay 13, the aim command, and where the program keeps its segment.
-constexpr seam_module aim_module{
-    .file = "GAME.OVR",
-    .file_offset = 75771,
-    .length = 15474,
-    .digest =
-        "19eb3541795a718bf02cc1db08ef2802c286b620c440269f36793e0829464578",
-    .load_segment_at = 0x690};
+/// The program this file's facts are about (program_profile.h): the
+/// baseline edition, and only it.
+constexpr const program_profile& profile = pool_of_radiance;
 
-/// In the module: target to target's meeting point and its wait's return;
+/// In the aim overlay (the profile's): target to target's meeting point and its wait's return;
 /// manual's halving, meeting point and its wait's return.
 constexpr std::uint32_t target_decided = 0x2BB6;
 constexpr std::uint32_t target_returned = 0x2C31;
@@ -192,13 +188,21 @@ void bar_down(machine& /*box*/, seam_context& ctx) {
 }
 
 constexpr std::array<seam_point, 5> aim_watch_point_table{{
-    {.module = aim_module, .offset = target_decided, .run = &target_bar_up},
-    {.module = aim_module, .offset = target_returned, .run = &bar_down},
-    {.module = aim_module,
+    {.module = profile.aim_overlay,
+     .offset = target_decided,
+     .run = &target_bar_up},
+    {.module = profile.aim_overlay,
+     .offset = target_returned,
+     .run = &bar_down},
+    {.module = profile.aim_overlay,
      .offset = manual_line_ends,
      .run = &manual_line_noted},
-    {.module = aim_module, .offset = manual_decided, .run = &manual_bar_up},
-    {.module = aim_module, .offset = manual_returned, .run = &bar_down},
+    {.module = profile.aim_overlay,
+     .offset = manual_decided,
+     .run = &manual_bar_up},
+    {.module = profile.aim_overlay,
+     .offset = manual_returned,
+     .run = &bar_down},
 }};
 static_assert(aim_watch_point_table.size() == aim_watch_point_count);
 

@@ -86,6 +86,7 @@
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/overlay.h"
+#include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/text_face.h"
 #include "seam_builtin.h"
@@ -93,15 +94,11 @@
 namespace amberfolio::machine {
 namespace {
 
-/// The baseline edition (edition.h), and only it.
-constexpr std::array<std::string_view, 1> font_binaries{
-    "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd"};
-
-/// The program's data segment, as a paragraph offset from the image.
-constexpr std::uint16_t dgroup_paragraphs = 0xC7C;
-
-/// The far pointer to the program's font, in that segment.
-constexpr std::uint16_t data_font_pointer = 0x5E20;
+/// The program this seam's facts are about (program_profile.h): the
+/// baseline edition, and only it. The seam is available on it and on no
+/// other binary.
+constexpr const program_profile& profile = pool_of_radiance;
+constexpr auto font_binaries = fingerprints_of(std::array{&profile});
 
 /// Glyphs the program's font buffer holds: its text table and the
 /// pictures past it. ES:DI beyond the last of them is not a glyph fetch.
@@ -116,11 +113,12 @@ void swap_row(text_face::face which, machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   cpu::registers& regs = cpu.regs();
 
-  const auto dgroup =
-      static_cast<std::uint16_t>((ctx.image_base() / 16U) + dgroup_paragraphs);
-  const std::uint16_t font_offset = cpu.read_word(dgroup, data_font_pointer);
-  const std::uint16_t font_segment =
-      cpu.read_word(dgroup, static_cast<std::uint16_t>(data_font_pointer + 2));
+  const auto dgroup = static_cast<std::uint16_t>((ctx.image_base() / 16U) +
+                                                 profile.dgroup_paragraphs);
+  const std::uint16_t font_offset =
+      cpu.read_word(dgroup, profile.data_font_pointer);
+  const std::uint16_t font_segment = cpu.read_word(
+      dgroup, static_cast<std::uint16_t>(profile.data_font_pointer + 2));
   const std::uint16_t es = regs[cpu::sreg::es];
   const std::uint16_t di = regs[cpu::reg16::di];
   if (font_segment == 0 || es != font_segment || di < font_offset ||

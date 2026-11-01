@@ -130,9 +130,8 @@
 // than a guess about one.
 //
 // Everything else — the two keyboard entries, the two clears, the roster
-// drawer and its return — is `seam_automap.cpp`'s fact table, restated
-// here because a seam states its own facts (`seam_cheats_test.cpp`'s rule,
-// applied to a seam rather than to a test).
+// drawer and its return — is the profile's (program_profile.h), where the
+// automap reads them too.
 //
 //
 // The keys, and the fact that none of them is a key of its own
@@ -309,6 +308,7 @@
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/memory_map.h"
 #include "amberfolio/machine/overlay.h"
+#include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/service_floor.h"
 #include "seam_builtin.h"
@@ -321,27 +321,19 @@ namespace {
 // The facts
 // ---------------------------------------------------------------------------
 
-/// The SHA-256 of the program image every offset below is a fact about —
-/// the baseline edition (edition.h), and only it.
-constexpr std::array<std::string_view, 1> journal_binaries{
-    "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd"};
+/// The program this seam's facts are about (program_profile.h): the
+/// baseline edition, and only it. The seam is available on it and on no
+/// other binary.
+constexpr const program_profile& profile = pool_of_radiance;
+constexpr auto journal_binaries = fingerprints_of(std::array{&profile});
 
 /// **The points**, as offsets from the image segment, all in the resident
-/// image. Five of them are `seam_automap.cpp`'s, so those have been
+/// image. Five of them are the profile's, and the automap's points too, so
+/// those have been
 /// reached on a driven run of the real program since before this file
 /// existed; the sixth is the message box, and #232 is the run that
 /// reached it.
-constexpr std::uint32_t key_pending_entry = 0xA6FD;
-constexpr std::uint32_t key_read_entry = 0xA70F;
-constexpr std::uint32_t clear_region_entry = 0x4047;
-constexpr std::uint32_t clear_screen_entry = 0x7D3B;
-constexpr std::uint32_t roster_drawn_return = 0x148A;
 constexpr std::uint32_t message_box_entry = 0x77F8;
-
-/// The string drawer, which this file **calls** and does not watch: the
-/// Encamp Fix's call target, used here to put a page of somebody's
-/// journal on the screen in the program's own font.
-constexpr std::uint32_t draw_string_entry = 0x076B6;
 
 /// The message box's frame at its entry, in the same convention: the far
 /// return address on top, then the arguments with the first of them
@@ -357,35 +349,10 @@ constexpr std::uint16_t box_frame_clear = 8;
 /// The longest Pascal string there can be, which is what the box takes.
 constexpr std::size_t longest_message = 255;
 
-/// The paragraph the screen composer is reached through, rather than a
-/// flat image offset: it reaches its own literals as `CS:<constant>`, so
-/// it only works when CS is the segment it was linked at
-/// (`seam_automap.cpp` has what assuming otherwise cost). It is the
-/// roster drawer's paragraph, which is the same one, and named for that
-/// routine because the automap's fact table names it so.
-constexpr std::uint16_t roster_draw_paragraph = 0x0BA;
-
-/// The box-region clear as a call target rather than a place to stop: the
-/// box is cleared before the frame goes over it, because the frame drawer
-/// draws only its own border and title.
-constexpr auto image_clear_region =
-    static_cast<std::uint16_t>(clear_region_entry);
-
-/// Where the data segment begins, as an offset in the image.
-constexpr std::uint32_t dgroup_offset = 0xC7C0;
-
-// --- Offsets in the data segment -------------------------------------------
-
-/// The game mode byte, and the three values that have a party roster on
-/// the screen — which is the only thing this reader may draw over.
-constexpr std::uint16_t data_game_mode = 0x49F3;
-constexpr std::uint8_t mode_camp = 2;
-constexpr std::uint8_t mode_adventure_flat = 3;
-constexpr std::uint8_t mode_adventure = 4;
-
-/// The program's own one-byte keyboard pushback slot: non-zero while the
-/// second half of an extended key is waiting to be handed over.
-constexpr std::uint16_t data_key_pushback = 0x8501;
+// The box-region clear is called as well as watched: the box is cleared
+// before the frame goes over it, because the frame drawer draws only its
+// own border and title. The game mode, the keyboard pushback slot, the bar
+// highlight and the adventuring screen's two bars are the profile's.
 
 // ---------------------------------------------------------------------------
 // The page
@@ -486,54 +453,15 @@ static_assert(art_ramp[journal_art_paper] == colour_black,
 // match - the *last* one wins - so a spliced capital `E` would quietly
 // steal the fourth command.
 
-/// The module the adventuring screen's input loop lives in: overlay 14,
-/// whose facts the overlay tracker records (overlay.h) plus the word
-/// below. The digest is of those bytes as read, so a copy whose overlay
-/// file does not match is not this module.
-constexpr std::uint32_t adventure_load_segment_at = 0x730;
+// The adventuring loop's module, its two calls into the menu-bar routine
+// and the party's own two command bars are the profile's. The bars are why
+// a `Notes` command appears on the party's screen and on nobody's shop:
+// every other bar in the game is a copy built on the stack (M5-E2d).
 
-constexpr seam_module adventure_module{
-    .file = "GAME.OVR",
-    .file_offset = 91851,
-    .length = 4268,
-    .digest =
-        "ce2018e8e9d51d422d12e2a8e60837322af70639bcbca2b9fe34ccfd333e2d3a",
-    .load_segment_at = adventure_load_segment_at};
-
-/// The party's own two command bars, in the data segment: one for the
-/// overhead view and one for the 3D view. The automap already tells this
-/// pair from a vendor's, because every other bar in the game is a copy
-/// built on the stack (M5-E2d) - these two offsets are the whole of that
-/// distinction, and they are why a `Notes` command appears on the party's
-/// screen and on nobody's shop.
-constexpr std::uint16_t data_menu_area_bar = 0x04B6;
-constexpr std::uint16_t data_menu_view_bar = 0x04DF;
-
-/// The capacity of the slot either sits in: a Pascal `string[40]`, a
+/// The capacity of the slot either bar sits in: a Pascal `string[40]`, a
 /// length byte and forty characters, which is also the width of the
 /// screen in characters.
 constexpr std::uint8_t menu_bar_capacity = 40;
-
-/// The menu bar's highlight: **one byte in the data segment that every
-/// bar in the program shares**, a one-based index of the group it is
-/// sitting on (M5-E1g, #304, whose own copy of this fact is in
-/// `seam_encamp_fix.cpp`; each seam carries its own fact table). The
-/// routine sets it to the group of the command it matched, and the
-/// current group is the one drawn white end to end - which is what
-/// `Notes` was doing on the maintainer's frame (#330).
-constexpr std::uint16_t data_bar_highlight = 0x6B2B;
-
-/// In the adventuring input loop, the instruction that calls the menu-bar
-/// routine, and the instruction it returns to - one pair per view mode.
-/// Offsets from the start of the module above, which is to say from the
-/// segment the manager has most recently put it at.
-///
-/// The second of each pair runs *before* the instruction that stores what
-/// the routine answered, so the letter is still in AL.
-constexpr std::uint32_t area_bar_before_input = 0x09D0;
-constexpr std::uint32_t area_bar_after_input = 0x09D5;
-constexpr std::uint32_t view_bar_before_input = 0x0C40;
-constexpr std::uint32_t view_bar_after_input = 0x0C45;
 
 /// Where the loop keeps the routine's out-parameter, below its own frame
 /// pointer. Zero means "a letter was selected off the bar", which is the
@@ -564,30 +492,17 @@ constexpr std::uint16_t frame_out_flag = 0x04;
 // command bar (#221) — and the general rule that way in is an instance of
 // is `bar_live()`: the composer may be used exactly while the party's own
 // menu-bar routine is the thing running.
-
-/// The program's bordered-window drawer and its string drawer - the two
-/// routines this screen is made of, and the same two the Encamp Fix's
-/// report is made of (#188, `docs/seams.md` §3). Flat offsets in the
-/// resident image.
-constexpr std::uint16_t image_draw_frame = 0x041F8;
-
-/// The program's own way of leaving a full-screen view: the per-mode screen
-/// composer. It draws the scaffold — the outer frame, the bottom panel, the
-/// viewport box and its inset — and then, for whichever mode the program is
-/// in, the view, the party roster and the status line. It takes nothing and
-/// cleans nothing, and it is reached as paragraph plus offset rather than as
-/// a flat image offset, because it reaches its own literals as `CS:<constant>`
-/// - the CS-relative hazard the automap records.
-///
-/// **Not the routine that *enters* the adventuring screen** (`0x2B5E`), which
-/// is what this seam called first and what #175's teardown got wrong. That
-/// one sets the mode byte to the alternate adventuring screen whether or not
-/// the player was on it, and it draws the bottom panel alone - so the outer
-/// frame, the viewport box and its ornaments never came back, and whatever
-/// this screen had drawn above the panel stayed on the glass. This one is
-/// the routine the program itself calls on the way out of every full-screen
-/// view it has, and it repaints all of them.
-constexpr std::uint16_t screen_redraw_offset = 0x27D9;
+//
+// The composer, its paragraph and the frame and string drawers are the
+// profile's. **The composer is not the routine that *enters* the
+// adventuring screen**, which is what this seam called first and what
+// #175's teardown got wrong. That one sets the mode byte to the alternate
+// adventuring screen whether or not the player was on it, and it draws the
+// bottom panel alone - so the outer frame, the viewport box and its
+// ornaments never came back, and whatever this screen had drawn above the
+// panel stayed on the glass. The composer is the routine the program
+// itself calls on the way out of every full-screen view it has, and it
+// repaints all of them.
 
 /// The screen, in the character cells the frame drawer counts in: the
 /// interior, because **the drawer's border falls outside the rectangle
@@ -782,8 +697,8 @@ constexpr std::uint8_t notes_key_ascii = 'N';
 /// decline.
 [[nodiscard]] std::uint16_t data_segment(cpu::processor& cpu,
                                          const seam_context& ctx) noexcept {
-  const auto expected =
-      static_cast<std::uint16_t>((ctx.image_base() + dgroup_offset) / 16U);
+  const auto expected = static_cast<std::uint16_t>(
+      (ctx.image_base() + profile.dgroup_offset()) / 16U);
   const std::uint16_t ds = cpu.regs()[cpu::sreg::ds];
   return ds == expected ? ds : 0;
 }
@@ -818,9 +733,9 @@ struct far_pointer {
 /// which is the only screen whose right-hand panel is this seam's to take
 /// and — the part that matters — to give back.
 [[nodiscard]] bool has_roster(cpu::processor& cpu, std::uint16_t ds) {
-  const std::uint8_t mode = cpu.read_byte(ds, data_game_mode);
-  return mode == mode_camp || mode == mode_adventure_flat ||
-         mode == mode_adventure;
+  const std::uint8_t mode = cpu.read_byte(ds, profile.data_game_mode);
+  return mode == profile.mode_camp || mode == profile.mode_travel ||
+         mode == profile.mode_adventure;
 }
 
 // ---------------------------------------------------------------------------
@@ -1713,7 +1628,7 @@ enum class claimable : std::uint8_t {
 [[nodiscard]] claimable claim_key(cpu::processor& cpu, std::uint16_t ds,
                                   journal_reader_mode mode, bool bar_keys,
                                   std::uint16_t& taken) {
-  if (cpu.read_byte(ds, data_key_pushback) != 0) {
+  if (cpu.read_byte(ds, profile.data_key_pushback) != 0) {
     return claimable::none;
   }
   const std::uint16_t head =
@@ -1759,7 +1674,7 @@ enum class claimable : std::uint8_t {
   }
   const std::array<std::uint16_t, 5> where{column, row, colour, segment,
                                            offset};
-  return ctx.call_program(image, draw_string_entry, where);
+  return ctx.call_program(image, profile.draw_string_entry, where);
 }
 
 /// The reader's own command bar (M5-E4f, #317).
@@ -1997,7 +1912,7 @@ constexpr auto bar_selected_key_colour =
     // is the shape M5-E1e's residue (#298) taught.
     const std::array<std::uint16_t, 4> clear{
         list_frame_left, list_frame_top, list_frame_right, list_frame_bottom};
-    if (!ctx.call_program(image, image_clear_region, clear)) {
+    if (!ctx.call_program(image, profile.clear_region_entry, clear)) {
       return false;
     }
     list_line title;
@@ -2011,7 +1926,7 @@ constexpr auto bar_selected_key_colour =
         list_frame_left,   list_frame_top,   list_frame_right,
         list_frame_bottom, list_frame_style, list_title_colour,
         title_segment,     title_offset};
-    if (!ctx.call_program(image, image_draw_frame, frame)) {
+    if (!ctx.call_program(image, profile.draw_frame_entry, frame)) {
       return false;
     }
     if (rows.empty()) {
@@ -2189,7 +2104,7 @@ struct page_footer_bar {
   if (done == 0) {
     const std::array<std::uint16_t, 4> clear{
         list_frame_left, list_frame_top, list_frame_right, list_frame_bottom};
-    if (!ctx.call_program(image, image_clear_region, clear)) {
+    if (!ctx.call_program(image, profile.clear_region_entry, clear)) {
       return false;
     }
     list_line title = page_title(state);
@@ -2202,7 +2117,7 @@ struct page_footer_bar {
         list_frame_left,   list_frame_top,   list_frame_right,
         list_frame_bottom, list_frame_style, page_title_colour,
         title_segment,     title_offset};
-    if (!ctx.call_program(image, image_draw_frame, frame)) {
+    if (!ctx.call_program(image, profile.draw_frame_entry, frame)) {
       return false;
     }
     if (picture) {
@@ -2315,8 +2230,8 @@ void give_the_screen_back(machine& box, seam_context& ctx) {
   const auto image = static_cast<std::uint16_t>(ctx.image_base() / 16U);
   const std::array<std::uint16_t, 0> nothing{};
   static_cast<void>(ctx.call_program(
-      static_cast<std::uint16_t>(image + roster_draw_paragraph),
-      screen_redraw_offset, nothing));
+      static_cast<std::uint16_t>(image + profile.screen_paragraph),
+      profile.screen_composer_offset, nothing));
 
   // **And one keystroke, so the program redraws its own command bar.**
   // Composing the screen is everything but the bar: the bar belongs to the
@@ -3075,7 +2990,8 @@ void bar_before(machine& box, seam_context& ctx, std::uint16_t bar) {
   // the value here is the value the seam-off run leaves when the command
   // matched is this seam's. Read before the splice, because after it the
   // bar is not the program's.
-  box.journal().note_bar_highlight(cpu.read_byte(ds, data_bar_highlight));
+  box.journal().note_bar_highlight(
+      cpu.read_byte(ds, profile.data_bar_highlight));
   static_cast<void>(splice_in(cpu, ds, bar));
 }
 
@@ -3138,7 +3054,7 @@ void bar_after(machine& box, seam_context& ctx, std::uint16_t bar) {
   }
   journal_state& state = box.journal();
   if (was_spliced && state.bar_highlight_known()) {
-    cpu.write_byte(ds, data_bar_highlight, state.bar_highlight());
+    cpu.write_byte(ds, profile.data_bar_highlight, state.bar_highlight());
   }
   if (state.reader() != journal_reader_mode::closed) {
     return;
@@ -3147,53 +3063,55 @@ void bar_after(machine& box, seam_context& ctx, std::uint16_t bar) {
 }
 
 void at_area_bar_before(machine& box, seam_context& ctx) {
-  bar_before(box, ctx, data_menu_area_bar);
+  bar_before(box, ctx, profile.data_area_bar);
 }
 
 void at_area_bar_after(machine& box, seam_context& ctx) {
-  bar_after(box, ctx, data_menu_area_bar);
+  bar_after(box, ctx, profile.data_area_bar);
 }
 
 void at_view_bar_before(machine& box, seam_context& ctx) {
-  bar_before(box, ctx, data_menu_view_bar);
+  bar_before(box, ctx, profile.data_view_bar);
 }
 
 void at_view_bar_after(machine& box, seam_context& ctx) {
-  bar_after(box, ctx, data_menu_view_bar);
+  bar_after(box, ctx, profile.data_view_bar);
 }
 
 constexpr std::array<seam_point, 10> journal_points{
     {{.module = resident_image,
-      .offset = key_pending_entry,
+      .offset = profile.key_pending_entry,
       .run = &at_key_pending},
-     {.module = resident_image, .offset = key_read_entry, .run = &at_key_read},
+     {.module = resident_image,
+      .offset = profile.key_read_entry,
+      .run = &at_key_read},
      {.module = resident_image,
       .offset = message_box_entry,
       .run = &at_message_box},
      {.module = resident_image,
-      .offset = clear_region_entry,
+      .offset = profile.clear_region_entry,
       .run = &at_clear_region},
      {.module = resident_image,
-      .offset = clear_screen_entry,
+      .offset = profile.clear_screen_entry,
       .run = &at_clear_screen},
      {.module = resident_image,
-      .offset = roster_drawn_return,
+      .offset = profile.roster_drawn_return,
       .run = &at_roster_drawn},
      // The four that put `Notes` on the party's own bar (#221). A pair per
      // view mode, and both pairs are in the adventuring loop's own module
      // rather than the resident image - which is what makes the splice
      // come out in the same call that drew it.
-     {.module = adventure_module,
-      .offset = area_bar_before_input,
+     {.module = profile.adventure_overlay,
+      .offset = profile.area_bar_call,
       .run = &at_area_bar_before},
-     {.module = adventure_module,
-      .offset = area_bar_after_input,
+     {.module = profile.adventure_overlay,
+      .offset = profile.area_bar_return,
       .run = &at_area_bar_after},
-     {.module = adventure_module,
-      .offset = view_bar_before_input,
+     {.module = profile.adventure_overlay,
+      .offset = profile.view_bar_call,
       .run = &at_view_bar_before},
-     {.module = adventure_module,
-      .offset = view_bar_after_input,
+     {.module = profile.adventure_overlay,
+      .offset = profile.view_bar_return,
       .run = &at_view_bar_after}}};
 
 /// **Ungated**, and that is a decision rather than an omission.

@@ -187,6 +187,7 @@
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/overlay.h"
+#include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/seam.h"
 #include "seam_builtin.h"
 #include "seam_menu_bar.h"
@@ -195,23 +196,19 @@
 namespace amberfolio::machine {
 namespace {
 
+/// The program this file's facts are about (program_profile.h): the
+/// baseline edition, and only it.
+constexpr const program_profile& profile = pool_of_radiance;
+
 // --- The module the pick-list lives in -------------------------------------
 
 /// Overlay 25: the menu-bar routine, the vertical pick-list and the Yes/No
 /// prompt. The facts are the module's row in the overlay file's own table
 /// and the manager's record of the same two numbers in the resident image;
 /// the digest is of the bytes as read. The manager's word is found the way
-/// `seam_cheats.cpp` documents: search the resident image for the record
-/// with the module's file offset and length, one match, and take the word
-/// sixteen bytes into the record. The method returns the known words for
-/// overlays 8 (`0x360`) and 15 (`0x760`). `bar-keys` has a point in the
-/// same module, so the descriptor is shared (seam_menu_bar.h).
-constexpr const seam_module& list_module = menu_bar::module;
-
-/// In the pick-list routine: the instruction after its call into the
-/// menu-bar routine, which stores the key. Offset from the module's
-/// start.
-constexpr std::uint32_t list_after_input = 0x0FE0;
+/// program_profile.h documents, and the module is the profile's, because
+/// `bar-keys` and other seams have points in it too.
+constexpr const seam_module& list_module = profile.menu_overlay;
 
 /// The out-parameter's address in that routine's frame, below BP.
 constexpr std::uint16_t list_flag_below_bp = 0x57;
@@ -295,23 +292,23 @@ using menu_bar::caller;
 /// Offsets are the instruction after the call into the menu-bar routine; the
 /// words are the overlay manager's, from seam_menu_bar.h.
 constexpr std::array<caller, 9> roster_callers{{
-    {.load_segment_at = menu_bar::camp_load_segment_at,
+    {.load_segment_at = profile.camp_overlay.load_segment_at,
      .return_offset = 0x1F24},  // the camp bar
-    {.load_segment_at = menu_bar::camp_load_segment_at,
+    {.load_segment_at = profile.camp_overlay.load_segment_at,
      .return_offset = 0x1447},  // camp's Magic bar
-    {.load_segment_at = menu_bar::camp_load_segment_at,
+    {.load_segment_at = profile.camp_overlay.load_segment_at,
      .return_offset = 0x1CA4},  // camp's Alter bar
-    {.load_segment_at = menu_bar::camp_load_segment_at,
+    {.load_segment_at = profile.camp_overlay.load_segment_at,
      .return_offset = 0x17DA},  // the party-order screen
-    {.load_segment_at = menu_bar::post_combat_load_segment_at,
+    {.load_segment_at = profile.post_combat_load_segment_at,
      .return_offset = 0x0D91},  // the post-combat Take bar
-    {.load_segment_at = menu_bar::post_combat_load_segment_at,
+    {.load_segment_at = profile.post_combat_load_segment_at,
      .return_offset = 0x1024},  // the post-combat treasure bar
-    {.load_segment_at = menu_bar::shop_load_segment_at,
+    {.load_segment_at = profile.shop_load_segment_at,
      .return_offset = 0x061F},  // the shop's bar
-    {.load_segment_at = menu_bar::temple_load_segment_at,
+    {.load_segment_at = profile.temple_load_segment_at,
      .return_offset = 0x0DAA},  // the temple's bar
-    {.load_segment_at = menu_bar::script_load_segment_at,
+    {.load_segment_at = profile.script_runner_load_segment_at,
      .return_offset = 0x16EB},  // the script prompts
 }};
 
@@ -368,7 +365,8 @@ void select_at_a_bar_that_is_not_raw(machine& box, seam_context& ctx,
   }
 
   const unsigned current = party_select::member_index(
-      members, party_select::read_pointer(cpu, ds, party_select::data_current));
+      members,
+      party_select::read_pointer(cpu, ds, profile.data_current_member));
   const unsigned target = party_select::stepped_index(
       members, current,
       pending.key == ring_up ? party_select::step::back
@@ -413,12 +411,14 @@ void step_the_party(machine& box, seam_context& ctx) {
 }
 
 constexpr std::array<seam_point, 3> list_arrows_point_table{
-    {{.module = list_module, .offset = list_after_input, .run = &step_the_list},
+    {{.module = list_module,
+      .offset = profile.pick_list_bar_return,
+      .run = &step_the_list},
      {.module = resident_image,
       .offset = picker_after_input,
       .run = &step_the_picker},
      {.module = list_module,
-      .offset = menu_bar::key_read_call,
+      .offset = profile.menu_key_read_call,
       .run = &step_the_party}}};
 static_assert(list_arrows_point_table.size() == list_arrows_point_count);
 

@@ -40,24 +40,19 @@
 #include "amberfolio/machine/automap.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/memory_map.h"
+#include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/seam.h"
 #include "seam_key_read.h"
 #include "seam_menu_bar.h"
 
 namespace amberfolio::machine::party_select {
 
+/// The program this file's facts are about (program_profile.h): the
+/// baseline edition, and only it.
+inline constexpr const program_profile& profile = pool_of_radiance;
+
 // --- The data segment ------------------------------------------------------
 
-/// The data segment is the image's paragraph `0xC7C` on: image offset
-/// `0xC7C0`, which is DS `0x0CDC` where the image is at `0x60`.
-constexpr std::uint16_t dgroup_paragraphs = 0xC7C;
-
-/// The selected member: a far pointer, offset then segment.
-constexpr std::uint16_t data_current = 0x5D92;
-/// The party's head: a far pointer, offset then segment.
-constexpr std::uint16_t data_party_head = 0x5D96;
-/// A record's next-member far pointer, offset then segment.
-constexpr std::uint16_t record_next = 0x0104;
 /// How far into a record this reads: the next pointer's last byte.
 constexpr std::uint16_t record_reach = 0x0108;
 
@@ -110,15 +105,16 @@ struct party {
 
 [[nodiscard]] inline party read_party(cpu::processor& cpu, std::uint16_t ds) {
   party out;
-  far_pointer at = read_pointer(cpu, ds, data_party_head);
+  far_pointer at = read_pointer(cpu, ds, profile.data_roster_head);
   while ((at.offset | at.segment) != 0) {
     if (out.size == max_party || !is_record(at)) {
       out.readable = false;
       return out;
     }
     out.member[out.size++] = at;
-    at = read_pointer(cpu, at.segment,
-                      static_cast<std::uint16_t>(at.offset + record_next));
+    at = read_pointer(
+        cpu, at.segment,
+        static_cast<std::uint16_t>(at.offset + profile.record_next));
   }
   return out;
 }
@@ -127,7 +123,7 @@ struct party {
 [[nodiscard]] inline bool is_the_data_segment(const seam_context& ctx,
                                               std::uint16_t ds) noexcept {
   return ds == static_cast<std::uint16_t>((ctx.image_base() >> 4U) +
-                                          dgroup_paragraphs);
+                                          profile.dgroup_paragraphs);
 }
 
 // --- The cursor's rule -----------------------------------------------------
@@ -169,13 +165,13 @@ enum class step : std::uint8_t { back, forward };
 /// two routes). The routine throws Home, End and the arrows away for them,
 /// and none of their bars has a digit for a command letter.
 constexpr std::array<menu_bar::caller, 4> callers{{
-    {.load_segment_at = menu_bar::adventure_load_segment_at,
+    {.load_segment_at = profile.adventure_overlay.load_segment_at,
      .return_offset = 0x0EBF},  // a locked door's bar
-    {.load_segment_at = menu_bar::adventure_load_segment_at,
+    {.load_segment_at = profile.adventure_overlay.load_segment_at,
      .return_offset = 0x0FFE},  // a stuck door's bar
-    {.load_segment_at = menu_bar::camp_load_segment_at,
+    {.load_segment_at = profile.camp_overlay.load_segment_at,
      .return_offset = 0x1DDF},  // camp's Portraits and Monsters bar
-    {.load_segment_at = menu_bar::slots_load_segment_at,
+    {.load_segment_at = profile.slots_overlay.load_segment_at,
      .return_offset = 0x1DA1},  // the save slot bar, from camp
 }};
 
@@ -223,13 +219,6 @@ enum class where : std::uint8_t { not_here, here, frame_unknown };
 
 // --- The step ---------------------------------------------------------------
 
-/// The roster drawer: resident, reached as the paragraph it was linked at
-/// (it reads its literals through CS, docs/seams.md §8.4) and the offset in
-/// it. Far, one argument (the selected member's far pointer, segment first)
-/// and it cleans its own.
-constexpr std::uint16_t roster_draw_paragraph = 0x0BA;
-constexpr std::uint16_t roster_draw_offset = 0x0767;
-
 /// Whether the map's panel is on the roster's cells: a redraw of the list
 /// would paint over it, and the panel's give-back is the map's to make.
 [[nodiscard]] inline bool map_over_the_roster(machine& box) {
@@ -257,11 +246,11 @@ inline bool select_and_redraw(machine& box, seam_context& ctx, std::uint16_t ds,
   const std::array<std::uint16_t, 2> current{target.segment, target.offset};
   const auto image = static_cast<std::uint16_t>(ctx.image_base() >> 4U);
   if (!ctx.call_program(
-          static_cast<std::uint16_t>(image + roster_draw_paragraph),
-          roster_draw_offset, current)) {
+          static_cast<std::uint16_t>(image + profile.screen_paragraph),
+          profile.roster_draw_offset, current)) {
     return false;
   }
-  write_pointer(cpu, ds, data_current, target);
+  write_pointer(cpu, ds, profile.data_current_member, target);
   return true;
 }
 
