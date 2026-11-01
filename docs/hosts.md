@@ -376,13 +376,22 @@ The copies on sale are laid out for a launcher: the folder holding
 into it, and the program opens its own files — `GAME.OVR`, the `.DAX`
 archives, `POOL.CFG` — by bare name. Its `POOL.CFG` names the save
 directory absolutely, so a copy put anywhere else finds neither its files
-nor its saves. The archive release sits at the root.
+nor its saves. The archive release sits at the root. Curse of the Azure
+Bonds is laid out the same way at `C:\CURSE`, with `CURSE.CFG`.
 
-| edition | where it sits | `POOL.CFG` line 4 | saves and sidecars in |
+Which configuration file a program reads, and which of its lines names
+the sound device and which the save directory, is a fact about the
+program (`launcher_configuration`, `machine/edition.h`): line 2 and line
+4 of `POOL.CFG`, line 2 and line 3 of `CURSE.CFG`. A reader with no
+program loaded yet reads whichever of them is in the current directory.
+
+| edition | where it sits | save line | saves and sidecars in |
 | --- | --- | --- | --- |
-| archive release | `\` | `C:\SAVE\` | `\SAVE` |
-| GOG | `\POOLRAD` | `C:\POOLRAD\` | `\POOLRAD`, beside the game's files |
-| Steam | `\POOLRAD` | `C:\POOLRAD\SAVE\` | `\POOLRAD\SAVE` |
+| Pool of Radiance, archive release | `\` | `C:\SAVE\` | `\SAVE` |
+| Pool of Radiance, GOG | `\POOLRAD` | `C:\POOLRAD\` | `\POOLRAD`, beside the game's files |
+| Pool of Radiance, Steam | `\POOLRAD` | `C:\POOLRAD\SAVE\` | `\POOLRAD\SAVE` |
+| Curse of the Azure Bonds, Steam | `\CURSE` | `C:\CURSE\SAVE\` | `\CURSE\SAVE` |
+| Curse of the Azure Bonds, GOG | `\` | `C:\SAVE\` | `\SAVE` |
 
 So a host puts the files where the edition row's `install` directory says
 (`data/editions.json`) and makes that directory **current** before the
@@ -409,7 +418,7 @@ too:
 2. `setCurrentDirectory('\\POOLRAD')` (`af_machine_set_current_directory`).
    `AF_INVALID` if the directory is not there.
 3. `saveSidecars(true)`, if the player said yes (§2b). It reads the save
-   directory from `POOL.CFG` in the current directory, so it comes after
+   directory from the configuration file in the current directory, so it comes after
    2; a copy that does not say gets no sidecars.
 4. `journalStoreRead()` whenever the page has the store, then
    `journalSeenRestore()`, which reads the read log's sidecar out of the
@@ -434,15 +443,16 @@ replay started anywhere else is refused before the first instruction
 (`docs/replay.md`). The desktop host is given the same `--install` to
 replay one, or finds the same edition row.
 
-**The program is told it has a Tandy sound chip** (#404). `POOL.CFG`'s
-line 2 names the sound device: `P` the speaker, `T` the Tandy 1000's
-chip, `S` nothing. The program plays its footsteps and its combat
-through the chip only when told `T`; told `P` it has the speaker's few
-beeps. Steam's launcher writes `T` and the repack's `P`.
+**The program is told it has a Tandy sound chip** (#404). Line 2 of
+`POOL.CFG` and of `CURSE.CFG` names the sound device: `P` the speaker,
+`T` the Tandy 1000's chip, `S` nothing. The program plays its footsteps
+and its combat through the chip only when told `T`; told `P` it has the
+speaker's few beeps. Steam's launchers write `T` and the repack's `P`.
 This machine has both (§4a), so both hosts start every copy the way the
 Tandy launcher does: the program reads its configuration through
-`machine::launcher_view`, which answers a read-only open of `POOL.CFG`
-with line 2's letter read as `T` and everything else as the file has it.
+`machine::launcher_view`, which answers a read-only open of a known
+program's configuration file with its sound line's letter read as `T`
+and everything else as the file has it.
 The player's own file is never written — the page's copy in the browser
 and the desktop's folder both keep what the launcher wrote — and every
 host and every replay makes the same choice, so a recording needs no line
@@ -850,23 +860,39 @@ edition's. The repack differs from the store release in GAME.OVR (two
 bytes, in the copy-protection overlay; `docs/seams.md` §5), in the
 CFG.C, CFG.EXE and POOL.BAT only it ships, and in `install`.
 
+**`curse-steam` and `curse-gog` are a second program**: Curse of the
+Azure Bonds (v1.3) as Steam and GOG sell it, so `machine::known_editions()`
+has a second row and this table two more with one `fingerprint`. Every
+program and data file of the two is byte-identical. They differ in
+`install` (Steam's launcher mounts the copy at `C:\CURSE`, GOG's DOSBox
+mounts the game folder as `C:` itself), in the `CURSE.CFG` each ships
+(Steam's names `T` and `C:\CURSE\SAVE\`, GOG's `P` and `C:\SAVE\`), and
+in the saved games each ships in `SAVE` (Steam slots A and B, GOG slot
+A), which are not artifacts. So each row's configuration artifact
+carries the **digest its seller ships the file with**: a copy whose
+`CURSE.CFG` still has those bytes counts it toward that row, and one
+whose player has changed it ties and gets the earlier row, Steam's.
+
 **`install` is the directory of the machine's filesystem the copy's files
 live in, which is also the DOS current directory when the program is
 loaded.** DOS spelling, from the root: `\POOLRAD` for the store release,
 where both storefronts' own launchers mount the copy and change into it
 before running START, and `\` for the repack, which is where every
-existing player's copy already is. Each launcher writes its own POOL.CFG
-naming paths under that directory.
+existing player's copy already is; `\CURSE` for Curse on Steam and `\`
+on GOG. Each launcher
+writes its own configuration file naming paths under that directory.
 
 An artifact is one of three `kind`s. A `file` carries a name, a size and a
-digest. A `configuration` file carries a name and neither: it is
-POOL.CFG, which each seller's launcher writes for its own install (GOG's
-is 35 bytes, Steam's 40, the repack's 24), so a player's copy carries
-whatever theirs wrote. A `document` is something the player *holds*
+digest. A `configuration` file carries a name, no size, and a digest only
+as its seller ships it (Curse's rows, above): it is
+POOL.CFG or CURSE.CFG, which each seller's launcher writes for its own
+install (GOG's POOL.CFG is 35 bytes, Steam's 40, the repack's 24), so a
+player's copy carries whatever theirs wrote. A `document` is something the player *holds*
 rather than something the machine runs (`machine/document.h`), so it
 carries a digest, an `about` and which `document` it is, and never a
 filename — a player's own PDF is called whatever they called it. Both
-rows carry the same documents, because both run the same program.
+Pool of Radiance rows carry the same documents, because both run the
+same program.
 
 **`required` means the copy is incomplete without it.** Every file a
 release ships is required, its configuration file is required by name,
@@ -901,10 +927,12 @@ unclaimed while the artifact it is not is reported as missing, and those
 two lines together are the fact a player can act on. **A configuration
 file is matched on its name** (the last path component, any case), and
 only once a row has been chosen by digest, so a lone POOL.CFG names
-nothing. The closest row is the one the most offered files belong to by
+nothing; one that carries its seller's digest also counts toward its row
+when a file of its name has those bytes. The closest row is the one the most offered files belong to by
 digest, the earlier row on a tie: a store copy matches `por-store`
-complete, the repack's disk matches `por-archive` complete, and a set
-holding only files both ship names the baseline.
+complete, the repack's disk matches `por-archive` complete, a set
+holding only files both ship names the baseline, and a Curse copy with
+its seller's `CURSE.CFG` matches that seller's row.
 `host::find_requirements(fingerprint)` answers the first row for a
 fingerprint, which is the baseline; which release a particular copy *is*
 is a question about its other files, and the match is the answer.
@@ -1403,11 +1431,13 @@ table, keyed on the loaded program the way a seam's addresses are.
 For the program the editions this build knows share (`machine/edition.h`
 — the archive release and the storefront copies boot the same
 `START.EXE`). Slots are the ten letters **A** to **J**; a party's records
-are numbered **1** to **8**.
+are numbered **1** to **8**. Curse of the Azure Bonds has no table yet:
+`--save-layer` says `unrecognized` for it and a page keeps none of its
+files (#554).
 
 Every row is a leaf in one of two directories (#397): **saves**, the
-directory line 4 of the copy's `POOL.CFG` names, read relative to the
-directory the program starts in; and **start**, that directory itself
+directory line 4 of the copy's `POOL.CFG` names (§2c), read relative
+to the directory the program starts in; and **start**, that directory itself
 (§2c). `\SAVE` and the root on the archive release, `\POOLRAD` for both
 on the GOG copy, `\POOLRAD\SAVE` and `\POOLRAD` on the Steam copy.
 

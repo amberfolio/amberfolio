@@ -74,9 +74,14 @@ exit criterion.
 
 ### Curse of the Azure Bonds
 
-The Steam copy (v1.3) runs from `C:\CURSE` with its own `CURSE.CFG`
-(`--install \CURSE`). It is not a recognized edition yet, so no seam is
-offered, and every figure below is with every seam off. Virtual time,
+The Steam copy (v1.3) runs from `C:\CURSE` with its own `CURSE.CFG`,
+which is where its edition row (`curse-steam`) puts it without
+`--install`. The log names it `Curse of the Azure Bonds (START.EXE)` and
+says `save directory \CURSE\SAVE`, read off the file's third line. The
+GOG copy runs the same program from the root (`curse-gog`): `save
+directory \SAVE`, and `CURSE.CFG sound P, started as T (Tandy sound)`.
+No seam is offered for either yet, and every figure below is with every
+seam off, on the Steam copy. Virtual time,
 read off `--dump-every 30` stills (to the half second):
 
 | `--speed` | loading line | publisher's logo | title | second title | credits | play or demo |
