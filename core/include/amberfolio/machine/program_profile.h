@@ -18,7 +18,8 @@
 // acts on these facts names the profiles it was checked against, and its
 // `fingerprints` are theirs. A program without a profile has no seam.
 //
-// **Only one program has a profile**: the baseline edition (edition.h).
+// **Two programs have a profile**: the baseline edition (edition.h), in
+// full, and Curse of the Azure Bonds, in the part its seams so far read.
 // A second program is a second instance of this struct, filled in from
 // its own image, with every fact checked twice and confirmed by a driven
 // run; nothing here is ever assumed to carry over.
@@ -487,6 +488,61 @@ inline constexpr program_profile pool_of_radiance{
     .record_held = 0x10D,
     .record_side = 0x10E,
     .record_hit_points = 0x11B,
+};
+
+/// Curse of the Azure Bonds' overlay modules, which its profile below
+/// names. Numbered, like Pool of Radiance's, by their place in the
+/// program's own stub table.
+namespace curse_of_the_azure_bonds_modules {
+
+/// Overlay 9: tactical combat's round loop and its end check. The stub's
+/// record is at image `0x0570`: the module's file offset and length, and
+/// the load-segment word sixteen bytes in.
+inline constexpr seam_module combat{
+    .file = "GAME.OVR",
+    .file_offset = 42328,
+    .length = 4995,
+    .digest =
+        "312497d5638d2a35c91d4b0878ff00b73e5b9220249e866378b83e4125e55110",
+    .load_segment_at = 0x580};
+
+}  // namespace curse_of_the_azure_bonds_modules
+
+/// Curse of the Azure Bonds, the program Steam and GOG sell (v1.3;
+/// edition.h), **in part** (#554). Only the members the debug cheats
+/// read are filled in, each checked against the program's own image and
+/// by a driven run (`docs/seams.md` §10): the data segment, the game
+/// mode byte and its values, the party's head, the combat overlay and
+/// the character record's offsets. Every other member is zero, which is
+/// not a fact about this program but the absence of one, and no seam
+/// available on this program reads it: a seam's `fingerprints` name this
+/// profile only once the facts it reads are here.
+///
+/// The record is the 422-byte one the program also saves, so its offsets
+/// are the save file's: the same fields as Pool of Radiance's in the
+/// same order, further in.
+inline constexpr program_profile curse_of_the_azure_bonds{
+    .name = "Curse of the Azure Bonds",
+    .fingerprint =
+        "42fcefd6785679568b00bc1fb5b1d81ac2773416be4a35e0363920ddf6b78acd",
+
+    .dgroup_paragraphs = 0xABE,
+
+    .combat_overlay = curse_of_the_azure_bonds_modules::combat,
+
+    .data_game_mode = 0x4FD3,
+    .mode_camp = 2,
+    .mode_travel = 3,
+    .mode_adventure = 4,
+    .mode_combat = 5,
+
+    .data_roster_head = 0x6524,
+
+    .record_next = 0x189,
+    .record_status = 0x195,
+    .record_held = 0x196,
+    .record_side = 0x197,
+    .record_hit_points = 0x1A4,
 };
 
 /// Every program with a profile.

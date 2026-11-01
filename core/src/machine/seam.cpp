@@ -330,6 +330,16 @@ const seam_definition* seam_engine::find(std::string_view id) const noexcept {
   return index == max_seams ? nullptr : slots_[index].seam;
 }
 
+std::span<const seam_point> points_on(const seam_definition& seam,
+                                      const sha256_digest& program) noexcept {
+  for (const seam_program_points& own : seam.programs) {
+    if (digest_is(program, own.fingerprint)) {
+      return own.points;
+    }
+  }
+  return seam.points;
+}
+
 bool seam_engine::applies(const seam_definition& seam) const noexcept {
   if (!have_program_) {
     return false;
@@ -357,10 +367,11 @@ bool seam_engine::some_module_resident(
   // Any, not every (#477): `dispatch` offers each point on its own, so a
   // seam with one module in memory acts there while another is out, and
   // a status that called it inert would be calling a working seam broken.
-  if (seam.points.empty()) {
+  const std::span<const seam_point> points = points_on(seam, digest_);
+  if (points.empty()) {
     return true;  // Nothing is needed, so nothing is missing.
   }
-  for (const seam_point& point : seam.points) {
+  for (const seam_point& point : points) {
     if (module_resident(point.module)) {
       return true;
     }
@@ -496,7 +507,7 @@ seam_status seam_engine::slot_status(std::size_t index) const noexcept {
   // out here so that no host has to walk a point table to say one
   // sentence (#163).
   out.addressed = false;
-  for (const seam_point& point : s.seam->points) {
+  for (const seam_point& point : points_on(*s.seam, digest_)) {
     if (!point.at_every_step && !point.at_moment) {
       out.addressed = true;
       break;
@@ -640,10 +651,10 @@ seam_error seam_engine::enable_slot(std::size_t index) {
     return !s.seam->group.empty() && &other != &s &&
            other.seam->group == s.seam->group;
   };
-  std::size_t wanted = s.seam->points.size();
+  std::size_t wanted = points_on(*s.seam, digest_).size();
   for (std::size_t i = 0; i < registered_; ++i) {
     if (slots_[i].enabled && !sibling(slots_[i])) {
-      wanted += slots_[i].seam->points.size();
+      wanted += points_on(*slots_[i].seam, digest_).size();
     }
   }
   if (wanted > max_points) {
@@ -791,7 +802,7 @@ void seam_engine::arm_all(const overlay_tracker* overlays) {
     // `blocking_reason()` a few lines down like any other.
     const bool gated_shut = !holds_document(s.seam->gate);
 
-    for (const seam_point& point : s.seam->points) {
+    for (const seam_point& point : points_on(*s.seam, digest_)) {
       if (gated_shut) {
         break;
       }
