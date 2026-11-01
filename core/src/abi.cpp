@@ -363,7 +363,7 @@ struct reference_devices {
   /// timeline (tandy_sound.h, #404).
   amberfolio::machine::tandy_sound chip;
 
-  /// What the program reads the disk through: `fs` with `POOL.CFG`'s
+  /// What the program reads the disk through: `fs` with its configuration file's
   /// sound line read the way this machine's launcher writes it
   /// (launcher_view.h, #404). Host puts and reads go to `fs` itself, so
   /// a page keeps the player's own file.
@@ -495,7 +495,7 @@ const amberfolio::machine::memory_filesystem* vfs_of(
 }
 
 /// What the program saves into, read the way it reads it: its
-/// configuration file relative to the current directory, line 4 against
+/// configuration file relative to the current directory, its save line against
 /// the same (machine/save_layer.h, #397). A machine with no filesystem
 /// has no configuration file either, and says so the same way.
 [[nodiscard]] amberfolio::machine::save_directory_answer saves_of(

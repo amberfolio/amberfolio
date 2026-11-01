@@ -78,7 +78,9 @@ export async function loadEditions(url = EDITIONS_URL) {
 /// lone POOL.CFG names nothing. The closest row is the one the most
 /// files belong to by digest, the earlier row on a tie: two releases of
 /// one program share most of their files, and the ones only one of them
-/// ships decide.
+/// ships decide. A configuration row may carry the digest its seller
+/// ships it with, and a file of its name with those bytes counts toward
+/// its row: Curse's two releases differ in nothing else.
 ///
 /// Answers `{ edition, matched, missing, unclaimed, complete }`.
 /// `edition` is null when not one file belonged to any edition, which is
@@ -92,14 +94,23 @@ export function matchEdition(editions, offered) {
     typeof name === 'string' ? name.split(/[\\/]/).pop().toUpperCase() : '';
   const names = new Set(offered.map((file) => leaf(file.name)).filter(Boolean));
   const isConfiguration = (artifact) => artifact.kind === 'configuration';
+  // A configuration row that carries its seller's digest counts toward
+  // its row only when a file of that name has those bytes: the one thing
+  // that tells two releases of byte-identical files apart.
+  const shipped = new Set(
+    offered.map((file) => `${leaf(file.name)}\n${digest(file.sha256)}`),
+  );
+  const counts = (artifact) =>
+    isConfiguration(artifact)
+      ? digest(artifact.sha256) !== '' &&
+        shipped.has(`${leaf(artifact.name)}\n${digest(artifact.sha256)}`)
+      : have.has(digest(artifact.sha256));
 
   let edition = null;
   let matched = [];
   for (const candidate of editions) {
     const artifacts = Array.isArray(candidate.artifacts) ? candidate.artifacts : [];
-    const here = artifacts.filter(
-      (artifact) => !isConfiguration(artifact) && have.has(digest(artifact.sha256)),
-    );
+    const here = artifacts.filter(counts);
     if (here.length === 0) continue;
     // Strictly greater, so a tie keeps the earlier row: the table's own
     // order is the only tiebreak, and taking the later one would make

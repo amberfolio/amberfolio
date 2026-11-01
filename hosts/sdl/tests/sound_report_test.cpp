@@ -10,20 +10,32 @@
 #include <cstdint>
 #include <optional>
 
+#include "amberfolio/machine/launcher_view.h"
 #include "gtest/gtest.h"
 
 namespace amberfolio::sdl {
 namespace {
 
+/// What each program's configuration file says, as the reader answers it.
+machine::configured_sound pool(char letter) {
+  return {.file = "POOL.CFG", .letter = static_cast<std::uint8_t>(letter)};
+}
+machine::configured_sound curse(char letter) {
+  return {.file = "CURSE.CFG", .letter = static_cast<std::uint8_t>(letter)};
+}
+
 TEST(SoundReport, AFileThatNamesTheSpeakerIsSaid) {
-  EXPECT_EQ(started_sound_line(std::uint8_t{'P'}),
+  EXPECT_EQ(started_sound_line(pool('P')),
             "amberfolio: POOL.CFG sound P, started as T (Tandy sound)\n");
-  EXPECT_EQ(started_sound_line(std::uint8_t{'S'}),
+  EXPECT_EQ(started_sound_line(pool('S')),
             "amberfolio: POOL.CFG sound S, started as T (Tandy sound)\n");
+  EXPECT_EQ(started_sound_line(curse('P')),
+            "amberfolio: CURSE.CFG sound P, started as T (Tandy sound)\n");
 }
 
 TEST(SoundReport, AFileThatAlreadySaysTandyOrNothingIsQuiet) {
-  EXPECT_EQ(started_sound_line(std::uint8_t{'T'}), "");
+  EXPECT_EQ(started_sound_line(pool('T')), "");
+  EXPECT_EQ(started_sound_line(curse('T')), "");
   EXPECT_EQ(started_sound_line(std::nullopt), "");
 }
 

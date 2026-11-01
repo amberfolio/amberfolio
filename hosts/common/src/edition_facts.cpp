@@ -20,30 +20,6 @@
 namespace amberfolio::host {
 namespace {
 
-/// How many of `offered` carry the digest of one of `edition`'s
-/// artifacts, and which artifacts those were.
-///
-/// `machine::digest_is` is the comparison, which is the same one every
-/// other fact table in this project compares through — a fingerprint has
-/// to mean the same thing wherever it is written down.
-void score(const edition_requirements& edition,
-           std::span<const offered_file> offered,
-           std::vector<std::size_t>& matched) {
-  matched.clear();
-  for (std::size_t a = 0; a < edition.artifacts.size(); ++a) {
-    const edition_artifact& artifact = edition.artifacts[a];
-    if (artifact.fingerprint.empty()) {
-      continue;  // a configuration file: matched by name, and only later
-    }
-    for (const offered_file& file : offered) {
-      if (machine::digest_is(file.digest, artifact.fingerprint)) {
-        matched.push_back(a);
-        break;
-      }
-    }
-  }
-}
-
 /// Whether `path`'s last component is `name`, ignoring ASCII case. A
 /// host may offer a bare name or a path under the copy's install
 /// directory, with either slash; DOS names are case-blind.
@@ -55,6 +31,37 @@ bool names(std::string_view path, std::string_view name) noexcept {
     return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c;
   };
   return std::ranges::equal(last, name, {}, lower, lower);
+}
+
+/// How many of `offered` carry the digest of one of `edition`'s
+/// artifacts, and which artifacts those were.
+///
+/// `machine::digest_is` is the comparison, which is the same one every
+/// other fact table in this project compares through — a fingerprint has
+/// to mean the same thing wherever it is written down.
+///
+/// A configuration file with a digest counts here only as its seller
+/// ships it and under its own name: the one thing that tells two
+/// releases of byte-identical files apart (edition_facts.h). One with no
+/// digest, or the player's own bytes, is matched by name, and only later.
+void score(const edition_requirements& edition,
+           std::span<const offered_file> offered,
+           std::vector<std::size_t>& matched) {
+  matched.clear();
+  for (std::size_t a = 0; a < edition.artifacts.size(); ++a) {
+    const edition_artifact& artifact = edition.artifacts[a];
+    if (artifact.fingerprint.empty()) {
+      continue;
+    }
+    const bool configuration = artifact.kind == artifact_kind::configuration;
+    for (const offered_file& file : offered) {
+      if (machine::digest_is(file.digest, artifact.fingerprint) &&
+          (!configuration || names(file.name, artifact.name))) {
+        matched.push_back(a);
+        break;
+      }
+    }
+  }
 }
 
 /// Whether offered file `file` is claimed by artifact `artifact`: by the
@@ -110,8 +117,9 @@ edition_match match_edition(std::span<const offered_file> offered) {
   // the bytes are whatever the player's launcher wrote. Kept in index
   // order, which the pass below relies on.
   for (std::size_t a = 0; a < artifacts.size(); ++a) {
-    if (artifacts[a].kind != artifact_kind::configuration) {
-      continue;
+    if (artifacts[a].kind != artifact_kind::configuration ||
+        std::ranges::binary_search(best.matched, a)) {
+      continue;  // not a configuration file, or matched by its digest
     }
     for (const offered_file& file : offered) {
       if (claims(artifacts[a], file)) {

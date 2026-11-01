@@ -53,16 +53,43 @@
 
 namespace amberfolio::machine {
 
+/// The configuration file a program reads at startup, which its seller's
+/// launcher writes for the machine it is about to start, and which of its
+/// lines says what (#551). Lines are numbered from one; each ends at LF,
+/// a CR before it being part of the ending.
+///
+/// A fact about the program, not about the release: the program opens
+/// this name relative to the directory it was started in and reads these
+/// lines, whatever any launcher wrote into them. `launcher_view.h` reads
+/// the sound line and `save_layer.h` the save-directory line.
+struct launcher_configuration {
+  /// The file's name, as `canonicalize()` leaves a DOS name: upper case.
+  std::string_view file;
+  /// The line whose first character names the sound device.
+  std::size_t sound_line{0};
+  /// The line that names the save directory.
+  std::size_t save_line{0};
+};
+
 /// One known edition: the SHA-256 of its program image, as 64 lowercase
-/// hex characters, and the name a host shows for it.
+/// hex characters, the name a host shows for it, and the configuration
+/// file it reads.
 struct edition {
   std::string_view fingerprint;
   std::string_view name;
+  launcher_configuration configuration;
 };
 
-/// Every edition this build knows. One, today — the baseline (PLAN.md
-/// §10, answered for M4).
+/// Every edition this build knows: the baseline (PLAN.md §10, answered
+/// for M4) first, then Curse of the Azure Bonds (PLAN.md §7, M9).
 [[nodiscard]] std::span<const edition> known_editions();
+
+/// The configuration of the first known edition whose configuration file
+/// is called `leaf` (upper case, as `canonicalize()` leaves it), or null.
+/// No two programs this build knows read the same name, which
+/// `edition_test.cpp` holds.
+[[nodiscard]] const launcher_configuration* find_configuration(
+    std::string_view leaf) noexcept;
 
 /// The edition `digest` names, or null for a program this build does not
 /// recognize — in which case the game runs as a plain machine and no

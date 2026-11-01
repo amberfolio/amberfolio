@@ -95,6 +95,28 @@ TEST(SaveLayer, AnswersNullForAProgramItHasNoTableFor) {
   EXPECT_EQ(save_layer_for(sha256_digest{}), nullptr);
 }
 
+TEST(SaveLayer, TheConfigurationRowIsTheFileItsProgramReads) {
+  // One fact, two places that must agree: the edition says which file
+  // its program reads (edition.h), and the layer names that file as the
+  // program's.
+  for (const edition& known : known_editions()) {
+    sha256_digest digest;
+    ASSERT_TRUE(parse_digest(known.fingerprint, digest));
+    const save_layer* layer = save_layer_for(digest);
+    if (layer == nullptr) {
+      continue;
+    }
+    std::size_t configs = 0;
+    for (const save_file& row : layer->files) {
+      if (row.kind == save_file_kind::config) {
+        ++configs;
+        EXPECT_EQ(row.pattern, known.configuration.file) << known.name;
+      }
+    }
+    EXPECT_EQ(configs, 1U) << known.name;
+  }
+}
+
 // --- The rows ------------------------------------------------------------
 
 TEST(SaveLayer, EveryRowIsWellFormed) {
@@ -393,6 +415,21 @@ TEST_F(SaveDirectory, ReadsTheFourthLineAgainstTheStartingDirectory) {
   const save_directory_answer gog = read("POOLRAD");
   ASSERT_TRUE(gog.ok());
   EXPECT_EQ(gog.directory, path_of("POOLRAD"));
+}
+
+TEST_F(SaveDirectory, ReadsCursesThirdLine) {
+  // Curse of the Azure Bonds' file has four lines, and the save
+  // directory is the third (edition.h, #551).
+  put("CURSE\\CURSE.CFG", "E\r\nT\r\nC:\\CURSE\\SAVE\\\r\nF\r\n");
+  const save_directory_answer answer = read("CURSE");
+  ASSERT_TRUE(answer.ok());
+  EXPECT_EQ(answer.directory, path_of("CURSE\\SAVE"));
+  ASSERT_NE(answer.configuration, nullptr);
+  EXPECT_EQ(answer.configuration->file, "CURSE.CFG");
+
+  // With the third line empty it does not say, whatever the fourth holds.
+  put("CURSE\\CURSE.CFG", "E\r\nT\r\n\r\nF\r\n");
+  EXPECT_EQ(read("CURSE").trouble, save_directory_trouble::too_short);
 }
 
 TEST_F(SaveDirectory, ARelativeLineIsRelativeToTheStartingDirectory) {

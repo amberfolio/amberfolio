@@ -10,12 +10,15 @@
 
 namespace amberfolio::sdl {
 
-std::string started_sound_line(std::optional<std::uint8_t> configured) {
-  if (!configured || *configured == machine::sound_for_this_machine) {
+std::string started_sound_line(
+    std::optional<machine::configured_sound> configured) {
+  if (!configured || configured->letter == machine::sound_for_this_machine) {
     return {};
   }
-  std::string line = "amberfolio: POOL.CFG sound ";
-  line.push_back(static_cast<char>(*configured));
+  std::string line = "amberfolio: ";
+  line += configured->file;
+  line += " sound ";
+  line.push_back(static_cast<char>(configured->letter));
   line += ", started as ";
   line.push_back(static_cast<char>(machine::sound_for_this_machine));
   line += " (Tandy sound)\n";

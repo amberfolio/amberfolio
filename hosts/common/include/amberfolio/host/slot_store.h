@@ -38,8 +38,8 @@
 // Which directory is the save directory (#397)
 // --------------------------------------------
 //
-// The program's own, read the way it reads it: `POOL.CFG` in the
-// directory it was started in, line 4 against the same
+// The program's own, read the way it reads it: its configuration file in the
+// directory it was started in, its save line against the same
 // (`machine::read_save_directory`). `\SAVE` on the archive release,
 // `\POOLRAD` on the copy that saves beside its game files, `\POOLRAD\SAVE`
 // on the other — and the sidecars go wherever that is, because they
