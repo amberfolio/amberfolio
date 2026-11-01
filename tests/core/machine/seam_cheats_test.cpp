@@ -1237,7 +1237,7 @@ TEST(SeamCheatsOnCurse, AreAvailableWithPointsOfTheirOwn) {
   EXPECT_EQ(
       points_on(r.seam("cheat-invulnerable"), curse_digest()).front().offset,
       curse::damage_entry);
-  const seam_point& end =
+  const seam_point end =
       points_on(r.seam("cheat-kill-all"), curse_digest()).back();
   EXPECT_EQ(end.offset, curse::end_check);
   EXPECT_EQ(end.module.load_segment_at, curse::combat_load_word);
