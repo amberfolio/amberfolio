@@ -303,6 +303,57 @@ TEST(EditionFacts, TheRepackFileListIsThePristineDiskTheSessionPins) {
   EXPECT_EQ(named, pinned.size());
 }
 
+/// The same joint for Curse of the Azure Bonds' Steam row (#554): the
+/// disk `curse-boot.session` pins is that release with its shipped saves,
+/// so every file the row requires is pinned as the row has it, and every
+/// pinned file the row does not name is a saved game in `SAVE`.
+TEST(EditionFacts, CursesSteamRowIsTheDiskItsSessionsPin) {
+  const std::string path =
+      std::string(AMBERFOLIO_SESSIONS_DIR) + "/curse-boot.session";
+  std::ifstream descriptor(path);
+  ASSERT_TRUE(descriptor.is_open()) << path;
+
+  std::unordered_map<std::string, std::string> pinned;  // name -> "size sha"
+  std::string keyword;
+  while (descriptor >> keyword) {
+    if (keyword == "file") {
+      std::string name;
+      std::string size;
+      std::string sha;
+      ASSERT_TRUE(static_cast<bool>(descriptor >> name >> size >> sha));
+      std::string pin(size);
+      pin.append(" ").append(sha);
+      pinned.emplace(name, pin);
+    } else {
+      descriptor.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    }
+  }
+  ASSERT_THAT(pinned, Not(IsEmpty()));
+
+  std::set<std::string> named;
+  for (const edition_artifact& artifact : curse().artifacts) {
+    if (artifact.kind == artifact_kind::document) {
+      continue;
+    }
+    const auto found = pinned.find(std::string(artifact.name));
+    ASSERT_NE(found, pinned.end()) << artifact.name;
+    named.insert(found->first);
+    if (artifact.kind == artifact_kind::file) {
+      EXPECT_EQ(found->second, std::to_string(artifact.size) + " " +
+                                   std::string(artifact.fingerprint));
+    } else {
+      // The configuration file, as Steam ships it.
+      EXPECT_EQ(found->second.substr(found->second.find(' ') + 1),
+                artifact.fingerprint);
+    }
+  }
+  for (const auto& [name, pin] : pinned) {
+    if (!named.contains(name)) {
+      EXPECT_EQ(name.rfind("SAVE\\", 0), 0U) << name;
+    }
+  }
+}
+
 TEST(EditionFacts, TheFingerprintFindsTheBaseline) {
   EXPECT_EQ(find_requirements(store().fingerprint), &store());
   EXPECT_EQ(find_requirements(repack().fingerprint), &store());
@@ -522,11 +573,7 @@ TEST(EditionFacts, NoFileAnEditionShipsIsEverAPlaythroughs) {
   for (const edition_requirements& edition : edition_requirements_table()) {
     const machine::save_layer* layer =
         machine::save_layer_for(digest_of(edition.fingerprint));
-    if (layer == nullptr) {
-      // A program this build has no save layer for claims no file at
-      // all (machine/save_layer.h), which is the property held here.
-      continue;
-    }
+    ASSERT_NE(layer, nullptr) << edition.id;
     const machine::vfs_result<machine::dos_path> install =
         machine::canonicalize_host_path(
             {edition.install.data(), edition.install.size()});

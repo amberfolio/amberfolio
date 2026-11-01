@@ -96,7 +96,80 @@ constexpr save_layer baseline{
     .files = baseline_files,
 };
 
-constexpr std::array<const save_layer*, 1> table{{&baseline}};
+/// Curse of the Azure Bonds' save layer (#554), watched the same way on
+/// the Steam copy: a save to slot `C` from the camp menu writes
+/// `SAVGAM<S>.DAT` and, per member, `CHRDAT<S><N>.SAV` and — for a member
+/// under an effect — `CHRDAT<S><N>.FX`, opening each record first to see
+/// whether it is there. What a member carries goes in `.SWG` and a
+/// character kept under a name the player chose is `<NAME>.GUY`, the
+/// party menu's ADD listing every `*.GUY`; those names are the program's
+/// own (the overlay file spells them) and no driven save has written one
+/// yet, because the shipped parties carry nothing and a new character is
+/// not yet a leg. The program keeps no roster file.
+///
+/// Most specific first, as above: the configuration file, then the three
+/// `<NAME>` rows last.
+constexpr std::array<save_file, 10> curse_files{{
+    {.pattern = "SAVGAM<S>.DAT",
+     .kind = save_file_kind::slot,
+     .required = true,
+     .about = "the saved game; the load menu lists the slots whose file is "
+              "there"},
+    {.pattern = "CHRDAT<S><N>.SAV",
+     .kind = save_file_kind::member,
+     .required = true,
+     .about = "one party member's record, written for every member of the "
+              "party the save was taken from"},
+    {.pattern = "CHRDAT<S><N>.SWG",
+     .kind = save_file_kind::member,
+     .required = false,
+     .about = "what that member carries; absent for a member who carries "
+              "nothing"},
+    {.pattern = "CHRDAT<S><N>.FX",
+     .kind = save_file_kind::member,
+     .required = false,
+     .about = "the effects that member is under; absent for a member under "
+              "none"},
+    {.pattern = "AFMAP<S>.DAT",
+     .kind = save_file_kind::sidecar,
+     .required = false,
+     .about = "this build's own: what the automap had explored when slot <S> "
+              "was written"},
+    {.pattern = "AFSEEN<S>.DAT",
+     .kind = save_file_kind::sidecar,
+     .required = false,
+     .about = "this build's own: which journal entries the game had cited "
+              "when slot <S> was written"},
+    {.pattern = "CURSE.CFG",
+     .kind = save_file_kind::config,
+     .required = false,
+     .about = "the program's settings, read at boot and written by the "
+              "seller's launcher: a game file, not a playthrough's",
+     .anchor = save_file_anchor::current_directory},
+    {.pattern = "<NAME>.GUY",
+     .kind = save_file_kind::character,
+     .required = false,
+     .about = "a character kept under a name the player chose; the party "
+              "menu's ADD lists them"},
+    {.pattern = "<NAME>.SWG",
+     .kind = save_file_kind::character,
+     .required = false,
+     .about = "what that character carries"},
+    {.pattern = "<NAME>.FX",
+     .kind = save_file_kind::character,
+     .required = false,
+     .about = "the effects that character is under"},
+}};
+
+constexpr save_layer curse{
+    .fingerprint =
+        "42fcefd6785679568b00bc1fb5b1d81ac2773416be4a35e0363920ddf6b78acd",
+    .slots = "ABCDEFGHIJ",
+    .members = 8,
+    .files = curse_files,
+};
+
+constexpr std::array<const save_layer*, 2> table{{&baseline, &curse}};
 
 /// The whole of one component's text. A `dos_name` is canonical and
 /// upper-cased already, so nothing here folds case.

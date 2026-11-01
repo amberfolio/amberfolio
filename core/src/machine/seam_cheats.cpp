@@ -199,7 +199,7 @@
 // standing is still `debug_damage` being wrong rather than the seam.
 //
 // Both are fail-closed by construction (#99): unavailable on any binary
-// but the baseline's (the fingerprint), inert while the end check's
+// but the two whose facts are below (the fingerprints), inert while the end check's
 // module is not loaded — which the program's own record answers at the
 // step it is asked, for both of kill-all's points (#97, #131, #163) —
 // and nothing on the hot path when off (#96). With kill-all on and
@@ -222,11 +222,27 @@
 namespace amberfolio::machine {
 namespace {
 
-/// The program this seam's facts are about (program_profile.h): the
-/// baseline edition, and only it. The seam is available on it and on no
-/// other binary.
-constexpr const program_profile& profile = pool_of_radiance;
-constexpr auto cheat_binaries = fingerprints_of(std::array{&profile});
+/// This seam's facts about one program: the shared ones through its
+/// profile (program_profile.h), and four only the cheats read. One row
+/// per program the cheats are available on (`cheat_rows` below, #554);
+/// every handler is instantiated on one row, so a handler never asks
+/// which program it is on.
+struct cheat_facts {
+  const program_profile& profile;
+  /// The combat scratch block's far pointer, in a character record.
+  std::uint16_t rec_scratch_offset;
+  /// One byte per combat side, in the data segment: how many are still
+  /// standing, indexed by the signed side byte.
+  std::uint16_t data_side_counts;
+  /// Where damage lands: an offset from the image segment, in the
+  /// resident image, so the point is qualified by `resident_image`.
+  std::uint32_t damage_routine_offset;
+  /// The end check's entry, in the profile's combat overlay, as an
+  /// offset from the start of the module — which is to say from the
+  /// segment the module's load-segment word holds, wherever the manager
+  /// has most recently put it.
+  std::uint32_t end_check_offset;
+};
 
 // --- The character record ----------------------------------------------
 //
@@ -257,9 +273,6 @@ constexpr auto cheat_binaries = fingerprints_of(std::array{&profile});
 // is that a record whose hit points exceed 255 could not exist; nobody has
 // watched one. The failure that would follow is bounded in the one
 // direction that matters, and `debug_damage` says how.
-
-/// The combat scratch block's far pointer, in a character record.
-constexpr std::uint16_t rec_scratch_offset = 0x108;
 
 /// The wound status that means slain.
 constexpr std::uint8_t status_slain = 6;
@@ -319,13 +332,6 @@ constexpr std::uint16_t scratch_downed = 3;
 /// never applied to the party.
 constexpr std::uint8_t debug_damage = 120;
 
-// --- The program's data segment --------------------------------------------
-//
-// Offsets in the data segment DS addresses throughout the program.
-
-/// One byte per combat side: how many are still standing.
-constexpr std::uint16_t data_side_counts = 0x6814;
-
 /// How many records a roster walk will follow before giving up — far
 /// more than the party and a combat's worth of enemies together, and
 /// what keeps a record whose next pointer is not what the facts say from
@@ -334,11 +340,7 @@ constexpr unsigned max_roster_walk = 64;
 
 // --- Where damage lands ----------------------------------------------------
 
-/// The damage routine's entry, as an offset from the image segment. In
-/// the resident image, so the point is qualified by `resident_image`.
-constexpr std::uint32_t damage_routine_offset = 0x2DC8;
-
-/// The stack at that entry, as offsets from SP: the far return address
+/// The stack at the damage routine's entry, as offsets from SP: the far return address
 /// (four bytes, because the call is a far one), then the damage word,
 /// then the record's far pointer — its offset, then its segment.
 ///
@@ -357,13 +359,43 @@ constexpr std::uint16_t frame_damage = 4;
 constexpr std::uint16_t frame_record_offset = 6;
 constexpr std::uint16_t frame_record_segment = 8;
 
-// --- Where combat ends -----------------------------------------------------
+// --- The rows ----------------------------------------------------------------
 
-/// The end check's entry, in the combat overlay (the profile's), as an
-/// offset from the start of the module — which is to say from the segment
-/// the module's load-segment word holds, wherever the manager has most
-/// recently put it.
-constexpr std::uint32_t end_check_offset = 0x0880;
+/// Pool of Radiance's: the baseline, every fact above driven on it.
+constexpr cheat_facts pool_of_radiance_cheats{.profile = pool_of_radiance,
+                                              .rec_scratch_offset = 0x108,
+                                              .data_side_counts = 0x6814,
+                                              .damage_routine_offset = 0x2DC8,
+                                              .end_check_offset = 0x0880};
+
+/// Curse of the Azure Bonds' (#554). The same mechanism, and the same
+/// shape at every point: the damage routine takes the same two arguments
+/// in the same frame, rounds them the same way, downs a combatant by the
+/// same five writes (the scratch block's byte 3 among them), and keeps
+/// one count per side in two adjacent bytes indexed by the side; the end
+/// check is the once-a-round routine that rebuilds those counts and asks
+/// whether either is zero.
+///
+/// **The damage routine is overlaid on this program**, where Pool of
+/// Radiance's is resident: every caller reaches it through its overlay's
+/// stub entry, which is resident, at image `0x0F72` (the stub's record is
+/// at `0x0ED0`). A point there sees the caller's frame exactly as a point
+/// at the routine's own entry would, because the stub only jumps.
+///
+/// The end check is in overlay 9 (the profile's `combat_overlay`). One
+/// difference from Pool of Radiance is the program's and not this seam's:
+/// with more than one of the party standing and every enemy down, the end
+/// check asks whether to continue the battle and waits for Y or N before the fight
+/// ends, so a pull that leaves no enemy standing is answered with that
+/// question.
+constexpr cheat_facts curse_cheats{.profile = curse_of_the_azure_bonds,
+                                   .rec_scratch_offset = 0x18D,
+                                   .data_side_counts = 0x6FAA,
+                                   .damage_routine_offset = 0x0F72,
+                                   .end_check_offset = 0x09B3};
+
+constexpr auto cheat_binaries =
+    fingerprints_of(std::array{&pool_of_radiance, &curse_of_the_azure_bonds});
 
 // --- The handlers ------------------------------------------------------------
 
@@ -393,7 +425,9 @@ constexpr std::uint32_t end_check_offset = 0x0880;
 /// say so once instead: one `inert point_not_recognized` line, and the
 /// program left alone. Finding the routine this offset was meant to name
 /// is #99's to finish.
+template <const cheat_facts& F>
 void spare_the_party(machine& box, seam_context& ctx) {
+  const cheat_facts& f = F;
   cpu::processor& cpu = box.processor();
   const cpu::registers& regs = cpu.regs();
   const std::uint16_t ss = regs[cpu::sreg::ss];
@@ -408,7 +442,7 @@ void spare_the_party(machine& box, seam_context& ctx) {
     return;
   }
   const auto side = static_cast<std::int8_t>(cpu.read_byte(
-      record_segment, word_after(record_offset, profile.record_side)));
+      record_segment, word_after(record_offset, f.profile.record_side)));
   if (side != side_party) {
     // An enemy's damage is the program's business.
     return;
@@ -423,10 +457,11 @@ void spare_the_party(machine& box, seam_context& ctx) {
 ///
 /// Both of this seam's points do this and nothing else; what differs
 /// between them is what each is willing to believe before calling it.
-void strike_the_enemies(cpu::processor& cpu, std::uint16_t ds) {
-  std::uint16_t offset = cpu.read_word(ds, profile.data_roster_head);
+void strike_the_enemies(const cheat_facts& f, cpu::processor& cpu,
+                        std::uint16_t ds) {
+  std::uint16_t offset = cpu.read_word(ds, f.profile.data_roster_head);
   std::uint16_t segment =
-      cpu.read_word(ds, word_after(profile.data_roster_head, 2));
+      cpu.read_word(ds, word_after(f.profile.data_roster_head, 2));
   for (unsigned walked = 0;
        walked < max_roster_walk && (offset != 0 || segment != 0); ++walked) {
     if (segment == 0) {
@@ -439,13 +474,13 @@ void strike_the_enemies(cpu::processor& cpu, std::uint16_t ds) {
       return;
     }
     const auto side = static_cast<std::int8_t>(
-        cpu.read_byte(segment, word_after(offset, profile.record_side)));
+        cpu.read_byte(segment, word_after(offset, f.profile.record_side)));
     const bool standing = still_standing(
-        cpu.read_byte(segment, word_after(offset, profile.record_status)));
+        cpu.read_byte(segment, word_after(offset, f.profile.record_status)));
 
     if (side != side_party && standing) {
-      const std::uint8_t hit_points =
-          cpu.read_byte(segment, word_after(offset, profile.record_hit_points));
+      const std::uint8_t hit_points = cpu.read_byte(
+          segment, word_after(offset, f.profile.record_hit_points));
       if (hit_points > debug_damage) {
         // Still in the fight, and therefore still in its side's count:
         // the remainder goes back and **nothing else changes**. That is
@@ -454,7 +489,7 @@ void strike_the_enemies(cpu::processor& cpu, std::uint16_t ds) {
         // hand stay right — the program decrements when a body drops, so
         // a seam that decremented for a survivor would put the count
         // below the number of bodies.
-        cpu.write_byte(segment, word_after(offset, profile.record_hit_points),
+        cpu.write_byte(segment, word_after(offset, f.profile.record_hit_points),
                        static_cast<std::uint8_t>(hit_points - debug_damage));
       } else {
         // Down, the way the routine downs one. Cleared **held** is what
@@ -471,24 +506,24 @@ void strike_the_enemies(cpu::processor& cpu, std::uint16_t ds) {
         // a "is anybody left" test — reads what this leaves. So the
         // decrement is load-bearing now, and the survivor branch above
         // not decrementing is half of the same rule.
-        cpu.write_byte(segment, word_after(offset, profile.record_status),
+        cpu.write_byte(segment, word_after(offset, f.profile.record_status),
                        status_slain);
-        cpu.write_byte(segment, word_after(offset, profile.record_held), 0);
-        cpu.write_byte(segment, word_after(offset, profile.record_hit_points),
+        cpu.write_byte(segment, word_after(offset, f.profile.record_held), 0);
+        cpu.write_byte(segment, word_after(offset, f.profile.record_hit_points),
                        0);
 
         // The side's body count, indexed by the signed side byte exactly
         // as the program indexes it.
         const auto count_at = static_cast<std::uint16_t>(
-            static_cast<std::int32_t>(data_side_counts) + side);
+            static_cast<std::int32_t>(f.data_side_counts) + side);
         cpu.write_byte(
             ds, count_at,
             static_cast<std::uint8_t>(cpu.read_byte(ds, count_at) - 1));
 
         const std::uint16_t scratch_offset =
-            cpu.read_word(segment, word_after(offset, rec_scratch_offset));
-        const std::uint16_t scratch_segment =
-            cpu.read_word(segment, word_after(offset, rec_scratch_offset + 2));
+            cpu.read_word(segment, word_after(offset, f.rec_scratch_offset));
+        const std::uint16_t scratch_segment = cpu.read_word(
+            segment, word_after(offset, f.rec_scratch_offset + 2));
         if (scratch_offset != 0 || scratch_segment != 0) {
           cpu.write_byte(scratch_segment,
                          word_after(scratch_offset, scratch_downed), 0);
@@ -497,9 +532,9 @@ void strike_the_enemies(cpu::processor& cpu, std::uint16_t ds) {
     }
 
     const std::uint16_t next_offset =
-        cpu.read_word(segment, word_after(offset, profile.record_next));
+        cpu.read_word(segment, word_after(offset, f.profile.record_next));
     const std::uint16_t next_segment =
-        cpu.read_word(segment, word_after(offset, profile.record_next + 2));
+        cpu.read_word(segment, word_after(offset, f.profile.record_next + 2));
     offset = next_offset;
     segment = next_segment;
   }
@@ -549,20 +584,21 @@ void strike_the_enemies(cpu::processor& cpu, std::uint16_t ds) {
 /// nobody had watched it. **Watched, on 2026-09-02, in the wilderness
 /// leg of `docs/playable.md` §"A fight the pull ends"** (#271):
 /// `--watch 6814:2` through two driven fights on the shipped slot J,
-/// whose party is three characters. The byte at `data_side_counts`
+/// whose party is three characters. The byte at the side counts
 /// itself held **3** — the party's own size — from the moment the
 /// counts were set to the end of both combats, while the byte beside it
 /// held the enemies' count (7 soldiers, then 2 centaurs) and was the one
 /// a pull took to zero. If it had been the other way round, condition 4
 /// would never have held, this point would have declined and said so
 /// once, and the end check would have served the pull as it did before.
-[[nodiscard]] bool combat_roster_ready(cpu::processor& cpu, std::uint16_t ds) {
-  if (cpu.read_byte(ds, profile.data_game_mode) != profile.mode_combat) {
+[[nodiscard]] bool combat_roster_ready(const cheat_facts& f,
+                                       cpu::processor& cpu, std::uint16_t ds) {
+  if (cpu.read_byte(ds, f.profile.data_game_mode) != f.profile.mode_combat) {
     return false;
   }
-  std::uint16_t offset = cpu.read_word(ds, profile.data_roster_head);
+  std::uint16_t offset = cpu.read_word(ds, f.profile.data_roster_head);
   std::uint16_t segment =
-      cpu.read_word(ds, word_after(profile.data_roster_head, 2));
+      cpu.read_word(ds, word_after(f.profile.data_roster_head, 2));
 
   bool party_standing = false;
   bool enemy_standing = false;
@@ -577,11 +613,11 @@ void strike_the_enemies(cpu::processor& cpu, std::uint16_t ds) {
       return false;  // a link that is not a pointer
     }
     const auto side = static_cast<std::int8_t>(
-        cpu.read_byte(segment, word_after(offset, profile.record_side)));
+        cpu.read_byte(segment, word_after(offset, f.profile.record_side)));
     if (still_standing(cpu.read_byte(
-            segment, word_after(offset, profile.record_status)))) {
+            segment, word_after(offset, f.profile.record_status)))) {
       const auto count_at = static_cast<std::uint16_t>(
-          static_cast<std::int32_t>(data_side_counts) + side);
+          static_cast<std::int32_t>(f.data_side_counts) + side);
       if (cpu.read_byte(ds, count_at) == 0) {
         // A body is up and its side's count says nobody is. The two
         // structures disagree, which is what being part-way through
@@ -595,9 +631,9 @@ void strike_the_enemies(cpu::processor& cpu, std::uint16_t ds) {
       }
     }
     const std::uint16_t next_offset =
-        cpu.read_word(segment, word_after(offset, profile.record_next));
+        cpu.read_word(segment, word_after(offset, f.profile.record_next));
     const std::uint16_t next_segment =
-        cpu.read_word(segment, word_after(offset, profile.record_next + 2));
+        cpu.read_word(segment, word_after(offset, f.profile.record_next + 2));
     offset = next_offset;
     segment = next_segment;
   }
@@ -607,14 +643,15 @@ void strike_the_enemies(cpu::processor& cpu, std::uint16_t ds) {
 /// The address-free point (#163): offered at every step boundary while
 /// the pull is outstanding, acting at the first one where the guard
 /// holds and declining — which keeps the latch — at every one before it.
+template <const cheat_facts& F>
 void fell_the_enemies_now(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   const std::uint16_t ds = cpu.regs()[cpu::sreg::ds];
-  if (!combat_roster_ready(cpu, ds)) {
+  if (!combat_roster_ready(F, cpu, ds)) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
-  strike_the_enemies(cpu, ds);
+  strike_the_enemies(F, cpu, ds);
 }
 
 /// At the end check's entry, in combat: the same damage, and let the
@@ -626,15 +663,17 @@ void fell_the_enemies_now(machine& box, seam_context& ctx) {
 /// rather than returning: doing nothing and calling the pull served
 /// would answer a person's request with nothing at all, and since #163
 /// the pull has somewhere better to be served anyway.
+template <const cheat_facts& F>
 void fell_the_enemies(machine& box, seam_context& ctx) {
+  const cheat_facts& f = F;
   cpu::processor& cpu = box.processor();
   const std::uint16_t ds = cpu.regs()[cpu::sreg::ds];
-  if (cpu.read_byte(ds, profile.data_game_mode) != profile.mode_combat ||
-      cpu.read_word(ds, word_after(profile.data_roster_head, 2)) == 0) {
+  if (cpu.read_byte(ds, f.profile.data_game_mode) != f.profile.mode_combat ||
+      cpu.read_word(ds, word_after(f.profile.data_roster_head, 2)) == 0) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
-  strike_the_enemies(cpu, ds);
+  strike_the_enemies(F, cpu, ds);
 }
 
 // --- Wounding the party (M5-E1d, #196) -------------------------------------
@@ -657,13 +696,14 @@ void fell_the_enemies(machine& box, seam_context& ctx) {
 /// the thing that heals them lives. A pull made anywhere else is not
 /// refused — it is **kept**, because a declined trigger keeps its latch
 /// (§3a), so pulling this and then pressing ENCAMP serves it.
-[[nodiscard]] bool party_is_at_camp(cpu::processor& cpu, std::uint16_t ds) {
-  if (cpu.read_byte(ds, profile.data_game_mode) != profile.mode_camp) {
+[[nodiscard]] bool party_is_at_camp(const cheat_facts& f, cpu::processor& cpu,
+                                    std::uint16_t ds) {
+  if (cpu.read_byte(ds, f.profile.data_game_mode) != f.profile.mode_camp) {
     return false;
   }
-  std::uint16_t offset = cpu.read_word(ds, profile.data_roster_head);
+  std::uint16_t offset = cpu.read_word(ds, f.profile.data_roster_head);
   std::uint16_t segment =
-      cpu.read_word(ds, word_after(profile.data_roster_head, 2));
+      cpu.read_word(ds, word_after(f.profile.data_roster_head, 2));
   if (offset == 0 && segment == 0) {
     return false;  // nobody to hurt
   }
@@ -677,9 +717,9 @@ void fell_the_enemies(machine& box, seam_context& ctx) {
       return false;  // a link that is not a pointer
     }
     const std::uint16_t next_offset =
-        cpu.read_word(segment, word_after(offset, profile.record_next));
+        cpu.read_word(segment, word_after(offset, f.profile.record_next));
     const std::uint16_t next_segment =
-        cpu.read_word(segment, word_after(offset, profile.record_next + 2));
+        cpu.read_word(segment, word_after(offset, f.profile.record_next + 2));
     offset = next_offset;
     segment = next_segment;
   }
@@ -708,27 +748,28 @@ void fell_the_enemies(machine& box, seam_context& ctx) {
 /// would be zero, and zero damage on a record whose hit points are zero
 /// is the one input that makes the routine's own arithmetic decide the
 /// character is unconscious.
-void wound_the_party(cpu::processor& cpu, std::uint16_t ds) {
-  std::uint16_t offset = cpu.read_word(ds, profile.data_roster_head);
+void wound_the_party(const cheat_facts& f, cpu::processor& cpu,
+                     std::uint16_t ds) {
+  std::uint16_t offset = cpu.read_word(ds, f.profile.data_roster_head);
   std::uint16_t segment =
-      cpu.read_word(ds, word_after(profile.data_roster_head, 2));
+      cpu.read_word(ds, word_after(f.profile.data_roster_head, 2));
   for (unsigned walked = 0;
        walked < max_roster_walk && (offset != 0 || segment != 0); ++walked) {
     if (segment == 0) {
       return;  // a link that is not a pointer
     }
     const std::uint8_t status =
-        cpu.read_byte(segment, word_after(offset, profile.record_status));
+        cpu.read_byte(segment, word_after(offset, f.profile.record_status));
     const std::uint8_t hit_points =
-        cpu.read_byte(segment, word_after(offset, profile.record_hit_points));
+        cpu.read_byte(segment, word_after(offset, f.profile.record_hit_points));
     if (still_standing(status) && hit_points > wounded_to) {
-      cpu.write_byte(segment, word_after(offset, profile.record_hit_points),
+      cpu.write_byte(segment, word_after(offset, f.profile.record_hit_points),
                      wounded_to);
     }
     const std::uint16_t next_offset =
-        cpu.read_word(segment, word_after(offset, profile.record_next));
+        cpu.read_word(segment, word_after(offset, f.profile.record_next));
     const std::uint16_t next_segment =
-        cpu.read_word(segment, word_after(offset, profile.record_next + 2));
+        cpu.read_word(segment, word_after(offset, f.profile.record_next + 2));
     offset = next_offset;
     segment = next_segment;
   }
@@ -736,20 +777,22 @@ void wound_the_party(cpu::processor& cpu, std::uint16_t ds) {
 
 /// The point, which has no address and is offered at every step boundary
 /// while the pull is outstanding (§3a, #163).
+template <const cheat_facts& F>
 void wound_the_party_now(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   const std::uint16_t ds = cpu.regs()[cpu::sreg::ds];
-  if (!party_is_at_camp(cpu, ds)) {
+  if (!party_is_at_camp(F, cpu, ds)) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
-  wound_the_party(cpu, ds);
+  wound_the_party(F, cpu, ds);
 }
 
+template <const cheat_facts& F>
 constexpr std::array<seam_point, 1> invulnerable_points{
     {{.module = resident_image,
-      .offset = damage_routine_offset,
-      .run = &spare_the_party}}};
+      .offset = F.damage_routine_offset,
+      .run = &spare_the_party<F>}}};
 
 /// Two points, both in the module the end check lives in, and the module
 /// is what they have in common rather than an accident: the address-free
@@ -762,20 +805,14 @@ constexpr std::array<seam_point, 1> invulnerable_points{
 /// The immediate one first, so that a step which is both — the end
 /// check, with a pull outstanding — is served by the point that answers
 /// what the person asked for.
+template <const cheat_facts& F>
 constexpr std::array<seam_point, 2> kill_all_points{
-    {{.module = profile.combat_overlay,
-      .run = &fell_the_enemies_now,
+    {{.module = F.profile.combat_overlay,
+      .run = &fell_the_enemies_now<F>,
       .at_every_step = true},
-     {.module = profile.combat_overlay,
-      .offset = end_check_offset,
-      .run = &fell_the_enemies}}};
-
-constexpr seam_definition invulnerable_definition{
-    .id = "cheat-invulnerable",
-    .about = "the party takes no damage (debug cheat)",
-    .fingerprints = cheat_binaries,
-    .points = invulnerable_points,
-    .schema = seam_schema_version};
+     {.module = F.profile.combat_overlay,
+      .offset = F.end_check_offset,
+      .run = &fell_the_enemies<F>}}};
 
 /// One point, in the resident image — which is always resident, so this
 /// seam's `armed` row means "the program is the program" and nothing
@@ -785,10 +822,31 @@ constexpr seam_definition invulnerable_definition{
 /// rather than about which overlay happens to be in memory, and a second
 /// copy of that module's facts in this file would be a second copy to
 /// keep in step.
+template <const cheat_facts& F>
 constexpr std::array<seam_point, 1> wound_party_points{
     {{.module = resident_image,
-      .run = &wound_the_party_now,
+      .run = &wound_the_party_now<F>,
       .at_every_step = true}}};
+
+/// Each seam's points on every program but the baseline, whose points are
+/// the definition's own `points` (seam.h, schema 9).
+constexpr std::array<seam_program_points, 1> invulnerable_programs{
+    {{.fingerprint = curse_of_the_azure_bonds.fingerprint,
+      .points = invulnerable_points<curse_cheats>}}};
+constexpr std::array<seam_program_points, 1> kill_all_programs{
+    {{.fingerprint = curse_of_the_azure_bonds.fingerprint,
+      .points = kill_all_points<curse_cheats>}}};
+constexpr std::array<seam_program_points, 1> wound_party_programs{
+    {{.fingerprint = curse_of_the_azure_bonds.fingerprint,
+      .points = wound_party_points<curse_cheats>}}};
+
+constexpr seam_definition invulnerable_definition{
+    .id = "cheat-invulnerable",
+    .about = "the party takes no damage (debug cheat)",
+    .fingerprints = cheat_binaries,
+    .points = invulnerable_points<pool_of_radiance_cheats>,
+    .programs = invulnerable_programs,
+    .schema = seam_schema_version};
 
 constexpr seam_definition kill_all_definition{
     .id = "cheat-kill-all",
@@ -796,7 +854,8 @@ constexpr seam_definition kill_all_definition{
         "when you pull it, every enemy takes 120 damage at once (debug "
         "cheat)",
     .fingerprints = cheat_binaries,
-    .points = kill_all_points,
+    .points = kill_all_points<pool_of_radiance_cheats>,
+    .programs = kill_all_programs,
     // Pulled, not left on (#161), and served where the person is rather
     // than at the end of the round (#163). The `about` says *when* as
     // well as that it is asked for, because both halves of the original
@@ -813,7 +872,8 @@ constexpr seam_definition wound_party_definition{
         "when you pull it at camp, the whole party drops to one hit point "
         "(debug cheat)",
     .fingerprints = cheat_binaries,
-    .points = wound_party_points,
+    .points = wound_party_points<pool_of_radiance_cheats>,
+    .programs = wound_party_programs,
     // Pulled, for the reason #161 made kill-all one: a wounding left
     // switched on would wound the party at every camp for ever, which is
     // a curse rather than a cheat. The `about` says *where* as well as

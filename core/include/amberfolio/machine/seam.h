@@ -485,7 +485,13 @@ struct edition;
 /// offered when a moment of virtual time its seam asked for arrives
 /// (#538). A definition written before this version means "an address
 /// point"; the field decides *when* a handler runs.
-inline constexpr std::uint16_t seam_schema_version = 8;
+///
+/// 9: a definition may carry points per program
+/// (`seam_definition::programs`, #552, #554), and then a program it lists
+/// runs its own points instead of `points`. A definition written before
+/// this version means "one set of points on every program it names"; the
+/// field decides *where* a handler runs, which is never inferred.
+inline constexpr std::uint16_t seam_schema_version = 9;
 
 /// What runs when execution reaches an armed interception point. Native
 /// C++, called from outside the emulated machine — see this file's top
@@ -597,6 +603,15 @@ struct seam_setting {
   }
 };
 
+/// One program's own points, for a seam whose points differ between the
+/// programs it is available on (schema 9; #552, #554). The handlers in
+/// `points` are that program's too: a point's facts are a program's.
+struct seam_program_points {
+  /// One of the definition's `fingerprints`.
+  std::string_view fingerprint;
+  std::span<const seam_point> points;
+};
+
 /// A seam, as a fact table: what it is, what it applies to, and where it
 /// intercepts.
 struct seam_definition {
@@ -613,7 +628,17 @@ struct seam_definition {
   /// do not describe.
   std::span<const std::string_view> fingerprints;
 
+  /// The points on every program `fingerprints` names that `programs`
+  /// does not.
   std::span<const seam_point> points;
+
+  /// The points on the programs whose points are not `points` (#552,
+  /// #554): one entry per such program, each naming one of
+  /// `fingerprints`. Empty, the default, is a seam with one set of points
+  /// for every program it is available on. `points_on()` is the one
+  /// place the choice is made, by the program the engine was told is
+  /// running.
+  std::span<const seam_program_points> programs{};
 
   /// Whether this seam is **pulled** rather than left on: its handlers
   /// run only when a host has set its latch (`seam_engine::pull`, #161),
@@ -684,6 +709,11 @@ struct seam_definition {
   /// engine can refuse a stale one.
   std::uint16_t schema{seam_schema_version};
 };
+
+/// The points `seam` has on the program whose image hashes to `program`:
+/// its entry in `programs` for that program, or `points` for any other.
+[[nodiscard]] std::span<const seam_point> points_on(
+    const seam_definition& seam, const sha256_digest& program) noexcept;
 
 /// Every seam this build carries. Registered into every engine at
 /// construction; a host or a test may add more (`seam_engine::add`).

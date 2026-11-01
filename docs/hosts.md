@@ -1431,9 +1431,8 @@ table, keyed on the loaded program the way a seam's addresses are.
 For the program the editions this build knows share (`machine/edition.h`
 — the archive release and the storefront copies boot the same
 `START.EXE`). Slots are the ten letters **A** to **J**; a party's records
-are numbered **1** to **8**. Curse of the Azure Bonds has no table yet:
-`--save-layer` says `unrecognized` for it and a page keeps none of its
-files (#554).
+are numbered **1** to **8**. Curse of the Azure Bonds' table is
+below this one.
 
 Every row is a leaf in one of two directories (#397): **saves**, the
 directory line 4 of the copy's `POOL.CFG` names (§2c), read relative
@@ -1461,6 +1460,32 @@ its directory in front, from the root: `SAVE\SAVGAM<S>.DAT` and
 `POOLRAD\POOL.CFG` on the GOG copy. **A copy whose `POOL.CFG` is absent
 or does not name a directory has no layer**, the same answer as a program
 with no table; `af_machine_save_directory_trouble` says which.
+
+**Curse of the Azure Bonds** (#554): slots **A** to **J**, members **1**
+to **8**, saves in the directory line 3 of `CURSE.CFG` names
+(`\CURSE\SAVE` on Steam, `\SAVE` on GOG). A save writes the slot file
+and each member's record, and an effects file for a member under one;
+the program keeps no roster file, and the party menu's ADD lists every
+`*.GUY` in the save directory.
+
+| pattern | in | kind | required | what it is |
+|---|---|---|---|---|
+| `SAVGAM<S>.DAT` | saves | slot | yes | the saved game |
+| `CHRDAT<S><N>.SAV` | saves | member | yes | one party member's record (422 bytes) |
+| `CHRDAT<S><N>.SWG` | saves | member | no | what that member carries |
+| `CHRDAT<S><N>.FX` | saves | member | no | the effects that member is under |
+| `AFMAP<S>.DAT` | saves | sidecar | no | **ours** |
+| `AFSEEN<S>.DAT` | saves | sidecar | no | **ours** |
+| `CURSE.CFG` | start | config | no | the program's settings — **a game file** |
+| `<NAME>.GUY` | saves | character | no | a character kept under a name the player chose |
+| `<NAME>.SWG` | saves | character | no | what that character carries |
+| `<NAME>.FX` | saves | character | no | the effects that character is under |
+
+The `.SWG` and `.GUY` rows are the program's own names (the overlay file
+spells them); no driven save has written one yet, because the shipped
+parties carry nothing and creating a character is not yet a leg
+(`docs/playable-curse.md`). No seam available on Curse writes a sidecar,
+so neither sidecar appears there yet.
 
 Three placeholders: `<S>` a slot letter, `<N>` a party-member index,
 `<NAME>` a DOS name the player chose and this build cannot enumerate.

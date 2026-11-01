@@ -1171,5 +1171,156 @@ TEST(SeamCheatKillAll, BoundsTheRosterWalk) {
   EXPECT_TRUE(r.pc().processor().halted());
 }
 
+// --- Curse of the Azure Bonds (#554) ---------------------------------------
+//
+// The same three seams on a second program, with that program's own facts
+// (seam_cheats.cpp, `curse_cheats`): a definition's points per program
+// (seam.h, schema 9), chosen by the digest the engine was told is running.
+
+/// Curse's record offsets and data-segment facts, as its profile has them.
+namespace curse {
+constexpr std::uint16_t rec_next = 0x189;
+constexpr std::uint16_t rec_scratch = 0x18D;
+constexpr std::uint16_t rec_status = 0x195;
+constexpr std::uint16_t rec_held = 0x196;
+constexpr std::uint16_t rec_side = 0x197;
+constexpr std::uint16_t rec_hp = 0x1A4;
+constexpr std::uint16_t data_mode = 0x4FD3;
+constexpr std::uint16_t data_roster_head = 0x6524;
+constexpr std::uint16_t data_side_counts = 0x6FAA;
+constexpr std::uint16_t damage_entry = 0x0F72;
+constexpr std::uint16_t end_check = 0x09B3;
+constexpr std::uint16_t combat_load_word = 0x0580;
+}  // namespace curse
+
+[[nodiscard]] sha256_digest curse_digest() {
+  sha256_digest digest;
+  EXPECT_TRUE(parse_digest(
+      "42fcefd6785679568b00bc1fb5b1d81ac2773416be4a35e0363920ddf6b78acd",
+      digest));
+  return digest;
+}
+
+/// A machine told Curse is running.
+struct curse_rig : rig {
+  curse_rig() { box->seams().loaded(curse_digest(), image_load_segment); }
+
+  void curse_record(std::uint16_t offset, std::uint8_t side, bool standing,
+                    std::uint8_t hp, std::uint16_t scratch_offset,
+                    std::uint16_t next_offset) const {
+    const auto at = [offset](std::uint16_t field) {
+      return static_cast<std::uint16_t>(offset + field);
+    };
+    put_byte(record_segment, at(curse::rec_side), side);
+    put_byte(record_segment, at(curse::rec_held), standing ? 1 : 0);
+    put_byte(record_segment, at(curse::rec_hp), hp);
+    put_byte(record_segment, at(curse::rec_status), standing ? 0 : 6);
+    put_word(record_segment, at(curse::rec_scratch), scratch_offset);
+    put_word(record_segment, at(curse::rec_scratch + 2),
+             scratch_offset == 0 ? 0 : scratch_segment);
+    put_word(record_segment, at(curse::rec_next), next_offset);
+    put_word(record_segment, at(curse::rec_next + 2),
+             next_offset == 0 ? 0 : record_segment);
+  }
+};
+
+TEST(SeamCheatsOnCurse, AreAvailableWithPointsOfTheirOwn) {
+  const curse_rig r;
+  for (const std::string_view id :
+       {"cheat-invulnerable", "cheat-kill-all", "cheat-wound-party"}) {
+    const seam_definition& seam = r.seam(id);
+    const std::span<const seam_point> mine = points_on(seam, curse_digest());
+    ASSERT_EQ(mine.size(), seam.points.size()) << id;
+    EXPECT_NE(mine.data(), seam.points.data()) << id;
+    EXPECT_EQ(r.pc().seams().enable(id), seam_reason::none) << id;
+  }
+  EXPECT_EQ(
+      points_on(r.seam("cheat-invulnerable"), curse_digest()).front().offset,
+      curse::damage_entry);
+  const seam_point end =
+      points_on(r.seam("cheat-kill-all"), curse_digest()).back();
+  EXPECT_EQ(end.offset, curse::end_check);
+  EXPECT_EQ(end.module.load_segment_at, curse::combat_load_word);
+}
+
+TEST(SeamCheatsOnCurse, InvulnerableZeroesAPartyMembersDamage) {
+  const curse_rig r;
+  ASSERT_EQ(r.pc().seams().enable("cheat-invulnerable"), seam_reason::none);
+  r.curse_record(0x0100, 0, true, 20, 0, 0);
+  constexpr std::uint16_t sp = 0x0400;
+  r.put_word(data_segment, sp + 4, 7);
+  r.put_word(data_segment, sp + 6, 0x0100);
+  r.put_word(data_segment, sp + 8, record_segment);
+  r.halt_at(image_load_segment, curse::damage_entry, data_segment, data_segment,
+            sp);
+  r.pc().step();
+  EXPECT_EQ(r.word_at(data_segment, sp + 4), 0u);
+
+  // An enemy's, at the same entry, is left alone.
+  r.curse_record(0x0100, 1, true, 20, 0, 0);
+  r.put_word(data_segment, sp + 4, 7);
+  r.halt_at(image_load_segment, curse::damage_entry, data_segment, data_segment,
+            sp);
+  r.pc().step();
+  EXPECT_EQ(r.word_at(data_segment, sp + 4), 7u);
+}
+
+TEST(SeamCheatsOnCurse, PoolOfRadiancesEntryIsNotAPointHere) {
+  const curse_rig r;
+  ASSERT_EQ(r.pc().seams().enable("cheat-invulnerable"), seam_reason::none);
+  r.curse_record(0x0100, 0, true, 20, 0, 0);
+  constexpr std::uint16_t sp = 0x0400;
+  r.put_word(data_segment, sp + 4, 7);
+  r.put_word(data_segment, sp + 6, 0x0100);
+  r.put_word(data_segment, sp + 8, record_segment);
+  r.halt_at(image_load_segment,
+            static_cast<std::uint16_t>(
+                r.seam("cheat-invulnerable").points.front().offset),
+            data_segment, data_segment, sp);
+  r.pc().step();
+  EXPECT_EQ(r.word_at(data_segment, sp + 4), 7u);
+}
+
+TEST(SeamCheatsOnCurse, KillAllDownsTheEnemiesAtTheEndCheck) {
+  const curse_rig r;
+  r.arm_kill_all();
+  r.put_word(image_load_segment, curse::combat_load_word, overlay_segment);
+
+  r.put_byte(data_segment, curse::data_mode, 5);
+  r.put_word(data_segment, curse::data_roster_head, 0x0100);
+  r.put_word(data_segment, curse::data_roster_head + 2, record_segment);
+  r.put_byte(data_segment, curse::data_side_counts + 0, 1);
+  r.put_byte(data_segment, curse::data_side_counts + 1, 1);
+  r.curse_record(0x0100, 0, true, 20, 0, 0x0300);
+  r.curse_record(0x0300, 1, true, 9, 0x0040, 0);
+  r.put_byte(scratch_segment, 0x0040 + 3, 0x55);
+
+  r.halt_at(overlay_segment, curse::end_check, data_segment, data_segment,
+            0x0400);
+  r.pc().step();
+
+  EXPECT_EQ(r.byte_at(record_segment, 0x0300 + curse::rec_status), 6u);
+  EXPECT_EQ(r.byte_at(record_segment, 0x0300 + curse::rec_held), 0u);
+  EXPECT_EQ(r.byte_at(record_segment, 0x0300 + curse::rec_hp), 0u);
+  EXPECT_EQ(r.byte_at(scratch_segment, 0x0040 + 3), 0u);
+  EXPECT_EQ(r.byte_at(data_segment, curse::data_side_counts + 1), 0u);
+  EXPECT_EQ(r.byte_at(record_segment, 0x0100 + curse::rec_hp), 20u);
+  EXPECT_EQ(r.byte_at(data_segment, curse::data_side_counts + 0), 1u);
+}
+
+TEST(SeamCheatsOnCurse, WoundPartyLeavesThePartyOnOneAtCamp) {
+  const curse_rig r;
+  r.arm_wound_party();
+  r.put_byte(data_segment, curse::data_mode, 2);
+  r.put_word(data_segment, curse::data_roster_head, 0x0100);
+  r.put_word(data_segment, curse::data_roster_head + 2, record_segment);
+  r.curse_record(0x0100, 0, true, 30, 0, 0x0300);
+  r.curse_record(0x0300, 0, true, 12, 0, 0);
+  r.step_anywhere();
+  EXPECT_EQ(r.byte_at(record_segment, 0x0100 + curse::rec_hp), 1u);
+  EXPECT_EQ(r.byte_at(record_segment, 0x0300 + curse::rec_hp), 1u);
+  EXPECT_EQ(r.pc().seams().status("cheat-wound-party").fired, 1u);
+}
+
 }  // namespace
 }  // namespace amberfolio::machine

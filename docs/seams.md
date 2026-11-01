@@ -39,6 +39,7 @@ style every seam in the tree follows.
 | `about` | one line for a listing |
 | `fingerprints` | the SHA-256s of the program images the addresses below are facts about |
 | `points` | interception points: a module, an offset in it, a handler |
+| `programs` | the points on a program whose points are not `points`, one entry per such program (schema 9); `points_on()` picks by the running program. The debug cheats use it for Curse of the Azure Bonds |
 | `trigger` | whether this seam is **pulled** rather than left on (§3a) |
 | `gate` | a document the player must present before it arms (§5); unused by every shipped seam |
 | `group` | seams that are **alternatives** share one: enabling one disables the others (§6); the text faces |
@@ -3452,6 +3453,33 @@ wounding left on is a curse.
 pointer and nothing lives in segment 0; otherwise
 `decline(point_not_recognized)`. It caught the
 frame being read the wrong way round (#103).
+
+**On Curse of the Azure Bonds** (#554) the three seams are the same
+mechanism with that program's facts, one `cheat_facts` row per program
+(`seam_cheats.cpp`) and its points in the definition's `programs`:
+
+| fact | Pool of Radiance | Curse of the Azure Bonds |
+| --- | --- | --- |
+| data segment (paragraphs from the image) | `0xC7C` | `0xABE` |
+| game mode byte; camp, combat | `0x49F3`; 2, 5 | `0x4FD3`; 2, 5 |
+| roster head | `0x5D96` | `0x6524` |
+| side counts, a byte each | `0x6814` | `0x6FAA` |
+| record: next, scratch, status, held, side, hit points | `0x104`, `0x108`, `0x10C`, `0x10D`, `0x10E`, `0x11B` | `0x189`, `0x18D`, `0x195`, `0x196`, `0x197`, `0x1A4` |
+| damage point | the routine's own entry, image `0x2DC8` | its overlay's stub entry, image `0x0F72` (the stub's record at `0x0ED0`); the routine is overlaid |
+| end check | overlay 8 `+0x0880` | overlay 9 (file offset 42328, 4995 bytes, load-segment word `0x0580`) `+0x09B3` |
+
+Curse's record is the 422-byte one it saves, so its offsets are the save
+file's. The frame at the damage point and the five writes that down a
+combatant are Pool of Radiance's. Driven on the Steam copy, slot A, in
+the brawl at The Curse (`docs/playable-curse.md`): `--watch 6FAA:2` reads
+`0A06` (ten patrons, six of the party) at the fight's start and `0006`
+at the frame of a pull (`fired=1 reached=0 waited=0`); the downed
+patrons stay drawn until the round ends, the end check asks the
+program's own **continue battle** question (it asks whenever more than
+one of the party stands and no enemy does), and `N` ends the fight
+won. `cheat-invulnerable` on through a quick-fought brawl fires 58
+times and no party member loses a hit point; `cheat-wound-party` pulled
+at camp leaves all six on one.
 
 **Host services**: none. **State**: none but the latch. **Keys**: none.
 

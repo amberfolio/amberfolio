@@ -754,6 +754,85 @@ void current_drive_fn(service_floor& floor) {
   succeed(floor);
 }
 
+/// DL as AH=36h and AH=47h number drives: zero for the current one, then
+/// one-based.
+constexpr std::uint8_t default_drive_number = 0;
+constexpr std::uint8_t one_based_only_drive = only_drive + 1;
+
+// --- Free space: AH=36h ---------------------------------------------------
+//
+// DL names a drive (0 the current one, 3 C); DOS answers its geometry and
+// how much of it is free: AX sectors per cluster, BX free clusters, CX
+// bytes per sector, DX clusters in all — or AX=FFFFh for a drive that is
+// not there. Curse of the Azure Bonds asks before it writes a save.
+//
+// The machine's drive is the VFS, which has no size of its own, so the
+// size is this machine's to state, the way it states one drive: 8,192
+// clusters of eight 512-byte sectors, 32 MiB. What is free is then not a
+// guess but a count: the clusters the files on the drive take, each
+// rounded up to a whole cluster as FAT rounds it, taken from the total.
+// The host's own disk is never consulted, so the answer is the same on
+// every host and in every replay.
+
+constexpr std::uint16_t drive_bytes_per_sector = 512;
+constexpr std::uint16_t drive_sectors_per_cluster = 8;
+constexpr std::uint16_t drive_clusters = 8192;
+constexpr std::uint32_t drive_cluster_bytes =
+    std::uint32_t{drive_bytes_per_sector} * drive_sectors_per_cluster;
+
+/// The clusters the files under `dir` take, depth-first; bounded the way
+/// `tree_files()` is, by how deep a path can be spelled.
+std::uint32_t clusters_under(const filesystem& fs, dos_path& dir) {
+  const vfs_result<std::size_t> entries = fs.entry_count(dir);
+  if (!entries.ok()) {
+    return 0;
+  }
+  std::uint32_t used = 0;
+  for (std::size_t i = 0; i < entries.value; ++i) {
+    const vfs_result<directory_entry> entry = fs.entry_at(dir, i);
+    if (!entry.ok()) {
+      break;
+    }
+    if (!dir.push(entry.value.name)) {
+      continue;
+    }
+    if (entry.value.is_directory) {
+      used += clusters_under(fs, dir);
+    } else {
+      used +=
+          (entry.value.size + drive_cluster_bytes - 1) / drive_cluster_bytes;
+    }
+    dir.pop();
+  }
+  return used;
+}
+
+void free_space_fn(service_floor& floor) {
+  cpu::processor& cpu = floor.box().processor();
+  const std::uint8_t drive = cpu.regs().get(reg8::dl);
+  if (drive != default_drive_number && drive != one_based_only_drive) {
+    // Not an error with the carry flag: DOS says so in AX alone.
+    cpu.regs()[reg16::ax] = 0xFFFF;
+    succeed(floor);
+    return;
+  }
+  filesystem* fs = require_vfs(floor);
+  if (fs == nullptr) {
+    return;
+  }
+  dos_path root;
+  const std::uint32_t used = clusters_under(*fs, root);
+  const std::uint16_t free =
+      used >= drive_clusters
+          ? std::uint16_t{0}
+          : static_cast<std::uint16_t>(drive_clusters - used);
+  cpu.regs()[reg16::ax] = drive_sectors_per_cluster;
+  cpu.regs()[reg16::bx] = free;
+  cpu.regs()[reg16::cx] = drive_bytes_per_sector;
+  cpu.regs()[reg16::dx] = drive_clusters;
+  succeed(floor);
+}
+
 // --- The current directory: AH=47h --------------------------------------
 //
 // DS:SI is a 64-byte buffer; DOS fills it with the current directory of
@@ -765,10 +844,6 @@ void current_drive_fn(service_floor& floor) {
 /// The buffer AH=47h fills: 64 bytes, the terminator included, which is
 /// the longest current directory DOS keeps.
 constexpr std::size_t current_directory_buffer = 64;
-
-/// DL as AH=47h numbers drives: zero for the current one, then one-based.
-constexpr std::uint8_t default_drive_number = 0;
-constexpr std::uint8_t one_based_only_drive = only_drive + 1;
 
 void get_current_directory_fn(service_floor& floor) {
   cpu::processor& cpu = floor.box().processor();
@@ -1258,6 +1333,9 @@ void int21_dispatch(service_floor& floor, std::uint8_t /*vector*/) {
       return;
     case 0x35:
       get_vector_fn(floor);
+      return;
+    case 0x36:
+      free_space_fn(floor);
       return;
     case 0x39:
       mkdir_fn(floor);

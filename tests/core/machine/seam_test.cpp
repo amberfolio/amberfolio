@@ -1098,13 +1098,46 @@ TEST(SeamPullPoint, EveryAddressFreePointInThisBuildIsOnATrigger) {
   // The rule the case above rests on, asked of the seams this build
   // actually carries rather than of the test's own.
   for (const seam_definition& seam : all_seams()) {
-    for (const seam_point& point : seam.points) {
-      if (point.at_every_step) {
-        EXPECT_TRUE(seam.trigger)
-            << seam.id
-            << ": a point with no address on a seam nobody can pull is a"
-               " point that never runs";
+    std::vector<std::span<const seam_point>> sets{seam.points};
+    for (const seam_program_points& own : seam.programs) {
+      sets.push_back(own.points);
+    }
+    for (const std::span<const seam_point> points : sets) {
+      for (const seam_point& point : points) {
+        if (point.at_every_step) {
+          EXPECT_TRUE(seam.trigger)
+              << seam.id
+              << ": a point with no address on a seam nobody can pull is a"
+                 " point that never runs";
+        }
       }
+    }
+  }
+}
+
+TEST(SeamPrograms, EveryProgramsOwnPointsAreForAProgramTheSeamNames) {
+  // Schema 9 (#552, #554): a per-program list names one of the seam's
+  // own fingerprints, once, and carries as many points as the program
+  // needs; `points_on` answers it for that program and `points` for any
+  // other.
+  for (const std::span<const seam_definition> seams :
+       {all_seams(), built_in_fixes()}) {
+    for (const seam_definition& seam : seams) {
+      for (std::size_t i = 0; i < seam.programs.size(); ++i) {
+        const seam_program_points& own = seam.programs[i];
+        EXPECT_FALSE(own.points.empty()) << seam.id;
+        EXPECT_NE(std::ranges::find(seam.fingerprints, own.fingerprint),
+                  seam.fingerprints.end())
+            << seam.id;
+        for (std::size_t j = i + 1; j < seam.programs.size(); ++j) {
+          EXPECT_NE(own.fingerprint, seam.programs[j].fingerprint) << seam.id;
+        }
+        sha256_digest digest;
+        ASSERT_TRUE(parse_digest(own.fingerprint, digest)) << seam.id;
+        EXPECT_EQ(points_on(seam, digest).data(), own.points.data()) << seam.id;
+      }
+      EXPECT_EQ(points_on(seam, sha256_digest{}).data(), seam.points.data())
+          << seam.id;
     }
   }
 }
@@ -1241,8 +1274,9 @@ TEST(SeamGate, ADefinitionWithAGateNamesTheCurrentSchema) {
   // before schema 5 read as ungated would be a possession gate silently
   // not applied, which is the one failure a gate has. It moved again for
   // the group (schema 6), again for `inside_calls` (schema 7), and again
-  // for `at_moment` (schema 8).
-  EXPECT_EQ(seam_schema_version, 8);
+  // for `at_moment` (schema 8), and again for points per program (schema
+  // 9).
+  EXPECT_EQ(seam_schema_version, 9);
   for (const seam_definition& seam : all_seams()) {
     EXPECT_EQ(seam.schema, seam_schema_version) << seam.id;
   }
