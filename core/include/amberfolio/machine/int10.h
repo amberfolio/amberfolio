@@ -164,18 +164,21 @@
 // replacing form takes two passes and the XOR form takes one. In mode
 // 03h there is no text path to draw into and nothing claiming B8000, so
 // the two bytes per cell go to the bus and are dropped, reported once —
-// which is AH=08h's answer from the other side.
+// which is AH=08h's answer from the other side. AH=06h, the scroll that
+// clears a text window (Curse of the Azure Bonds opens with one, #553),
+// is the same: its cells go to the bus and nowhere else.
 //
 //
 // What refuses, and how
 // ------------------------
 //
 // AH=00h with AL anything but 0Dh or 03h, AH=02h or AH=05h or AH=09h
-// naming any page but 0, AH=08h outside a text mode, AH=09h in a mode
+// naming any page but 0, AH=06h outside the text mode or with a window
+// off the screen, AH=08h outside a text mode, AH=09h in a mode
 // this file does not know or with both character generators cleared,
 // AH=10h with AL anything but 00h/01h, AH=11h AL=30h asking for a cell
 // taller than the 8x8 this machine carries, and any AH outside
-// 00h/02h/05h/08h/09h/0Fh/10h/11h are all the same shape: the vector
+// 00h/02h/05h/06h/08h/09h/0Fh/10h/11h are all the same shape: the vector
 // *has* a handler, the handler ran, and it looked at what was asked and
 // declined.
 // That is not `stop_reason::unimplemented_service` (service_floor.h) —

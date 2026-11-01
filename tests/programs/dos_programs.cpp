@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The machine programs for the DOS services Curse of the Azure Bonds'
-// boot reaches (#553), in the listing-and-bytes convention of
+// The machine programs for the DOS and BIOS services Curse of the Azure
+// Bonds' boot reaches (#553), in the listing-and-bytes convention of
 // machine_programs.cpp. A file of their own because that one is at the
 // content guard's size cap; their entries join its list through
 // `append_dos_service_programs()`.
@@ -241,6 +241,37 @@ void sum_asciz(assembler& a, std::string_view label, std::string_view tag) {
   return raw_program(a);
 }
 
+// --- The text window cleared: INT 10h AH=06h ----------------------------
+//
+// The opening Curse's boot makes before it goes to graphics: 80x25 text,
+// clear the whole screen, home the cursor, and read what is under it.
+//
+//         mov  ax, 0003h / int 10h
+//         mov  ax, 0600h / mov bh, 07h / xor cx, cx / mov dx, 184Fh
+//         int  10h
+//         mov  ah, 02h / xor bh, bh / xor dx, dx / int 10h
+//         mov  ah, 08h / int 10h                       ; FFFFh: open bus
+//         <exit 5Eh>
+
+[[nodiscard]] std::vector<std::uint8_t> textscroll_code() {
+  assembler a;
+  mov_ax(a, 0x0003);
+  a.db({0xCD, 0x10});
+  mov_ax(a, 0x0600);
+  a.db({0xB7, 0x07});  // mov bh, 07h
+  a.db({0x31, 0xC9});  // xor cx, cx
+  a.db({0xBA});
+  a.dw(0x184F);  // mov dx, 184Fh — row 24, column 79
+  a.db({0xCD, 0x10});
+  mov_ax(a, 1);  // Still running: the scroll was not refused.
+  store(a, 0, reg_ax);
+  a.db({0xB4, 0x02, 0x30, 0xFF, 0x31, 0xD2, 0xCD, 0x10});
+  a.db({0xB4, 0x08, 0xCD, 0x10});
+  store(a, 1, reg_ax);
+  exit_with(a, 0x5E);
+  return raw_program(a);
+}
+
 }  // namespace
 
 void append_dos_service_programs(std::vector<machine_program>& list) {
@@ -304,6 +335,22 @@ void append_dos_service_programs(std::vector<machine_program>& list) {
         {.what = "the same bytes", .value = asciz_sum(cwd_answer)},
         {.what = "A's: a drive this machine does not have", .value = 0x0F}};
     p.exit_code = 0x5D;
+    list.push_back(std::move(p));
+  }
+
+  {
+    machine_program p;
+    p.name = "textscroll";
+    p.about = "INT 10h AH=06h clears the 80x25 text page nothing displays";
+    p.setup.code = textscroll_code();
+    p.setup.step_cap = 50'000;
+    p.results = {
+        {.what = "the clear was carried out", .value = 1},
+        {.what = "the cell under the cursor, off open bus", .value = 0xFFFF}};
+    p.exit_code = 0x5E;
+    // The text mode this machine records and cannot draw, and the page
+    // nothing answers for, reported once, on the clear's first blank.
+    p.notices = 2;
     list.push_back(std::move(p));
   }
 }
