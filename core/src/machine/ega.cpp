@@ -222,18 +222,18 @@ void ega::write_pixel(std::uint16_t offset, std::uint8_t cpu_byte) {
       std::rotr(cpu_byte, static_cast<int>(rotate_count));
 
   for (unsigned plane = 0; plane < plane_count; ++plane) {
-    // Set/reset substitution: a per-plane 2-to-1 mux. Enable Set/Reset
-    // decides which input a plane takes; the write mode only changes
-    // *what the substituted input is*, not whether the mux is gated by
-    // Enable Set/Reset at all. That is real hardware behaviour and the
-    // reason write mode 2 still needs Enable Set/Reset set to reach every
-    // plane it looks like it should — see ega.h.
-    const bool substitute = ((enable_set_reset_ >> plane) & 1u) != 0;
+    // The plane's source. Write mode 2 expands CPU bit n across plane n,
+    // on every plane, whatever Enable Set/Reset says: the set/reset
+    // registers belong to write mode 0 alone (ega.h). In write mode 0
+    // Enable Set/Reset is a per-plane 2-to-1 mux between the rotated CPU
+    // byte and the Set/Reset register's bit, expanded.
     std::uint8_t source;
-    if (substitute) {
-      const bool bit = write_mode == 2 ? (((cpu_byte >> plane) & 1u) != 0)
-                                       : (((set_reset_ >> plane) & 1u) != 0);
-      source = bit ? std::uint8_t{0xFF} : std::uint8_t{0x00};
+    if (write_mode == 2) {
+      source = ((cpu_byte >> plane) & 1u) != 0 ? std::uint8_t{0xFF}
+                                               : std::uint8_t{0x00};
+    } else if (((enable_set_reset_ >> plane) & 1u) != 0) {
+      source = ((set_reset_ >> plane) & 1u) != 0 ? std::uint8_t{0xFF}
+                                                 : std::uint8_t{0x00};
     } else {
       source = rotated;
     }
