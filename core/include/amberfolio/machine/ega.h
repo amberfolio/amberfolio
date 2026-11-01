@@ -168,19 +168,16 @@
 //     happens unconditionally, before anything plane-specific, because
 //     on real hardware the rotator sits on the CPU data bus itself and
 //     has not seen a plane number yet.
-//   * **Set/reset substitution** is a 2-to-1 mux, once per plane, gated
-//     by the Enable Set/Reset register: a plane whose enable bit is 0
-//     takes the rotated CPU byte; a plane whose bit is 1 takes an
-//     expanded single bit instead — 0xFF or 0x00 — repeated across all
-//     eight bit positions. In write mode 0 that bit comes from the
-//     Set/Reset register; in write mode 2 (color expand) it comes from
-//     the CPU byte itself, one bit per plane, bit *n* for plane *n*. The
-//     mux does not know which write mode it is in beyond that one
-//     difference — Enable Set/Reset gates both modes identically, which
-//     is a real and easy-to-miss hardware fact: a program that leaves
-//     Enable Set/Reset at 0x0 while trying to color-expand in write mode
-//     2 gets the rotated CPU byte on every plane and no color expansion
-//     at all, because nothing told the mux to take the expanded input.
+//   * **Set/reset substitution** is write mode 0's: a 2-to-1 mux, once
+//     per plane, gated by the Enable Set/Reset register. A plane whose
+//     enable bit is 0 takes the rotated CPU byte; a plane whose bit is 1
+//     takes the Set/Reset register's bit for that plane, expanded to
+//     0xFF or 0x00 across all eight bit positions. In write mode 2
+//     (color expand) every plane takes CPU bit *n* for plane *n*,
+//     expanded the same way, and the two set/reset registers play no
+//     part: the IBM reference gives them to write mode 0 alone. A program
+//     can leave Enable Set/Reset at 0x0 and color-expand in write mode 2,
+//     and Curse of the Azure Bonds draws its text that way (#553).
 //   * **The ALU** combines that per-plane source with the plane's latch
 //     — loaded by the CPU's most recent read of *any* address in this
 //     window, not this one — under the Data Rotate register's function
@@ -206,8 +203,9 @@
 //     latches) at the source address, then write mode 1 at the
 //     destination replays exactly what was read, on every plane the
 //     source had.
-//   * **Mode 2** is the set/reset mux's other input, described above; the
-//     ALU and bit-mask stages still run afterward exactly as in mode 0.
+//   * **Mode 2** replaces the rotated byte and the set/reset mux with the
+//     CPU byte's low four bits, one per plane, described above; the ALU
+//     and bit-mask stages still run afterward exactly as in mode 0.
 //
 //
 // Reads and the latches

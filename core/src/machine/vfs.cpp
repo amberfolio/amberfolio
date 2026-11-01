@@ -157,6 +157,89 @@ vfs_result<dos_path> canonicalize_host_path(
                       std::span<const char>(folded.data(), raw.size()));
 }
 
+// --- Search patterns (#553) ---------------------------------------------
+
+fcb_name fcb_form(const dos_name& name) noexcept {
+  fcb_name out{};
+  out.fill(' ');
+  const std::span<const char> text = name.text();
+  std::size_t at = 0;
+  std::size_t i = 0;
+  for (; i < text.size() && text[i] != '.'; ++i) {
+    out[at++] = text[i];
+  }
+  if (i < text.size()) {
+    at = 8;
+    for (++i; i < text.size(); ++i) {
+      out[at++] = text[i];
+    }
+  }
+  return out;
+}
+
+vfs_result<search_pattern> search_pattern::parse(
+    std::span<const char> raw) noexcept {
+  if (raw.empty()) {
+    return {.error = vfs_error::path_not_found};
+  }
+  search_pattern result;
+  result.chars_.fill(' ');
+
+  // One part at a time: [0, 8) for the name, [8, 11) for the extension.
+  std::size_t i = 0;
+  std::size_t first = 0;
+  std::size_t end = 8;
+  bool in_extension = false;
+  std::size_t at = first;
+  while (i < raw.size()) {
+    const char c = raw[i++];
+    if (c == '.') {
+      if (in_extension) {
+        return {.error = vfs_error::path_not_found};
+      }
+      in_extension = true;
+      first = 8;
+      end = 11;
+      at = first;
+      continue;
+    }
+    if (c == '*') {
+      for (; at < end; ++at) {
+        result.chars_[at] = '?';
+      }
+      // DOS ignores the rest of the part after a star.
+      while (i < raw.size() && raw[i] != '.') {
+        ++i;
+      }
+      continue;
+    }
+    if (at >= end || (c != '?' && !is_dos_name_char(c))) {
+      return {.error = vfs_error::path_not_found};
+    }
+    result.chars_[at++] = upper(c);
+  }
+  if (result.chars_[0] == ' ') {
+    // A pattern with no name part (".TXT") names nothing an entry has.
+    return {.error = vfs_error::path_not_found};
+  }
+  return {.value = result, .error = vfs_error::none};
+}
+
+search_pattern search_pattern::from_fcb(const fcb_name& bytes) noexcept {
+  search_pattern result;
+  result.chars_ = bytes;
+  return result;
+}
+
+bool search_pattern::matches(const fcb_name& name) const noexcept {
+  for (std::size_t i = 0; i < chars_.size(); ++i) {
+    if (chars_[i] != '?' && chars_[i] != name[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // --- The whole tree, and one file whole (M5-D2, #170) -------------------
 
 namespace {

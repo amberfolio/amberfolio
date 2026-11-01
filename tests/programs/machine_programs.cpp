@@ -33,6 +33,7 @@
 #include "amberfolio/sha256.h"
 #include "programs/assembler.h"
 #include "programs/exe.h"
+#include "programs/machine_idioms.h"
 
 namespace amberfolio::programs {
 namespace {
@@ -40,56 +41,10 @@ namespace {
 using machine::ticks;
 
 // --- The idioms ---------------------------------------------------------
-
-/// Register numbers as the encoding numbers them, for the ModRM byte the
-/// result store builds. Only the ones a program below actually answers
-/// with are named.
-constexpr unsigned reg_ax = 0;
-constexpr unsigned reg_cx = 1;
-constexpr unsigned reg_dx = 2;
-constexpr unsigned reg_bx = 3;
-constexpr unsigned reg_bp = 5;
-constexpr unsigned reg_si = 6;
-
-/// The result block's word `index`, as a displacement.
-[[nodiscard]] std::uint16_t result_word(std::size_t index) {
-  return static_cast<std::uint16_t>(machine_layout::result_offset + 2 * index);
-}
-
-/// How every program answers:
-///
-///     mov  [result + 2*index], <reg>     ; 89 /r, mod=00 rm=110
-void store(assembler& a, std::size_t index, unsigned reg) {
-  a.db({0x89, static_cast<std::uint8_t>(0x06U | (reg << 3U))});
-  a.dw(result_word(index));
-}
-
-///     mov  ax, imm16                     ; B8 iw
-void mov_ax(assembler& a, std::uint16_t value) {
-  a.db({0xB8});
-  a.dw(value);
-}
-
-///     mov  dx, offset <label>            ; BA iw
-void mov_dx_offset(assembler& a, std::string_view label) {
-  a.db({0xBA});
-  a.dw_label(label);
-}
-
-///     mov  ah, function                  ; B4 ib
-///     int  21h                           ; CD 21
-void int21(assembler& a, std::uint8_t function) {
-  a.db({0xB4, function, 0xCD, 0x21});
-}
-
-/// The only way a machine program is allowed to end (machine_harness.h):
-///
-///     mov  ax, 4C00h + code              ; B8 iw
-///     int  21h                           ; CD 21
-void exit_with(assembler& a, std::uint8_t code) {
-  mov_ax(a, static_cast<std::uint16_t>(0x4C00U | code));
-  a.db({0xCD, 0x21});
-}
+//
+// The result store, the DOS call and exit and the carry tests are in
+// machine_idioms.h, shared with dos_programs.cpp; the device idioms only
+// this file uses are here.
 
 ///     mov  al, value                     ; B0 ib
 ///     out  port, al                      ; E6 ib
@@ -232,113 +187,6 @@ void hook_user_tick(assembler& a, std::string_view handler) {
 void tick_handler(assembler& a, std::string_view label) {
   a.label(label);
   a.db({0x45, 0xCF});
-}
-
-/// Reduce "the call succeeded" to a word — DOS reports failure in CF
-/// (service_floor.h), and an expectation is worth more as an equality
-/// than as a range:
-///
-///     mov  ax, 1                         ; B8 01 00
-///     jnc  done                          ; 73 rel8
-///     xor  ax, ax                        ; 31 C0
-///  done:
-void succeeded(assembler& a, std::string_view tag) {
-  mov_ax(a, 1);
-  a.jump(0x73, tag);
-  a.db({0x31, 0xC0});
-  a.label(tag);
-}
-
-/// Keep AX when the call succeeded, zero it when it failed. For the calls
-/// whose successful answer — a handle, a byte count, a file position —
-/// is the thing being asserted and is never zero.
-///
-///     jnc  done                          ; 73 rel8
-///     xor  ax, ax                        ; 31 C0
-///  done:
-void answer_or_zero(assembler& a, std::string_view tag) {
-  a.jump(0x73, tag);
-  a.db({0x31, 0xC0});
-  a.label(tag);
-}
-
-/// Keep AX when the call *failed*, zero it when it wrongly succeeded —
-/// the error-path mirror of the above. AX is DOS's error code on a
-/// carry-set return, and zero is not one of them.
-///
-///     jc   done                          ; 72 rel8
-///     xor  ax, ax                        ; 31 C0
-///  done:
-void error_or_zero(assembler& a, std::string_view tag) {
-  a.jump(0x72, tag);
-  a.db({0x31, 0xC0});
-  a.label(tag);
-}
-
-/// Reduce "it succeeded and answered exactly `want`" to 1, and anything
-/// else to 0 — for the calls whose right answer is zero, where
-/// `answer_or_zero`'s own zero would be ambiguous.
-///
-///     jc   no                            ; 72 rel8
-///     cmp  ax, want                      ; 3D iw
-///     jne  no                            ; 75 rel8
-///     mov  ax, 1                         ; B8 01 00
-///     jmp  done                          ; EB rel8
-///  no: xor  ax, ax                       ; 31 C0
-///  done:
-void answered(assembler& a, std::uint16_t want, std::string_view tag) {
-  const std::string no = std::string(tag) + "_no";
-  a.jump(0x72, no);
-  a.db({0x3D});
-  a.dw(want);
-  a.jump(0x75, no);
-  mov_ax(a, 1);
-  a.jump(0xEB, tag);
-  a.label(no);
-  a.db({0x31, 0xC0});
-  a.label(tag);
-}
-
-/// Reduce "BP is at least `least`" to a word. What a program uses to
-/// answer a question whose exact number depends on where in a divisor's
-/// period a wait happened to start.
-///
-///     mov  ax, 1                         ; B8 01 00
-///     cmp  bp, least                     ; 83 FD ib
-///     jae  done                          ; 73 rel8
-///     xor  ax, ax                        ; 31 C0
-///  done:
-void bp_reached(assembler& a, std::uint8_t least, std::string_view tag) {
-  mov_ax(a, 1);
-  a.db({0x83, 0xFD, least});
-  a.jump(0x73, tag);
-  a.db({0x31, 0xC0});
-  a.label(tag);
-}
-
-/// A raw program's finished bytes, checked against the result block it
-/// shares a segment with.
-///
-/// A program that grew past `result_offset` would overwrite its own
-/// answers, and the failure would read as a wrong result rather than as
-/// the mistake it is. Cheap to check here, impossible to work out from
-/// the failure otherwise.
-[[nodiscard]] std::vector<std::uint8_t> raw_program(const assembler& a) {
-  std::vector<std::uint8_t> code = a.assemble();
-  if (code.size() > machine_layout::result_offset) {
-    throw std::logic_error("the program has grown into its own result block (" +
-                           std::to_string(code.size()) + " bytes)");
-  }
-  return code;
-}
-
-/// Bytes of an ASCIZ string, as a program's own data.
-void asciz(assembler& a, std::string_view label, std::string_view text) {
-  a.label(label);
-  for (const char c : text) {
-    a.db({static_cast<std::uint8_t>(c)});
-  }
-  a.db({0x00});
 }
 
 // --- 1. The timer -------------------------------------------------------
@@ -1432,6 +1280,12 @@ constexpr std::uint16_t boot_packed_offset = 0x0140;
 constexpr std::uint16_t boot_payload_offset = 0x0500;
 constexpr std::uint16_t boot_overlay_offset = 0x0680;
 
+/// Where the payload points the DTA to find its overlay: past the most
+/// the overlay read can fill, below the result block. AH=47h's 64-byte
+/// buffer follows it.
+constexpr std::uint16_t boot_dta_offset = 0x06C0;
+constexpr std::uint16_t boot_directory_offset = 0x0700;
+
 /// The room the payload and its packed form each have. Checked at build
 /// time rather than trusted: a payload that outgrew its landing zone
 /// would overwrite the place the overlay is about to be read to, and the
@@ -1505,6 +1359,10 @@ enum boot_result : std::uint8_t {
   boot_glyph_first_line,
   boot_glyph_second_line,
   boot_retrace_seen,
+  boot_overlay_found_size,
+  boot_current_drive,
+  boot_current_directory_call,
+  boot_current_directory_first,
   boot_overlay_bytes,
   boot_overlay_ran,
   boot_timer_ticked,
@@ -1611,6 +1469,15 @@ void interrupt(assembler& a, std::uint8_t vector) { a.db({0xCD, vector}); }
   interrupt(a, 0x10);
   store(a, boot_mode_after_text, reg_ax);
 
+  // Clear the whole text screen, the way Curse's boot opens (#553): a
+  // scroll of zero lines, to a page nothing answers for.
+  mov_ax(a, 0x0600);
+  mov_bx(a, 0x0700);   // BH = 07h, the blank's attribute
+  a.db({0x31, 0xC9});  // xor cx, cx
+  a.db({0xBA});
+  a.dw(0x184F);  // mov dx, 184Fh
+  interrupt(a, 0x10);
+
   // The character under the cursor, out of a text page nothing in this
   // machine answers for: open bus floats high, and that is the answer.
   mov_ax(a, 0x0800);
@@ -1714,9 +1581,39 @@ void interrupt(assembler& a, std::uint8_t vector) { a.db({0xCD, vector}); }
 
   // --- The overlay ------------------------------------------------------
   //
-  // Open it, read it into memory, close it, and far-call what arrived —
-  // through the relocated pointer in the clear, which is how an overlay
-  // manager reaches a module it has just loaded.
+  // Find it, open it, read it into memory, close it, and far-call what
+  // arrived — through the relocated pointer in the clear, which is how an
+  // overlay manager reaches a module it has just loaded. The find is the
+  // one Curse of the Azure Bonds' overlay manager makes before its open
+  // (#553): a DTA of its own, and the size read back out of it.
+  a.db({0xBA});
+  a.dw(boot_dta_offset);  // mov dx, dta
+  a.db({0xB4, 0x1A});     // mov ah, 1Ah
+  interrupt(a, 0x21);
+  a.db({0xBA});
+  a.dw(boot_name_offset);  // mov dx, filename
+  a.db({0x31, 0xC9});      // xor cx, cx
+  a.db({0xB4, 0x4E});      // mov ah, 4Eh
+  interrupt(a, 0x21);
+  a.db({0xA1});
+  a.dw(boot_dta_offset + 0x1A);  // mov ax, [dta+1Ah] — the size found
+  store(a, boot_overlay_found_size, reg_ax);
+
+  // The drive and the directory, which Curse asks for next (#553).
+  a.db({0xB4, 0x19});  // mov ah, 19h
+  interrupt(a, 0x21);
+  a.db({0x32, 0xE4});  // xor ah, ah
+  store(a, boot_current_drive, reg_ax);
+  a.db({0xBE});
+  a.dw(boot_directory_offset);  // mov si, buffer
+  a.db({0x30, 0xD2});           // xor dl, dl
+  a.db({0xB4, 0x47});           // mov ah, 47h
+  interrupt(a, 0x21);
+  store(a, boot_current_directory_call, reg_ax);
+  a.db({0x31, 0xC0, 0xA0});
+  a.dw(boot_directory_offset);  // xor ax, ax / mov al, [buffer]
+  store(a, boot_current_directory_first, reg_ax);
+
   a.db({0xBA});
   a.dw(boot_name_offset);  // mov dx, filename
   mov_ax(a, 0x3D00);       // AH=3Dh AL=00h: open for reading
@@ -4577,6 +4474,8 @@ constexpr std::array<machine::seam_point, 1> door_points{
     list.push_back(std::move(p));
   }
 
+  append_dos_service_programs(list);
+
   {
     machine_program p;
     p.name = "loaded_exe";
@@ -4699,16 +4598,22 @@ constexpr std::array<machine::seam_point, 1> door_points{
         {.what = "its second line, one scan line down",
          .value = boot_font_glyph[1]},
         {.what = "retrace both ended and began again", .value = 1},
+        {.what = "the overlay's size, as find first reported it",
+         .value = static_cast<std::uint16_t>(boot_overlay_module().size())},
+        {.what = "the current drive, zero-based: C", .value = 2},
+        {.what = "the current directory: MS-DOS's AX", .value = 0x0100},
+        {.what = "the root's name: an empty string", .value = 0x0000},
         {.what = "bytes of the overlay module read in",
          .value = static_cast<std::uint16_t>(boot_overlay_module().size())},
         {.what = "the overlay ran and returned", .value = boot_overlay_mark},
         {.what = "40:6C moved without the program programming anything",
          .value = 1}};
     p.exit_code = 0x77;
-    // The overlay, opened by name and closed by handle - the whole of
-    // this program's file activity, and the shape a real overlay manager
-    // has (M4-G1/#102 found the same two lines under the game).
-    p.file_trace = {"open \\OVL.BIN", "close \\OVL.BIN"};
+    // The overlay, found in its directory, opened by name and closed by
+    // handle - the whole of this program's file activity, and the shape a
+    // real overlay manager has (M4-G1/#102 found the open and the close
+    // under Pool of Radiance; Curse's finds the file first, #553).
+    p.file_trace = {"find \\", "open \\OVL.BIN", "close \\OVL.BIN"};
     // The two the video BIOS owes: the text mode this machine records and
     // cannot draw, and the text page nothing answers for.
     p.notices = 2;

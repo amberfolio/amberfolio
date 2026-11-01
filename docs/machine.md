@@ -145,13 +145,14 @@ calls and 32 naming file calls, off unless asked (`machine/trace.h`).
 `next=` names the one thing to widen.
 
 **The file line.** The DOS layer reports the naming calls (`AH=39h/3Ch/
-3Dh/41h`, and `3Eh` because a save has to close) after the outcome, with
-the canonical path:
+3Dh/41h`, `4Eh` with the directory it searched, and `3Eh` because a save
+has to close) after the outcome, with the canonical path:
 
 ```
 amberfolio: file mkdir \SAVE handle=0000 access_denied from=0B58:1823
 amberfolio: file create \SAVE\SAVGAMA.DAT handle=0006 none from=0B58:1458
 amberfolio: file close \SAVE\SAVGAMA.DAT handle=0006 none from=0B58:14A8
+amberfolio: file find \CURSE handle=0000 none from=0873:0143
 ```
 
 Refusals are reported, including a name `canonicalize()` will not
@@ -186,11 +187,11 @@ Read `platform.h`'s design essay first.
   and a machine left there resolves every name as before. The storefront
   copies need it: their launchers mount the copy at `C:\POOLRAD` and run
   `START` from there, and the program opens its own files by bare name.
-  AH=3Bh and AH=47h are not in the subset and nothing this build runs
-  calls them, so the program cannot move it: it is how the machine was
-  set up, like the program it loaded. `reset()` keeps it, the state hash
+  AH=47h reads it back; AH=3Bh is not in the subset and nothing this
+  build runs calls it, so the program cannot move it: it is how the
+  machine was set up, like the program it loaded. `reset()` keeps it, the state hash
   does not carry it, and a recording names it in its preamble
-  (`docs/replay.md`). Nothing else sees it — the loader builds no
+  (`docs/replay.md`). Nothing else sees it but AH=47h — the loader builds no
   environment block and no parent PSP, so the program's own path is
   nowhere in memory.
 
@@ -210,7 +211,10 @@ not exist**; the smoke test checks the export list.
   `ctest --preset wasm` runs the interpreter. `synthetic_boot` is shaped
   like a real boot (self-unpacking, a module loaded off the filesystem
   and far-called through a relocated pointer, every service the real
-  boot needed) and is extended in the same change as any new service.
+  boots needed) and is extended in the same change as any new service.
+  A service's own program goes in `dos_programs.cpp`, beside them:
+  `machine_programs.cpp` is at the content guard's size cap, and the
+  idioms both use are in `machine_idioms.h`.
 - **Host smoke tests** run a program through a host headlessly.
 
 **A hash tells you something changed; it never tells you the thing was

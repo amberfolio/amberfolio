@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The INT 21h subset (M2-D7, #52): PLAN.md §3's DOS surface, exactly and
-// only — file open/create/read/write/seek/close/unlink/mkdir, date/time,
-// console output, exit — as native handlers installed on the M2-F3
+// only — file open/create/read/write/seek/close/unlink/mkdir, directory
+// search, date/time, console output, exit — as native handlers on the M2-F3
 // callout (service_floor.h) over the M2-D5 filesystem (vfs.h).
 //
 // This file is composition, not new machinery: the mechanism that lets a
@@ -155,27 +155,61 @@
 // there, and a relative open at the root would find nothing.
 //
 // **Set by the host before the load, once, and never by the program.**
-// AH=3Bh (change directory) and AH=47h (get it) are not in this subset;
-// no edition this build knows calls either, and one that did would stop
-// on them like any other unbacked function. So the directory is how the
-// machine was set up, exactly as the program it was told to load is:
-// `reset()` leaves it, `save_state()` does not write it, and a recording
-// names it in its preamble instead (`docs/replay.md`). The day a program
-// can change it, it becomes state and the state layout moves.
+// AH=47h reads it back (Curse of the Azure Bonds asks, #553); AH=3Bh,
+// which would change it, is not in this subset, and a program that called
+// it would stop like on any other unbacked function. So the directory is
+// how the machine was set up, exactly as the program it was told to load
+// is: `reset()` leaves it, `save_state()` does not write it, and a
+// recording names it in its preamble instead (`docs/replay.md`). The day
+// a program can change it, it becomes state and the state layout moves.
 //
 // Nothing else DOS keeps sees it. The loader builds no environment block
 // and fills no parent PSP (loader.h), so a program's own path is nowhere
 // in memory; the directory is observable only through what a relative
-// name opens, which is also all DOS itself makes of it without AH=47h.
+// name opens and what AH=47h answers.
 //
 // The root is the default, and a machine whose directory is the root
 // canonicalizes every path exactly as it did before there was one.
+//
+//
+// Directory searches (#553)
+// --------------------------
+//
+// AH=1Ah sets the disk transfer address, AH=4Eh finds the first entry
+// matching a specification and AH=4Fh the next. DOS keeps a search's
+// progress in the first 21 bytes of the DTA itself, in guest memory,
+// and this layer keeps it in the same place and the same shape: the
+// drive, the eleven-byte pattern, the attribute mask, the index of the
+// next entry to look at, and a word naming the directory. On a disk that
+// word is the directory's first cluster. Here it is an index into a
+// small table of the directories searched since reset, because a VFS
+// directory has a path and no cluster; the table only grows, a FindNext
+// on a record whose word names nothing answers no-more-files exactly as
+// DOS does for a record it did not write, and a table that is full is a
+// loud stop rather than a reused slot that would list some other
+// directory.
+//
+// Entries come in the VFS's own name order (`entry_at()`, pinned), and a
+// directory below the root lists `.` and `..` first, as every DOS
+// directory but the root does. The machine keeps no attributes or
+// timestamps (vfs.h): a file is reported with no attribute bits, a
+// directory with 10h, and the time and date words are zero.
+//
+// The DTA's address and the directory table are machine state (state.h)
+// and are hashed after the open files' positions, in the `dos` section,
+// **only once they differ from power-on** — the DTA moved or a search
+// made. A run that never touched either serializes exactly the bytes it
+// did before this existed, so every golden recorded before stays valid,
+// and the two encodings cannot collide because the longer one is the
+// shorter one with bytes appended.
 
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 
+#include "amberfolio/machine/loader.h"
 #include "amberfolio/machine/vfs.h"
 
 namespace amberfolio::machine {
@@ -329,6 +363,50 @@ class dos_services {
   /// has the filesystem; this writes what the table itself holds.
   void save_state(state_sink& out) const;
 
+  // --- Directory searches (this file's top comment) ---------------------
+
+  /// A segment:offset pair, as AH=1Ah is given one and AH=2Fh answers.
+  struct far_address {
+    std::uint16_t segment{};
+    std::uint16_t offset{};
+
+    friend constexpr bool operator==(const far_address&,
+                                     const far_address&) = default;
+  };
+
+  /// Where DOS points the DTA when it starts a program: the second half
+  /// of its PSP, offset 80h, which the loader always puts at
+  /// `psp_load_segment`.
+  static constexpr far_address default_dta{.segment = psp_load_segment,
+                                           .offset = 0x0080};
+
+  /// How many distinct directories a run may search. A Gold Box program
+  /// searches its own directory, its save directory and a directory a
+  /// player names for an import; sixteen is room for all of them and
+  /// more, and the seventeenth is a stop, not a reused slot.
+  static constexpr std::size_t max_search_directories = 16;
+
+  /// `search_directory()`'s answer when the table is full.
+  static constexpr std::uint16_t no_search_directory = 0xFFFF;
+
+  [[nodiscard]] far_address dta() const noexcept { return dta_; }
+  void set_dta(far_address at) noexcept { dta_ = at; }
+
+  /// The table index naming `directory` — the one it already has, or the
+  /// next free one. `no_search_directory` when it is new and the table is
+  /// full.
+  [[nodiscard]] std::uint16_t search_directory(
+      const dos_path& directory) noexcept;
+
+  /// The directory `index` names, or null if it names none.
+  [[nodiscard]] const dos_path* searched_directory(
+      std::uint16_t index) const noexcept;
+
+  /// The DTA's address and the directory table, once either differs from
+  /// power-on, and nothing before that (this file's top comment). Written
+  /// by `machine` last in the `dos` section.
+  void save_search_state(state_sink& out) const;
+
   // --- Exit state -------------------------------------------------------
   //
   // AH=4Ch and INT 20h both end here (this file's top comment); #51's
@@ -356,6 +434,10 @@ class dos_services {
   dos_path current_directory_{};
   std::uint8_t exit_code_{};
   bool exited_{};
+
+  far_address dta_{default_dta};
+  std::array<dos_path, max_search_directories> searched_{};
+  std::size_t searched_count_{};
 };
 
 /// Install the INT 21h dispatcher and the INT 20h terminator onto

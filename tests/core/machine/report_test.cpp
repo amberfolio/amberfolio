@@ -362,6 +362,7 @@ TEST(FileNames, SpellEachActionAndErrorAsItsOwnEnumerator) {
   EXPECT_STREQ(file_action_name(file_action::mkdir), "mkdir");
   EXPECT_STREQ(file_action_name(file_action::unlink), "unlink");
   EXPECT_STREQ(file_action_name(file_action::close), "close");
+  EXPECT_STREQ(file_action_name(file_action::find), "find");
 
   EXPECT_STREQ(vfs_error_name(vfs_error::none), "none");
   EXPECT_STREQ(vfs_error_name(vfs_error::file_not_found), "file_not_found");

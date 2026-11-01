@@ -17,6 +17,7 @@
 
 #include "amberfolio/machine/dos.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -1015,6 +1016,15 @@ TEST(dos_dispatch, the_date_time_setters_are_deferred) {
   EXPECT_EQ(r.pc().stop().reason, stop_reason::unimplemented_service);
 }
 
+TEST(dos_drive, ah19_answers_the_one_drive) {
+  const rig r;
+  r.call(ah(0x19) | 0x2A);
+  EXPECT_FALSE(r.pc().stopped());
+  EXPECT_FALSE(r.carry());
+  EXPECT_EQ(r.regs().get(cpu::reg8::al), 2);  // Zero-based: C.
+  EXPECT_EQ(r.regs().get(cpu::reg8::ah), 0x19);
+}
+
 // --- Ctrl-Break, the DOS half -------------------------------------------
 
 TEST(dos_break, a_console_call_detours_through_a_hooked_int23h) {
@@ -1157,6 +1167,53 @@ TEST(dos_current_directory, refuses_a_directory_that_is_not_there) {
   EXPECT_TRUE(r.pc().dos().current_directory().is_root());
 }
 
+/// AH=47h for drive `dl`, into `data_area`, and the string it left there.
+[[nodiscard]] std::string current_directory_text(const rig& r,
+                                                 std::uint8_t dl) {
+  r.poke(data_area, {0xEE, 0xEE});  // Not a terminator, so one must be put.
+  r.program();
+  r.regs()[cpu::reg16::ax] = ah(0x47);
+  r.regs().set(cpu::reg8::dl, dl);
+  r.regs()[cpu::reg16::si] = data_area;
+  r.regs()[cpu::sreg::ds] = code_segment;
+  r.run();
+  std::string text;
+  for (std::uint16_t i = 0; i < 64 && r.byte_at(data_area + i) != 0; ++i) {
+    text.push_back(static_cast<char>(r.byte_at(data_area + i)));
+  }
+  return text;
+}
+
+TEST(dos_current_directory, ah47_answers_the_root_as_an_empty_string) {
+  const rig r;
+  EXPECT_EQ(current_directory_text(r, 0), "");
+  EXPECT_FALSE(r.carry());
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x0100);
+  EXPECT_FALSE(r.pc().stopped());
+}
+
+TEST(dos_current_directory, ah47_answers_it_without_drive_or_leading_slash) {
+  const rig r;
+  ASSERT_EQ(r.fs->mkdir(path_named("\\GAMES")), vfs_error::none);
+  ASSERT_EQ(r.fs->mkdir(path_named("\\GAMES\\CURSE")), vfs_error::none);
+  ASSERT_EQ(
+      r.pc().dos().set_current_directory(*r.fs, path_named("\\GAMES\\CURSE")),
+      vfs_error::none);
+  EXPECT_EQ(current_directory_text(r, 0), "GAMES\\CURSE");
+  EXPECT_FALSE(r.carry());
+  EXPECT_EQ(current_directory_text(r, 3), "GAMES\\CURSE");  // C, by number.
+  EXPECT_FALSE(r.carry());
+}
+
+TEST(dos_current_directory, ah47_refuses_a_drive_that_is_not_c) {
+  const rig r;
+  for (const std::uint8_t dl : std::array<std::uint8_t, 4>{1, 2, 4, 26}) {
+    static_cast<void>(current_directory_text(r, dl));
+    EXPECT_TRUE(r.carry()) << int{dl};
+    EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x0F) << int{dl};
+  }
+}
+
 TEST(dos_current_directory, survives_a_reset_and_is_not_in_the_state) {
   // How the machine was set up, like the program it was told to load: a
   // warm reset keeps it, and the state a checkpoint hashes does not carry
@@ -1188,6 +1245,313 @@ TEST(dos_exit, closes_the_files_the_program_left_open) {
     EXPECT_TRUE(r.fs->open(path_named("\\HELD.DAT"), open_mode::read_only).ok())
         << "slot " << i;
   }
+}
+
+// --- Directory searches: AH=1Ah, 4Eh, 4Fh (#553) ------------------------
+//
+// A synthetic disk, a DTA the test chose, and every answer read back out
+// of guest memory where a program would read it.
+
+/// Where these tests point the DTA: past the path and data areas.
+constexpr std::uint16_t dta_area = 0x0600;
+
+/// A file of `size` bytes, each the low byte of its offset.
+void put_file(const rig& r, std::string_view path, std::size_t size) {
+  const vfs_result<file_handle> made = r.fs->create(path_named(path));
+  ASSERT_TRUE(made.ok()) << path;
+  std::vector<std::uint8_t> bytes(size);
+  for (std::size_t i = 0; i < size; ++i) {
+    bytes[i] = static_cast<std::uint8_t>(i);
+  }
+  ASSERT_TRUE(r.fs->write(made.value, bytes).ok());
+  ASSERT_EQ(r.fs->close(made.value), vfs_error::none);
+}
+
+/// The save directory of a made-up game, and two files beside it.
+void search_disk(const rig& r) {
+  ASSERT_EQ(r.fs->mkdir(path_named("\\SAVE")), vfs_error::none);
+  ASSERT_EQ(r.fs->mkdir(path_named("\\SAVE\\OLD")), vfs_error::none);
+  put_file(r, "\\SAVE\\HERO2.SAV", 300);
+  put_file(r, "\\SAVE\\HERO1.SAV", 422);
+  put_file(r, "\\SAVE\\HERO1.FX", 9);
+  put_file(r, "\\SAVE\\NOTES", 70000);
+  put_file(r, "\\GAME.OVR", 12);
+  put_file(r, "\\START.EXE", 34);
+}
+
+/// The ASCIZ name a search left at DTA+1Eh.
+[[nodiscard]] std::string found_name(const rig& r) {
+  std::string name;
+  for (std::uint16_t i = 0; i < 13; ++i) {
+    const std::uint8_t c =
+        r.byte_at(static_cast<std::uint16_t>(dta_area + 0x1E + i));
+    if (c == 0) {
+      break;
+    }
+    name.push_back(static_cast<char>(c));
+  }
+  return name;
+}
+
+[[nodiscard]] std::uint32_t found_size(const rig& r) {
+  std::uint32_t size = 0;
+  for (std::uint16_t i = 0; i < 4; ++i) {
+    size |= std::uint32_t{r.byte_at(
+                static_cast<std::uint16_t>(dta_area + 0x1A + i))}
+            << (8U * i);
+  }
+  return size;
+}
+
+/// Set the DTA, then FindFirst `spec` with `mask` and FindNext until DOS
+/// says there are no more, and answer every name found, in order. The
+/// last call's AX must be 12h.
+[[nodiscard]] std::vector<std::string> search_all(const rig& r,
+                                                  std::string_view spec,
+                                                  std::uint16_t mask = 0) {
+  r.call(ah(0x1A), 0, 0, dta_area);
+  r.write_asciz(path_area, spec);
+  r.call(ah(0x4E), 0, mask, path_area);
+  std::vector<std::string> names;
+  while (!r.carry()) {
+    names.push_back(found_name(r));
+    r.call(ah(0x4F));
+  }
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x12);
+  return names;
+}
+
+TEST(dos_search, set_dta_points_the_record_where_the_program_asked) {
+  const rig r;
+  EXPECT_EQ(r.pc().dos().dta(), dos_services::default_dta);
+  r.call(ah(0x1A), 0, 0, dta_area, 0x3000);
+  EXPECT_FALSE(r.pc().stopped());
+  EXPECT_EQ(r.pc().dos().dta(),
+            (dos_services::far_address{.segment = 0x3000, .offset = dta_area}));
+}
+
+TEST(dos_search, finds_files_in_the_vfs_order) {
+  const rig r;
+  search_disk(r);
+  EXPECT_EQ(search_all(r, "\\SAVE\\*.SAV"),
+            (std::vector<std::string>{"HERO1.SAV", "HERO2.SAV"}));
+  EXPECT_EQ(search_all(r, "C:\\SAVE\\HERO1.*"),
+            (std::vector<std::string>{"HERO1.FX", "HERO1.SAV"}));
+  EXPECT_EQ(search_all(r, "\\save\\hero?.sav"),
+            (std::vector<std::string>{"HERO1.SAV", "HERO2.SAV"}));
+}
+
+TEST(dos_search, reports_size_attribute_and_no_timestamp) {
+  const rig r;
+  search_disk(r);
+  r.call(ah(0x1A), 0, 0, dta_area);
+  r.write_asciz(path_area, "\\SAVE\\NOTES");
+  r.call(ah(0x4E), 0, 0, path_area);
+  ASSERT_FALSE(r.carry());
+  EXPECT_EQ(found_name(r), "NOTES");
+  EXPECT_EQ(found_size(r), 70000U);  // Both halves of the doubleword.
+  EXPECT_EQ(r.byte_at(dta_area + 0x15), 0x00);
+  for (std::uint16_t i = 0x16; i < 0x1A; ++i) {
+    EXPECT_EQ(r.byte_at(i + dta_area), 0x00) << i;
+  }
+}
+
+TEST(dos_search, writes_the_record_findnext_resumes_from) {
+  const rig r;
+  search_disk(r);
+  r.call(ah(0x1A), 0, 0, dta_area);
+  r.write_asciz(path_area, "\\SAVE\\HERO2.SAV");
+  r.call(ah(0x4E), 0, 0x16, path_area);
+  ASSERT_FALSE(r.carry());
+  EXPECT_EQ(r.byte_at(dta_area + 0x00), 3);  // C, one-based.
+  std::string pattern;
+  for (std::uint16_t i = 1; i <= 11; ++i) {
+    pattern.push_back(static_cast<char>(r.byte_at(dta_area + i)));
+  }
+  EXPECT_EQ(pattern, "HERO2   SAV");
+  EXPECT_EQ(r.byte_at(dta_area + 0x0C), 0x16);
+  // `.`, `..`, HERO1.FX, HERO1.SAV, HERO2.SAV: the next to look at is 5.
+  EXPECT_EQ(r.byte_at(dta_area + 0x0D), 5);
+  EXPECT_EQ(r.byte_at(dta_area + 0x0E), 0);
+}
+
+TEST(dos_search, the_root_holds_no_dot_entries) {
+  const rig r;
+  search_disk(r);
+  EXPECT_EQ(search_all(r, "\\*.*"),
+            (std::vector<std::string>{"GAME.OVR", "START.EXE"}));
+  EXPECT_EQ(search_all(r, "\\*.*", 0x10),
+            (std::vector<std::string>{"GAME.OVR", "SAVE", "START.EXE"}));
+}
+
+TEST(dos_search, a_directory_is_found_only_when_asked_for) {
+  const rig r;
+  search_disk(r);
+  EXPECT_EQ(search_all(r, "\\SAVE\\*"), (std::vector<std::string>{"NOTES"}));
+  EXPECT_EQ(search_all(r, "\\SAVE\\*", 0x10),
+            (std::vector<std::string>{".", "..", "NOTES", "OLD"}));
+  EXPECT_EQ(search_all(r, "\\SAVE\\*.*", 0x10),
+            (std::vector<std::string>{".", "..", "HERO1.FX", "HERO1.SAV",
+                                      "HERO2.SAV", "NOTES", "OLD"}));
+  r.call(ah(0x1A), 0, 0, dta_area);
+  r.write_asciz(path_area, "\\SAVE\\OLD");
+  r.call(ah(0x4E), 0, 0x10, path_area);
+  ASSERT_FALSE(r.carry());
+  EXPECT_EQ(r.byte_at(dta_area + 0x15), 0x10);
+}
+
+TEST(dos_search, a_volume_label_search_finds_nothing) {
+  const rig r;
+  search_disk(r);
+  EXPECT_TRUE(search_all(r, "\\*.*", 0x08).empty());
+}
+
+TEST(dos_search, a_relative_spec_searches_the_current_directory) {
+  const rig r;
+  search_disk(r);
+  ASSERT_EQ(r.pc().dos().set_current_directory(*r.fs, path_named("\\SAVE")),
+            vfs_error::none);
+  EXPECT_EQ(search_all(r, "*.SAV"),
+            (std::vector<std::string>{"HERO1.SAV", "HERO2.SAV"}));
+  EXPECT_EQ(search_all(r, "C:HERO2.*"),
+            (std::vector<std::string>{"HERO2.SAV"}));
+  EXPECT_EQ(search_all(r, "..\\GAME.OVR"),
+            (std::vector<std::string>{"GAME.OVR"}));
+}
+
+TEST(dos_search, answers_dos_error_codes) {
+  const rig r;
+  search_disk(r);
+  r.call(ah(0x1A), 0, 0, dta_area);
+
+  r.write_asciz(path_area, "\\SAVE\\*.DAT");  // Nothing matches.
+  r.call(ah(0x4E), 0, 0, path_area);
+  EXPECT_TRUE(r.carry());
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x12);
+
+  r.write_asciz(path_area, "\\NOWHERE\\*.*");  // No such directory.
+  r.call(ah(0x4E), 0, 0, path_area);
+  EXPECT_TRUE(r.carry());
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x03);
+
+  r.write_asciz(path_area, "\\GAME.OVR\\*.*");  // A file, not a directory.
+  r.call(ah(0x4E), 0, 0, path_area);
+  EXPECT_TRUE(r.carry());
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x03);
+
+  r.write_asciz(path_area, "A:\\*.*");  // The one drive is C.
+  r.call(ah(0x4E), 0, 0, path_area);
+  EXPECT_TRUE(r.carry());
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x0F);
+
+  EXPECT_FALSE(r.pc().stopped());
+}
+
+TEST(dos_search, findnext_on_a_record_no_search_wrote_runs_out) {
+  const rig r;
+  search_disk(r);
+  r.call(ah(0x1A), 0, 0, dta_area);
+  r.poke(dta_area + 0x0F, {0x07, 0x00});  // A directory nothing searched.
+  r.call(ah(0x4F));
+  EXPECT_TRUE(r.carry());
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x12);
+}
+
+TEST(dos_search, two_records_search_two_directories_at_once) {
+  const rig r;
+  search_disk(r);
+  constexpr std::uint16_t second = dta_area + 0x80;
+
+  r.call(ah(0x1A), 0, 0, dta_area);
+  r.write_asciz(path_area, "\\SAVE\\*.SAV");
+  r.call(ah(0x4E), 0, 0, path_area);
+  ASSERT_FALSE(r.carry());
+
+  r.call(ah(0x1A), 0, 0, second);
+  r.write_asciz(path_area, "\\*.EXE");
+  r.call(ah(0x4E), 0, 0, path_area);
+  ASSERT_FALSE(r.carry());
+
+  r.call(ah(0x1A), 0, 0, dta_area);
+  r.call(ah(0x4F));
+  ASSERT_FALSE(r.carry());
+  EXPECT_EQ(found_name(r), "HERO2.SAV");
+}
+
+TEST(dos_search, the_find_is_reported_by_directory) {
+  const rig r;
+  search_disk(r);
+  r.call(ah(0x1A), 0, 0, dta_area);
+  r.write_asciz(path_area, "\\SAVE\\*.DAT");
+  r.call(ah(0x4E), 0, 0, path_area);
+  const std::vector<file_event> got = events(r);
+  ASSERT_EQ(got.size(), 1U);
+  EXPECT_EQ(got[0].what, file_action::find);
+  EXPECT_EQ(got[0].error, vfs_error::no_more_files);
+  EXPECT_EQ(opened_path(r), "\\SAVE");
+}
+
+TEST(dos_search, a_full_directory_table_is_a_stop) {
+  const rig r;
+  r.call(ah(0x1A), 0, 0, dta_area);
+  for (std::size_t i = 0; i <= dos_services::max_search_directories; ++i) {
+    const std::string dir = "\\D" + std::to_string(i);
+    ASSERT_EQ(r.fs->mkdir(path_named(dir)), vfs_error::none);
+    r.write_asciz(path_area, dir + "\\*.*");
+    r.call(ah(0x4E), 0, 0, path_area);
+    if (i < dos_services::max_search_directories) {
+      ASSERT_FALSE(r.pc().stopped()) << i;
+    }
+  }
+  EXPECT_TRUE(r.pc().stopped());
+  EXPECT_EQ(r.pc().stop().reason, stop_reason::unsupported_request);
+}
+
+/// The bytes of the `dos` section, for a test that wants to look.
+class dos_section_sink final : public state_sink {
+ public:
+  void begin(state_section which) override { current_ = which; }
+  void bytes(std::span<const std::uint8_t> data) override {
+    if (current_ == state_section::dos) {
+      kept.insert(kept.end(), data.begin(), data.end());
+    }
+  }
+  std::vector<std::uint8_t> kept;
+
+ private:
+  state_section current_{};
+};
+
+[[nodiscard]] std::vector<std::uint8_t> dos_section(const machine& box) {
+  dos_section_sink sink;
+  box.save_state(sink);
+  return sink.kept;
+}
+
+TEST(dos_search, the_state_moves_only_once_a_program_has_searched) {
+  const rig r;
+  search_disk(r);
+  const std::vector<std::uint8_t> untouched = dos_section(r.pc());
+
+  // The DTA where the load put it, and nothing searched: the bytes every
+  // recording before this was hashed over.
+  r.call(ah(0x1A), dos_services::default_dta.offset, 0,
+         dos_services::default_dta.offset, dos_services::default_dta.segment);
+  EXPECT_EQ(dos_section(r.pc()), untouched);
+
+  r.call(ah(0x1A), 0, 0, dta_area);
+  const std::vector<std::uint8_t> moved = dos_section(r.pc());
+  ASSERT_GT(moved.size(), untouched.size());
+  EXPECT_TRUE(std::equal(untouched.begin(), untouched.end(), moved.begin()));
+
+  r.write_asciz(path_area, "\\SAVE\\*.*");
+  r.call(ah(0x4E), 0, 0, path_area);
+  EXPECT_NE(dos_section(r.pc()), moved);
+
+  // A reset is power-on again.
+  r.pc().reset();
+  EXPECT_EQ(r.pc().dos().dta(), dos_services::default_dta);
+  EXPECT_EQ(r.pc().dos().searched_directory(0), nullptr);
 }
 
 }  // namespace

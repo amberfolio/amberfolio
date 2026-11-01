@@ -297,6 +297,76 @@ TEST(vfs_result_ok, is_true_only_for_none) {
   EXPECT_FALSE(failure.ok());
 }
 
+// --- Search patterns (#553) ----------------------------------------------
+
+[[nodiscard]] std::string fcb_text(const fcb_name& bytes) {
+  return {bytes.data(), bytes.size()};
+}
+
+[[nodiscard]] fcb_name fcb_of(std::string_view name) {
+  const vfs_result<dos_name> parsed =
+      dos_name::parse(std::span<const char>(name.data(), name.size()));
+  EXPECT_TRUE(parsed.ok()) << name;
+  return fcb_form(parsed.value);
+}
+
+[[nodiscard]] vfs_result<search_pattern> pattern_of(std::string_view raw) {
+  return search_pattern::parse(std::span<const char>(raw.data(), raw.size()));
+}
+
+TEST(fcb_form, pads_the_name_and_the_extension_with_blanks) {
+  EXPECT_EQ(fcb_text(fcb_of("game.ovr")), "GAME    OVR");
+  EXPECT_EQ(fcb_text(fcb_of("ITEMS")), "ITEMS      ");
+  EXPECT_EQ(fcb_text(fcb_of("CHRDATA1.SAV")), "CHRDATA1SAV");
+  EXPECT_EQ(fcb_text(fcb_of("A.B")), "A       B  ");
+}
+
+TEST(search_pattern_parse, fills_a_star_with_question_marks) {
+  EXPECT_EQ(fcb_text(pattern_of("*.*").value.fcb()), "???????????");
+  EXPECT_EQ(fcb_text(pattern_of("*.sav").value.fcb()), "????????SAV");
+  EXPECT_EQ(fcb_text(pattern_of("CHR*.S*").value.fcb()), "CHR?????S??");
+  // A star with no dot after it fills the name and leaves no extension.
+  EXPECT_EQ(fcb_text(pattern_of("*").value.fcb()), "????????   ");
+}
+
+TEST(search_pattern_parse, ignores_what_follows_a_star_in_its_part) {
+  EXPECT_EQ(fcb_text(pattern_of("A*B.T*X").value.fcb()), "A???????T??");
+}
+
+TEST(search_pattern_parse, keeps_a_question_mark_and_a_plain_name) {
+  EXPECT_EQ(fcb_text(pattern_of("chrdat?1.sav").value.fcb()), "CHRDAT?1SAV");
+  EXPECT_EQ(fcb_text(pattern_of("GAME.OVR").value.fcb()), "GAME    OVR");
+}
+
+TEST(search_pattern_parse, refuses_what_no_entry_could_answer) {
+  for (const std::string_view bad :
+       {"", ".TXT", "A.B.C", "NINECHARS.TXT", "A.LONG", "A B", "A+B"}) {
+    EXPECT_EQ(pattern_of(bad).error, vfs_error::path_not_found) << bad;
+  }
+}
+
+TEST(search_pattern_match, a_question_mark_matches_a_trailing_blank) {
+  const search_pattern pattern = pattern_of("A?.TXT").value;
+  EXPECT_TRUE(pattern.matches(fcb_of("A.TXT")));
+  EXPECT_TRUE(pattern.matches(fcb_of("AB.TXT")));
+  EXPECT_FALSE(pattern.matches(fcb_of("ABC.TXT")));
+  EXPECT_FALSE(pattern.matches(fcb_of("AB.TX")));
+}
+
+TEST(search_pattern_match, a_star_without_an_extension_finds_no_extension) {
+  const search_pattern pattern = pattern_of("*").value;
+  EXPECT_TRUE(pattern.matches(fcb_of("ITEMS")));
+  EXPECT_FALSE(pattern.matches(fcb_of("GAME.OVR")));
+}
+
+TEST(search_pattern_match, survives_the_trip_through_its_eleven_bytes) {
+  const search_pattern pattern = pattern_of("CHRDAT*.SAV").value;
+  const search_pattern again = search_pattern::from_fcb(pattern.fcb());
+  EXPECT_EQ(again, pattern);
+  EXPECT_TRUE(again.matches(fcb_of("CHRDATA1.SAV")));
+  EXPECT_FALSE(again.matches(fcb_of("CHRDATA1.FX")));
+}
+
 // --- The whole tree, and one file whole (M5-D2, #170) -------------------
 //
 // Two free functions over `filesystem`, written once above every backend

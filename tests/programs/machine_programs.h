@@ -246,6 +246,10 @@ struct machine_program {
 /// Every machine program, in the order the benchmark should run them.
 [[nodiscard]] std::vector<machine_program> all_machine_programs();
 
+/// The programs for the DOS and BIOS services Curse of the Azure Bonds' boot
+/// reaches (#553), appended to `list` (dos_programs.cpp).
+void append_dos_service_programs(std::vector<machine_program>& list);
+
 /// The seam the probe program (`seam_probe`) is written for: keyed to
 /// that program's own fingerprint, with one point that edits a register
 /// and one that posts a keystroke (M4-F2 #96's exit criterion, and the

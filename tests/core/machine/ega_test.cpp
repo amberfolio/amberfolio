@@ -268,24 +268,50 @@ TEST(ega_write_mode_2, expands_one_cpu_data_bit_per_plane) {
   EXPECT_EQ(r.video().plane_byte(3, 0x700), 0x00);
 }
 
-TEST(ega_write_mode_2, still_needs_enable_set_reset_per_plane) {
-  // The documented, easy-to-miss hardware fact this device reproduces
-  // (ega.h): Enable Set/Reset gates write mode 2 exactly as it gates
-  // write mode 0. A plane whose enable bit is clear gets the rotated CPU
-  // byte, not a color-expanded bit, even in write mode 2.
+TEST(ega_write_mode_2, expands_on_every_plane_whatever_enable_set_reset_says) {
+  // The set/reset registers are write mode 0's (ega.h). Enable Set/Reset
+  // at 0x3 and at 0x0 color-expand alike, and Set/Reset's own value is
+  // not what lands: CPU bit n does, on plane n. Curse of the Azure Bonds
+  // draws its text with Enable Set/Reset at 0x0 (#553).
+  for (const std::uint8_t enable : {std::uint8_t{0b0011}, std::uint8_t{0}}) {
+    const rig r;
+    r.set_gc(0x00, 0x0A);  // Set/Reset: the opposite of the CPU byte.
+    r.set_gc(0x01, enable);
+    r.set_gc(0x03, 0x00);  // rotate 0, function 0 (copy).
+    r.set_gc(0x05, 0x02);  // write mode 2.
+    r.set_map_mask(0x0F);
+
+    r.video().write_memory(addr(0x710), 0x05);  // bit0=1, bit1=0, ...
+
+    EXPECT_EQ(r.video().plane_byte(0, 0x710), 0xFF) << int{enable};
+    EXPECT_EQ(r.video().plane_byte(1, 0x710), 0x00) << int{enable};
+    EXPECT_EQ(r.video().plane_byte(2, 0x710), 0xFF) << int{enable};
+    EXPECT_EQ(r.video().plane_byte(3, 0x710), 0x00) << int{enable};
+  }
+}
+
+TEST(ega_write_mode_2, the_bit_mask_picks_glyph_pixels_from_two_writes) {
+  // A glyph the way Curse of the Azure Bonds draws one, with Enable
+  // Set/Reset at 0x0: load the latches, put the colour under the glyph's
+  // bits; load them again, put the background under the rest.
   const rig r;
-  r.set_gc(0x01, 0b0011);  // only planes 0 and 1 color-expand.
-  r.set_gc(0x03, 0x00);    // rotate 0, function 0 (copy).
-  r.set_gc(0x05, 0x02);    // write mode 2.
+  r.set_gc(0x01, 0x00);
+  r.set_gc(0x03, 0x00);
+  r.set_gc(0x05, 0x02);
   r.set_map_mask(0x0F);
 
-  constexpr std::uint8_t cpu_byte = 0x05;  // bit0=1, bit1=0.
-  r.video().write_memory(addr(0x710), cpu_byte);
+  constexpr std::uint8_t glyph_row = 0x36;
+  static_cast<void>(r.video().read_memory(addr(0x720)));
+  r.set_gc(0x08, glyph_row);
+  r.video().write_memory(addr(0x720), 0x0D);  // colour 13: planes 0, 2, 3
+  static_cast<void>(r.video().read_memory(addr(0x720)));
+  r.set_gc(0x08, static_cast<std::uint8_t>(~glyph_row));
+  r.video().write_memory(addr(0x720), 0x00);
 
-  EXPECT_EQ(r.video().plane_byte(0, 0x710), 0xFF);      // expanded
-  EXPECT_EQ(r.video().plane_byte(1, 0x710), 0x00);      // expanded
-  EXPECT_EQ(r.video().plane_byte(2, 0x710), cpu_byte);  // not enabled
-  EXPECT_EQ(r.video().plane_byte(3, 0x710), cpu_byte);  // not enabled
+  EXPECT_EQ(r.video().plane_byte(0, 0x720), glyph_row);
+  EXPECT_EQ(r.video().plane_byte(1, 0x720), 0x00);
+  EXPECT_EQ(r.video().plane_byte(2, 0x720), glyph_row);
+  EXPECT_EQ(r.video().plane_byte(3, 0x720), glyph_row);
 }
 
 // --- Reads: latches and read map select -----------------------------------

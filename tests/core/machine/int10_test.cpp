@@ -20,6 +20,7 @@
 #include <initializer_list>
 #include <memory>
 #include <span>
+#include <vector>
 
 #include "amberfolio/cpu/address.h"
 #include "amberfolio/cpu/interrupts.h"
@@ -472,6 +473,88 @@ TEST(int10_write_character, in_text_mode_it_writes_a_page_nothing_answers_for) {
   EXPECT_EQ(r.log.notices.back().what, notice_kind::unmapped_memory_write);
   EXPECT_EQ(r.log.notices.back().at, 0xB8000u);
   EXPECT_EQ(r.log.notices.back().value, 'A');
+}
+
+// --- AH=06h: scroll a window up (#553) ------------------------------------
+
+/// Mode 03h, then AH=06h with AL `lines`, BH `attribute` and the window
+/// from (`top`, `left`) to (`bottom`, `right`); answers the notices the
+/// scroll itself produced.
+[[nodiscard]] std::vector<notice> scroll_up(const rig& r, std::uint8_t lines,
+                                            std::uint8_t attribute,
+                                            std::uint8_t top, std::uint8_t left,
+                                            std::uint8_t bottom,
+                                            std::uint8_t right) {
+  r.call_int10();
+  r.regs()[cpu::reg16::ax] = 0x0003;
+  r.run();
+  const std::size_t before = r.log.notices.size();
+
+  r.call_int10();
+  r.regs()[cpu::reg16::ax] = static_cast<std::uint16_t>(0x0600U | lines);
+  r.regs().set(cpu::reg8::bh, attribute);
+  r.regs().set(cpu::reg8::ch, top);
+  r.regs().set(cpu::reg8::cl, left);
+  r.regs().set(cpu::reg8::dh, bottom);
+  r.regs().set(cpu::reg8::dl, right);
+  r.run(50'000);
+  return {r.log.notices.begin() + static_cast<std::ptrdiff_t>(before),
+          r.log.notices.end()};
+}
+
+TEST(int10_scroll_up, al_0_blanks_the_window_into_a_page_nothing_answers_for) {
+  const rig r;
+  const std::vector<notice> seen = scroll_up(r, 0, 0x07, 0, 0, 24, 79);
+
+  // A blank in the attribute, at the window's corner, through the bus —
+  // and nothing there takes it, which AH=09h's text path says the same
+  // way. Nothing is read: a clear moves nothing.
+  ASSERT_FALSE(r.pc().stopped());
+  ASSERT_EQ(seen.size(), 1U);
+  EXPECT_EQ(seen[0].what, notice_kind::unmapped_memory_write);
+  EXPECT_EQ(seen[0].at, 0xB8000U);
+  EXPECT_EQ(seen[0].value, ' ');
+}
+
+TEST(int10_scroll_up, a_scroll_moves_cells_up_through_the_bus) {
+  const rig r;
+  const std::vector<notice> seen = scroll_up(r, 1, 0x07, 2, 0, 4, 9);
+
+  // Row 2 takes row 3's cells, so the first thing the scroll does is
+  // read row 3 off the bus. The page is reported once, on that touch.
+  ASSERT_FALSE(r.pc().stopped());
+  ASSERT_EQ(seen.size(), 1U);
+  EXPECT_EQ(seen[0].what, notice_kind::unmapped_memory_read);
+  EXPECT_EQ(seen[0].at, 0xB8000U + (3U * 80U * 2U));
+}
+
+TEST(int10_scroll_up, a_window_off_the_screen_is_refused) {
+  for (const std::array<std::uint8_t, 4> window :
+       {std::array<std::uint8_t, 4>{0, 0, 25, 79},
+        std::array<std::uint8_t, 4>{0, 0, 24, 80},
+        std::array<std::uint8_t, 4>{5, 0, 4, 79},
+        std::array<std::uint8_t, 4>{0, 9, 24, 8}}) {
+    const rig r;
+    static_cast<void>(
+        scroll_up(r, 0, 0x07, window[0], window[1], window[2], window[3]));
+    EXPECT_TRUE(r.pc().stopped());
+    EXPECT_EQ(r.pc().stop().reason, stop_reason::unsupported_request);
+  }
+}
+
+TEST(int10_scroll_up, in_a_graphics_mode_it_is_refused) {
+  const rig r;
+  r.call_int10();
+  r.regs()[cpu::reg16::ax] = 0x000D;
+  r.run();
+  ASSERT_FALSE(r.pc().stopped());
+
+  r.call_int10();
+  r.regs()[cpu::reg16::ax] = 0x0600;
+  r.regs()[cpu::reg16::dx] = 0x184F;
+  r.run();
+  EXPECT_TRUE(r.pc().stopped());
+  EXPECT_EQ(r.pc().stop().reason, stop_reason::unsupported_request);
 }
 
 // --- AH=0Fh: report the current mode --------------------------------------

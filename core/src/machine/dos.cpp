@@ -39,6 +39,10 @@ void dos_services::reset() noexcept {
 
   exit_code_ = 0;
   exited_ = false;
+
+  dta_ = default_dta;
+  searched_ = {};
+  searched_count_ = 0;
 }
 
 void dos_services::close_files(filesystem& fs) {
@@ -110,6 +114,22 @@ vfs_error dos_services::set_current_directory(const filesystem& fs,
   return vfs_error::none;
 }
 
+namespace {
+
+/// A path, component by component, each its length and then its text.
+void save_path(state_sink& out, const dos_path& path) {
+  out.u8(static_cast<std::uint8_t>(path.depth()));
+  for (std::size_t i = 0; i < path.depth(); ++i) {
+    const std::span<const char> text = path.component(i).text();
+    out.u8(static_cast<std::uint8_t>(text.size()));
+    for (const char c : text) {
+      out.u8(static_cast<std::uint8_t>(c));
+    }
+  }
+}
+
+}  // namespace
+
 void dos_services::save_state(state_sink& out) const {
   for (const handle_state& slot : handles_) {
     out.flag(slot.in_use);
@@ -119,17 +139,41 @@ void dos_services::save_state(state_sink& out) const {
     // The path, component by component: a file's identity to the
     // program is its name, and a handle reopened on a different file is
     // a different state.
-    out.u8(static_cast<std::uint8_t>(slot.path.depth()));
-    for (std::size_t i = 0; i < slot.path.depth(); ++i) {
-      const std::span<const char> text = slot.path.component(i).text();
-      out.u8(static_cast<std::uint8_t>(text.size()));
-      for (const char c : text) {
-        out.u8(static_cast<std::uint8_t>(c));
-      }
-    }
+    save_path(out, slot.path);
   }
   out.u8(exit_code_);
   out.flag(exited_);
+}
+
+std::uint16_t dos_services::search_directory(
+    const dos_path& directory) noexcept {
+  for (std::size_t i = 0; i < searched_count_; ++i) {
+    if (searched_[i] == directory) {
+      return static_cast<std::uint16_t>(i);
+    }
+  }
+  if (searched_count_ == max_search_directories) {
+    return no_search_directory;
+  }
+  searched_[searched_count_] = directory;
+  return static_cast<std::uint16_t>(searched_count_++);
+}
+
+const dos_path* dos_services::searched_directory(
+    std::uint16_t index) const noexcept {
+  return index < searched_count_ ? &searched_[index] : nullptr;
+}
+
+void dos_services::save_search_state(state_sink& out) const {
+  if (dta_ == default_dta && searched_count_ == 0) {
+    return;  // Power-on: the bytes a run that never searched always wrote.
+  }
+  out.u16(dta_.segment);
+  out.u16(dta_.offset);
+  out.u8(static_cast<std::uint8_t>(searched_count_));
+  for (std::size_t i = 0; i < searched_count_; ++i) {
+    save_path(out, searched_[i]);
+  }
 }
 
 namespace {
@@ -215,8 +259,8 @@ void succeed_with(service_floor& floor, std::uint16_t ax) {
 
 /// Read an ASCIZ pathname from DS:DX and canonicalize it against the
 /// current directory the host set before the load (dos.h's top comment,
-/// #397). The program cannot change it — AH=3Bh/47h are not in this
-/// subset — so this is the one place it is read.
+/// #397). The program cannot change it — AH=3Bh is not in this subset —
+/// so this and AH=47h are the only places it is read.
 ///
 /// `what` is the naming call this is being read for, and it is here
 /// because a name that does not canonicalize at all — a drive letter that
@@ -229,27 +273,39 @@ void succeed_with(service_floor& floor, std::uint16_t ax) {
 /// carries the root and `error` is what says what happened. (The root,
 /// and not the current directory: the name resolved to nothing, and
 /// naming the directory it was relative to would read as a path.)
-[[nodiscard]] vfs_result<dos_path> read_path(service_floor& floor,
-                                             file_action what) {
+/// The ASCIZ name at DS:DX, as the program wrote it.
+struct raw_name {
+  std::array<char, max_raw_path> text{};
+  std::size_t length{};
+
+  [[nodiscard]] std::span<const char> view() const noexcept {
+    return {text.data(), length};
+  }
+};
+
+[[nodiscard]] raw_name read_raw_name(service_floor& floor) {
   cpu::processor& cpu = floor.box().processor();
   const std::uint16_t segment = cpu.regs()[sreg::ds];
   const std::uint16_t offset = cpu.regs()[reg16::dx];
 
-  std::array<char, max_raw_path> raw{};
-  std::size_t length = 0;
-  while (length < max_raw_path) {
+  raw_name raw;
+  while (raw.length < max_raw_path) {
     const std::uint8_t byte =
-        cpu.read_byte(segment, static_cast<std::uint16_t>(offset + length));
+        cpu.read_byte(segment, static_cast<std::uint16_t>(offset + raw.length));
     if (byte == 0) {
       break;
     }
-    raw[length] = static_cast<char>(byte);
-    ++length;
+    raw.text[raw.length] = static_cast<char>(byte);
+    ++raw.length;
   }
+  return raw;
+}
 
+[[nodiscard]] vfs_result<dos_path> read_path(service_floor& floor,
+                                             file_action what) {
+  const raw_name raw = read_raw_name(floor);
   const vfs_result<dos_path> resolved =
-      canonicalize(floor.box().dos().current_directory(),
-                   std::span<const char>(raw.data(), length));
+      canonicalize(floor.box().dos().current_directory(), raw.view());
   if (!resolved.ok()) {
     floor.report_file(what, dos_path{}, 0, resolved.error);
   }
@@ -687,6 +743,72 @@ void seek_fn(service_floor& floor) {
   floor.set_caller_carry(false);
 }
 
+// --- The drive: AH=19h --------------------------------------------------
+//
+// The current drive, zero-based. There is one, C (vfs.h, `only_drive`),
+// so it is the answer, and not a choice: no function this layer has can
+// select another, and a name on any other drive does not resolve.
+
+void current_drive_fn(service_floor& floor) {
+  floor.box().processor().regs().set(reg8::al, only_drive);
+  succeed(floor);
+}
+
+// --- The current directory: AH=47h --------------------------------------
+//
+// DS:SI is a 64-byte buffer; DOS fills it with the current directory of
+// drive DL (0 the current drive, 1 A, 2 B, ...) without the drive and
+// without the leading `\`, so the root is an empty string. The directory
+// is the one the host set before the load (dos.h's top comment). Any
+// drive but C is DOS's invalid-drive error, as a name on one is.
+
+/// The buffer AH=47h fills: 64 bytes, the terminator included, which is
+/// the longest current directory DOS keeps.
+constexpr std::size_t current_directory_buffer = 64;
+
+/// DL as AH=47h numbers drives: zero for the current one, then one-based.
+constexpr std::uint8_t default_drive_number = 0;
+constexpr std::uint8_t one_based_only_drive = only_drive + 1;
+
+void get_current_directory_fn(service_floor& floor) {
+  cpu::processor& cpu = floor.box().processor();
+  const std::uint8_t drive = cpu.regs().get(reg8::dl);
+  if (drive != default_drive_number && drive != one_based_only_drive) {
+    fail(floor, vfs_error::invalid_drive);
+    return;
+  }
+
+  std::array<char, current_directory_buffer> text{};
+  std::size_t length = 0;
+  const dos_path& directory = floor.box().dos().current_directory();
+  for (std::size_t i = 0; i < directory.depth(); ++i) {
+    const std::span<const char> name = directory.component(i).text();
+    const std::size_t separator = i == 0 ? 0 : 1;
+    if (length + separator + name.size() >= text.size()) {
+      // Deeper than DOS could hold. Only a host can set such a directory,
+      // and cutting it short would answer a different one.
+      floor.box().stop_unsupported_request(
+          cpu::physical_address(floor.caller_cs(), floor.caller_ip()));
+      return;
+    }
+    if (separator != 0) {
+      text[length++] = '\\';
+    }
+    for (const char c : name) {
+      text[length++] = c;
+    }
+  }
+
+  const std::uint16_t segment = cpu.regs()[sreg::ds];
+  const std::uint16_t offset = cpu.regs()[reg16::si];
+  for (std::size_t i = 0; i <= length; ++i) {
+    cpu.write_byte(segment, static_cast<std::uint16_t>(offset + i),
+                   static_cast<std::uint8_t>(text[i]));
+  }
+  // MS-DOS leaves 0100h in AX on success; CF clear is the contract.
+  succeed_with(floor, 0x0100);
+}
+
 // --- Date/time: AH=2Ah, AH=2Ch ------------------------------------------
 
 void get_date_fn(service_floor& floor) {
@@ -829,6 +951,274 @@ void get_vector_fn(service_floor& floor) {
   succeed(floor);
 }
 
+// --- Directory searches: AH=1Ah, 4Eh, 4Fh (dos.h's top comment) --------
+
+/// Where each field of a search record sits in the DTA: DOS 3's layout,
+/// which every later DOS keeps. The first 21 bytes are DOS's own, for
+/// FindNext to resume from; the rest is the answer a program reads.
+namespace dta_field {
+constexpr std::uint16_t drive = 0x00;
+constexpr std::uint16_t pattern = 0x01;  // Eleven bytes, fcb_name.
+constexpr std::uint16_t search_attributes = 0x0C;
+constexpr std::uint16_t next_entry = 0x0D;  // Word.
+constexpr std::uint16_t directory = 0x0F;   // Word: a cluster on a disk.
+constexpr std::uint16_t reserved = 0x11;    // Four bytes.
+constexpr std::uint16_t reserved_length = 4;
+constexpr std::uint16_t attribute = 0x15;
+constexpr std::uint16_t time = 0x16;  // Word.
+constexpr std::uint16_t date = 0x18;  // Word.
+constexpr std::uint16_t size = 0x1A;  // Doubleword.
+constexpr std::uint16_t name = 0x1E;  // ASCIZ, at most 13 bytes.
+}  // namespace dta_field
+
+/// The attribute bits a search reports or asks for. Hidden (02h) and
+/// system (04h) never occur here, because nothing in this machine can
+/// set them; they are named because the mask rule is about them.
+constexpr std::uint8_t attribute_hidden = 0x02;
+constexpr std::uint8_t attribute_system = 0x04;
+constexpr std::uint8_t attribute_volume_label = 0x08;
+constexpr std::uint8_t attribute_directory = 0x10;
+
+/// DOS's rule for the mask in CX: a plain file (no bits, read-only or
+/// archive) is always found, and a hidden, system or directory entry
+/// only when the mask asks for that kind. A mask of exactly 08h asks for
+/// the volume label alone, and this machine's one drive has none.
+[[nodiscard]] bool attribute_admits(std::uint8_t mask,
+                                    std::uint8_t attribute) noexcept {
+  if (mask == attribute_volume_label) {
+    return false;
+  }
+  constexpr std::uint8_t must_ask =
+      attribute_hidden | attribute_system | attribute_directory;
+  return (attribute & must_ask & ~mask) == 0;
+}
+
+/// One entry a search looks at, in the form the DTA reports it.
+struct search_entry {
+  fcb_name fcb{};
+  std::array<char, dos_name::max_length> text{};
+  std::size_t length{};
+  std::uint32_t size{};
+  std::uint8_t attribute{};
+};
+
+[[nodiscard]] search_entry dot_entry(std::size_t dots) noexcept {
+  search_entry entry;
+  entry.fcb.fill(' ');
+  for (std::size_t i = 0; i < dots; ++i) {
+    entry.fcb[i] = '.';
+    entry.text[i] = '.';
+  }
+  entry.length = dots;
+  entry.attribute = attribute_directory;
+  return entry;
+}
+
+/// The `index`-th entry a search of `directory` looks at. Below the root
+/// that is `.` and `..` and then the VFS's entries in its pinned order;
+/// at the root, the VFS's entries alone, as on DOS. `no_more_files` past
+/// the end, and for a directory that has gone since the search began.
+[[nodiscard]] vfs_result<search_entry> entry_for_search(
+    const filesystem& fs, const dos_path& directory, std::size_t index) {
+  const std::size_t dots = directory.is_root() ? 0 : 2;
+  if (index < dots) {
+    return {.value = dot_entry(index + 1), .error = vfs_error::none};
+  }
+  const vfs_result<directory_entry> found =
+      fs.entry_at(directory, index - dots);
+  if (!found.ok()) {
+    return {.error = vfs_error::no_more_files};
+  }
+  search_entry entry;
+  entry.fcb = fcb_form(found.value.name);
+  const std::span<const char> text = found.value.name.text();
+  for (std::size_t i = 0; i < text.size(); ++i) {
+    entry.text[i] = text[i];
+  }
+  entry.length = text.size();
+  entry.size = found.value.is_directory ? 0 : found.value.size;
+  entry.attribute = found.value.is_directory ? attribute_directory : 0;
+  return {.value = entry, .error = vfs_error::none};
+}
+
+/// The DTA as a place to read and write, through the bus like any other
+/// guest memory.
+class dta_view {
+ public:
+  explicit dta_view(service_floor& floor)
+      : cpu_(&floor.box().processor()), at_(floor.box().dos().dta()) {}
+
+  [[nodiscard]] std::uint8_t byte(std::uint16_t field) const {
+    return cpu_->read_byte(at_.segment, offset(field));
+  }
+  [[nodiscard]] std::uint16_t word(std::uint16_t field) const {
+    return cpu_->read_word(at_.segment, offset(field));
+  }
+  void put_byte(std::uint16_t field, std::uint8_t value) const {
+    cpu_->write_byte(at_.segment, offset(field), value);
+  }
+  void put_word(std::uint16_t field, std::uint16_t value) const {
+    cpu_->write_word(at_.segment, offset(field), value);
+  }
+
+ private:
+  [[nodiscard]] std::uint16_t offset(std::uint16_t field) const noexcept {
+    return static_cast<std::uint16_t>(at_.offset + field);
+  }
+
+  cpu::processor* cpu_;
+  dos_services::far_address at_;
+};
+
+/// Look at entries from `index` on, and report the first that matches in
+/// the DTA, with the index after it stored for FindNext. `no_more_files`
+/// when none does; the record's own fields are left as they were.
+[[nodiscard]] vfs_error continue_search(
+    service_floor& floor, const filesystem& fs, const dos_path& directory,
+    const search_pattern& pattern, std::uint8_t mask, std::uint16_t index) {
+  for (std::size_t at = index; at < 0xFFFFU; ++at) {
+    const vfs_result<search_entry> entry = entry_for_search(fs, directory, at);
+    if (!entry.ok()) {
+      return vfs_error::no_more_files;
+    }
+    if (!pattern.matches(entry.value.fcb) ||
+        !attribute_admits(mask, entry.value.attribute)) {
+      continue;
+    }
+    const dta_view dta(floor);
+    dta.put_word(dta_field::next_entry, static_cast<std::uint16_t>(at + 1));
+    dta.put_byte(dta_field::attribute, entry.value.attribute);
+    // No timestamps in this machine (vfs.h): zero, and not a made-up day.
+    dta.put_word(dta_field::time, 0);
+    dta.put_word(dta_field::date, 0);
+    dta.put_word(dta_field::size, low_half(entry.value.size));
+    dta.put_word(static_cast<std::uint16_t>(dta_field::size + 2),
+                 high_half(entry.value.size));
+    for (std::size_t i = 0; i < entry.value.length; ++i) {
+      dta.put_byte(static_cast<std::uint16_t>(dta_field::name + i),
+                   static_cast<std::uint8_t>(entry.value.text[i]));
+    }
+    dta.put_byte(
+        static_cast<std::uint16_t>(dta_field::name + entry.value.length), 0);
+    return vfs_error::none;
+  }
+  return vfs_error::no_more_files;
+}
+
+void set_dta_fn(service_floor& floor) {
+  const cpu::registers& regs = floor.box().processor().regs();
+  floor.box().dos().set_dta(
+      {.segment = regs[sreg::ds], .offset = regs[reg16::dx]});
+  succeed(floor);
+}
+
+void find_first_fn(service_floor& floor) {
+  filesystem* fs = require_vfs(floor);
+  if (fs == nullptr) {
+    return;
+  }
+  dos_services& dos = floor.box().dos();
+  const auto mask = static_cast<std::uint8_t>(
+      floor.box().processor().regs()[reg16::cx] & 0xFFU);
+
+  // The directory is everything up to the last `\` (or a drive's `:`),
+  // resolved like any other path; the pattern is what follows it.
+  const raw_name raw = read_raw_name(floor);
+  std::size_t split = 0;
+  for (std::size_t i = 0; i < raw.length; ++i) {
+    if (raw.text[i] == '\\' || (i == 1 && raw.text[i] == ':')) {
+      split = i + 1;
+    }
+  }
+  const std::span<const char> whole = raw.view();
+  const vfs_result<dos_path> directory =
+      canonicalize(dos.current_directory(), whole.first(split));
+  if (!directory.ok()) {
+    // Nothing resolved, so the root and the error (read_path's rule).
+    floor.report_file(file_action::find, dos_path{}, 0, directory.error);
+    fail(floor, directory.error);
+    return;
+  }
+  if (!directory.value.is_root()) {
+    const vfs_result<file_stat> found = fs->stat(directory.value);
+    if (!found.ok() || !found.value.is_directory) {
+      floor.report_file(file_action::find, directory.value, 0,
+                        vfs_error::path_not_found);
+      fail(floor, vfs_error::path_not_found);
+      return;
+    }
+  }
+  const vfs_result<search_pattern> pattern =
+      search_pattern::parse(whole.subspan(split));
+  if (!pattern.ok()) {
+    floor.report_file(file_action::find, directory.value, 0, pattern.error);
+    fail(floor, pattern.error);
+    return;
+  }
+
+  const std::uint16_t slot = dos.search_directory(directory.value);
+  if (slot == dos_services::no_search_directory) {
+    // dos.h: a full table is a stop, never a reused slot.
+    floor.box().stop_unsupported_request(
+        cpu::physical_address(floor.caller_cs(), floor.caller_ip()));
+    return;
+  }
+
+  // The record FindNext resumes from, in DOS's own shape. The drive is
+  // the one-based number the FCB functions use: C is 3.
+  const dta_view dta(floor);
+  dta.put_byte(dta_field::drive, static_cast<std::uint8_t>(only_drive + 1));
+  for (std::size_t i = 0; i < pattern.value.fcb().size(); ++i) {
+    dta.put_byte(static_cast<std::uint16_t>(dta_field::pattern + i),
+                 static_cast<std::uint8_t>(pattern.value.fcb()[i]));
+  }
+  dta.put_byte(dta_field::search_attributes, mask);
+  dta.put_word(dta_field::next_entry, 0);
+  dta.put_word(dta_field::directory, slot);
+  for (std::uint16_t i = 0; i < dta_field::reserved_length; ++i) {
+    dta.put_byte(static_cast<std::uint16_t>(dta_field::reserved + i), 0);
+  }
+
+  const vfs_error found =
+      continue_search(floor, *fs, directory.value, pattern.value, mask, 0);
+  floor.report_file(file_action::find, directory.value, 0, found);
+  if (found != vfs_error::none) {
+    fail(floor, found);
+    return;
+  }
+  succeed(floor);
+}
+
+void find_next_fn(service_floor& floor) {
+  filesystem* fs = require_vfs(floor);
+  if (fs == nullptr) {
+    return;
+  }
+  const dta_view dta(floor);
+  // A record whose directory word names nothing this machine searched is
+  // one FindFirst did not write, and DOS's answer to that is the same as
+  // to a search that has run out.
+  const dos_path* directory =
+      floor.box().dos().searched_directory(dta.word(dta_field::directory));
+  if (directory == nullptr) {
+    fail(floor, vfs_error::no_more_files);
+    return;
+  }
+  fcb_name bytes{};
+  for (std::size_t i = 0; i < bytes.size(); ++i) {
+    bytes[i] = static_cast<char>(
+        dta.byte(static_cast<std::uint16_t>(dta_field::pattern + i)));
+  }
+  const vfs_error found = continue_search(
+      floor, *fs, *directory, search_pattern::from_fcb(bytes),
+      dta.byte(dta_field::search_attributes), dta.word(dta_field::next_entry));
+  if (found != vfs_error::none) {
+    fail(floor, found);
+    return;
+  }
+  succeed(floor);
+}
+
 // --- Exit: AH=4Ch, INT 20h -----------------------------------------------
 
 void terminate(service_floor& floor, std::uint8_t code) {
@@ -850,6 +1240,12 @@ void int21_dispatch(service_floor& floor, std::uint8_t /*vector*/) {
       return;
     case 0x09:
       print_string(floor);
+      return;
+    case 0x19:
+      current_drive_fn(floor);
+      return;
+    case 0x1A:
+      set_dta_fn(floor);
       return;
     case 0x25:
       set_vector_fn(floor);
@@ -890,8 +1286,17 @@ void int21_dispatch(service_floor& floor, std::uint8_t /*vector*/) {
     case 0x44:
       ioctl_fn(floor);
       return;
+    case 0x47:
+      get_current_directory_fn(floor);
+      return;
     case 0x4C:
       terminate(floor, floor.box().processor().regs().get(reg8::al));
+      return;
+    case 0x4E:
+      find_first_fn(floor);
+      return;
+    case 0x4F:
+      find_next_fn(floor);
       return;
     default:
       // Every other AH — 2Bh/2Dh (date/time setters) included, deferred

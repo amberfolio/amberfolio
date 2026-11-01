@@ -535,6 +535,8 @@ void machine::save_state(state_sink& out) const {
     out.u8(static_cast<std::uint8_t>(h));
     out.u32(at.ok() ? at.value : 0xFFFFFFFFU);
   }
+  // Last, and only once a program has moved the DTA or searched (dos.h).
+  dos_.save_search_state(out);
 
   out.begin(state_section::wall);
   wall_.save_state(out);

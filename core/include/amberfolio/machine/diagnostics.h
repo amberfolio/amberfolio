@@ -247,7 +247,7 @@ struct service_call {
 ///
 /// Deliberately the *naming* calls only. A read or a write names a
 /// handle, and a handle is a number the reader has to trace back to an
-/// open they may not have kept; these five are the calls where the name
+/// open they may not have kept; these are the calls where the name
 /// is the argument, and between them they say everything about which
 /// files a run touched and which of them it made or destroyed. The
 /// handle traffic in between is what the service trace is already for.
@@ -265,6 +265,11 @@ enum class file_action : std::uint8_t {
   /// can be told it was written, and a log that cannot show the close
   /// cannot show that.
   close,
+  /// AH=4Eh, a directory searched. The path is the directory, not the
+  /// pattern (a pattern is not a name), and `no_more_files` is the
+  /// answer a search that matched nothing got: a roster that comes up
+  /// empty shows here as the directory it looked in.
+  find,
 };
 
 /// One naming call into the DOS layer, recorded once the answer is known.

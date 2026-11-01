@@ -4,6 +4,7 @@
 
 #include <array>
 #include <chrono>
+#include <cstddef>
 #include <stdexcept>
 #include <string>
 
@@ -250,6 +251,19 @@ std::uint16_t machine_harness::result_segment() const noexcept {
 }
 
 bool machine_harness::start() {
+  if (!setup_->current_directory.empty()) {
+    const machine::dos_path directory = parse_path(setup_->current_directory);
+    machine::dos_path made;
+    for (std::size_t i = 0; i < directory.depth(); ++i) {
+      made.push(directory.component(i));
+      static_cast<void>(fs_->mkdir(made));
+    }
+    if (box_->dos().set_current_directory(*fs_, directory) !=
+        machine::vfs_error::none) {
+      throw std::logic_error(
+          "cannot make " + std::string(setup_->current_directory) + " current");
+    }
+  }
   for (const staged_file& file : setup_->files) {
     stage(*fs_, file);
   }

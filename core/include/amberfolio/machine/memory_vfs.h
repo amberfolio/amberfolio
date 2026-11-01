@@ -65,14 +65,13 @@
 //     here is ever on a stack (see below), so this is static or heap
 //     bytes and not stack ones. The arena is untouched: a whole
 //     installation weighs about 1.6 MB of the 8 MiB it already has.
-//   * **`max_file_size`, 256 KiB per file.** `scripts/check-clean.sh`
-//     already draws this exact line — a file over 256 KiB tracked in
-//     this repository is flagged as plausibly a game asset
-//     (CONTRIBUTING.md) — so a backend built for testing and for the wasm
-//     dev page has no principled reason to hold anything bigger than the
-//     largest thing this project already refuses to commit. Gold Box
-//     era executables, overlays and data files are all comfortably under
-//     it.
+//   * **`max_file_size`, 1 MiB per file.** The largest file a Gold Box
+//     installation this machine runs ships is Curse of the Azure Bonds'
+//     `GAME.OVR`, 272,137 bytes (#553); the cap is four times that, so a
+//     file a little larger than the largest known is not the one a
+//     browser silently goes without. It bounds one file, not the arena:
+//     every file shares `arena_bytes`, so the cap costs nothing until a
+//     file uses it.
 //   * **`arena_bytes`, 8 MiB across all files.** Five or six times what
 //     a whole Gold Box installation weighs, so a dev page can take a
 //     player's directory and still have room for everything the game
@@ -160,7 +159,7 @@ namespace amberfolio::machine {
 class memory_filesystem final : public filesystem {
  public:
   static constexpr std::size_t max_entries = 512;
-  static constexpr std::size_t max_file_size = std::size_t{256} * 1024;
+  static constexpr std::size_t max_file_size = std::size_t{1024} * 1024;
   static constexpr std::size_t arena_bytes = std::size_t{8} * 1024 * 1024;
   static constexpr std::size_t max_open_handles = 16;
 

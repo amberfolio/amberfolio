@@ -393,6 +393,60 @@ void read_character(machine& box) {
       cpu.read_byte(text_page_segment, static_cast<std::uint16_t>(offset + 1)));
 }
 
+/// AH=06h in the 80x25 text mode: scroll the window from row CH, column
+/// CL to row DH, column DL up by AL lines, filling the lines it opens
+/// with blanks in attribute BH; AL=0 blanks the whole window.
+///
+/// AH=09h's answer again: a real BIOS moves and stores two bytes per cell
+/// in the display page, and so does this, through the bus. Nothing claims
+/// B8000, so the reads float high and the writes are dropped, which the
+/// machine has already said once. A window that does not fit the screen
+/// the BDA describes, or whose corners are the wrong way round, is
+/// refused: what a BIOS does with one differs between BIOSes, and this
+/// one has no reason to pick.
+///
+/// In mode 0Dh a scroll moves pixel rows; nothing has asked for that, so
+/// it is refused like any request this file does not carry.
+void scroll_up(machine& box) {
+  cpu::registers& regs = box.processor().regs();
+  const std::uint8_t top = regs.get(cpu::reg8::ch);
+  const std::uint8_t left = regs.get(cpu::reg8::cl);
+  const std::uint8_t bottom = regs.get(cpu::reg8::dh);
+  const std::uint8_t right = regs.get(cpu::reg8::dl);
+  const std::uint16_t columns = bda_word(box, bda::video_columns);
+  const std::uint8_t last_row = bda_byte(box, bda::video_rows_minus_one);
+  if (bda_byte(box, bda::video_mode) != mode_03h || top > bottom ||
+      left > right || bottom > last_row || right >= columns) {
+    box.stop_unsupported_request(regs[cpu::reg16::ax]);
+    return;
+  }
+
+  const std::uint8_t lines = regs.get(cpu::reg8::al);
+  const std::uint8_t blank_attribute = regs.get(cpu::reg8::bh);
+  cpu::processor& cpu = box.processor();
+  const auto cell = [columns](unsigned row, unsigned column) {
+    return static_cast<std::uint16_t>((row * columns + column) * 2U);
+  };
+  const unsigned height = bottom - top + 1U;
+  for (unsigned row = top; row <= bottom; ++row) {
+    const bool blank = lines == 0 || row + lines > bottom;
+    for (unsigned column = left; column <= right; ++column) {
+      const std::uint16_t to = cell(row, column);
+      std::uint8_t character = ' ';
+      std::uint8_t attribute = blank_attribute;
+      if (!blank && lines < height) {
+        const std::uint16_t from = cell(row + lines, column);
+        character = cpu.read_byte(text_page_segment, from);
+        attribute = cpu.read_byte(text_page_segment,
+                                  static_cast<std::uint16_t>(from + 1));
+      }
+      cpu.write_byte(text_page_segment, to, character);
+      cpu.write_byte(text_page_segment, static_cast<std::uint16_t>(to + 1),
+                     attribute);
+    }
+  }
+}
+
 /// A character generator, as a place in the emulated machine's memory:
 /// where the glyphs start, and the character code the first of them is
 /// for. `points` bytes each, one byte per scan line.
@@ -677,6 +731,9 @@ void video_bios(service_floor& floor, std::uint8_t /*vector*/) {
       return;
     case 0x05:
       set_page(box);
+      return;
+    case 0x06:
+      scroll_up(box);
       return;
     case 0x08:
       read_character(box);
