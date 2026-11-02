@@ -425,9 +425,7 @@ the shells carry it. It exits as **1.2**. Tracking: #557.
   line says what, and the install directory move out of code and into
   the edition row. Today `POOL.CFG` and its line 4 are spelled out in
   core and in both hosts.
-- **One place per fact** (the program profile, below). Today shared
-  facts are copied between seam files; the game-mode byte appears in
-  nine of them.
+- **One place per fact** (the program profile, below).
 - Every fact is checked twice from the artifact and confirmed by a
   driven run. Overlaid points resolve from the program's own
   load-segment word (`docs/seams.md` §8.1, #131).
@@ -441,8 +439,7 @@ the shells carry it. It exits as **1.2**. Tracking: #557.
 - The site agrees any ABI change before it ships (#375). Nothing
   game-specific goes into a host's `main.cpp`.
 
-**The program profile.** Today each seam holds its own fact table and
-fingerprint list. M9 separates mechanism from facts:
+**The program profile.** M9 separates mechanism from facts:
 
 - one table per program image for the facts several seams read: the
   game-mode byte, the party records, the bar highlight, the key-read
@@ -453,8 +450,11 @@ fingerprint list. M9 separates mechanism from facts:
 A seam is available on the programs whose facts it has, which is §5's
 per-binary rule, unchanged. Mechanism is shared only where the
 programs behave the same; where Curse differs, the seam differs or is
-not ported. The refactor lands alone, before any Curse behaviour, and
-every Pool of Radiance session must verify with unchanged hashes.
+not ported. The shared table lands alone, before any Curse behaviour
+(#559). A seam's own table lands with its port, in two commits: the
+refactor, with every Pool of Radiance session verifying with unchanged
+hashes, then the Curse row. A seam that is not ported keeps its facts
+as they are.
 
 **Phases.** Each may take an interim tag.
 
@@ -537,9 +537,9 @@ every Pool of Radiance session must verify with unchanged hashes.
   account. 1.0 ships no desktop binaries, so the question waits for
   the release that does (below).
 - **A second program perturbing the first.** The program profile (§7,
-  M9) touches every Pool of Radiance seam. It lands alone, before any
-  Curse behaviour, gated on every session verifying with unchanged
-  hashes.
+  M9) touches every Pool of Radiance seam it ports. Each seam's
+  refactor is a commit of its own, before its Curse row, gated on
+  every session verifying with unchanged hashes.
 - **Curse's DOS surface past its first stop is unknown.** Each stop is
   one service with its own fixture, never a guessed answer.
 - **The journal's cost is per edition** (#357, #361), though Steam's
