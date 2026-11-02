@@ -232,6 +232,70 @@ funds, and journal entry 38. South down column 4 to `4,14` and west to
 carriage comes: three screens of story, and a battle with the guards
 begins (frame about 22,700). Recorded as `curse-carriage`.
 
+### Out of the city
+
+The carriage's battle is the start of a road out, not a gate. The
+wilderness is reached at the end of the thieves' plot, and the sewers'
+placard that offers it appears only once that plot is won:
+
+1. **The guards.** Win the carriage's battle (`N` to stop fighting
+   when it asks), leave the treasure (`E`, `N`), and `Y` surrenders to
+   the guards that charge next: jail, a thief, and the thieves' guild at
+   `9,3`.
+2. **The guild.** `N` to the guildmaster's offer of rest; four
+   messages, then a battle with a rival gang that the party's `QUICK`
+   setting fights to the end. Journal entry 4.
+3. **To the sewers.** From `9,3 E` to the guild's south exit at `10,15`
+   and off the map's south edge, past two random patrols (`11,6`,
+   `10,8`), a crowd at `8,10` (`Return` keeps calm) and a locked door
+   between `10,13` and `10,14` (`Return` bashes it).
+4. **The sewers.** Four stretches, each ended by stepping off the south
+   edge, which puts the party back on the north row (at `0,0`, `9,0`,
+   `11,0`, then into the hideout): a checkpoint at `1,8` (`Y` surrenders
+   and costs the party its money and gear), a knight at `13,10` (`N`
+   answers that the party serves no one), and a locked door into
+   `12,13` on the last. The position line shows the facing and the time
+   but no square, so the route is counted by the steps. A `Return`
+   after every step answers each message without losing a key.
+5. **The hideout.** Entered at `11,0`;
+   a patrol at `11,6`, and at `4,12` a checkpoint: `Y` is taken to the
+   gang's leader (journal entry 11), whose battle ends the plot. Journal
+   entry 54, a dream, and the party is on the overland map.
+
+`cheat-invulnerable` and `cheat-kill-all` with a pull before each of
+the six battles take a scripted run through it (several pulls each wait
+for the next battle). The run ends at about frame 96,700: `C` camps at
+the town's edge, `S` and `D` save the party in slot `D`. That disk is the
+`curse-wild` snapshot.
+
+### The overland map
+
+Curse has no wilderness to walk square by square. The overland map is
+a picture of the region with the party's mark on it; `LOAD` `D` and
+`BEGIN ADVENTURING` bring it straight up, with the party at a town's edge
+(`W 02:45`, no square) and the bar `ENTER CITY`, `JOURNEY ON`, `CAMP`.
+`ENTER CITY` here only turns the party away.
+
+```
+P A Return L D B +4 J +3 End +2 Return +6 W +4 Return +3 Return
+@7250 Return @7650 E
+```
+
+`JOURNEY ON` lists the three places the party may go from here, a list
+that `Home` and `End` move through. The second asks how: `TRAIL`,
+`WILDERNESS` or `EXIT` (`EXIT` goes back to the town's edge). `W` takes
+the wilderness, a message about a mountain pass, and a battle with
+flying beasts on open ground (frame about 6,300). The party fights it by
+itself and loses: everyone down by about frame 9,600, and the screen
+that ends the game. Recorded as `curse-journey`. The trail to the same
+place meets the same pass and the same battle. The first place on the
+list goes by an inn, where the party's rest is cut short by a battle.
+
+`curse-journey-kill` is the same script with `cheat-kill-all` pulled at
+the `W`: the party wins at once (frame about 7,100), `Return` takes the
+win, `E` leaves the treasure, and the mark stands at the next town's
+edge with the same bar.
+
 ---
 
 ## The session library
@@ -258,9 +322,12 @@ lines, at `--speed 386` and `--wall none`:
 | `curse-heal` | `curse-slots` | none | |
 | `curse-fix` | `curse-slots` | none | |
 | `curse-carriage` | `curse-slots` | none | |
+| `curse-journey` | `curse-wild` | none | |
+| `curse-journey-kill` | `curse-wild` | `cheat-kill-all`, pulled | `contrast curse-journey` |
 
 ```sh
-python3 scripts/sweep.py --game-disk games/curse-slots --game-disk games/curse-saved
+python3 scripts/sweep.py --game-disk games/curse-slots --game-disk games/curse-saved \
+  --game-disk games/curse-wild
 ```
 
 The sweep replays them on the desktop host. The wasm module replays one

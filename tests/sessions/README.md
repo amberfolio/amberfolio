@@ -126,17 +126,19 @@ frame that carries an input is checkpointed whatever the cadence says.
 
 ### Curse of the Azure Bonds
 
-Seventeen sessions, `curse-*`, on the Steam copy at `--speed 386` and
+Nineteen sessions, `curse-*`, on the Steam copy at `--speed 386` and
 `--wall none` (#554). Every one is `disk external`: `curse-load` is
-pinned to the disk `curse-save` wrote (the `curse-saved` snapshot), and
-the rest to the copy with its shipped slots A and B (`curse-slots`).
+pinned to the disk `curse-save` wrote (the `curse-saved` snapshot), the
+two `curse-journey` sessions to a disk with the party saved in slot D
+on the overland map (`curse-wild`), and the rest to the copy with its
+shipped slots A and B (`curse-slots`).
 `docs/playable-curse.md` has the legs and the table; the pairs are the
 cheats': `curse-quiet-cheats` `identical curse-quiet` (all three on,
-none pulled), and `curse-fight-cheat`, `curse-fight-kill` and
-`curse-camp-wound` each a `contrast` with the run it differs from. The
-other twelve are the legs with no seam: a new character, a purchase, a
-cure at the temple, the game's own Fix, the royal carriage, and the
-rest. Each verifies on the desktop host and on the wasm module
+none pulled), and `curse-fight-cheat`, `curse-fight-kill`, `curse-camp-wound` and
+`curse-journey-kill` each a `contrast` with the run it differs from. The
+other thirteen are the legs with no seam: a new character, a purchase, a
+cure at the temple, the game's own Fix, the royal carriage, a journey
+on the overland map, and the rest. Each verifies on the desktop host and on the wasm module
 (`drive.mjs --install '\CURSE' --replay`).
 
 ## The matrix, by seam
