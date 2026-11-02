@@ -510,7 +510,7 @@ every Pool of Radiance session must verify with unchanged hashes.
 | screen text, scene, aim, text entry | Port the facts. The controls and the site both read them. |
 | `modern-controls` | Port. It is the largest fact set. |
 | `font-sans`, `font-chisel` | Port. |
-| `quick-steps`, and the timer fix | Port, if the driver needs the fix the same way. |
+| `quick-steps`, and the timer fix | **Not ported:** at 386, Curse turns and steps fast enough without it. The timer fix exists only behind `quick-steps`. |
 | `message-pause` | Port, and re-measure the pause. |
 | `automap` | Port. |
 | `explored` | Port, onto Curse's overland view. |
