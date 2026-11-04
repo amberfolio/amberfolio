@@ -153,6 +153,11 @@ through. The reveal radius is zero: the square you are standing on.
 A picture the game puts in the map's window is left alone; the fog
 comes back when the map does.
 
+In Curse of the Azure Bonds the overland is one picture of the region,
+travelled from place to place. There the fog leaves clear a disc round
+every place your party's mark has stood on, a corridor along the way
+between each two places you went between, and the place you are at.
+
 **How you turn it on.** `--seam explored`. There is no key. It shares the
 automap's store and its table, so squares walked with only the automap on
 are already clear.

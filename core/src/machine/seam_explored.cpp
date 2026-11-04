@@ -283,6 +283,7 @@
 #include "amberfolio/machine/document.h"
 #include "amberfolio/machine/ega.h"
 #include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/memory_map.h"
 #include "amberfolio/machine/overlay.h"
 #include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/seam.h"
@@ -295,12 +296,6 @@ namespace {
 // ---------------------------------------------------------------------------
 // The facts (docs/explored-overlay.md §2)
 // ---------------------------------------------------------------------------
-
-/// The program this seam's facts are about (program_profile.h): the
-/// baseline edition, and only it. The seam is available on it and on no
-/// other binary.
-constexpr const program_profile& profile = pool_of_radiance;
-constexpr auto explored_binaries = fingerprints_of(std::array{&profile});
 
 /// **The points**, as offsets from the image segment, all four resident.
 ///
@@ -325,18 +320,12 @@ constexpr auto explored_binaries = fingerprints_of(std::array{&profile});
 /// caller is the combat view's, which is never the travel view. Second
 /// route: a step's redraw reaches it 25 times, and a run that ends an
 /// event with its picture still up does not reach it at all (#545).
-constexpr std::uint32_t present_return = 0x649B;
-constexpr std::uint32_t window_square_blit = 0x3EBA;
-
+///
 /// Which view is up — 2, 3 and 4 are the three wilderness areas — is
 /// the shared recorder's to check, and it hands the answer back in its
 /// `overland_look` (`automap_overland.h`), so this file does not name
 /// that offset a second time.
-
-/// The widest bias a 44-column table could carry, which is what says a
-/// byte read here is the byte the facts describe.
-constexpr int max_column_bias = 0x2B;
-
+///
 /// **The program's own word that the window is not the map.** A script
 /// can draw over the travel view's window: the picture opcode (overlay 3,
 /// `0x08B2`) and the message printer's picture branch (overlay 7,
@@ -348,9 +337,32 @@ constexpr int max_column_bias = 0x2B;
 /// branch), and `0x84C9`, the picture opcode's own (`0x08AD`). Second
 /// route: the disassembly of each writer, and a player's screen, where
 /// the fog was laid over the picture an arrival event drew (#535).
-constexpr std::uint16_t data_picture_in_view = 0x84E0;
-constexpr std::uint16_t data_figure_in_view = 0x84C8;
-constexpr std::uint16_t data_picture_open = 0x84C9;
+struct explored_facts {
+  /// The program these facts are about (program_profile.h).
+  const program_profile& profile;
+  std::uint32_t present_return;
+  std::uint32_t window_square_blit;
+  /// The widest bias a 44-column table could carry, which is what says a
+  /// byte read here is the byte the facts describe.
+  int max_column_bias;
+  std::uint16_t data_picture_in_view;
+  std::uint16_t data_figure_in_view;
+  std::uint16_t data_picture_open;
+};
+
+/// Pool of Radiance, the baseline edition: the travel view's five-by-five
+/// window of a wilderness area walked square by square.
+constexpr explored_facts pool_of_radiance_explored{
+    .profile = pool_of_radiance,
+    .present_return = 0x649B,
+    .window_square_blit = 0x3EBA,
+    .max_column_bias = 0x2B,
+    .data_picture_in_view = 0x84E0,
+    .data_figure_in_view = 0x84C8,
+    .data_picture_open = 0x84C9};
+
+constexpr auto explored_binaries =
+    fingerprints_of(std::array{&pool_of_radiance, &curse_of_the_azure_bonds});
 
 /// The seam's one word of its own: the program has put something over the
 /// window since it last painted its map there.
@@ -409,10 +421,11 @@ constexpr std::uint16_t video_window_segment = 0xA000;
 /// The data segment, derived from where the loader put the image and
 /// checked against what the program is holding. Zero means "not it", and
 /// every handler declines on that.
+template <const program_profile& P>
 [[nodiscard]] std::uint16_t data_segment(cpu::processor& cpu,
                                          const seam_context& ctx) noexcept {
-  const auto wanted = static_cast<std::uint16_t>(
-      (ctx.image_base() / 16U) + (profile.dgroup_offset() / 16U));
+  const auto wanted = static_cast<std::uint16_t>((ctx.image_base() / 16U) +
+                                                 (P.dgroup_offset() / 16U));
   const std::uint16_t held = cpu.regs()[cpu::sreg::ds];
   return held == wanted ? held : static_cast<std::uint16_t>(0);
 }
@@ -564,11 +577,12 @@ constexpr int window_cells = static_cast<int>(explored_window_cells);
 // ---------------------------------------------------------------------------
 
 /// Whether a script has drawn into the window and not given it back.
+template <const explored_facts& F>
 [[nodiscard]] bool script_holds_the_window(cpu::processor& cpu,
                                            std::uint16_t ds) {
-  return cpu.read_byte(ds, data_picture_in_view) != 0 ||
-         cpu.read_byte(ds, data_figure_in_view) != 0 ||
-         cpu.read_byte(ds, data_picture_open) != 0;
+  return cpu.read_byte(ds, F.data_picture_in_view) != 0 ||
+         cpu.read_byte(ds, F.data_figure_in_view) != 0 ||
+         cpu.read_byte(ds, F.data_picture_open) != 0;
 }
 
 /// A cheap mixed hash of the few things a repaint depends on. Not a
@@ -595,6 +609,7 @@ constexpr int window_cells = static_cast<int>(explored_window_cells);
 /// table in (M5-E2c) — which is the case a present alone never covers,
 /// since a party that loads a save and stands still gives the program
 /// nothing to redraw.
+template <const explored_facts& F>
 void paint(machine& box, seam_context& ctx, std::uint16_t ds,
            const overland_look& look, bool after_a_present) {
   cpu::processor& cpu = box.processor();
@@ -612,7 +627,7 @@ void paint(machine& box, seam_context& ctx, std::uint16_t ds,
     return;
   }
 
-  if (script_holds_the_window(cpu, ds)) {
+  if (script_holds_the_window<F>(cpu, ds)) {
     // A script has put a picture or a figure where the map was, and is
     // still at the party's own bar while it types its text: an arrival
     // event, whose first polls are where a step's position settles. It
@@ -651,8 +666,8 @@ void paint(machine& box, seam_context& ctx, std::uint16_t ds,
   }
 
   const int bias =
-      cpu.read_byte(ds, at(profile.data_view_column_bias, look.view_kind));
-  if (bias > max_column_bias) {
+      cpu.read_byte(ds, at(F.profile.data_view_column_bias, look.view_kind));
+  if (bias > F.max_column_bias) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
@@ -712,9 +727,10 @@ void paint(machine& box, seam_context& ctx, std::uint16_t ds,
 
 /// The program has just put the screen up. If it is the overworld, the
 /// country the party has not been near goes back under fog.
+template <const explored_facts& F>
 void at_present_return(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
-  const std::uint16_t ds = data_segment(cpu, ctx);
+  const std::uint16_t ds = data_segment<F.profile>(cpu, ctx);
   if (ds == 0) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
@@ -723,7 +739,7 @@ void at_present_return(machine& box, seam_context& ctx) {
   // The cheapest byte first. This routine is the program's one present
   // and is reached from every screen it draws, so the common case by an
   // enormous margin is one read and a return.
-  if (cpu.read_byte(ds, profile.data_game_mode) != profile.mode_travel) {
+  if (cpu.read_byte(ds, F.profile.data_game_mode) != F.profile.mode_travel) {
     return;
   }
 
@@ -736,19 +752,20 @@ void at_present_return(machine& box, seam_context& ctx) {
   if (!look.on_screen || !look.settled) {
     return;
   }
-  paint(box, ctx, ds, look, true);
+  paint<F>(box, ctx, ds, look, true);
 }
 
 /// The program is painting a square of its map into the window, so
 /// whatever a script put there is going.
+template <const explored_facts& F>
 void at_window_square(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
-  const std::uint16_t ds = data_segment(cpu, ctx);
+  const std::uint16_t ds = data_segment<F.profile>(cpu, ctx);
   if (ds == 0) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
-  if (cpu.read_byte(ds, profile.data_game_mode) == profile.mode_travel) {
+  if (cpu.read_byte(ds, F.profile.data_game_mode) == F.profile.mode_travel) {
     ctx.set_scratch(word_window_taken, 0);
   }
 }
@@ -759,9 +776,10 @@ void at_window_square(machine& box, seam_context& ctx) {
 /// something has changed that no repaint of the program's would have
 /// shown — a saved slot's table read in under a party that is standing
 /// still, most of all.
+template <const explored_facts& F>
 void at_key_pending(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
-  const std::uint16_t ds = data_segment(cpu, ctx);
+  const std::uint16_t ds = data_segment<F.profile>(cpu, ctx);
   if (ds == 0) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
@@ -773,16 +791,17 @@ void at_key_pending(machine& box, seam_context& ctx) {
     box.automap().set_explored_signature(0);
     return;
   }
-  paint(box, ctx, ds, look, false);
+  paint<F>(box, ctx, ds, look, false);
 }
 
 /// The program is putting a command bar up, and which bar it is says
 /// whose screen this is. The same point, the same reading and the same
 /// note as the automap's (M5-E2d): either seam alone keeps it current,
 /// and both together write it twice with the same answer.
+template <const explored_facts& F>
 void at_command_bar(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
-  const std::uint16_t ds = data_segment(cpu, ctx);
+  const std::uint16_t ds = data_segment<F.profile>(cpu, ctx);
   if (ds == 0) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
@@ -791,22 +810,778 @@ void at_command_bar(machine& box, seam_context& ctx) {
 }
 
 // ---------------------------------------------------------------------------
+// On Curse of the Azure Bonds: a picture with places on it (#555)
+// ---------------------------------------------------------------------------
+//
+// Curse has no overland walked square by square. Its overland, game mode
+// 3, is **one picture of the whole region**, a big picture block drawn at
+// the wilderness frame's cell (1, 1), with towns and trails drawn on it;
+// the party's mark blinks at the place it is at, and a journey is chosen
+// from a list in the text area below. So the fog is laid over that
+// picture, and what it leaves clear is what the party has seen
+// (`docs/explored-overlay.md` §9, the maintainer's design):
+//
+//   * a **disc** around every place the party's mark has stood on;
+//   * a **corridor** along the straight line between two places the party
+//     went between one after the other, which is a trail taken, or the
+//     way across country between two places a journey passed through;
+//   * the **current place**, always.
+//
+// The covering is Pool of Radiance's: palette index 0 on the half of the
+// pixels whose `x + y` is even on the screen. What is different is how it
+// is laid, because what is different is the screen.
+//
+// **The program does not repaint this picture when the party moves.** A
+// journey moves the mark from place to place and the picture stays as it
+// was drawn, so a reveal cannot wait for the program to put the country
+// back the way Pool of Radiance's step does. The seam puts it back
+// itself, **from the program's own copy of the picture**: the loaded
+// block is in conventional memory, four plane bytes to a byte column in
+// the order a table in the data segment gives, and the program's own
+// blitter copies it to the screen a byte at a time. Every paint writes the
+// whole picture, each byte its plane bytes from that copy less the fog's
+// pixels: four plane-selected writes a byte, no read of the video window
+// at all, so the adapter's latches are not touched.
+//
+// **When**, and the five points:
+//
+//   * **the blitter's line loop** (image `0x343B`), drawing the overland's
+//     picture on the overland: the scanline it has just finished gets its
+//     fog at once. The blitter takes about six frames over the picture,
+//     and fogging only at its return left the country it had drawn
+//     uncovered for five of them;
+//   * **the blitter's return** (image `0x3542`), with the picture block
+//     the overland's and its far pointer the one it was handed at (1, 1):
+//     the program has just drawn the picture, so it is clean, and on the
+//     overland the whole fog is laid again, which changes nothing the
+//     line loop laid;
+//   * **the blitter's entry** (image `0x3347`): anything else drawn into
+//     the picture's cells, a script's picture, a figure, a frame of
+//     another screen, means the picture is no longer the program's map,
+//     and nothing is painted until the program draws it again. The mark
+//     and the screen it saved under it are let through, at the mark's own
+//     cell, because the menu-bar routine blinks them there;
+//   * **the overlay compositor's entry** (image `0x3548`), which is how a
+//     masked picture or a sprite reaches the screen: the same, without a
+//     cell to test;
+//   * **the menu-bar routine's own test** (overlay 27 `+0x04AC`), the
+//     compare of the game mode, the loaded picture and the last picture
+//     loaded that decides whether the mark is put up at all. With the
+//     program's own answer yes, the place is recorded, and the way from
+//     the last one; the fog is painted if anything has moved since it
+//     last was. The mark is down here (the routine ends by putting back
+//     what it saved under it), so the program saves the screen under the
+//     mark *after* the fog is laid, and what it saves at the current
+//     place is the picture, clear.
+//
+// **The fidelity claim is Pool of Radiance's**: on, and the overland map
+// never shown, a run is the run with no engine at all. The points read;
+// what they write is the seam's own words and `machine::automap()`.
+//
+// **What it refuses.** The data segment not being where `image_base()`
+// says; the program's adapter byte not being the EGA's (another adapter's
+// picture is laid out differently); the area record's far pointer, the
+// picture's or a block's not being inside conventional memory; a current
+// place beyond the table the program keeps (a word, as the program reads
+// it); and a picture that would reach outside the frame's interior.
+
+/// The facts, one row: Curse is the only program this mechanism is for.
+struct explored_picture_facts {
+  /// The program these facts are about (program_profile.h).
+  const program_profile& profile;
+
+  /// The menu-bar routine's test of whether to put the mark up, in the
+  /// menu overlay (the profile's): `CMP` of the game mode with 3, of the
+  /// loaded big picture with the overland's and of the last picture
+  /// loaded with the one that keeps the mark down, then the three far
+  /// calls that place, draw and blink-restore it.
+  std::uint32_t mark_test;
+
+  /// The resident picture blitter: its entry, and the `mov sp, bp` its
+  /// every path ends at, with its frame still up. Arguments, far pointer
+  /// first: the block at `BP+6`, its row in eight-pixel cells at `BP+0Ah`
+  /// and its column (a byte column) at `BP+0Ch`.
+  std::uint32_t blit_entry;
+  std::uint32_t blit_exit;
+
+  /// The blitter's line loop, where it goes on to the next scanline: the
+  /// one at `BP-4` is drawn, every byte column of it on every plane.
+  std::uint32_t blit_next_line;
+  std::uint16_t blit_line_below_bp;
+
+  /// The overlay compositor's entry: the flush of a masked picture.
+  std::uint32_t compositor_entry;
+
+  /// The game mode on the program's start menu, where a save is loaded
+  /// or a new party begun: the way between the last place and the next
+  /// is not a way the party went.
+  std::uint8_t mode_start_menu;
+
+  /// The loaded big picture's block id, and the overland's.
+  std::uint16_t data_picture_block;
+  std::uint8_t overland_picture;
+  /// The last small picture loaded, and the one that keeps the mark down.
+  std::uint16_t data_last_picture;
+  std::uint8_t picture_without_mark;
+  /// The loaded big picture's far pointer (offset, then segment).
+  std::uint16_t data_picture_pointer;
+
+  /// The mark's block and the block it saves the screen under the mark
+  /// into, both far pointers, and the mark's cell: column word, row word.
+  std::uint16_t data_mark_block;
+  std::uint16_t data_mark_saved;
+  std::uint16_t data_mark_column;
+  std::uint16_t data_mark_row;
+
+  /// The program's adapter byte, and the EGA's value of it.
+  std::uint16_t data_adapter;
+  std::uint8_t adapter_ega;
+
+  /// The four map-mask values the blitter writes a byte column's four
+  /// plane bytes through, in order.
+  std::uint16_t data_plane_order;
+
+  /// The current place: a word in the area record (the profile's far
+  /// pointer), read as the program reads it.
+  std::uint16_t area_current_place;
+
+  /// The place table, a byte per place: the column and the row of its
+  /// eight-pixel cell on the screen, where the mark is drawn.
+  std::uint16_t data_place_columns;
+  std::uint16_t data_place_rows;
+  std::uint8_t place_count;
+
+  /// A picture block's header: its height in scanlines, its width in byte
+  /// columns, and where its plane bytes begin.
+  std::uint16_t block_height;
+  std::uint16_t block_width;
+  std::uint16_t block_data;
+
+  /// Where the picture goes, in cells, and the frame interior it must fit:
+  /// rows 1..15 and columns 1..38, inside the wilderness frame.
+  std::uint16_t picture_row;
+  std::uint16_t picture_column;
+  std::uint16_t interior_last_row;
+  std::uint16_t interior_last_column;
+};
+
+constexpr explored_picture_facts curse_explored{
+    .profile = curse_of_the_azure_bonds,
+    .mark_test = 0x04AC,
+    .blit_entry = 0x3347,
+    .blit_exit = 0x3542,
+    .blit_next_line = 0x343B,
+    .blit_line_below_bp = 4,
+    .compositor_entry = 0x3548,
+    .mode_start_menu = 0,
+    .data_picture_block = 0x72AA,
+    .overland_picture = 0x79,
+    .data_last_picture = 0x72A4,
+    .picture_without_mark = 0x50,
+    .data_picture_pointer = 0x72A6,
+    .data_mark_block = 0x8C90,
+    .data_mark_saved = 0x65E4,
+    .data_mark_column = 0x8C8C,
+    .data_mark_row = 0x8C8E,
+    .data_adapter = 0x5000,
+    .adapter_ega = 1,
+    .data_plane_order = 0x2590,
+    .area_current_place = 0x342,
+    .data_place_columns = 0x0A4A,
+    .data_place_rows = 0x0A6A,
+    .place_count = 33,
+    .block_height = 0,
+    .block_width = 2,
+    .block_data = 0x17,
+    .picture_row = 1,
+    .picture_column = 1,
+    .interior_last_row = 15,
+    .interior_last_column = 38};
+
+static_assert(curse_explored.place_count <= automap_max_places,
+              "the program's places fit in a places record");
+
+/// The seam's words on Curse: the picture on the screen is the program's
+/// map as it drew it (1) or something has been drawn over it since (0);
+/// and the last place recorded, plus one (0 for none).
+constexpr unsigned word_picture_clean = 0;
+constexpr unsigned word_last_place = 1;
+
+/// Eight pixels to a cell, both ways, in the program's graphics mode.
+constexpr unsigned cell_pixels = 8;
+
+/// The widest picture the frame's interior holds, in byte columns.
+constexpr std::size_t picture_max_columns = 38;
+
+/// A far pointer read out of the data segment, and whether `reach` bytes
+/// from it are in conventional memory without wrapping its segment.
+struct far_block {
+  std::uint16_t segment{};
+  std::uint16_t offset{};
+};
+
+[[nodiscard]] far_block far_at(cpu::processor& cpu, std::uint16_t ds,
+                               std::uint16_t where) {
+  return {.segment = cpu.read_word(ds, at(where, 2)),
+          .offset = cpu.read_word(ds, where)};
+}
+
+[[nodiscard]] bool readable(const far_block& block,
+                            std::uint32_t reach) noexcept {
+  if (block.segment == 0 && block.offset == 0) {
+    return false;
+  }
+  return std::uint32_t{block.offset} + reach <= 0x10000U &&
+         cpu::physical_address(block.segment, block.offset) + reach <=
+             conventional_ram_size;
+}
+
+/// A point on the screen, in pixels.
+struct screen_point {
+  int x{};
+  int y{};
+};
+
+/// The clear pixels of one scanline of the picture: what the party has
+/// seen of it, a bit a pixel from the picture's left edge.
+///
+/// **One line at a time**, because that is how the program draws the
+/// picture: its blitter writes it a scanline at a time, and the fog is
+/// laid on each line as the blitter finishes it, so no frame shows a line
+/// of the picture without it. A disc or a corridor meets a line in one
+/// run of pixels, so a line is cheap however many places there are.
+///
+/// Distances are measured from a pixel's centre, in doubled coordinates
+/// so that the centre is a whole number and the arithmetic stays in
+/// integers.
+class clear_line {
+ public:
+  clear_line(int left, int width, int y) noexcept
+      : left_(left), width_(width), y_(y) {}
+
+  /// The pixels within `radius` of `c`, a cell's centre.
+  void disc(screen_point c, int radius) noexcept {
+    const std::int64_t dy =
+        (std::int64_t{y_} * 2) + 1 - (std::int64_t{c.y} * 2);
+    const std::int64_t reach = std::int64_t{radius} * 2;
+    if (dy * dy > reach * reach) {
+      return;
+    }
+    for (int x = c.x - radius; x <= c.x + radius; ++x) {
+      const std::int64_t dx =
+          (std::int64_t{x} * 2) + 1 - (std::int64_t{c.x} * 2);
+      if ((dx * dx) + (dy * dy) <= reach * reach) {
+        set(x);
+      }
+    }
+  }
+
+  /// The pixels within `half_width` of the segment from `a` to `b`.
+  void corridor(screen_point a, screen_point b, int half_width) noexcept {
+    if (y_ < (a.y < b.y ? a.y : b.y) - half_width ||
+        y_ > (a.y < b.y ? b.y : a.y) + half_width) {
+      return;
+    }
+    const std::int64_t vx = (std::int64_t{b.x} - a.x) * 2;
+    const std::int64_t vy = (std::int64_t{b.y} - a.y) * 2;
+    const std::int64_t length = (vx * vx) + (vy * vy);
+    const std::int64_t reach = std::int64_t{half_width} * 2;
+    const std::int64_t wy =
+        (std::int64_t{y_} * 2) + 1 - (std::int64_t{a.y} * 2);
+    const int first = (a.x < b.x ? a.x : b.x) - half_width;
+    const int last = (a.x < b.x ? b.x : a.x) + half_width;
+    for (int x = first; x <= last; ++x) {
+      const std::int64_t wx =
+          (std::int64_t{x} * 2) + 1 - (std::int64_t{a.x} * 2);
+      const std::int64_t along = (wx * vx) + (wy * vy);
+      bool inside = false;
+      if (along <= 0 || length == 0) {
+        // Before the start: the distance to the start.
+        inside = (wx * wx) + (wy * wy) <= reach * reach;
+      } else if (along >= length) {
+        // Past the end: the distance to the end.
+        const std::int64_t ux = wx - vx;
+        const std::int64_t uy = wy - vy;
+        inside = (ux * ux) + (uy * uy) <= reach * reach;
+      } else {
+        // Beside the segment: the distance from its line, squared and
+        // times its squared length, which keeps it in integers.
+        const std::int64_t across = (wx * vy) - (wy * vx);
+        inside = across * across <= reach * reach * length;
+      }
+      if (inside) {
+        set(x);
+      }
+    }
+  }
+
+  [[nodiscard]] bool clear(int x) const noexcept {
+    const int at_x = x - left_;
+    if (at_x < 0 || at_x >= width_) {
+      return false;
+    }
+    const auto bit = static_cast<std::size_t>(at_x);
+    return ((bits_[bit / 8] >> (bit % 8)) & 1U) != 0;
+  }
+
+ private:
+  void set(int x) noexcept {
+    const int at_x = x - left_;
+    if (at_x < 0 || at_x >= width_) {
+      return;
+    }
+    const auto bit = static_cast<std::size_t>(at_x);
+    bits_[bit / 8] =
+        static_cast<std::uint8_t>(bits_[bit / 8] | (1U << (bit % 8)));
+  }
+
+  int left_;
+  int width_;
+  int y_;
+  std::array<std::uint8_t, picture_max_columns> bits_{};
+};
+
+/// A place's cell's centre on the screen, from the program's own table.
+template <const explored_picture_facts& F>
+[[nodiscard]] screen_point place_centre(cpu::processor& cpu, std::uint16_t ds,
+                                        unsigned place) {
+  const int column = cpu.read_byte(
+      ds, at(F.data_place_columns, static_cast<std::uint16_t>(place)));
+  const int row = cpu.read_byte(
+      ds, at(F.data_place_rows, static_cast<std::uint16_t>(place)));
+  constexpr int half = static_cast<int>(cell_pixels / 2);
+  return {.x = (column * static_cast<int>(cell_pixels)) + half,
+          .y = (row * static_cast<int>(cell_pixels)) + half};
+}
+
+/// The current place, or `place_count` when the area record cannot be
+/// read or holds a place beyond the table.
+template <const explored_picture_facts& F>
+[[nodiscard]] unsigned current_place(cpu::processor& cpu, std::uint16_t ds) {
+  const far_block record = far_at(cpu, ds, F.profile.data_area_record);
+  const std::uint32_t reach = F.area_current_place + 2U;
+  if (!readable(record, reach)) {
+    return F.place_count;
+  }
+  const std::uint16_t place =
+      cpu.read_word(record.segment, at(record.offset, F.area_current_place));
+  return place < F.place_count ? place : F.place_count;
+}
+
+/// Whether the program would put the mark up now: its own three compares.
+template <const explored_picture_facts& F>
+[[nodiscard]] bool overland_up(cpu::processor& cpu, std::uint16_t ds) {
+  return cpu.read_byte(ds, F.profile.data_game_mode) == F.profile.mode_travel &&
+         cpu.read_byte(ds, F.data_picture_block) == F.overland_picture &&
+         cpu.read_byte(ds, F.data_last_picture) != F.picture_without_mark;
+}
+
+/// The loaded picture, as the program's blitter reads it: where its
+/// plane bytes are, how many lines and byte columns, and which plane each
+/// of a byte column's four bytes is for. `ok` false when a fact does not
+/// hold, and then nothing is to be drawn from it.
+struct loaded_picture {
+  bool ok{false};
+  far_block block{};
+  unsigned lines{};
+  unsigned columns{};
+  std::array<unsigned, ega::plane_count> plane_of{};
+};
+
+template <const explored_picture_facts& F>
+[[nodiscard]] loaded_picture read_picture(cpu::processor& cpu,
+                                          std::uint16_t ds) {
+  loaded_picture found{};
+  if (cpu.read_byte(ds, F.data_adapter) != F.adapter_ega) {
+    return found;
+  }
+  found.block = far_at(cpu, ds, F.data_picture_pointer);
+  if (!readable(found.block, F.block_data)) {
+    return found;
+  }
+  found.lines = cpu.read_word(found.block.segment,
+                              at(found.block.offset, F.block_height));
+  found.columns =
+      cpu.read_word(found.block.segment, at(found.block.offset, F.block_width));
+  const unsigned top = F.picture_row * cell_pixels;
+  if (found.lines == 0 || found.columns == 0 ||
+      top + found.lines > (F.interior_last_row + 1U) * cell_pixels ||
+      F.picture_column + found.columns > F.interior_last_column + 1U) {
+    return found;
+  }
+  const std::uint32_t data_bytes = std::uint32_t{found.lines} * found.columns *
+                                   static_cast<std::uint32_t>(ega::plane_count);
+  if (!readable(found.block, F.block_data + data_bytes)) {
+    return found;
+  }
+
+  // The program's own table, which must name each plane once.
+  unsigned planes_named = 0;
+  for (unsigned k = 0; k < ega::plane_count; ++k) {
+    const std::uint8_t mask = cpu.read_byte(
+        ds, at(F.data_plane_order, static_cast<std::uint16_t>(k)));
+    unsigned plane = ega::plane_count;
+    for (unsigned p = 0; p < ega::plane_count; ++p) {
+      if (mask == (1U << p)) {
+        plane = p;
+      }
+    }
+    if (plane == ega::plane_count || (planes_named & (1U << plane)) != 0) {
+      return found;
+    }
+    planes_named |= 1U << plane;
+    found.plane_of[k] = plane;
+  }
+  found.ok = true;
+  return found;
+}
+
+/// Lay the fog on lines `first` to `last` of the picture (its own line
+/// numbers), each byte written as the program's copy of the picture has
+/// it less the fog's pixels.
+template <const explored_picture_facts& F>
+void paint_lines(machine& box, std::uint16_t ds, const loaded_picture& picture,
+                 unsigned place, unsigned first, unsigned last) {
+  cpu::processor& cpu = box.processor();
+  const automap_record* record = box.automap().find_places(
+      cpu.read_byte(ds, F.profile.data_disk_number), F.overland_picture);
+
+  // What the party has seen is the same on every line: the places, and
+  // the ways between them.
+  std::array<screen_point, automap_max_places> centre{};
+  std::array<bool, automap_max_places> stood{};
+  for (unsigned a = 0; a < F.place_count; ++a) {
+    centre[a] = place_centre<F>(cpu, ds, a);
+    stood[a] =
+        a == place || (record != nullptr && automap_state::seen(*record, a, a));
+  }
+
+  // A plain write-mode-0 byte to one plane at a time: no set/reset, the
+  // whole byte the CPU's, no rotation. Set rather than assumed.
+  write_register(box, ega::graphics_index_port, ega::graphics_data_port,
+                 gc_enable_set_reset_index, no_planes);
+  write_register(box, ega::graphics_index_port, ega::graphics_data_port,
+                 gc_set_reset_index, no_planes);
+  write_register(box, ega::graphics_index_port, ega::graphics_data_port,
+                 gc_data_rotate_index, 0);
+  write_register(box, ega::graphics_index_port, ega::graphics_data_port,
+                 gc_write_mode_index, 0);
+  write_register(box, ega::graphics_index_port, ega::graphics_data_port,
+                 gc_bit_mask_index, all_bits);
+
+  const unsigned top = F.picture_row * cell_pixels;
+  const unsigned left = F.picture_column;
+  const auto data_offset =
+      static_cast<std::uint16_t>(picture.block.offset + F.block_data);
+  for (unsigned line = first; line <= last && line < picture.lines; ++line) {
+    const unsigned screen_line = top + line;
+    clear_line seen(static_cast<int>(left * cell_pixels),
+                    static_cast<int>(picture.columns * cell_pixels),
+                    static_cast<int>(screen_line));
+    for (unsigned a = 0; a < F.place_count; ++a) {
+      if (stood[a]) {
+        seen.disc(centre[a], explored_place_radius);
+      }
+      if (record == nullptr) {
+        continue;
+      }
+      for (unsigned b = a + 1; b < F.place_count; ++b) {
+        if (automap_state::seen(*record, a, b)) {
+          seen.corridor(centre[a], centre[b], explored_trail_half_width);
+        }
+      }
+    }
+
+    const std::uint8_t checker =
+        (screen_line % 2) == 0 ? checker_even_line : checker_odd_line;
+    std::array<std::uint8_t, picture_max_columns> fog{};
+    for (unsigned column = 0; column < picture.columns; ++column) {
+      for (unsigned bit = 0; bit < cell_pixels; ++bit) {
+        const auto pixel = static_cast<std::uint8_t>(0x80U >> bit);
+        const auto x = static_cast<int>(((left + column) * cell_pixels) + bit);
+        if ((checker & pixel) != 0 && !seen.clear(x)) {
+          fog[column] = static_cast<std::uint8_t>(fog[column] | pixel);
+        }
+      }
+    }
+
+    for (unsigned k = 0; k < ega::plane_count; ++k) {
+      write_register(box, ega::sequencer_index_port, ega::sequencer_data_port,
+                     sequencer_map_mask_index,
+                     static_cast<std::uint8_t>(1U << picture.plane_of[k]));
+      for (unsigned column = 0; column < picture.columns; ++column) {
+        const std::uint32_t index =
+            (((std::uint32_t{line} * picture.columns) + column) *
+             ega::plane_count) +
+            k;
+        const std::uint8_t drawn =
+            cpu.read_byte(picture.block.segment,
+                          static_cast<std::uint16_t>(data_offset + index));
+        // Index 0 is every plane clear, so the fog's pixels are the drawn
+        // ones with their bits taken out.
+        cpu.write_byte(video_window_segment,
+                       static_cast<std::uint16_t>(
+                           (screen_line * plane_bytes_per_row) + left + column),
+                       static_cast<std::uint8_t>(drawn & ~fog[column]));
+      }
+    }
+  }
+
+  // Handed back as the program's own blitter leaves it, and as its line
+  // loop expects to find it: every plane enabled, the sequencer's index on
+  // the map mask.
+  write_register(box, ega::sequencer_index_port, ega::sequencer_data_port,
+                 sequencer_map_mask_index, all_planes);
+}
+
+/// Lay the fog if anything has moved since it was last laid.
+template <const explored_picture_facts& F>
+void paint_if_moved(machine& box, seam_context& ctx, std::uint16_t ds,
+                    bool picture_just_drawn) {
+  cpu::processor& cpu = box.processor();
+  automap_state& state = box.automap();
+  const unsigned place = current_place<F>(cpu, ds);
+  if (place >= F.place_count) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  std::uint32_t signature = mix(2166136261U, place);
+  signature = mix(signature, state.serial());
+  if (signature == 0) {
+    signature = 1;
+  }
+  if (!picture_just_drawn && signature == state.explored_signature()) {
+    return;
+  }
+  const loaded_picture picture = read_picture<F>(cpu, ds);
+  if (!picture.ok) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  paint_lines<F>(box, ds, picture, place, 0, picture.lines - 1);
+  state.set_explored_signature(signature);
+}
+
+/// The menu-bar routine is deciding whether to put the mark up. With the
+/// program's own answer yes, the place is recorded and the fog laid.
+template <const explored_picture_facts& F>
+void at_mark_test(machine& box, seam_context& ctx) {
+  cpu::processor& cpu = box.processor();
+  const std::uint16_t ds = data_segment<F.profile>(cpu, ctx);
+  if (ds == 0) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  if (cpu.read_byte(ds, F.profile.data_game_mode) == F.mode_start_menu) {
+    // A save is loaded or a party begun from here: the next place the
+    // overland shows is not one the party went to from the last.
+    ctx.set_scratch(word_last_place, 0);
+    return;
+  }
+  if (!overland_up<F>(cpu, ds)) {
+    return;
+  }
+  const unsigned place = current_place<F>(cpu, ds);
+  if (place >= F.place_count) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+
+  automap_state& state = box.automap();
+  const std::uint32_t was = state.serial();
+  automap_record& record = state.record_for_places(
+      cpu.read_byte(ds, F.profile.data_disk_number), F.overland_picture);
+  (void)state.reveal(record, place, place);
+  const unsigned last = ctx.scratch(word_last_place);
+  if (last != 0 && last - 1 != place) {
+    (void)state.reveal(record, last - 1, place);
+  }
+  ctx.set_scratch(word_last_place, static_cast<std::uint16_t>(place + 1));
+  if (state.serial() != was) {
+    (void)ctx.call_host(seam_host_service::automap_update, state.serial());
+  }
+
+  if (ctx.scratch(word_picture_clean) != 0) {
+    paint_if_moved<F>(box, ctx, ds, false);
+  }
+}
+
+/// The blitter is about to draw something. Anything but the picture
+/// itself, the mark or what it saved under the mark, drawn into the
+/// picture's cells, means the picture is no longer the program's map.
+template <const explored_picture_facts& F>
+void at_blit_entry(machine& box, seam_context& ctx) {
+  if (ctx.scratch(word_picture_clean) == 0) {
+    return;
+  }
+  cpu::processor& cpu = box.processor();
+  const std::uint16_t ds = data_segment<F.profile>(cpu, ctx);
+  if (ds == 0) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  const cpu::registers& regs = cpu.regs();
+  const std::uint16_t ss = regs[cpu::sreg::ss];
+  const std::uint16_t sp = regs[cpu::reg16::sp];
+  // At the entry the far return is on top, then the block's far pointer,
+  // its row and its column.
+  const far_block block{.segment = cpu.read_word(ss, at(sp, 6)),
+                        .offset = cpu.read_word(ss, at(sp, 4))};
+  const std::uint16_t row = cpu.read_word(ss, at(sp, 8));
+  const std::uint16_t column = cpu.read_word(ss, at(sp, 10));
+
+  const auto is = [&](std::uint16_t pointer) {
+    const far_block known = far_at(cpu, ds, pointer);
+    return known.segment == block.segment && known.offset == block.offset;
+  };
+  if (is(F.data_picture_pointer)) {
+    return;
+  }
+  if ((is(F.data_mark_block) || is(F.data_mark_saved)) &&
+      row == cpu.read_word(ds, F.data_mark_row) &&
+      column == cpu.read_word(ds, F.data_mark_column)) {
+    return;
+  }
+
+  if (!readable(block, F.block_width + 2U)) {
+    // Nothing the blitter can draw from; and nothing to tell where it
+    // would go. Take the picture as covered.
+    ctx.set_scratch(word_picture_clean, 0);
+    return;
+  }
+  const unsigned lines =
+      cpu.read_word(block.segment, at(block.offset, F.block_height));
+  const unsigned columns =
+      cpu.read_word(block.segment, at(block.offset, F.block_width));
+  const unsigned first_line = unsigned{row} * cell_pixels;
+  const unsigned last_line = first_line + lines;  // one past
+  const unsigned last_column = unsigned{column} + columns;
+  const unsigned interior_top = F.picture_row * cell_pixels;
+  const unsigned interior_bottom = (F.interior_last_row + 1U) * cell_pixels;
+  const bool apart = lines == 0 || columns == 0 || last_line <= interior_top ||
+                     first_line >= interior_bottom ||
+                     last_column <= F.picture_column ||
+                     column > F.interior_last_column;
+  if (!apart) {
+    ctx.set_scratch(word_picture_clean, 0);
+  }
+}
+
+/// The blitter has drawn. If it was the overland's picture, at its cell,
+/// the picture is the program's map again, and on the overland the fog
+/// goes on now.
+template <const explored_picture_facts& F>
+void at_blit_exit(machine& box, seam_context& ctx) {
+  cpu::processor& cpu = box.processor();
+  const std::uint16_t ds = data_segment<F.profile>(cpu, ctx);
+  if (ds == 0) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  const cpu::registers& regs = cpu.regs();
+  const std::uint16_t ss = regs[cpu::sreg::ss];
+  const std::uint16_t bp = regs[cpu::reg16::bp];
+  const far_block picture = far_at(cpu, ds, F.data_picture_pointer);
+  if (cpu.read_word(ss, at(bp, 6)) != picture.offset ||
+      cpu.read_word(ss, at(bp, 8)) != picture.segment ||
+      cpu.read_word(ss, at(bp, 10)) != F.picture_row ||
+      cpu.read_word(ss, at(bp, 12)) != F.picture_column ||
+      cpu.read_byte(ds, F.data_picture_block) != F.overland_picture) {
+    return;
+  }
+  ctx.set_scratch(word_picture_clean, 1);
+  box.automap().set_explored_signature(0);
+  if (overland_up<F>(cpu, ds)) {
+    paint_if_moved<F>(box, ctx, ds, true);
+  }
+}
+
+/// The blitter has drawn a scanline and is going on to the next. If it is
+/// drawing the overland's picture on the overland, the line it has drawn
+/// gets its fog now, so no frame shows the picture's country uncovered
+/// while the rest of it is still coming in.
+template <const explored_picture_facts& F>
+void at_blit_line(machine& box, seam_context& ctx) {
+  cpu::processor& cpu = box.processor();
+  const std::uint16_t ds = data_segment<F.profile>(cpu, ctx);
+  if (ds == 0) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  const cpu::registers& regs = cpu.regs();
+  const std::uint16_t ss = regs[cpu::sreg::ss];
+  const std::uint16_t bp = regs[cpu::reg16::bp];
+  const far_block drawing = far_at(cpu, ds, F.data_picture_pointer);
+  if (cpu.read_word(ss, at(bp, 6)) != drawing.offset ||
+      cpu.read_word(ss, at(bp, 8)) != drawing.segment ||
+      cpu.read_word(ss, at(bp, 10)) != F.picture_row ||
+      cpu.read_word(ss, at(bp, 12)) != F.picture_column ||
+      !overland_up<F>(cpu, ds)) {
+    return;
+  }
+  const unsigned place = current_place<F>(cpu, ds);
+  const loaded_picture picture = read_picture<F>(cpu, ds);
+  const std::uint16_t screen_line =
+      cpu.read_word(ss, static_cast<std::uint16_t>(bp - F.blit_line_below_bp));
+  const unsigned top = F.picture_row * cell_pixels;
+  if (place >= F.place_count || !picture.ok || screen_line < top ||
+      screen_line >= top + picture.lines) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  paint_lines<F>(box, ds, picture, place, screen_line - top, screen_line - top);
+}
+
+/// A masked picture or a sprite is going onto the screen.
+template <const explored_picture_facts& F>
+void at_compositor(machine& /*box*/, seam_context& ctx) {
+  if (ctx.scratch(word_picture_clean) != 0) {
+    ctx.set_scratch(word_picture_clean, 0);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // The definition
 // ---------------------------------------------------------------------------
 
-constexpr std::array<seam_point, 4> explored_points{
+constexpr std::array<seam_point, 4> pool_of_radiance_explored_points{
     {{.module = resident_image,
-      .offset = present_return,
-      .run = &at_present_return},
+      .offset = pool_of_radiance_explored.present_return,
+      .run = &at_present_return<pool_of_radiance_explored>},
      {.module = resident_image,
-      .offset = profile.key_pending_entry,
-      .run = &at_key_pending},
+      .offset = pool_of_radiance_explored.profile.key_pending_entry,
+      .run = &at_key_pending<pool_of_radiance_explored>},
      {.module = resident_image,
-      .offset = profile.command_bar_entry,
-      .run = &at_command_bar},
+      .offset = pool_of_radiance_explored.profile.command_bar_entry,
+      .run = &at_command_bar<pool_of_radiance_explored>},
      {.module = resident_image,
-      .offset = window_square_blit,
-      .run = &at_window_square}}};
+      .offset = pool_of_radiance_explored.window_square_blit,
+      .run = &at_window_square<pool_of_radiance_explored>}}};
+
+/// On Curse the mark's test is in the menu overlay (the profile's), and
+/// the blitter and the compositor are resident.
+constexpr std::array<seam_point, 5> curse_explored_points{
+    {{.module = curse_explored.profile.menu_overlay,
+      .offset = curse_explored.mark_test,
+      .run = &at_mark_test<curse_explored>},
+     {.module = resident_image,
+      .offset = curse_explored.blit_entry,
+      .run = &at_blit_entry<curse_explored>},
+     {.module = resident_image,
+      .offset = curse_explored.blit_exit,
+      .run = &at_blit_exit<curse_explored>},
+     {.module = resident_image,
+      .offset = curse_explored.compositor_entry,
+      .run = &at_compositor<curse_explored>},
+     {.module = resident_image,
+      .offset = curse_explored.blit_next_line,
+      .run = &at_blit_line<curse_explored>}}};
+
+/// The points on every program but the baseline, whose points are the
+/// definition's own (seam.h, schema 9).
+constexpr std::array<seam_program_points, 1> explored_programs{
+    {{.fingerprint = curse_of_the_azure_bonds.fingerprint,
+      .points = curse_explored_points}}};
 
 constexpr seam_definition explored_definition{
     .id = "explored",
@@ -814,7 +1589,8 @@ constexpr seam_definition explored_definition{
         "fog of war on the overworld map: the country the party has "
         "walked is the game's own, and the rest is covered",
     .fingerprints = explored_binaries,
-    .points = explored_points,
+    .points = pool_of_radiance_explored_points,
+    .programs = explored_programs,
     .trigger = false,
     .gate = document_kind::none,
     .schema = seam_schema_version};

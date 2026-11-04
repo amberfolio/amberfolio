@@ -126,10 +126,10 @@ frame that carries an input is checkpointed whatever the cadence says.
 
 ### Curse of the Azure Bonds
 
-Thirty-four sessions, `curse-*`, on the Steam copy at `--speed 386` and
+Thirty-six sessions, `curse-*`, on the Steam copy at `--speed 386` and
 `--wall none` (#554, #555). Every one is `disk external`: `curse-load` is
 pinned to the disk `curse-save` wrote (the `curse-saved` snapshot), the
-two `curse-journey` sessions to a disk with the party saved in slot D
+four `curse-journey` sessions to a disk with the party saved in slot D
 on the overland map (`curse-wild`), and the rest to the copy with its
 shipped slots A and B (`curse-slots`).
 `docs/playable-curse.md` has the legs and the table; the pairs are the
@@ -156,10 +156,15 @@ nothing cited) and `curse-cite` `identical curse-buy` (on, the innkeeper's entry
 on sight), `curse-camp-arrows` `contrast curse-camp-keys` (the arrows and
 Escape at the camp bar and its Yes/No question) and `curse-name-arrows`
 `contrast curse-name-keys` (the arrows at creation's lists and in the
-name); and the automap's: `curse-quiet-automap` `identical curse-quiet`
+name); the automap's: `curse-quiet-automap` `identical curse-quiet`
 (on, Tab never pressed) and `curse-town-map` `contrast curse-town` (Tab
 at frame 4,000 ahead of the Left there, 40 of 90 identical, divergent
-from tick 79,563,886). The
+from tick 79,563,886); and the explored overlay's: `curse-quiet-explored`
+`identical curse-quiet` (on, the overland never shown: all 58
+checkpoints) and `curse-journey-explored` `contrast curse-journey-kill`
+(32 of 94 identical, divergent from tick 66,200,494, the first after the
+overland's picture is drawn under the fog; only `devices` and `display`
+ever differ, never `cpu` or `ram`). The
 other sixteen are the legs with no seam: a new character, a purchase, a
 cure at the temple, the game's own Fix, the royal carriage, a journey
 on the overland map, and the rest. Each verifies on the desktop host and on the wasm module
@@ -175,7 +180,7 @@ on the overland map, and the rest. Each verifies on the desktop host and on the 
 | `timer-fix` (built in, always on) | `walk-quick`, at every sound after a skipped wait | none can exist: there is no off. Every session without quick steps verifies with it on: the driver's vector is the BIOS's at every install |
 | `automap` | `walk-map`; on Curse `curse-town-map` | `quiet-automap`; on Curse `curse-quiet-automap` |
 | `journal` | `reader`, `notes`, `cite`; on Curse `curse-cite` (an `identical`: only the citation watch is ported) | `quiet-journal` (a `contrast`); on Curse `curse-journey-journal` (an `identical`) |
-| `explored` | `wild-trail` | `quiet-explored` |
+| `explored` | `wild-trail`; on Curse `curse-journey-explored` | `quiet-explored`; on Curse `curse-quiet-explored` |
 | the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party`; on Curse `curse-fight-cheat`, `curse-fight-kill`, `curse-camp-wound` | `quiet-cheats`; on Curse `curse-quiet-cheats` |
 | `modern-controls` | `list-down-arrows`, `camp-down-arrows`, `camp-pad-arrows`, `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys`, `bar-esc-keys`, `bar-script-keys`, `bar-portrait-keys`, `menu-down-cursor`, `move-walk-mode`, `door-pick-3`, `list-keys-yellow`, `name-arrows-edit` (each a `contrast`; `door-pick-3` has the seam on at both ends and differs by its keys); on Curse `curse-camp-arrows`, `curse-name-arrows` | none can exist: three of its pieces draw on sight, so `quiet-modern-controls`, `menu-letters-cursor` and `quiet-all-on-sight` are `contrast`s too (the pair is a `contrast`, as the faces' is). On Curse, where those three are not ported, `curse-quiet-controls` |
 | `quick-steps` | `walk-quick` | `menu-letters-quick`. Not in `quiet-all`: `quiet`'s movement keys click |
