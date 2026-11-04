@@ -2096,9 +2096,11 @@ and that reading counts only when it is one character or a blank. Nothing about 
   in two colours — a portrait has produced a lone `^` — so a run of one
   character in the middle of a picture is worth a second look.
 - **Per program.** The font's location is a fact about a binary, like a
-  seam's addresses. A program this build has no location for answers
-  `wrong_binary`; one that has not installed its font yet, `no_font`;
-  no program at all, `no_program`.
+  seam's addresses: the profile's `data_font_pointer`, `0x5E20` on Pool
+  of Radiance and `0x65AE` on Curse of the Azure Bonds, whose font is the
+  same sixty-four glyphs drawn the same way (#555). A program this build
+  has no location for answers `wrong_binary`; one that has not installed
+  its font yet, `no_font`; no program at all, `no_program`.
 - **Measured, not assumed.** The grid was checked on every screen from
   the credits through character creation to the party menu and Modify;
   no text in the program is off it. The machine's own BIOS font was
@@ -2436,3 +2438,33 @@ A fight (game mode 5, the tactical grid):
   `core/src/machine/seam_aim_watch.cpp`: overlay 13's two key waits, the
   frame each keeps the cursor, the panel's record and the range in.
 - **Both hosts' `--dump`** write it beside each still as `.scene.json`.
+- **On Curse of the Azure Bonds** (#555) the same shapes, with that
+  program's facts (`scene_facts`, `curse_scene`, and its profile):
+
+  | fact | Pool of Radiance | Curse of the Azure Bonds |
+  | --- | --- | --- |
+  | party x, y, facing; wall sets | `0x6AAD`..`0x6AAF`; `0x6AAE` | `0x7229`..`0x722B`; `0x722A` |
+  | the loaded map; the area record | `0x6A5C`; `0x49D2` (fields `0x186` to `0x1CC`) | `0x7220`; `0x4FB2` (the same fields) |
+  | disk; area; in transition | `0x5376`; `0x84DC`; `0x442F` | `0x5C08`; `0x8B78`; `0x47F9` |
+  | the view kind | `0x49FA` | none: mode 4 is always the grid |
+  | slot records; squares; bodies; body count; the fight's block | `0x65B9`; `0x5F27`; `0x66D6`; `0x6715`; `0x6716` | `0x6D4F`; `0x66BD`; `0x6E6C`; `0x6EAB`; `0x6EAC` |
+  | ground costs; the acting figure | `0x2744`; `0x5D92` | `0x26A4`; `0x6520` |
+  | record: length, computer, AC | `0x11D`, `0x10F`, `0x111` | `0x1A6`, `0x198`, `0x19A` |
+  | the aim bar's frames: target, range; manual column, row, range, record | `+0x0C`, `-0x30`; `-0x33`, `-0x34`, `-0x38`, `+0x14` (overlay 13) | `+0x0E`, `-0x30`; `-0x33`, `-0x34`, `-0x38`, `+0x16` (overlay 14) |
+
+  - **No travel shape**: Curse's overland is a journey, a list of places,
+    and reads `null`.
+  - **Every map is `AREA <n>`**: the zone names, lairs and door table are
+    Pool of Radiance's places, keyed by disk and area numbers Curse uses
+    for other maps, so they are kept per program and Curse has none. A
+    door is a door where the map says it is shut.
+  - **The titles are `null`**: the program is in mode 4 from start-up,
+    and an area is up only once its script's block, numbered from one,
+    is loaded (the area number is zero until then).
+  - **The aim** waits on the aim watch, a piece of `modern-controls`,
+    being ported to Curse.
+  - **Driven** over `curse-fight`'s run: the room at `7,13` with walls
+    north, east and south and a door west; the walk west and north along
+    the street square by square; in the brawl, six of the party and a
+    patron on the squares the picture draws them on, window `22,10`, the
+    panel's member the `turn`, the sheet's HP and AC.

@@ -282,13 +282,35 @@ struct lair_found {
 /// The lair the party is in, or no name: off the grid, on a map with no
 /// lairs, or in a region holding no entrance or more than one, which is
 /// a map this table was not measured on.
-[[nodiscard]] lair_found find_lair(std::uint8_t disk, std::uint8_t area,
+[[nodiscard]] lair_found find_lair(const place_tables& places,
+                                   std::uint8_t disk, std::uint8_t area,
                                    std::uint8_t geo,
-                                   const zone_place& where) noexcept {
+                                   const zone_place& where) noexcept;
+
+}  // namespace
+
+struct place_tables {
+  std::span<const door_graphics> doors;
+  std::span<const zone_name> zones;
+  std::span<const sub_map_name> sub_maps;
+  std::span<const lair_grid> lairs;
+};
+
+namespace {
+
+constexpr place_tables pool_of_radiance_tables{.doors = door_table,
+                                               .zones = zone_names,
+                                               .sub_maps = sub_map_names,
+                                               .lairs = lair_grids};
+constexpr place_tables no_tables{};
+
+lair_found find_lair(const place_tables& places, std::uint8_t disk,
+                     std::uint8_t area, std::uint8_t geo,
+                     const zone_place& where) noexcept {
   if (where.map == nullptr) {
     return {};
   }
-  for (const lair_grid& grid : lair_grids) {
+  for (const lair_grid& grid : places.lairs) {
     if (grid.disk != disk || grid.area != area || grid.geo != geo) {
       continue;
     }
@@ -308,6 +330,12 @@ struct lair_found {
 }
 
 }  // namespace
+
+const place_tables& pool_of_radiance_places() noexcept {
+  return pool_of_radiance_tables;
+}
+
+const place_tables& no_places() noexcept { return no_tables; }
 
 unsigned cell_of(unsigned x, unsigned y) noexcept {
   return ((y & 0x0FU) * automap_map_side) + (x & 0x0FU);
@@ -343,7 +371,8 @@ std::uint16_t block_serving(const wall_set_blocks& blocks,
   return block > 0xFF ? wall_set_unknown : block;
 }
 
-door_evidence door_kinds(const grid& map, std::uint8_t disk,
+door_evidence door_kinds(const place_tables& places, const grid& map,
+                         std::uint8_t disk,
                          const wall_set_blocks& blocks) noexcept {
   door_evidence evidence;
   for (unsigned y = 0; y < automap_map_side; ++y) {
@@ -363,7 +392,7 @@ door_evidence door_kinds(const grid& map, std::uint8_t disk,
       continue;
     }
     const auto row = static_cast<unsigned>((nibble - 1U) % wall_faces_per_slot);
-    for (const door_graphics& known : door_table) {
+    for (const door_graphics& known : places.doors) {
       if (known.disk == disk && known.block == block &&
           ((known.rows >> row) & 1U) != 0) {
         evidence.from_table =
@@ -465,19 +494,20 @@ std::size_t sight_from(const grid& map, unsigned x, unsigned y, unsigned facing,
   return count;
 }
 
-std::string_view zone_label(std::uint8_t disk, std::uint8_t area,
-                            std::uint8_t geo, const zone_place& where,
+std::string_view zone_label(const place_tables& places, std::uint8_t disk,
+                            std::uint8_t area, std::uint8_t geo,
+                            const zone_place& where,
                             zone_fallback& fallback) noexcept {
-  const std::string_view lair = find_lair(disk, area, geo, where).name;
+  const std::string_view lair = find_lair(places, disk, area, geo, where).name;
   if (!lair.empty()) {
     return lair;
   }
-  for (const sub_map_name& sub : sub_map_names) {
+  for (const sub_map_name& sub : places.sub_maps) {
     if (sub.disk == disk && sub.area == area && sub.geo == geo) {
       return sub.name;
     }
   }
-  for (const zone_name& zone : zone_names) {
+  for (const zone_name& zone : places.zones) {
     if (zone.disk == disk && zone.area == area) {
       return zone.name;
     }
@@ -500,9 +530,10 @@ std::string_view zone_label(std::uint8_t disk, std::uint8_t area,
   return std::string_view{fallback.data(), used};
 }
 
-place_squares place_of(std::uint8_t disk, std::uint8_t area, std::uint8_t geo,
+place_squares place_of(const place_tables& places, std::uint8_t disk,
+                       std::uint8_t area, std::uint8_t geo,
                        const zone_place& where) noexcept {
-  const lair_found lair = find_lair(disk, area, geo, where);
+  const lair_found lair = find_lair(places, disk, area, geo, where);
   if (lair.name.empty()) {
     place_squares all{};
     all.fill(true);

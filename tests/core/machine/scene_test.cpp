@@ -1010,5 +1010,163 @@ TEST(SceneJson, StartsWithTheFieldsBothScreensHave) {
       << r.json();
 }
 
+// --- On Curse of the Azure Bonds (#555) -------------------------------------
+//
+// The same reads with Curse's facts: no view kind, no place tables, the
+// tactical grid's tables further into the data segment, the 422-byte record.
+
+namespace curse {
+constexpr std::uint32_t dgroup_offset = 0xABE0;
+constexpr std::uint16_t data_game_mode = 0x4FD3;
+constexpr std::uint16_t data_disk = 0x5C08;
+constexpr std::uint16_t data_area = 0x8B78;
+constexpr std::uint16_t data_x = 0x7229;
+constexpr std::uint16_t data_y = 0x722A;
+constexpr std::uint16_t data_facing = 0x722B;
+constexpr std::uint16_t data_map = 0x7220;
+constexpr std::uint16_t data_record = 0x4FB2;
+constexpr std::uint16_t data_wall_set = 0x722A;
+constexpr std::uint16_t data_slot_records = 0x6D4F;
+constexpr std::uint16_t data_slot_squares = 0x66BD;
+constexpr std::uint16_t data_combat_block = 0x6EAC;
+constexpr std::uint16_t data_ground_cost = 0x26A4;
+constexpr std::uint16_t record_in_fight = 0x196;
+constexpr std::uint16_t record_side = 0x197;
+constexpr std::uint16_t record_computer = 0x198;
+constexpr std::uint16_t record_ac = 0x19A;
+constexpr std::uint16_t record_hp = 0x1A4;
+constexpr std::uint16_t record_bytes = 0x1A6;
+}  // namespace curse
+
+struct curse_rig : rig {
+  curse_rig() {
+    sha256_digest digest;
+    EXPECT_TRUE(parse_digest(
+        "42fcefd6785679568b00bc1fb5b1d81ac2773416be4a35e0363920ddf6b78acd",
+        digest));
+    box->seams().loaded(digest, image_segment);
+  }
+  [[nodiscard]] static std::uint32_t curse_base() {
+    return (std::uint32_t{image_segment} * 16U) + curse::dgroup_offset;
+  }
+  void cdata(std::uint16_t offset, std::uint8_t value) const {
+    ram()[curse_base() + offset] = value;
+  }
+  void cword(std::uint16_t offset, std::uint16_t value) const {
+    cdata(offset, static_cast<std::uint8_t>(value & 0xFFU));
+    cdata(static_cast<std::uint16_t>(offset + 1),
+          static_cast<std::uint8_t>(value >> 8U));
+  }
+  void cfar(std::uint16_t offset, std::uint32_t linear) const {
+    cword(offset, static_cast<std::uint16_t>(linear & 0x0FU));
+    cword(static_cast<std::uint16_t>(offset + 2),
+          static_cast<std::uint16_t>(linear >> 4U));
+  }
+  /// The grid with the party at (x, y) facing `facing`, on disk `disk` and
+  /// in area `area`.
+  void grid(std::uint8_t x, std::uint8_t y, std::uint8_t facing,
+            std::uint8_t disk, std::uint8_t area) const {
+    cdata(curse::data_game_mode, 4);
+    cdata(curse::data_disk, disk);
+    cdata(curse::data_area, area);
+    cdata(curse::data_x, x);
+    cdata(curse::data_y, y);
+    cdata(curse::data_facing, facing);
+    cword(curse::data_record, 0);
+    cword(curse::data_record + 2, record_segment);
+    cword(curse::data_map, 0);
+    cword(curse::data_map + 2, map_segment);
+    for (std::uint16_t slot = 1; slot <= 3; ++slot) {
+      cword(static_cast<std::uint16_t>(curse::data_wall_set + (slot * 4U)),
+            0xFFFF);
+    }
+  }
+};
+
+TEST(SceneOnCurse, SaysWhereThePartyIsAndNamesTheAreaByItsNumber) {
+  const curse_rig r;
+  r.grid(7, 13, east, 2, 1);
+  r.face(7, 13, north, 1, 0);
+  const scene s = r.read();
+  ASSERT_EQ(r.last, scene_trouble::none) << r.json();
+  EXPECT_EQ(s.screen, scene_screen::explore);
+  EXPECT_EQ(s.x, 7);
+  EXPECT_EQ(s.y, 13);
+  EXPECT_EQ(s.facing, east);
+  EXPECT_EQ(std::string_view(s.zone.data(), s.zone_length), "AREA 1");
+  ASSERT_GT(s.view_count, 0U);
+  EXPECT_EQ(s.view[0].faces[0], scene_face::wall);
+}
+
+TEST(SceneOnCurse, NeverUsesPoolOfRadiancesNameForTheSameNumbers) {
+  // Pool of Radiance calls disk 1 area 18 a plaza; on Curse the same two
+  // numbers are a different map nobody has named.
+  const curse_rig r;
+  r.grid(3, 3, north, 1, 18);
+  const scene s = r.read();
+  ASSERT_EQ(r.last, scene_trouble::none);
+  EXPECT_EQ(std::string_view(s.zone.data(), s.zone_length), "AREA 18");
+}
+
+TEST(SceneOnCurse, TheTitlesInTheAdventuringModeAreNoScene) {
+  // Curse is in its adventuring mode from start-up; no area is loaded
+  // until its script's block, numbered from one, is.
+  const curse_rig r;
+  r.grid(7, 13, north, 1, 0);
+  EXPECT_EQ(r.read().screen, scene_screen::none);
+  EXPECT_EQ(r.last, scene_trouble::elsewhere);
+}
+
+TEST(SceneOnCurse, ReadsAFigureOnTheGridOutOfItsOwnRecord) {
+  const curse_rig r;
+  r.cdata(curse::data_game_mode, 5);
+  r.cdata(curse::data_disk, 2);
+  r.cdata(curse::data_area, 1);
+  r.cword(curse::data_combat_block, 0);
+  r.cword(curse::data_combat_block + 2, combat_block_segment);
+  const std::uint32_t block = std::uint32_t{combat_block_segment} * 16U;
+  r.ram()[block + 2] = 22;
+  r.ram()[block + 3] = 10;
+  for (unsigned i = 0; i < 50U * 25U; ++i) {
+    r.ram()[block + 7 + i] = ground_open;
+  }
+  r.cdata(
+      static_cast<std::uint16_t>(curse::data_ground_cost + (ground_open * 4U)),
+      1);
+  // One figure, slot 1: a party member at (25, 13).
+  const std::uint32_t record = std::uint32_t{combat_records_segment} * 16U;
+  const std::string_view name = "SHARA";
+  r.ram()[record] = static_cast<std::uint8_t>(name.size());
+  for (std::size_t i = 0; i < name.size(); ++i) {
+    r.ram()[record + 1 + i] = static_cast<std::uint8_t>(name[i]);
+  }
+  r.ram()[record + curse::record_in_fight] = 1;
+  r.ram()[record + curse::record_side] = 0;
+  r.ram()[record + curse::record_computer] = 0;
+  r.ram()[record + curse::record_ac] = 0x3C - 7;
+  r.ram()[record + curse::record_hp] = 29;
+  r.cfar(curse::data_slot_records + 4, record);
+  r.cdata(curse::data_slot_squares + 3, 1);
+  r.cdata(curse::data_slot_squares + 4, 25);
+  r.cdata(curse::data_slot_squares + 5, 13);
+  r.cdata(curse::data_slot_squares + 6, 1);
+  r.cdata(curse::data_slot_squares + 7, 1);
+
+  const scene s = r.read();
+  ASSERT_EQ(r.last, scene_trouble::none) << r.json();
+  EXPECT_EQ(s.screen, scene_screen::combat);
+  ASSERT_EQ(s.combatant_count, 1U);
+  const scene_combatant& who = s.combatants[0];
+  EXPECT_EQ(std::string_view(who.name.data(), who.name_length), "SHARA");
+  EXPECT_EQ(who.x, 25);
+  EXPECT_EQ(who.y, 13);
+  EXPECT_EQ(who.hp, 29);
+  EXPECT_EQ(who.ac, 7);
+  EXPECT_TRUE(who.player);
+  EXPECT_EQ(s.window_x, 22);
+  EXPECT_EQ(s.window_y, 10);
+  static_cast<void>(curse::record_bytes);
+}
+
 }  // namespace
 }  // namespace amberfolio::machine

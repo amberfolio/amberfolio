@@ -499,16 +499,18 @@ watches or calls (the keyboard's two entries, the clears, the frame and
 string drawers, the command-bar thunk, the roster drawer and the screen
 composer), the overlay modules with their load-segment words, and the
 menu-bar routine's and the adventuring loop's shared offsets. Each is
-stated once. Only Pool of Radiance has a profile (`pool_of_radiance`),
-and `find_program_profile()` answers null for anything else.
+stated once. Pool of Radiance has a profile (`pool_of_radiance`) and
+Curse of the Azure Bonds a partial one (`curse_of_the_azure_bonds`, the
+members its ported seams and reads use); `find_program_profile()` answers
+null for anything else.
 
 A seam's `fingerprints` are the fingerprints of the profiles its facts
 are about (`fingerprints_of()`): each seam file names its program once
 (`constexpr const program_profile& profile = pool_of_radiance;`) and
 reads the shared facts through it. A seam's own facts, the ones no other
-file reads, stay in its own file beside its mechanism. The scene and
-screen-text reads check the program the same way and answer
-`wrong_binary` for one without a profile. `ProgramProfile.*` in
+file reads, stay in its own file beside its mechanism, one row per
+program. The scene and screen-text reads pick their row the same way and
+answer `wrong_binary` for a program without one. `ProgramProfile.*` in
 `tests/core/machine/program_profile_test.cpp` checks that every seam is
 available only on programs that have one.
 
@@ -719,6 +721,8 @@ and never triggered.
 | `walk-quick` | contrast | `walk` (the first footstep goes on without its wait) |
 | `quiet-message-pause` | identical | `quiet` (no message is shown, so neither point is reached) |
 | `fight-pause` | contrast | `fight` (the pause that opens the battle, and every combat line after it, stand longer) |
+| `curse-quiet-message-pause` | identical | `curse-quiet` (no pause is reached) |
+| `curse-fight-pause` | contrast | `curse-fight` (the pause that opens the brawl, and every combat line after it, stand longer) |
 | `quiet-fanfare` | contrast | `quiet` (the piece from the end of the boot's loading on: the chip's writes, and its registers while it plays) |
 
 **A built-in fix has no pair** (`built_in_fixes()`, seam.h). It is on
@@ -986,7 +990,7 @@ to carry.
 | `explored` | fog of war on the overworld map: a black checker over every square the party has not stood on; a setting, no key | the resident image |
 | `modern-controls` | the controls a later game has, nine pieces in one seam: Up and Down step the pick-lists and the selected party member; Left, Right, Enter and Esc work at the command bars; walking is a mode the party's bar starts with `Move` and ends with `Exit`, `Area` gone; the main menu has a cursor, and its number row's 1 to 8 select a party member with each number shown; the arrows no longer type letters at a text prompt; every selection is a yellow block with its key letter a white one; and it notes when the program is reading a line of text and where the combat aim bar keeps its cursor, for a host to ask (§10) | overlay 25 (the menu-bar and list routines), overlays 13, 14, 16 and 19, and the resident image |
 | `quick-steps` | a turn, and the next step, do not wait for the footstep's click; the click still plays, and a step's two clicks keep their spacing | the resident image, and the call sites in overlays 14 and 3 |
-| `message-pause` | a message the program moves on from by itself stands at least the seam's number of milliseconds, 1500 unless the player chose otherwise, and any key ends it; the encounter menu waits as long before it wipes a line the script just printed | the resident image, and overlays 3 and 31 |
+| `message-pause` | a message the program moves on from by itself stands at least the seam's number of milliseconds, 1500 unless the player chose otherwise, and any key ends it; the encounter menu waits as long before it wipes a line the script just printed | the resident image, and overlays 3 and 31 (on Curse, 3 and 33) |
 | `fanfare` | a piece written for this project plays on the Tandy chip from the end of the boot's loading on, paced by a point at a moment (§3b); the program's first sound ends it | overlay 1, the resident image, and a moment |
 | `cheat-invulnerable` | the party takes no damage | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage, **when pulled** (§3a) | the end check's overlay |
@@ -1033,6 +1037,40 @@ PLAN.md §5 item 1. It never answers the challenge for anybody.
 - **Open**: `cite.rec` is the one session still on the boot that asked
   (#293); nobody has typed a correct answer into the real program
   (`docs/hosts.md` §3).
+
+**On Curse of the Azure Bonds** (#555) the challenge is one character
+read off a translation wheel, and the routine that asks it is overlaid.
+The skip is Pool of Radiance's mechanism with that program's call
+sites; the watch is a compare of one character, not of a word. One
+`code_wheel_facts` row per program (`seam_code_wheel.cpp`), the points
+in the definition's `programs`:
+
+| fact | Pool of Radiance | Curse of the Azure Bonds |
+| --- | --- | --- |
+| the protection routine's stub | `0x1C:0x0025` | `0x3F:0x0025` (its record at image `0x03F0`) |
+| the routine | in overlay 2 | overlay 4 (file offset 18133, 1096 bytes, load-segment word `0x0400`) |
+| the watch | the string compare's `REPE CMPSB`, image `0xBBB0`, against the word table | the routine's `CMP` of AL, the character typed, with the expected one at `[BP-3]`: overlay 4 `+0x03C4` |
+| the calls stepped over | the boot's, image `0x0122` | the boot's two, image `0x01F1` (after the first title) and `0x0344` (after the demonstration comes back), and the event-script interpreter's, overlay 3 `+0x3263`, a script's own protection command |
+
+- **The store copy accepts any answer** (PLAN.md §7, M9's first
+  question), by its own branch: the jump after the compare goes on to
+  the routine's exit when the two characters *differ*. A right answer
+  falls through to the program's own `SORRY, THAT'S INCORRECT.` and then
+  to the exit as well. GOG and Steam ship the same `START.EXE` and
+  `GAME.OVR`.
+- **Driven** on the Steam copy at `--speed 386`, `--wall none`: with the
+  seam on and `A` typed, `fired=2` (the boot's call and the compare) and
+  nothing latched; with the expected character typed instead, the
+  refusal line, the latch, `code wheel answered - remembered for this
+  copy` and the store's `answered` line for the digest; answered, the
+  boot goes from the title to the party menu with `fired=1` and no
+  challenge drawn.
+- **Not driven**: the interpreter's call. No leg reaches a script that
+  asks. Its operand is checked before the step, so a wrong fact declines.
+- **Fidelity**: `curse-boot-wheel` `identical curse-boot` (on, a wrong
+  letter typed, every one of 31 checkpoints equal);
+  `curse-boot-answered` `contrast curse-boot`. Tests:
+  `SeamCodeWheelOnCurse.*` in `tests/core/machine/seam_test.cpp`.
 
 ### The Encamp (F)ix (#172, #186, #189, #194, #298, #303, #304)
 
@@ -3291,6 +3329,93 @@ back on, which stops the driver and the sound with it.
   change of map wipes, with no pause between, a few dozen in the game's
   scripts, is not given one: only the encounter menu's wipe is.
 
+**On Curse of the Azure Bonds** (#555) the seam is the same mechanism
+with that program's facts, one `message_pause_facts` row per program
+(`seam_message_pause.cpp`) and its points in the definition's
+`programs`:
+
+| fact | Pool of Radiance | Curse of the Azure Bonds |
+| --- | --- | --- |
+| data segment (paragraphs from the image) | `0xC7C` | `0xABE` |
+| the pause: entry, `push ax`, far return of its `Delay` | `0x7E4E`, `0x7E5B`, `0x7E61` | `0x57F9`, `0x5806`, `0x580C` |
+| its length | game speed (DGROUP `0x49E2`) times 225 | game speed (DGROUP `0x4FC2`) times 100 |
+| `Delay`: entry, `dec dx`; paragraph:offset | `0xA69C`, `0xA6B7`; `0xA40:0x029C` | `0x868C`, `0x86A9`; `0x83F:0x029C` |
+| `ReadKey` | `0xA70F` | `0x86FD` |
+| interpreter overlay | overlay 3, load-segment word `0x200` | overlay 3 (file offset 2313, 14858 bytes), word `0x3D0` |
+| script pause's far return | `0x272B` | `0x2917` |
+| print opcode's calls (append, clear); its line | `0x0A69`, `0x0A91`; DGROUP `0x70C8` | `0x0A7F`, `0x0AAA`; DGROUP `0x7762` |
+| encounter menu's call (clear flag at `[SP+4]`) | `0x2176` | `0x235F` |
+| game-state block's far pointer; approach count | DGROUP `0x49D6`; `+0x582` | DGROUP `0x4FB6`; `+0x582` |
+| death routine; its far returns (fight, elsewhere) | overlay 31, word `0x3E10`; `0x1018`, `0x0E34` | overlay 33 (file offset 262204, 5061 bytes), word `0x1220`; `0x10D4`, `0x0E8A` |
+| a script's animation step, its far return | none | overlay 3 `0x3090` |
+| `Delay`'s millisecond at `386` | a millisecond | 0.6 of one |
+
+Each address is checked against the bytes of the Steam copy: the
+pause's `push bp`, `mov bp,sp`, the speed byte times 100, `push ax` and
+the far call to `083F:029C`; the interpreter's three calls to the box
+printer (paragraph `0x4CE`, offset `0x0498`) with the clear flag pushed
+fourth, the encounter menu's followed by the program's own read of the
+approach count through `0x4FB6`; the death routine's test of the game
+mode byte for combat before its two calls to the pause.
+
+**What differs.**
+
+- **The runtime's millisecond is short.** `Delay` spins a count the
+  runtime measured at start-up over one BIOS tick, with a sixteen-bit
+  counter: at the `386` governor a tick holds more spins than 65,535,
+  so the count saturates at 1,191 (DGROUP `0x8CBA`) and a millisecond is
+  0.6 of one. The game's own pause, 400 at the game speed the shipped
+  saves hold (4), measured in the brawl at The Curse: about 287,700 ticks,
+  241 ms, at each of the 147 the run makes. A combat line stands
+  about 0.45 s. So on Curse the seam holds a pause to a **moment**: the
+  `push ax` raises the count to the setting as on Pool of Radiance and
+  keeps the moment the setting ends at, in four of the seam's words, and
+  at `Delay`'s countdown, when the count's last millisecond comes before
+  that moment, it sets DX to 2, one more. A longer game speed keeps its
+  count and is held to the moment too, because its count is no answer
+  to how long it lasts. Driven with the seam on: every lengthened pause
+  in the brawl is 1500 ms of virtual time, to within one. The wait
+  before the encounter menu is held the same way, a fifty-millisecond
+  slice of `Delay` at a time until its moment.
+- **No gate times the death's sound.** The sound driver plays from the
+  timer interrupt, and the death's sound runs on past the pause until
+  the next sound the program starts takes the chip (driven: 170 ms past
+  it in the brawl). Lengthened, it would be heard far longer than the
+  program ever lets it be at this speed, which is the change Pool of
+  Radiance's rejection was about; so the death routine's two calls keep
+  their length here too, and with them the death's sound is the
+  program's own (driven, seam on: the chip written as with it off
+  through the first death and up to the next sound). The line naming the death has had its own pause before
+  the routine is called.
+- **A script's animation step** (overlay 3's call opcode, one of its
+  sub-commands: the next frame of the picture, then the pause) is a
+  beat of an animation, not a message, and keeps its length, as an
+  approach's beats do. **Pool of Radiance has no such step**, so its row
+  names none: the same opcode there has no animation sub-command, its
+  pictures that move (the finale, the pool on the title) are timed by
+  the clock and never call the pause, and the pauses that follow one
+  hold a picture that has finished, which is a message's.
+
+**Driven** on the Steam copy, slot A, through the brawl
+(`docs/playable-curse.md` leg 3): 147 pauses with the seam off, all
+from combat (overlay 14's two calls, overlay 25's status line, overlay
+33's death beat) and one from the brawl's opening. The print opcode's
+two calls are reached in every leg with a scripted line (`curse-quiet`:
+18, `curse-carriage`: 75). The encounter menu's call is reached by no
+session in the library, as on Pool of Radiance, and neither is the
+animation step: both are held by the unit suite.
+
+**Fidelity**: `curse-quiet-message-pause` `identical curse-quiet` (all
+58 checkpoints: the leg makes no pause), and `curse-fight-pause`
+`contrast curse-fight`, 82 of 195 identical, divergent from tick
+142,562,734, the pause that opens the brawl. The fight's keys are at
+the baseline's ticks, and its lines stand a second and a half where the
+baseline's stand a quarter, so the brawl is still being fought at the
+run's end, and five of the baseline's keys end a pause instead of
+answering what they answered there. Not in a `quiet-all`: Curse has
+none. Tests: `SeamMessagePauseCurse.*` in
+`tests/core/machine/seam_message_pause_test.cpp`.
+
 ### The fanfare (#538)
 
 Not a PLAN.md §5 item: the maintainer's request, and their own piece, about
@@ -3440,6 +3565,48 @@ these and the three that draw on sight, and says so. Unit: `SeamFont.*`, `TextFa
 `SeamFontScreenText.*`; stand-in: `font_probe_off`, `font_probe_sans`.
 Driven: 48 stills from the credits to the character sheet read back
 the same screen text with either face on as with none.
+
+**On Curse of the Azure Bonds** (#555) the font is the same and the
+blitter is not. The font has Pool of Radiance's layout: 177 glyphs of
+eight bytes, the text table first, an index the character upper-cased
+modulo 64, and the same nine slots and the space holding marks, a small
+picture, frame pieces and solid blocks rather than lettering, so the
+faces and what they replace are unchanged. The blitter copies the
+glyph's eight bytes out of the font into eight bytes of its own, then
+calls its EGA path, which draws the cell on one page only, a row at a
+time out of the copy. So the seam has one point there, with its own
+handler, on one `font_facts` row per program (`seam_font.cpp`) and its
+point in the definitions' `programs`:
+
+| fact | Pool of Radiance | Curse of the Azure Bonds |
+| --- | --- | --- |
+| the font's far pointer | data-segment `0x5E20` | data-segment `0x65AE`, loaded from `8X8D1.DAX` block 201 |
+| what the blitter draws from | the font, through ES:DI | a copy of the glyph at data-segment `0x65B2`, just past the pointer |
+| the points | image `0x749A` and `0x74C0`, after the fetch for each page; DL holds the row | image `0x5A91`, after the EGA path's read out of the copy; AH holds the row, BX its number, and the glyph's index is the path's first argument, the byte at `[BP+4]` |
+| the guard | ES is the pointer's segment and DI falls inside the buffer | DS is the data segment, BX is under 8, the index is under 177, and AH is the font's own row for that index and row |
+| what the handler writes | DL | AH |
+
+- **The other adapters' paths** (CGA and Tandy, chosen by the program's
+  video-mode byte at data-segment `0x5000`) read the same copy and are
+  not hooked: this machine has the EGA only, as on Pool of Radiance.
+- **Fidelity**: the pair is `curse-quiet-font-sans` and
+  `curse-quiet-font-chisel`, each a `contrast` with `curse-quiet` at its
+  keys and ticks: 1 of 58 checkpoints identical, then divergent from
+  the loading line on (agreeing again while the title's art is up), in
+  `devices` and `display`, and from the challenge screen on in `ram` as
+  well, by one byte. That byte is in the stack, below where it stands:
+  a word an interrupt pushed in the middle of a glyph, AX with AL the
+  register index the path sends and AH the row, the face's where the
+  program's was. Never `cpu`. Unit: `SeamFontOnCurse.*`.
+- **Driven** on the Steam copy over `curse-quiet`'s keys, either face:
+  the loading line, the credits, the challenge, the party menu, the
+  `LOAD WHICH GAME` bar, the roster and coordinates and the opening
+  message, and the adventuring bar are lettered in the face; the rope
+  border, the frames, the runes on the challenge screen and the 3-D
+  view are the program's. The challenge's path, drawn with the
+  program's dash and dot glyphs, is drawn with the face's. The title's
+  art has no text in the font. No handler declined; `fired=22408` over
+  the run.
 
 ### The debug cheats (#99, #161, #163, #196)
 

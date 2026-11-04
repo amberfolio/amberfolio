@@ -19,9 +19,10 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
 ```
 
 No `--install`: a Steam copy is recognized and laid out at `\CURSE`, a
-GOG copy at the root (`docs/hosts.md` §2c). No seam is needed to play,
-and the debug cheats and the journal's citation watch are the seams
-available on this program. Sixty
+GOG copy at the root (`docs/hosts.md` §2c). No seam is needed to play.
+The legs below answer the challenge themselves; with `--seam code-wheel
+--code-wheel-answered` the boot goes from `P` straight to the party
+menu, and every frame after it comes earlier (`docs/seams.md` §10). Sixty
 frames to the virtual second; `TICKS = FRAME * 19,887` at `--speed 386`
 is close enough for `--until`.
 
@@ -45,8 +46,9 @@ Rules:
   selection**, the party list and a menu's items alike; the arrows do
   nothing there. A bar takes its command's first letter, and `Return`
   takes the highlighted one.
-- The `.txt` and `.scene.json` beside a still say `wrong_binary`: screen
-  text and the scene have no facts for this program yet (#555).
+- The `.txt` and `.scene.json` beside a still are the screen's text and
+  the scene (`docs/hosts.md` §10, §13). Every map is `AREA <n>`: nobody
+  has named Curse's places.
 
 ---
 
@@ -310,6 +312,8 @@ lines, at `--speed 386` and `--wall none`:
 | `curse-boot` | `curse-slots` | none | |
 | `curse-quiet` | `curse-slots` | none | |
 | `curse-quiet-cheats` | `curse-slots` | the three cheats, none pulled | `identical curse-quiet` |
+| `curse-quiet-font-sans` | `curse-slots` | `font-sans` | `contrast curse-quiet` |
+| `curse-quiet-font-chisel` | `curse-slots` | `font-chisel` | `contrast curse-quiet` |
 | `curse-town` | `curse-slots` | none | |
 | `curse-temple` | `curse-slots` | none | |
 | `curse-camp` | `curse-slots` | none | |
