@@ -3323,7 +3323,11 @@ mode byte for combat before its two calls to the pause.
 - **A script's animation step** (overlay 3's call opcode, one of its
   sub-commands: the next frame of the picture, then the pause) is a
   beat of an animation, not a message, and keeps its length, as an
-  approach's beats do.
+  approach's beats do. **Pool of Radiance has no such step**, so its row
+  names none: the same opcode there has no animation sub-command, its
+  pictures that move (the finale, the pool on the title) are timed by
+  the clock and never call the pause, and the pauses that follow one
+  hold a picture that has finished, which is a message's.
 
 **Driven** on the Steam copy, slot A, through the brawl
 (`docs/playable-curse.md` leg 3): 147 pauses with the seam off, all
