@@ -157,6 +157,11 @@ struct code_wheel_facts {
     return word_table_offset + (word_table_entries - 1) * word_table_stride +
            word_length;
   }
+
+  /// Where the expected character is when the answer is one character
+  /// (Curse of the Azure Bonds): a byte in the protection routine's own
+  /// frame, this far below BP. Zero on a program whose answer is a word.
+  std::uint16_t expected_below_bp;
 };
 
 /// Pool of Radiance: thirteen six-character words, twenty-one bytes apart,
@@ -169,7 +174,8 @@ constexpr code_wheel_facts pool_of_radiance_code_wheel{
     .word_table_offset = 0xC7C2,
     .word_table_stride = 21,
     .word_table_entries = 13,
-    .word_length = 6};
+    .word_length = 6,
+    .expected_below_bp = 0};
 
 /// The far call into the protection overlay, in the boot's own tail, as
 /// an offset from the image segment. A far call is five bytes, and the
@@ -177,8 +183,51 @@ constexpr code_wheel_facts pool_of_radiance_code_wheel{
 constexpr std::uint16_t pool_of_radiance_challenge_call = 0x0122;
 constexpr std::uint16_t challenge_call_length = 5;
 
+/// Curse of the Azure Bonds (#555). The challenge is one character, read
+/// off a translation wheel, and the routine that asks it lives in an
+/// overlay of its own; the boot calls it twice (after the first title and
+/// after the demonstration loop comes back) and the event-script
+/// interpreter once, for a script's own protection command. All three are
+/// the same five-byte far call into the routine's stub, at image `0x03F0`,
+/// whose second entry is the routine. In the routine, the character typed
+/// is in AL at a `CMP` against the expected one, kept three bytes below
+/// BP, which is where the watch sits.
+///
+/// **The store copy accepts any answer**, the way Pool of Radiance's does
+/// (docs/seams.md §5), and by its own branch: the conditional jump after
+/// that compare goes on to the routine's exit when the two characters
+/// *differ*. A right answer falls through to the program's refusal line,
+/// and then to the exit as well. The watch does not care which way the
+/// branch goes: it latches what the compare finds equal.
+constexpr code_wheel_facts curse_code_wheel{.profile = curse_of_the_azure_bonds,
+                                            .challenge_stub_paragraph = 0x003F,
+                                            .challenge_stub_offset = 0x0025,
+                                            .compare_loop_offset = 0x03C4,
+                                            .word_table_offset = 0,
+                                            .word_table_stride = 0,
+                                            .word_table_entries = 0,
+                                            .word_length = 0,
+                                            .expected_below_bp = 3};
+
+/// The overlay the protection routine lives in, on Curse: one routine and
+/// its strings. The stub's record is at image `0x03F0`, so the
+/// load-segment word is sixteen bytes in (program_profile.h).
+constexpr seam_module curse_protection_overlay{
+    .file = "GAME.OVR",
+    .file_offset = 18133,
+    .length = 1096,
+    .digest =
+        "b47fee60e71fe1b43ac45f98ffb93e66d2c89d40da970e5da4ee35e7d1f47969",
+    .load_segment_at = 0x0400};
+
+/// Curse's three calls into the challenge: the boot's two, in the
+/// resident image, and the interpreter's, in its overlay.
+constexpr std::uint16_t curse_first_challenge_call = 0x01F1;
+constexpr std::uint16_t curse_demo_challenge_call = 0x0344;
+constexpr std::uint16_t curse_script_challenge_call = 0x3263;
+
 constexpr auto code_wheel_binaries =
-    fingerprints_of(std::array{&pool_of_radiance});
+    fingerprints_of(std::array{&pool_of_radiance, &curse_of_the_azure_bonds});
 
 /// `offset + by`, wrapping in the segment as the program's own
 /// addressing does.
@@ -247,6 +296,35 @@ void watch_the_answer(machine& box, seam_context& ctx) {
   static_cast<void>(ctx.call_host(seam_host_service::code_wheel_answered, 0));
 }
 
+/// Curse's compare: one character against one character. The same
+/// contract as `watch_the_answer`: read, conclude what the program's own
+/// compare concludes, and on an equal one latch and tell the host. Not a
+/// register, not a byte is written.
+template <const code_wheel_facts& F>
+void watch_the_character(machine& box, seam_context& ctx) {
+  if (box.seams().code_wheel_answered()) {
+    return;
+  }
+  cpu::processor& cpu = box.processor();
+  cpu::registers& regs = cpu.regs();
+  const std::uint16_t bp = regs[cpu::reg16::bp];
+  if (bp < F.expected_below_bp) {
+    // A frame that cannot hold the routine's locals is not the frame
+    // these facts describe.
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  const std::uint8_t typed = regs.get(cpu::reg8::al);
+  const std::uint8_t expected =
+      cpu.read_byte(regs[cpu::sreg::ss],
+                    static_cast<std::uint16_t>(bp - F.expected_below_bp));
+  if (typed != expected) {
+    return;
+  }
+  box.seams().set_code_wheel_answered(true);
+  static_cast<void>(ctx.call_host(seam_host_service::code_wheel_answered, 0));
+}
+
 /// The boot's call into the protection overlay: once the challenge has
 /// been answered, go on at the instruction after it.
 template <const code_wheel_facts& F>
@@ -294,11 +372,35 @@ constexpr std::array<seam_point, 2> pool_of_radiance_code_wheel_points{
       .offset = pool_of_radiance_challenge_call,
       .run = &skip_the_challenge<pool_of_radiance_code_wheel>}}};
 
+/// On Curse the watch is in the protection overlay, resolved through its
+/// load-segment word; the boot's two calls are in the resident image, and
+/// the script's is in the interpreter's overlay (the profile's).
+constexpr std::array<seam_point, 4> curse_code_wheel_points{
+    {{.module = curse_protection_overlay,
+      .offset = curse_code_wheel.compare_loop_offset,
+      .run = &watch_the_character<curse_code_wheel>},
+     {.module = resident_image,
+      .offset = curse_first_challenge_call,
+      .run = &skip_the_challenge<curse_code_wheel>},
+     {.module = resident_image,
+      .offset = curse_demo_challenge_call,
+      .run = &skip_the_challenge<curse_code_wheel>},
+     {.module = curse_of_the_azure_bonds.interpreter_overlay,
+      .offset = curse_script_challenge_call,
+      .run = &skip_the_challenge<curse_code_wheel>}}};
+
+/// The points on every program but the baseline, whose points are the
+/// definition's own (seam.h, schema 9).
+constexpr std::array<seam_program_points, 1> code_wheel_programs{
+    {{.fingerprint = curse_of_the_azure_bonds.fingerprint,
+      .points = curse_code_wheel_points}}};
+
 constexpr seam_definition code_wheel_definition{
     .id = "code-wheel",
     .about = "answer the code-wheel challenge once, and never be asked again",
     .fingerprints = code_wheel_binaries,
     .points = pool_of_radiance_code_wheel_points,
+    .programs = code_wheel_programs,
     // **No gate** (#290, #291). It had one — `document_kind::code_wheel`,
     // a fingerprint over a PDF of the wheel — from M5-D3 (#171) until the
     // releases sold today turned out to ship a code generator application
