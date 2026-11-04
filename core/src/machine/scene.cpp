@@ -216,11 +216,39 @@ constexpr scene_facts pool_of_radiance_scene{
     .manual_range = -0x38,
     .manual_record = 0x14};
 
+/// Curse of the Azure Bonds (#555). The tactical grid's tables are Pool
+/// of Radiance's in the same order and at the same distances from each
+/// other, further into the data segment; the record is the 422-byte one
+/// the program saves, with the computer's byte and the armour class beside
+/// its side byte as in Pool of Radiance. The aim bar's routines are in
+/// overlay 14 and keep their locals where Pool of Radiance's do, their
+/// arguments two bytes further up. No travel view: the overland journey is
+/// a list of places. No place tables: nobody has measured Curse's.
+constexpr scene_facts curse_scene{.profile = curse_of_the_azure_bonds,
+                                  .places = &map_format::no_places,
+                                  .data_terrain = 0,
+                                  .terrain_stride = 0,
+                                  .data_slot_records = 0x6D4F,
+                                  .data_slot_squares = 0x66BD,
+                                  .data_bodies = 0x6E6C,
+                                  .data_body_count = 0x6EAB,
+                                  .data_combat_block = 0x6EAC,
+                                  .data_ground_cost = 0x26A4,
+                                  .record_bytes = 0x1A6,
+                                  .record_computer = 0x198,
+                                  .record_ac = 0x19A,
+                                  .target_record = 0x0E,
+                                  .target_range = -0x30,
+                                  .manual_column = -0x33,
+                                  .manual_row = -0x34,
+                                  .manual_range = -0x38,
+                                  .manual_record = 0x16};
+
 /// The row for the program `digest` names, or null: a program this read
 /// has no facts about.
 [[nodiscard]] const scene_facts* scene_facts_for(
     const sha256_digest& digest) noexcept {
-  for (const scene_facts* facts : {&pool_of_radiance_scene}) {
+  for (const scene_facts* facts : {&pool_of_radiance_scene, &curse_scene}) {
     if (digest_is(digest, facts->profile.fingerprint)) {
       return facts;
     }
@@ -350,6 +378,12 @@ void name_zone(const scene_facts& f, scene& out, std::uint8_t geo,
       ram.data(profile.data_view_kind) != profile.view_kind_grid) {
     // A program with no view kind byte has the grid as its only view in
     // this mode.
+    return false;
+  }
+  if (profile.data_view_kind == 0 && ram.data(profile.data_area_id) == 0) {
+    // Such a program (Curse) is in this mode from its first instruction,
+    // titles and all; what says an area is up is its script's block, which
+    // is numbered from one and is zero until the first area is read.
     return false;
   }
   const std::uint32_t record =

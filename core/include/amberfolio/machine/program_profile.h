@@ -515,14 +515,21 @@ inline constexpr seam_module combat{
 }  // namespace curse_of_the_azure_bonds_modules
 
 /// Curse of the Azure Bonds, the program Steam and GOG sell (v1.3;
-/// edition.h), **in part** (#554). Only the members the debug cheats
-/// read are filled in, each checked against the program's own image and
-/// by a driven run (`docs/seams.md` §10): the data segment, the game
-/// mode byte and its values, the party's head, the combat overlay and
-/// the character record's offsets. Every other member is zero, which is
-/// not a fact about this program but the absence of one, and no seam
-/// available on this program reads it: a seam's `fingerprints` name this
-/// profile only once the facts it reads are here.
+/// edition.h), **in part** (#554, #555). Only the members the debug
+/// cheats and the host reads use are filled in, each checked against the
+/// program's own image and by a driven run (`docs/seams.md` §10,
+/// `docs/hosts.md` §13): the data segment, the game mode byte and its
+/// values, the party's head and the current member, the area record and
+/// its fields, the loaded map, the party's square and facing, the wall
+/// sets, the disk and area numbers, the transition flag, the font, the
+/// combat overlay and the character record's offsets. Every other member
+/// is zero, which is not a fact about this program but the absence of
+/// one, and nothing available on this program reads it.
+///
+/// **No view kind.** The program has one view in the adventuring mode,
+/// the grid, and its mode 3 is the overland journey, a list of places
+/// rather than a map walked square by square, so `data_view_kind` is zero
+/// and a read takes the grid as given.
 ///
 /// The record is the 422-byte one the program also saves, so its offsets
 /// are the save file's: the same fields as Pool of Radiance's in the
@@ -577,26 +584,26 @@ inline constexpr program_profile curse_of_the_azure_bonds{
     .view_kind_grid = {},
     .view_kind_first_overland = {},
     .view_kind_last_overland = {},
-    .data_in_transition = {},
-    .data_disk_number = {},
-    .data_area_id = {},
-    .data_party_x = {},
-    .data_party_y = {},
-    .data_party_facing = {},
-    .data_wall_set = {},
-    .data_map_pointer = {},
-    .data_area_record = {},
-    .area_overland_column = {},
-    .area_overland_row = {},
-    .area_geometry_block = {},
-    .area_shown_in_3d = {},
+    .data_in_transition = 0x47F9,
+    .data_disk_number = 0x5C08,
+    .data_area_id = 0x8B78,
+    .data_party_x = 0x7229,
+    .data_party_y = 0x722A,
+    .data_party_facing = 0x722B,
+    .data_wall_set = 0x722A,
+    .data_map_pointer = 0x7220,
+    .data_area_record = 0x4FB2,
+    .area_overland_column = 0x186,
+    .area_overland_row = 0x188,
+    .area_geometry_block = 0x18A,
+    .area_shown_in_3d = 0x1CC,
     .data_area_bar = {},
     .data_view_bar = {},
-    .data_current_member = {},
+    .data_current_member = 0x6520,
     .data_roster_head = 0x6524,
     .data_bar_highlight = {},
     .data_key_pushback = {},
-    .data_font_pointer = {},
+    .data_font_pointer = 0x65AE,
     .data_view_column_bias = {},
     .data_sound_busy = {},
     .record_next = 0x189,

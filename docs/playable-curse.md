@@ -44,8 +44,9 @@ Rules:
   selection**, the party list and a menu's items alike; the arrows do
   nothing there. A bar takes its command's first letter, and `Return`
   takes the highlighted one.
-- The `.txt` and `.scene.json` beside a still say `wrong_binary`: screen
-  text and the scene have no facts for this program yet (#555).
+- The `.txt` and `.scene.json` beside a still are the screen's text and
+  the scene (`docs/hosts.md` §10, §13). Every map is `AREA <n>`: nobody
+  has named Curse's places.
 
 ---
 
