@@ -94,36 +94,44 @@
 namespace amberfolio::machine {
 namespace {
 
-/// The program this seam's facts are about (program_profile.h): the
-/// baseline edition, and only it. The seam is available on it and on no
-/// other binary.
-constexpr const program_profile& profile = pool_of_radiance;
-constexpr auto font_binaries = fingerprints_of(std::array{&profile});
+/// One program's facts: where its blitter has just fetched a glyph row,
+/// and the buffer the row came out of.
+struct font_facts {
+  const program_profile& profile;
+  /// Glyphs the program's font buffer holds: its text table and the
+  /// pictures past it. ES:DI beyond the last of them is not a glyph
+  /// fetch.
+  std::uint32_t buffer_glyphs;
+  /// The instruction after each of the blitter's two EGA row fetches, as
+  /// an offset from the image segment. DL holds the row; ES:DI is on it.
+  std::array<std::uint32_t, 2> row_fetched_offsets;
+};
 
-/// Glyphs the program's font buffer holds: its text table and the
-/// pictures past it. ES:DI beyond the last of them is not a glyph fetch.
-constexpr std::uint32_t buffer_glyphs = 177;
+/// Pool of Radiance, the baseline edition.
+constexpr font_facts pool_of_radiance_font{
+    .profile = pool_of_radiance,
+    .buffer_glyphs = 177,
+    .row_fetched_offsets = {0x749A, 0x74C0}};
 
-/// The instruction after each of the blitter's two EGA row fetches, as an
-/// offset from the image segment. DL holds the row; ES:DI is on it.
-constexpr std::array<std::uint32_t, 2> row_fetched_offsets{0x749A, 0x74C0};
+constexpr auto font_binaries = fingerprints_of(std::array{&pool_of_radiance});
 
-/// Swap the row in DL for `which`'s, if the glyph is one it replaces.
-void swap_row(text_face::face which, machine& box, seam_context& ctx) {
+/// Swap the row in DL for `Which`'s, if the glyph is one it replaces.
+template <const font_facts& F, text_face::face Which>
+void swap_row(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   cpu::registers& regs = cpu.regs();
 
   const auto dgroup = static_cast<std::uint16_t>((ctx.image_base() / 16U) +
-                                                 profile.dgroup_paragraphs);
+                                                 F.profile.dgroup_paragraphs);
   const std::uint16_t font_offset =
-      cpu.read_word(dgroup, profile.data_font_pointer);
+      cpu.read_word(dgroup, F.profile.data_font_pointer);
   const std::uint16_t font_segment = cpu.read_word(
-      dgroup, static_cast<std::uint16_t>(profile.data_font_pointer + 2));
+      dgroup, static_cast<std::uint16_t>(F.profile.data_font_pointer + 2));
   const std::uint16_t es = regs[cpu::sreg::es];
   const std::uint16_t di = regs[cpu::reg16::di];
   if (font_segment == 0 || es != font_segment || di < font_offset ||
       std::uint32_t{di} - font_offset >=
-          buffer_glyphs * text_face::glyph_bytes) {
+          F.buffer_glyphs * text_face::glyph_bytes) {
     // Not the fetch these facts describe. Touch nothing.
     ctx.decline(seam_reason::point_not_recognized);
     return;
@@ -137,37 +145,26 @@ void swap_row(text_face::face which, machine& box, seam_context& ctx) {
   }
   regs.set(
       cpu::reg8::dl,
-      text_face::row(which, index,
+      text_face::row(Which, index,
                      static_cast<unsigned>(byte % text_face::glyph_bytes)));
 }
 
-void swap_sans_row(machine& box, seam_context& ctx) {
-  swap_row(text_face::face::sans, box, ctx);
-}
-
-void swap_chisel_row(machine& box, seam_context& ctx) {
-  swap_row(text_face::face::chisel, box, ctx);
-}
-
-constexpr std::array<seam_point, 2> sans_points{
+/// Both fetches, swapped into `Which`.
+template <const font_facts& F, text_face::face Which>
+constexpr std::array<seam_point, 2> fetched_row_points{
     {{.module = resident_image,
-      .offset = row_fetched_offsets[0],
-      .run = &swap_sans_row,
+      .offset = F.row_fetched_offsets[0],
+      .run = &swap_row<F, Which>,
       .inside_calls = true},
      {.module = resident_image,
-      .offset = row_fetched_offsets[1],
-      .run = &swap_sans_row,
+      .offset = F.row_fetched_offsets[1],
+      .run = &swap_row<F, Which>,
       .inside_calls = true}}};
 
-constexpr std::array<seam_point, 2> chisel_points{
-    {{.module = resident_image,
-      .offset = row_fetched_offsets[0],
-      .run = &swap_chisel_row,
-      .inside_calls = true},
-     {.module = resident_image,
-      .offset = row_fetched_offsets[1],
-      .run = &swap_chisel_row,
-      .inside_calls = true}}};
+constexpr const auto& sans_points =
+    fetched_row_points<pool_of_radiance_font, text_face::face::sans>;
+constexpr const auto& chisel_points =
+    fetched_row_points<pool_of_radiance_font, text_face::face::chisel>;
 
 /// The group the faces share: at most one is on.
 constexpr std::string_view font_group = "font";
