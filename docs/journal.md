@@ -520,6 +520,10 @@ a sidecar beside the saves, per slot, off unless the player asked
 | --- | --- |
 | `\SAVE\AFSEEN<L>.DAT` | slot `L`'s log, written at that slot's save and read **over** the log in hand at its load, even when it is not there |
 
+On Curse of the Azure Bonds the same file sits in that program's save
+directory, one per slot `A` to `J` (`docs/hosts.md` §6), and the citation
+watch is what fills it there (`docs/seams.md` §10).
+
 Nothing keeps the log between saves. A run starts at the program's main
 menu with no party; a load brings the slot's list and a new party's is
 empty. The `--cite-all-journal` cheat therefore lasts for the run, and

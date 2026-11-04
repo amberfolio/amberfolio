@@ -370,8 +370,31 @@ constexpr journal_facts pool_of_radiance_journal{.profile = pool_of_radiance,
                                                  .box_clear_is_byte = false,
                                                  .frame_out_flag = 0x04};
 
+/// Curse of the Azure Bonds (#555). Its narration goes through a message
+/// box of the same shape: the far pointer to a Pascal string at SP+4 and
+/// SP+6, and the flag that homes the cursor and clears the box at SP+8.
+/// **The flag is a byte here**: the routine compares the byte, and the
+/// script's print command pushes it as `mov al, n` and `push ax` with AH
+/// left over from whatever came before. A number the script prints is
+/// turned into its digits and handed to the same routine with the flag
+/// clear, so a citation can arrive in two pieces exactly as it does on
+/// Pool of Radiance.
+///
+/// **Only the citation watch is ported**: the reader's screen and its
+/// `Notes` command need facts this row does not have yet (the bar, the
+/// screen composer, the frame and string drawers, the keyboard), so on
+/// this program a citation goes on the log, and the log reaches the slot's
+/// sidecar when the program saves (`docs/seams.md` §10).
+constexpr journal_facts curse_journal{.profile = curse_of_the_azure_bonds,
+                                      .message_box_entry = 0x5178,
+                                      .box_frame_string_offset = 4,
+                                      .box_frame_string_segment = 6,
+                                      .box_frame_clear = 8,
+                                      .box_clear_is_byte = true,
+                                      .frame_out_flag = 0};
+
 constexpr auto journal_binaries =
-    fingerprints_of(std::array{&pool_of_radiance});
+    fingerprints_of(std::array{&pool_of_radiance, &curse_of_the_azure_bonds});
 
 /// The longest Pascal string there can be, which is what the box takes.
 constexpr std::size_t longest_message = 255;
@@ -3163,6 +3186,18 @@ constexpr std::array<seam_point, 10> journal_points{
       .offset = pool_of_radiance.view_bar_return,
       .run = &at_view_bar_after<pool_of_radiance_journal>}}};
 
+/// On Curse, the message box alone, in the resident image.
+constexpr std::array<seam_point, 1> curse_journal_points{
+    {{.module = resident_image,
+      .offset = curse_journal.message_box_entry,
+      .run = &at_message_box<curse_journal>}}};
+
+/// The points on every program but the baseline, whose points are the
+/// definition's own (seam.h, schema 9).
+constexpr std::array<seam_program_points, 1> journal_programs{
+    {{.fingerprint = curse_of_the_azure_bonds.fingerprint,
+      .points = curse_journal_points}}};
+
 /// **Ungated**, and that is a decision rather than an omission.
 ///
 /// A journal-gated seam would be inert for every player alive: a gate is
@@ -3181,6 +3216,7 @@ constexpr seam_definition journal_definition{
         "party's own bar opens it on the game's own screen",
     .fingerprints = journal_binaries,
     .points = journal_points,
+    .programs = journal_programs,
     .trigger = false,
     .gate = document_kind::none,
     .schema = seam_schema_version};

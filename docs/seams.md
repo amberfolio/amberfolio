@@ -982,7 +982,7 @@ to carry.
 | `roster-fix` | **built in, always on, not listed** (§7): a character the roster names and the save directory does not hold is left off the Add list, instead of the program asking for a save disk for ever | overlay 17 (the roster list routine) |
 | `timer-fix` | **built in, always on, not listed** (§7): the sound driver never hooks the timer over its own hook, which a click quick steps did not wait for leaves it about to do | the resident image |
 | `automap` | a map of where the party has been, over the roster, on **Tab** | the resident image |
-| `journal` | what the game cites goes on a list; **Notes** on the party's own bar opens it on the game's screen, out of the player's ingested journal | the resident image, and the adventuring loop's module |
+| `journal` | what the game cites goes on a list; **Notes** on the party's own bar opens it on the game's screen, out of the player's ingested journal. On Curse, the list alone (below) | the resident image, and the adventuring loop's module |
 | `explored` | fog of war on the overworld map: a black checker over every square the party has not stood on; a setting, no key | the resident image |
 | `modern-controls` | the controls a later game has, nine pieces in one seam: Up and Down step the pick-lists and the selected party member; Left, Right, Enter and Esc work at the command bars; walking is a mode the party's bar starts with `Move` and ends with `Exit`, `Area` gone; the main menu has a cursor, and its number row's 1 to 8 select a party member with each number shown; the arrows no longer type letters at a text prompt; every selection is a yellow block with its key letter a white one; and it notes when the program is reading a line of text and where the combat aim bar keeps its cursor, for a host to ask (§10) | overlay 25 (the menu-bar and list routines), overlays 13, 14, 16 and 19, and the resident image |
 | `quick-steps` | a turn, and the next step, do not wait for the footstep's click; the click still plays, and a step's two clicks keep their spacing | the resident image, and the call sites in overlays 14 and 3 |
@@ -1508,6 +1508,37 @@ host file and not in the stream. Legs:
 blocking read (#266); the batch ordering for pictures (#328); the
 give-back inside a batch (#332); the composer under a vendor's bar
 (M5-E2d); the one keystroke a read is answered with (#325).
+
+**On Curse of the Azure Bonds** (#555) the citation watch is the same
+mechanism with that program's facts, one `journal_facts` row per program
+(`seam_journal.cpp`) and its one point in the definition's `programs`.
+**Only the watch is ported**: `Notes` and the reader need the bar, the
+screen composer, the frame and string drawers and the keyboard from
+Curse's profile, none of which is in this row yet, so on Curse a citation
+goes on the log and nothing opens it. The log reaches the slot's sidecar
+when the program saves (`docs/journal.md` §6a).
+
+| fact | Pool of Radiance | Curse of the Azure Bonds |
+| --- | --- | --- |
+| the message box | image `0x77F8` | image `0x5178` |
+| its frame: string offset, segment, the clear flag | SP+4, SP+6, SP+8 | SP+4, SP+6, SP+8 |
+| the flag is read as | a word | **a byte**: the routine compares the byte, and the script's print command pushes it as `mov al, n` and `push ax`, AH left over |
+| a number the script prints | the same box, flag clear | the same box, flag clear |
+| the points | ten (the reader's nine and the watch) | one (the watch) |
+
+Driven on the Steam copy, slot A (`docs/playable-curse.md` leg 2): the
+innkeeper's second screen at 6,13 names journal entry 31, and the watch
+puts it on the log (`host-service journal-seen calls=1`) and moves
+nothing: with the seam on, `curse-buy`'s 133 checkpoints replay
+unchanged. Its save to slot C with `--save-sidecars` writes
+`\SAVE\AFSEENC.DAT`, one row, entry 31 unread; loading C from that disk
+reads it back (`save-sidecars writes=0 reads=1 slot=C`). Sessions:
+`curse-journey-journal` `identical curse-journey` (on, the box reached
+288 times and nothing cited; the pair is `identical` here because there
+is no `Notes` splice to contrast on) and `curse-cite` `identical
+curse-buy` (on, entry 31 cited). Every run from slot A passes the
+innkeeper, so no `curse-quiet` twin is a run with nothing cited. Tests:
+`JournalOnCurse.*`.
 
 ### The explored overlay (#179, M5-E5a to M5-E5g)
 
