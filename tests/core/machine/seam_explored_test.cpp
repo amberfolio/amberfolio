@@ -37,6 +37,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string_view>
 
 #include "amberfolio/cpu/address.h"
@@ -1133,9 +1134,536 @@ TEST(ExploredDefinition, ItIsASettingAndNotAPullAndItNamesTheBaseline) {
                                          "comes from";
     EXPECT_EQ(point.module.file, resident_image.file);
   }
-  ASSERT_EQ(explored->fingerprints.size(), 1u);
+  ASSERT_EQ(explored->fingerprints.size(), 2u)
+      << "the baseline, and Curse of the Azure Bonds with points of its own";
   EXPECT_EQ(explored->fingerprints.front(),
             known_editions().front().fingerprint);
+}
+
+// ---------------------------------------------------------------------------
+// On Curse of the Azure Bonds: a picture with places on it (#555)
+// ---------------------------------------------------------------------------
+//
+// The same seam on a second program, by a mechanism of its own: the fog
+// is laid over one picture of the region, from the program's own copy of
+// that picture, and what it leaves clear is a disc around each place the
+// party has stood on and a corridor along each way it went between two.
+// The facts are restated here, as above; the place table is this file's
+// own, three places at cells it chose.
+
+namespace curse {
+constexpr std::string_view fingerprint =
+    "42fcefd6785679568b00bc1fb5b1d81ac2773416be4a35e0363920ddf6b78acd";
+constexpr std::uint16_t data_segment =
+    static_cast<std::uint16_t>(image_load_segment + 0xABE);
+constexpr std::uint16_t menu_word = 0x1050;
+constexpr std::uint16_t mark_test = 0x04AC;
+constexpr std::uint16_t blit_entry = 0x3347;
+constexpr std::uint16_t blit_exit = 0x3542;
+constexpr std::uint16_t compositor_entry = 0x3548;
+constexpr std::uint16_t blit_next_line = 0x343B;
+
+constexpr std::uint16_t data_game_mode = 0x4FD3;
+constexpr std::uint16_t data_area_record = 0x4FB2;
+constexpr std::uint16_t data_disk_number = 0x5C08;
+constexpr std::uint16_t data_picture_block = 0x72AA;
+constexpr std::uint16_t data_last_picture = 0x72A4;
+constexpr std::uint16_t data_picture_pointer = 0x72A6;
+constexpr std::uint16_t data_mark_block = 0x8C90;
+constexpr std::uint16_t data_mark_saved = 0x65E4;
+constexpr std::uint16_t data_mark_column = 0x8C8C;
+constexpr std::uint16_t data_mark_row = 0x8C8E;
+constexpr std::uint16_t data_adapter = 0x5000;
+constexpr std::uint16_t data_plane_order = 0x2590;
+constexpr std::uint16_t data_place_columns = 0x0A4A;
+constexpr std::uint16_t data_place_rows = 0x0A6A;
+constexpr std::uint16_t area_current_place = 0x342;
+
+constexpr std::uint8_t mode_start_menu = 0;
+constexpr std::uint8_t mode_overland = 3;
+constexpr std::uint8_t mode_adventure = 4;
+constexpr std::uint8_t overland_picture = 0x79;
+constexpr std::uint8_t no_picture = 0xFF;
+
+/// Where this test puts things: a segment each, so a handler that
+/// followed the wrong pointer gives a wrong answer rather than a lucky
+/// one.
+constexpr std::uint16_t menu_segment = 0x2000;
+constexpr std::uint16_t record_segment = 0x4000;
+constexpr std::uint16_t picture_segment = 0x5000;
+constexpr std::uint16_t mark_segment = 0x6000;
+constexpr std::uint16_t other_segment = 0x6100;
+constexpr std::uint16_t stack_segment = 0x7000;
+constexpr std::uint16_t frame = 0x0800;
+
+/// The picture: 38 byte columns by 120 lines at cell (1, 1), the frame's
+/// whole interior, every plane byte 0xFF, which is colour 15.
+constexpr unsigned picture_columns = 38;
+constexpr unsigned picture_lines = 120;
+constexpr unsigned picture_left = 8;
+constexpr unsigned picture_top = 8;
+
+/// Three places, by cell: far enough apart that a disc around one does
+/// not reach another.
+constexpr std::array<std::uint8_t, 3> place_columns{5, 20, 33};
+constexpr std::array<std::uint8_t, 3> place_rows{12, 3, 12};
+}  // namespace curse
+
+struct curse_rig : rig {
+  curse_rig() {
+    sha256_digest digest;
+    EXPECT_TRUE(parse_digest(curse::fingerprint, digest));
+    box->seams().loaded(digest, image_load_segment);
+    put_word(image_load_segment, curse::menu_word, curse::menu_segment);
+    const std::uint16_t ds = curse::data_segment;
+    put_byte(ds, curse::data_adapter, 1);
+    for (std::uint16_t k = 0; k < 4; ++k) {
+      put_byte(ds, static_cast<std::uint16_t>(curse::data_plane_order + k),
+               static_cast<std::uint8_t>(1U << k));
+    }
+    for (std::size_t p = 0; p < curse::place_columns.size(); ++p) {
+      put_byte(ds, static_cast<std::uint16_t>(curse::data_place_columns + p),
+               curse::place_columns[p]);
+      put_byte(ds, static_cast<std::uint16_t>(curse::data_place_rows + p),
+               curse::place_rows[p]);
+    }
+    put_word(ds, curse::data_area_record, 0);
+    put_word(ds, static_cast<std::uint16_t>(curse::data_area_record + 2),
+             curse::record_segment);
+    put_byte(ds, curse::data_disk_number, 1);
+    put_word(ds, curse::data_picture_pointer, 0);
+    put_word(ds, static_cast<std::uint16_t>(curse::data_picture_pointer + 2),
+             curse::picture_segment);
+    put_word(ds, curse::data_mark_block, 0);
+    put_word(ds, static_cast<std::uint16_t>(curse::data_mark_block + 2),
+             curse::mark_segment);
+    put_word(ds, curse::data_mark_saved, 0x0100);
+    put_word(ds, static_cast<std::uint16_t>(curse::data_mark_saved + 2),
+             curse::mark_segment);
+    put_word(curse::picture_segment, 0, curse::picture_lines);
+    put_word(curse::picture_segment, 2, curse::picture_columns);
+    for (unsigned i = 0; i < curse::picture_lines * curse::picture_columns * 4;
+         ++i) {
+      put_byte(curse::picture_segment, static_cast<std::uint16_t>(0x17 + i),
+               0xFF);
+    }
+    // The mark and the block it saves into: one cell, eight lines.
+    put_word(curse::mark_segment, 0, 8);
+    put_word(curse::mark_segment, 2, 1);
+    put_word(curse::mark_segment, 0x0100, 8);
+    put_word(curse::mark_segment, 0x0102, 1);
+    // Somebody else's picture, at (3, 3).
+    put_word(curse::other_segment, 0, 40);
+    put_word(curse::other_segment, 2, 5);
+  }
+
+  /// The overland, as the program's own test of it sees it, at `place`.
+  void on_the_overland(std::uint16_t place) const {
+    const std::uint16_t ds = curse::data_segment;
+    put_byte(ds, curse::data_game_mode, curse::mode_overland);
+    put_byte(ds, curse::data_picture_block, curse::overland_picture);
+    put_byte(ds, curse::data_last_picture, curse::no_picture);
+    put_word(curse::record_segment, curse::area_current_place, place);
+    put_word(ds, curse::data_mark_column, curse::place_columns[place]);
+    put_word(ds, curse::data_mark_row, curse::place_rows[place]);
+  }
+
+  void in_mode(std::uint8_t mode) const {
+    put_byte(curse::data_segment, curse::data_game_mode, mode);
+  }
+
+  void stand_at(std::uint16_t cs, std::uint16_t ip) const {
+    box->memory().ram()[cpu::physical_address(cs, ip)] = 0xF4;
+    box->processor().reset();
+    cpu::registers& r = regs();
+    r[cpu::sreg::cs] = cs;
+    r.ip = ip;
+    r[cpu::sreg::ds] = curse::data_segment;
+    r[cpu::sreg::ss] = curse::stack_segment;
+    r[cpu::reg16::sp] = curse::frame;
+    r[cpu::reg16::bp] = curse::frame;
+  }
+
+  /// The menu-bar routine decides whether to put the mark up.
+  void mark_test() const {
+    stand_at(curse::menu_segment, curse::mark_test);
+    box->step();
+  }
+
+  /// The blitter has drawn `segment:0` at (`row`, `column`): its frame
+  /// still up, BP on it.
+  void blit_done(std::uint16_t segment, std::uint16_t row,
+                 std::uint16_t column) const {
+    put_word(curse::stack_segment, curse::frame + 6, 0);
+    put_word(curse::stack_segment, curse::frame + 8, segment);
+    put_word(curse::stack_segment, curse::frame + 10, row);
+    put_word(curse::stack_segment, curse::frame + 12, column);
+    stand_at(image_load_segment, curse::blit_exit);
+    box->step();
+  }
+
+  /// The program draws its overland picture.
+  void draw_the_picture() const { blit_done(curse::picture_segment, 1, 1); }
+
+  /// The blitter is about to draw `segment:offset` at (`row`, `column`):
+  /// the far return on top, then its arguments.
+  void blit_begins(std::uint16_t segment, std::uint16_t offset,
+                   std::uint16_t row, std::uint16_t column) const {
+    put_word(curse::stack_segment, curse::frame + 4, offset);
+    put_word(curse::stack_segment, curse::frame + 6, segment);
+    put_word(curse::stack_segment, curse::frame + 8, row);
+    put_word(curse::stack_segment, curse::frame + 10, column);
+    stand_at(image_load_segment, curse::blit_entry);
+    box->step();
+  }
+
+  /// The blitter has drawn the overland picture's `screen_line` and goes
+  /// on to the next: its frame up, the line at BP-4.
+  void line_done(std::uint16_t screen_line) const {
+    put_word(curse::stack_segment, curse::frame + 6, 0);
+    put_word(curse::stack_segment, curse::frame + 8, curse::picture_segment);
+    put_word(curse::stack_segment, curse::frame + 10, 1);
+    put_word(curse::stack_segment, curse::frame + 12, 1);
+    put_word(curse::stack_segment, curse::frame - 4, screen_line);
+    stand_at(image_load_segment, curse::blit_next_line);
+    box->step();
+  }
+
+  void compositor() const {
+    stand_at(image_load_segment, curse::compositor_entry);
+    box->step();
+  }
+
+  /// The centre pixel of a place's cell, and a pixel `dx` and `dy` from
+  /// it.
+  [[nodiscard]] static unsigned place_x(unsigned place, int dx = 0) {
+    return static_cast<unsigned>((curse::place_columns[place] * 8) + 4 + dx);
+  }
+  [[nodiscard]] static unsigned place_y(unsigned place, int dy = 0) {
+    return static_cast<unsigned>((curse::place_rows[place] * 8) + 4 + dy);
+  }
+
+  /// How many pixels of the picture are the fog's.
+  [[nodiscard]] std::size_t picture_fogged() const {
+    std::size_t fogged = 0;
+    for (unsigned y = curse::picture_top;
+         y < curse::picture_top + curse::picture_lines; ++y) {
+      for (unsigned x = curse::picture_left;
+           x < curse::picture_left + (curse::picture_columns * 8); ++x) {
+        if (screen_pixel(x, y) == fog_index) {
+          ++fogged;
+        }
+      }
+    }
+    return fogged;
+  }
+
+  /// Is the pixel at (x, y) what the fog makes of colour 15 there?
+  [[nodiscard]] bool fogged_as_it_should_be(unsigned x, unsigned y) const {
+    const std::uint8_t wanted = ((x + y) % 2 == 0) ? fog_index : filled_index;
+    return screen_pixel(x, y) == wanted;
+  }
+};
+
+TEST(ExploredOnCurse, IsAvailableWithPointsOfItsOwn) {
+  const curse_rig r;
+  sha256_digest digest;
+  ASSERT_TRUE(parse_digest(curse::fingerprint, digest));
+  const seam_definition* explored = r.pc().seams().find("explored");
+  ASSERT_NE(explored, nullptr);
+  const std::span<const seam_point> mine = points_on(*explored, digest);
+  ASSERT_EQ(mine.size(), 5U);
+  EXPECT_EQ(mine[0].module.load_segment_at, curse::menu_word);
+  EXPECT_EQ(mine[0].offset, curse::mark_test);
+  EXPECT_TRUE(mine[1].module.is_resident_image());
+  EXPECT_EQ(mine[1].offset, curse::blit_entry);
+  EXPECT_TRUE(mine[2].module.is_resident_image());
+  EXPECT_EQ(mine[2].offset, curse::blit_exit);
+  EXPECT_TRUE(mine[3].module.is_resident_image());
+  EXPECT_EQ(mine[3].offset, curse::compositor_entry);
+  EXPECT_TRUE(mine[4].module.is_resident_image());
+  EXPECT_EQ(mine[4].offset, curse::blit_next_line);
+  r.enable();
+}
+
+TEST(ExploredOnCurse, ThePictureIsFoggedButForTheCurrentPlace) {
+  const curse_rig r;
+  r.enable();
+  r.wipe();
+  r.on_the_overland(0);
+  r.draw_the_picture();
+
+  // The current place's cell and a disc around it are the picture's own.
+  for (int d = -8; d <= 8; ++d) {
+    EXPECT_EQ(r.screen_pixel(curse_rig::place_x(0, d), curse_rig::place_y(0)),
+              filled_index)
+        << d;
+    EXPECT_EQ(r.screen_pixel(curse_rig::place_x(0), curse_rig::place_y(0, d)),
+              filled_index)
+        << d;
+  }
+  // Everywhere else is the checker over it, the other places included.
+  for (const unsigned place : {1U, 2U}) {
+    EXPECT_TRUE(r.fogged_as_it_should_be(curse_rig::place_x(place),
+                                         curse_rig::place_y(place)));
+    EXPECT_TRUE(r.fogged_as_it_should_be(curse_rig::place_x(place) + 1,
+                                         curse_rig::place_y(place)));
+  }
+  EXPECT_TRUE(
+      r.fogged_as_it_should_be(curse::picture_left, curse::picture_top));
+  EXPECT_TRUE(r.fogged_as_it_should_be(curse::picture_left + 303,
+                                       curse::picture_top + 119));
+  // And nothing outside the picture: the frame's cells stay as they were.
+  for (unsigned x = 0; x < 320; ++x) {
+    EXPECT_EQ(r.screen_pixel(x, curse::picture_top - 1), 0U) << x;
+    EXPECT_EQ(r.screen_pixel(x, curse::picture_top + curse::picture_lines), 0U)
+        << x;
+  }
+  for (unsigned y = 0; y < 200; ++y) {
+    EXPECT_EQ(r.screen_pixel(curse::picture_left - 1, y), 0U) << y;
+    EXPECT_EQ(r.screen_pixel(curse::picture_left + 304, y), 0U) << y;
+  }
+}
+
+TEST(ExploredOnCurse, EachLineIsFoggedAsTheBlitterFinishesIt) {
+  const curse_rig r;
+  r.enable();
+  r.fill();
+  r.on_the_overland(0);
+  // The picture is coming in: line 20 of the screen is drawn, 21 is not.
+  r.line_done(20);
+  for (unsigned x = curse::picture_left; x < curse::picture_left + 304; ++x) {
+    EXPECT_TRUE(r.fogged_as_it_should_be(x, 20)) << x;
+    EXPECT_EQ(r.screen_pixel(x, 21), filled_index) << x;
+  }
+  // Not the overland's picture: nothing.
+  r.put_byte(curse::data_segment, curse::data_picture_block, 0x78);
+  r.line_done(22);
+  for (unsigned x = curse::picture_left; x < curse::picture_left + 304; ++x) {
+    EXPECT_EQ(r.screen_pixel(x, 22), filled_index) << x;
+  }
+}
+
+TEST(ExploredOnCurse, AJourneyUncoversThePlaceAndTheWayToIt) {
+  const curse_rig r;
+  r.enable();
+  r.on_the_overland(0);
+  r.draw_the_picture();
+  r.mark_test();
+  const std::size_t before = r.picture_fogged();
+
+  // The script moves the party to place 2, and the program asks whether
+  // to put the mark up there.
+  r.on_the_overland(2);
+  r.mark_test();
+
+  const automap_record* map =
+      r.map_state().find_places(1, curse::overland_picture);
+  ASSERT_NE(map, nullptr);
+  EXPECT_TRUE(automap_state::seen(*map, 0, 0));
+  EXPECT_TRUE(automap_state::seen(*map, 2, 2));
+  EXPECT_TRUE(automap_state::seen(*map, 0, 2));
+  EXPECT_TRUE(automap_state::seen(*map, 2, 0)) << "one way, either direction";
+  EXPECT_FALSE(automap_state::seen(*map, 1, 1));
+  EXPECT_FALSE(automap_state::seen(*map, 0, 1));
+
+  EXPECT_LT(r.picture_fogged(), before);
+  // Both places are clear, and so is the way between them, all along it.
+  EXPECT_EQ(r.screen_pixel(curse_rig::place_x(0), curse_rig::place_y(0)),
+            filled_index);
+  EXPECT_EQ(r.screen_pixel(curse_rig::place_x(2), curse_rig::place_y(2)),
+            filled_index);
+  const unsigned mid_x = (curse_rig::place_x(0) + curse_rig::place_x(2)) / 2;
+  const unsigned mid_y = curse_rig::place_y(0);
+  for (int d = -4; d <= 4; ++d) {
+    EXPECT_EQ(r.screen_pixel(mid_x, static_cast<unsigned>(mid_y + d)),
+              filled_index)
+        << d;
+  }
+  // A pixel well off the way is still under the fog, and so is the place
+  // nobody went to.
+  EXPECT_TRUE(r.fogged_as_it_should_be(mid_x, mid_y - 20));
+  EXPECT_TRUE(r.fogged_as_it_should_be(mid_x + 1, mid_y - 20));
+  EXPECT_TRUE(
+      r.fogged_as_it_should_be(curse_rig::place_x(1), curse_rig::place_y(1)));
+}
+
+TEST(ExploredOnCurse, TheStartMenuIsNotAWayBetweenTwoPlaces) {
+  const curse_rig r;
+  r.enable();
+  r.on_the_overland(0);
+  r.draw_the_picture();
+  r.mark_test();
+  // A save loaded from the start menu puts the party somewhere else.
+  r.in_mode(curse::mode_start_menu);
+  r.mark_test();
+  r.on_the_overland(1);
+  r.draw_the_picture();
+  r.mark_test();
+
+  const automap_record* map =
+      r.map_state().find_places(1, curse::overland_picture);
+  ASSERT_NE(map, nullptr);
+  EXPECT_TRUE(automap_state::seen(*map, 0, 0));
+  EXPECT_TRUE(automap_state::seen(*map, 1, 1));
+  EXPECT_FALSE(automap_state::seen(*map, 0, 1));
+}
+
+TEST(ExploredOnCurse, APictureDrawnOverTheMapIsLeftAlone) {
+  const curse_rig r;
+  r.enable();
+  r.on_the_overland(0);
+  r.draw_the_picture();
+  r.mark_test();
+  // A script's picture at (3, 3), over the map's own cells.
+  r.blit_begins(curse::other_segment, 0, 3, 3);
+  r.fill();
+  // The party moves on while it is up: recorded, and not painted.
+  r.on_the_overland(2);
+  r.mark_test();
+  EXPECT_EQ(r.picture_fogged(), 0U) << "the screen is the script's";
+  const automap_record* map =
+      r.map_state().find_places(1, curse::overland_picture);
+  ASSERT_NE(map, nullptr);
+  EXPECT_TRUE(automap_state::seen(*map, 0, 2));
+
+  // The program draws its map again, and the fog is laid with the way.
+  r.draw_the_picture();
+  EXPECT_GT(r.picture_fogged(), 0U);
+  EXPECT_EQ(r.screen_pixel(curse_rig::place_x(2), curse_rig::place_y(2)),
+            filled_index);
+}
+
+TEST(ExploredOnCurse, AMaskedPictureOverTheMapIsLeftAloneToo) {
+  const curse_rig r;
+  r.enable();
+  r.on_the_overland(0);
+  r.draw_the_picture();
+  r.compositor();
+  r.fill();
+  r.on_the_overland(2);
+  r.mark_test();
+  EXPECT_EQ(r.picture_fogged(), 0U);
+}
+
+TEST(ExploredOnCurse, TheBlinkingMarkAndAFrameOutsideThePictureAreNotACover) {
+  const curse_rig r;
+  r.enable();
+  r.on_the_overland(0);
+  r.draw_the_picture();
+  r.mark_test();
+  // The mark and the screen it saved, at its own cell.
+  r.blit_begins(curse::mark_segment, 0, curse::place_rows[0],
+                curse::place_columns[0]);
+  r.blit_begins(curse::mark_segment, 0x0100, curse::place_rows[0],
+                curse::place_columns[0]);
+  // A frame cell, below the picture, drawn from the saved-screen block.
+  r.blit_begins(curse::mark_segment, 0x0100, 16, 4);
+  r.fill();
+  r.on_the_overland(2);
+  r.mark_test();
+  EXPECT_GT(r.picture_fogged(), 0U) << "the picture was still the map";
+}
+
+TEST(ExploredOnCurse, NothingIsRecordedOrDrawnOffTheOverland) {
+  const curse_rig r;
+  r.enable();
+  r.fill();
+  r.on_the_overland(0);
+  r.in_mode(curse::mode_adventure);
+  r.draw_the_picture();
+  r.mark_test();
+  EXPECT_EQ(r.map_state().records_used(), 0U);
+  EXPECT_EQ(r.picture_fogged(), 0U);
+
+  // The overland's picture, but the last picture loaded keeps the mark
+  // down: the program's own test says no, and so does the seam.
+  r.on_the_overland(0);
+  r.put_byte(curse::data_segment, curse::data_last_picture, 0x50);
+  r.draw_the_picture();
+  r.mark_test();
+  EXPECT_EQ(r.map_state().records_used(), 0U);
+  EXPECT_EQ(r.picture_fogged(), 0U);
+}
+
+TEST(ExploredOnCurse, AnotherAdaptersPictureIsNotPainted) {
+  const curse_rig r;
+  r.enable();
+  r.fill();
+  r.put_byte(curse::data_segment, curse::data_adapter, 2);
+  r.on_the_overland(0);
+  r.draw_the_picture();
+  EXPECT_EQ(r.picture_fogged(), 0U);
+}
+
+TEST(ExploredOnCurse, APlaceBeyondTheTableIsDeclined) {
+  const curse_rig r;
+  r.enable();
+  r.on_the_overland(0);
+  r.put_word(curse::record_segment, curse::area_current_place, 33);
+  r.mark_test();
+  EXPECT_EQ(r.map_state().records_used(), 0U);
+}
+
+TEST(ExploredOnCurse, ThePaintTouchesNoLatchAndLeavesEveryPlaneEnabled) {
+  const curse_rig r;
+  r.enable();
+  r.fill();
+  // Load the latches with something the paint would disturb if it read.
+  static_cast<void>(r.pc().processor().read_byte(0xA000, 0x1F3F));
+  const auto latches = r.video->latches();
+  r.on_the_overland(0);
+  r.draw_the_picture();
+  EXPECT_GT(r.picture_fogged(), 0U);
+  EXPECT_EQ(r.video->latches(), latches);
+  EXPECT_EQ(r.video->map_mask(), 0x0FU);
+}
+
+TEST(ExploredOnCurse, WithTheSeamOffNothingIsRecordedOrDrawn) {
+  const curse_rig r;
+  r.fill();
+  r.on_the_overland(0);
+  r.draw_the_picture();
+  r.mark_test();
+  r.on_the_overland(2);
+  r.mark_test();
+  EXPECT_EQ(r.map_state().records_used(), 0U);
+  EXPECT_EQ(r.picture_fogged(), 0U);
+}
+
+TEST(ExploredPlaces, APairOfPlacesIsOneBitWhicheverWayRound) {
+  EXPECT_EQ(automap_cell_index(automap_map_kind::places, 3, 3), 3U);
+  EXPECT_EQ(automap_cell_index(automap_map_kind::places, 2, 5),
+            33U + (5U * 4U / 2U) + 2U);
+  EXPECT_EQ(automap_cell_index(automap_map_kind::places, 5, 2),
+            automap_cell_index(automap_map_kind::places, 2, 5));
+  EXPECT_EQ(automap_cell_index(automap_map_kind::places, 31, 32),
+            33U + (32U * 31U / 2U) + 31U);
+  EXPECT_LT(automap_cell_index(automap_map_kind::places, 31, 32),
+            automap_seen_bytes * 8);
+  EXPECT_EQ(automap_cell_index(automap_map_kind::places, 33, 0),
+            automap_no_cell);
+}
+
+TEST(ExploredPlaces, ARecordGoesIntoTheSidecarAndComesBack) {
+  automap_state before;
+  automap_record& map = before.record_for_places(1, 0x79);
+  EXPECT_TRUE(before.reveal(map, 0, 0));
+  EXPECT_TRUE(before.reveal(map, 0, 15));
+  std::array<std::uint8_t, 1024> bytes{};
+  const std::size_t size = before.write_sidecar(bytes);
+  ASSERT_GT(size, 0U);
+
+  automap_state after;
+  ASSERT_TRUE(after.read_sidecar({bytes.data(), size}));
+  const automap_record* back = after.find_places(1, 0x79);
+  ASSERT_NE(back, nullptr);
+  EXPECT_EQ(back->kind, automap_map_kind::places);
+  EXPECT_TRUE(automap_state::seen(*back, 0, 0));
+  EXPECT_TRUE(automap_state::seen(*back, 15, 0));
+  EXPECT_FALSE(automap_state::seen(*back, 15, 15));
+  EXPECT_EQ(after.find_overland(1, 0x79), nullptr)
+      << "the kind is part of the key";
 }
 
 }  // namespace
