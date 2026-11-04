@@ -20,7 +20,9 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
 
 No `--install`: a Steam copy is recognized and laid out at `\CURSE`, a
 GOG copy at the root (`docs/hosts.md` §2c). No seam is needed to play,
-and none but the debug cheats is available on this program. Sixty
+and those available on this program are the debug cheats and the
+message pause (leg 3 with `--seam message-pause`: each combat line
+stands the setting, `docs/seams.md` §10). Sixty
 frames to the virtual second; `TICKS = FRAME * 19,887` at `--speed 386`
 is close enough for `--until`.
 

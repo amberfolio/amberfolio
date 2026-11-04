@@ -60,7 +60,12 @@ TEST(ProgramProfile, TheBaselineAndCurseHaveOne) {
   EXPECT_NE(curse_of_the_azure_bonds.data_game_mode, 0U);
   EXPECT_NE(curse_of_the_azure_bonds.data_roster_head, 0U);
   EXPECT_TRUE(curse_of_the_azure_bonds.combat_overlay.has_load_segment());
-  EXPECT_EQ(curse_of_the_azure_bonds.key_read_entry, 0U);
+  // The message pause's (#555): the runtime's key read, the interpreter
+  // overlay and the death routine's load-segment word.
+  EXPECT_NE(curse_of_the_azure_bonds.key_read_entry, 0U);
+  EXPECT_TRUE(curse_of_the_azure_bonds.interpreter_overlay.has_load_segment());
+  EXPECT_NE(curse_of_the_azure_bonds.death_load_segment_at, 0U);
+  EXPECT_EQ(curse_of_the_azure_bonds.key_pending_entry, 0U);
   EXPECT_EQ(curse_of_the_azure_bonds.data_font_pointer, 0U);
 }
 

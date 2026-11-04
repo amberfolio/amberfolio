@@ -495,6 +495,17 @@ inline constexpr program_profile pool_of_radiance{
 /// program's own stub table.
 namespace curse_of_the_azure_bonds_modules {
 
+/// Overlay 3: the event-script interpreter, which carries a script's own
+/// protection command (`seam_code_wheel.cpp`). The stub's record is at
+/// image `0x03C0`.
+inline constexpr seam_module interpreter{
+    .file = "GAME.OVR",
+    .file_offset = 2313,
+    .length = 14858,
+    .digest =
+        "323a088764862961e792f70af6091e8d72dddd748c0f46a78a9469000a80888c",
+    .load_segment_at = 0x3D0};
+
 /// Overlay 9: tactical combat's round loop and its end check. The stub's
 /// record is at image `0x0570`: the module's file offset and length, and
 /// the load-segment word sixteen bytes in.
@@ -509,11 +520,11 @@ inline constexpr seam_module combat{
 }  // namespace curse_of_the_azure_bonds_modules
 
 /// Curse of the Azure Bonds, the program Steam and GOG sell (v1.3;
-/// edition.h), **in part** (#554). Only the members the debug cheats
-/// read are filled in, each checked against the program's own image and
-/// by a driven run (`docs/seams.md` §10): the data segment, the game
-/// mode byte and its values, the party's head, the combat overlay and
-/// the character record's offsets. Every other member is zero, which is
+/// edition.h), **in part** (#554, #555). Only the members the seams
+/// ported so far read are filled in, each checked against the program's
+/// own image and by a driven run (`docs/seams.md` §10): the data segment,
+/// the game mode byte and its values, the party's head, the interpreter
+/// and combat overlays and the character record's offsets. Every other member is zero, which is
 /// not a fact about this program but the absence of one, and no seam
 /// available on this program reads it: a seam's `fingerprints` name this
 /// profile only once the facts it reads are here.
@@ -530,7 +541,7 @@ inline constexpr program_profile curse_of_the_azure_bonds{
     .roster_draw_offset = {},
     .screen_composer_offset = {},
     .key_pending_entry = {},
-    .key_read_entry = {},
+    .key_read_entry = 0x86FD,
     .clear_region_entry = {},
     .clear_screen_entry = {},
     .draw_frame_entry = {},
@@ -538,7 +549,7 @@ inline constexpr program_profile curse_of_the_azure_bonds{
     .command_bar_entry = {},
     .roster_drawn_return = {},
     .titles_overlay = {},
-    .interpreter_overlay = {},
+    .interpreter_overlay = curse_of_the_azure_bonds_modules::interpreter,
     .combat_overlay = curse_of_the_azure_bonds_modules::combat,
     .aim_overlay = {},
     .adventure_overlay = {},
@@ -553,7 +564,7 @@ inline constexpr program_profile curse_of_the_azure_bonds{
     .script_runner_load_segment_at = {},
     .rest_load_segment_at = {},
     .appraise_load_segment_at = {},
-    .death_load_segment_at = {},
+    .death_load_segment_at = 0x1220,  // overlay 33
     .menu_key_read_call = {},
     .menu_local_bar = {},
     .menu_bar_capacity = {},
