@@ -499,16 +499,18 @@ watches or calls (the keyboard's two entries, the clears, the frame and
 string drawers, the command-bar thunk, the roster drawer and the screen
 composer), the overlay modules with their load-segment words, and the
 menu-bar routine's and the adventuring loop's shared offsets. Each is
-stated once. Only Pool of Radiance has a profile (`pool_of_radiance`),
-and `find_program_profile()` answers null for anything else.
+stated once. Pool of Radiance has a profile (`pool_of_radiance`) and
+Curse of the Azure Bonds a partial one (`curse_of_the_azure_bonds`, the
+members its ported seams and reads use); `find_program_profile()` answers
+null for anything else.
 
 A seam's `fingerprints` are the fingerprints of the profiles its facts
 are about (`fingerprints_of()`): each seam file names its program once
 (`constexpr const program_profile& profile = pool_of_radiance;`) and
 reads the shared facts through it. A seam's own facts, the ones no other
-file reads, stay in its own file beside its mechanism. The scene and
-screen-text reads check the program the same way and answer
-`wrong_binary` for one without a profile. `ProgramProfile.*` in
+file reads, stay in its own file beside its mechanism, one row per
+program. The scene and screen-text reads pick their row the same way and
+answer `wrong_binary` for a program without one. `ProgramProfile.*` in
 `tests/core/machine/program_profile_test.cpp` checks that every seam is
 available only on programs that have one.
 
@@ -1035,6 +1037,40 @@ PLAN.md §5 item 1. It never answers the challenge for anybody.
 - **Open**: `cite.rec` is the one session still on the boot that asked
   (#293); nobody has typed a correct answer into the real program
   (`docs/hosts.md` §3).
+
+**On Curse of the Azure Bonds** (#555) the challenge is one character
+read off a translation wheel, and the routine that asks it is overlaid.
+The skip is Pool of Radiance's mechanism with that program's call
+sites; the watch is a compare of one character, not of a word. One
+`code_wheel_facts` row per program (`seam_code_wheel.cpp`), the points
+in the definition's `programs`:
+
+| fact | Pool of Radiance | Curse of the Azure Bonds |
+| --- | --- | --- |
+| the protection routine's stub | `0x1C:0x0025` | `0x3F:0x0025` (its record at image `0x03F0`) |
+| the routine | in overlay 2 | overlay 4 (file offset 18133, 1096 bytes, load-segment word `0x0400`) |
+| the watch | the string compare's `REPE CMPSB`, image `0xBBB0`, against the word table | the routine's `CMP` of AL, the character typed, with the expected one at `[BP-3]`: overlay 4 `+0x03C4` |
+| the calls stepped over | the boot's, image `0x0122` | the boot's two, image `0x01F1` (after the first title) and `0x0344` (after the demonstration comes back), and the event-script interpreter's, overlay 3 `+0x3263`, a script's own protection command |
+
+- **The store copy accepts any answer** (PLAN.md §7, M9's first
+  question), by its own branch: the jump after the compare goes on to
+  the routine's exit when the two characters *differ*. A right answer
+  falls through to the program's own `SORRY, THAT'S INCORRECT.` and then
+  to the exit as well. GOG and Steam ship the same `START.EXE` and
+  `GAME.OVR`.
+- **Driven** on the Steam copy at `--speed 386`, `--wall none`: with the
+  seam on and `A` typed, `fired=2` (the boot's call and the compare) and
+  nothing latched; with the expected character typed instead, the
+  refusal line, the latch, `code wheel answered - remembered for this
+  copy` and the store's `answered` line for the digest; answered, the
+  boot goes from the title to the party menu with `fired=1` and no
+  challenge drawn.
+- **Not driven**: the interpreter's call. No leg reaches a script that
+  asks. Its operand is checked before the step, so a wrong fact declines.
+- **Fidelity**: `curse-boot-wheel` `identical curse-boot` (on, a wrong
+  letter typed, every one of 31 checkpoints equal);
+  `curse-boot-answered` `contrast curse-boot`. Tests:
+  `SeamCodeWheelOnCurse.*` in `tests/core/machine/seam_test.cpp`.
 
 ### The Encamp (F)ix (#172, #186, #189, #194, #298, #303, #304)
 
@@ -3498,6 +3534,48 @@ these and the three that draw on sight, and says so. Unit: `SeamFont.*`, `TextFa
 `SeamFontScreenText.*`; stand-in: `font_probe_off`, `font_probe_sans`.
 Driven: 48 stills from the credits to the character sheet read back
 the same screen text with either face on as with none.
+
+**On Curse of the Azure Bonds** (#555) the font is the same and the
+blitter is not. The font has Pool of Radiance's layout: 177 glyphs of
+eight bytes, the text table first, an index the character upper-cased
+modulo 64, and the same nine slots and the space holding marks, a small
+picture, frame pieces and solid blocks rather than lettering, so the
+faces and what they replace are unchanged. The blitter copies the
+glyph's eight bytes out of the font into eight bytes of its own, then
+calls its EGA path, which draws the cell on one page only, a row at a
+time out of the copy. So the seam has one point there, with its own
+handler, on one `font_facts` row per program (`seam_font.cpp`) and its
+point in the definitions' `programs`:
+
+| fact | Pool of Radiance | Curse of the Azure Bonds |
+| --- | --- | --- |
+| the font's far pointer | data-segment `0x5E20` | data-segment `0x65AE`, loaded from `8X8D1.DAX` block 201 |
+| what the blitter draws from | the font, through ES:DI | a copy of the glyph at data-segment `0x65B2`, just past the pointer |
+| the points | image `0x749A` and `0x74C0`, after the fetch for each page; DL holds the row | image `0x5A91`, after the EGA path's read out of the copy; AH holds the row, BX its number, and the glyph's index is the path's first argument, the byte at `[BP+4]` |
+| the guard | ES is the pointer's segment and DI falls inside the buffer | DS is the data segment, BX is under 8, the index is under 177, and AH is the font's own row for that index and row |
+| what the handler writes | DL | AH |
+
+- **The other adapters' paths** (CGA and Tandy, chosen by the program's
+  video-mode byte at data-segment `0x5000`) read the same copy and are
+  not hooked: this machine has the EGA only, as on Pool of Radiance.
+- **Fidelity**: the pair is `curse-quiet-font-sans` and
+  `curse-quiet-font-chisel`, each a `contrast` with `curse-quiet` at its
+  keys and ticks: 1 of 58 checkpoints identical, then divergent from
+  the loading line on (agreeing again while the title's art is up), in
+  `devices` and `display`, and from the challenge screen on in `ram` as
+  well, by one byte. That byte is in the stack, below where it stands:
+  a word an interrupt pushed in the middle of a glyph, AX with AL the
+  register index the path sends and AH the row, the face's where the
+  program's was. Never `cpu`. Unit: `SeamFontOnCurse.*`.
+- **Driven** on the Steam copy over `curse-quiet`'s keys, either face:
+  the loading line, the credits, the challenge, the party menu, the
+  `LOAD WHICH GAME` bar, the roster and coordinates and the opening
+  message, and the adventuring bar are lettered in the face; the rope
+  border, the frames, the runes on the challenge screen and the 3-D
+  view are the program's. The challenge's path, drawn with the
+  program's dash and dot glyphs, is drawn with the face's. The title's
+  art has no text in the font. No handler declined; `fired=22408` over
+  the run.
 
 ### The debug cheats (#99, #161, #163, #196)
 
