@@ -54,14 +54,16 @@ TEST(ProgramProfile, TheBaselineAndCurseHaveOne) {
   EXPECT_EQ(program_profiles().back(), &curse_of_the_azure_bonds);
   EXPECT_EQ(pool_of_radiance.dgroup_offset(),
             std::uint32_t{pool_of_radiance.dgroup_paragraphs} * 16U);
-  // The facts the cheats read on Curse (#554), and nothing pretending to
-  // be one: a member nobody has measured there is zero.
+  // The facts the seams ported so far read on Curse (#554, #555), and
+  // nothing pretending to be one: a member nobody has measured there is
+  // zero.
   EXPECT_NE(curse_of_the_azure_bonds.dgroup_paragraphs, 0U);
   EXPECT_NE(curse_of_the_azure_bonds.data_game_mode, 0U);
   EXPECT_NE(curse_of_the_azure_bonds.data_roster_head, 0U);
   EXPECT_TRUE(curse_of_the_azure_bonds.combat_overlay.has_load_segment());
+  EXPECT_NE(curse_of_the_azure_bonds.data_font_pointer, 0U);
   EXPECT_EQ(curse_of_the_azure_bonds.key_read_entry, 0U);
-  EXPECT_EQ(curse_of_the_azure_bonds.data_font_pointer, 0U);
+  EXPECT_EQ(curse_of_the_azure_bonds.data_key_pushback, 0U);
 }
 
 TEST(ProgramProfile, EverySeamIsAvailableOnlyOnProgramsWithAProfile) {

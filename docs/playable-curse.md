@@ -20,9 +20,9 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
 
 No `--install`: a Steam copy is recognized and laid out at `\CURSE`, a
 GOG copy at the root (`docs/hosts.md` §2c). No seam is needed to play,
-and none but the debug cheats is available on this program. Sixty
-frames to the virtual second; `TICKS = FRAME * 19,887` at `--speed 386`
-is close enough for `--until`.
+and none but the debug cheats and the text faces is available on this
+program. Sixty frames to the virtual second; `TICKS = FRAME * 19,887`
+at `--speed 386` is close enough for `--until`.
 
 Every script below is on a fresh copy of the Steam disk with its shipped
 slots (the `curse-slots` snapshot), keys **150 frames apart** from frame
@@ -308,6 +308,8 @@ lines, at `--speed 386` and `--wall none`:
 | `curse-boot` | `curse-slots` | none | |
 | `curse-quiet` | `curse-slots` | none | |
 | `curse-quiet-cheats` | `curse-slots` | the three cheats, none pulled | `identical curse-quiet` |
+| `curse-quiet-font-sans` | `curse-slots` | `font-sans` | `contrast curse-quiet` |
+| `curse-quiet-font-chisel` | `curse-slots` | `font-chisel` | `contrast curse-quiet` |
 | `curse-town` | `curse-slots` | none | |
 | `curse-temple` | `curse-slots` | none | |
 | `curse-camp` | `curse-slots` | none | |

@@ -126,7 +126,7 @@ frame that carries an input is checkpointed whatever the cadence says.
 
 ### Curse of the Azure Bonds
 
-Nineteen sessions, `curse-*`, on the Steam copy at `--speed 386` and
+Twenty-one sessions, `curse-*`, on the Steam copy at `--speed 386` and
 `--wall none` (#554). Every one is `disk external`: `curse-load` is
 pinned to the disk `curse-save` wrote (the `curse-saved` snapshot), the
 two `curse-journey` sessions to a disk with the party saved in slot D
@@ -135,7 +135,9 @@ shipped slots A and B (`curse-slots`).
 `docs/playable-curse.md` has the legs and the table; the pairs are the
 cheats': `curse-quiet-cheats` `identical curse-quiet` (all three on,
 none pulled), and `curse-fight-cheat`, `curse-fight-kill`, `curse-camp-wound` and
-`curse-journey-kill` each a `contrast` with the run it differs from. The
+`curse-journey-kill` each a `contrast` with the run it differs from; and
+the text faces': `curse-quiet-font-sans` and `curse-quiet-font-chisel`,
+each a `contrast curse-quiet` at its keys and ticks. The
 other thirteen are the legs with no seam: a new character, a purchase, a
 cure at the temple, the game's own Fix, the royal carriage, a journey
 on the overland map, and the rest. Each verifies on the desktop host and on the wasm module
@@ -157,7 +159,7 @@ on the overland map, and the rest. Each verifies on the desktop host and on the 
 | `quick-steps` | `walk-quick` | `menu-letters-quick`. Not in `quiet-all`: `quiet`'s movement keys click |
 | `message-pause` | `fight-pause` | `quiet-message-pause`, and `quiet-all` |
 | `fanfare` | `quiet-fanfare` (a `contrast`) | none can exist: every boot runs the titles, where it starts. Not in `quiet-all` |
-| `font-sans`, `font-chisel` | `quiet-font-sans`, `quiet-font-chisel` (on is exercised: text is drawn from the first screen) | none can exist; the pair is a `contrast` |
+| `font-sans`, `font-chisel` | `quiet-font-sans`, `quiet-font-chisel` (on is exercised: text is drawn from the first screen); on Curse `curse-quiet-font-sans`, `curse-quiet-font-chisel` | none can exist; the pair is a `contrast` |
 
 **`modern-controls` is in `quiet-all-on-sight` and not in `quiet-all`.**
 `quiet-all` is the claim that seams which draw nothing until used add

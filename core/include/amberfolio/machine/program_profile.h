@@ -509,11 +509,11 @@ inline constexpr seam_module combat{
 }  // namespace curse_of_the_azure_bonds_modules
 
 /// Curse of the Azure Bonds, the program Steam and GOG sell (v1.3;
-/// edition.h), **in part** (#554). Only the members the debug cheats
-/// read are filled in, each checked against the program's own image and
-/// by a driven run (`docs/seams.md` §10): the data segment, the game
-/// mode byte and its values, the party's head, the combat overlay and
-/// the character record's offsets. Every other member is zero, which is
+/// edition.h), **in part** (#554, #555). Only the members the seams
+/// ported so far read are filled in, each checked against the program's
+/// own image and by a driven run (`docs/seams.md` §10): the data segment,
+/// the game mode byte and its values, the party's head, the font's far
+/// pointer, the combat overlay and the character record's offsets. Every other member is zero, which is
 /// not a fact about this program but the absence of one, and no seam
 /// available on this program reads it: a seam's `fingerprints` name this
 /// profile only once the facts it reads are here.
@@ -589,7 +589,7 @@ inline constexpr program_profile curse_of_the_azure_bonds{
     .data_roster_head = 0x6524,
     .data_bar_highlight = {},
     .data_key_pushback = {},
-    .data_font_pointer = {},
+    .data_font_pointer = 0x65AE,
     .data_view_column_bias = {},
     .data_sound_busy = {},
     .record_next = 0x189,

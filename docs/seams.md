@@ -3410,6 +3410,48 @@ these and the three that draw on sight, and says so. Unit: `SeamFont.*`, `TextFa
 Driven: 48 stills from the credits to the character sheet read back
 the same screen text with either face on as with none.
 
+**On Curse of the Azure Bonds** (#555) the font is the same and the
+blitter is not. The font has Pool of Radiance's layout: 177 glyphs of
+eight bytes, the text table first, an index the character upper-cased
+modulo 64, and the same nine slots and the space holding marks, a small
+picture, frame pieces and solid blocks rather than lettering, so the
+faces and what they replace are unchanged. The blitter copies the
+glyph's eight bytes out of the font into eight bytes of its own, then
+calls its EGA path, which draws the cell on one page only, a row at a
+time out of the copy. So the seam has one point there, with its own
+handler, on one `font_facts` row per program (`seam_font.cpp`) and its
+point in the definitions' `programs`:
+
+| fact | Pool of Radiance | Curse of the Azure Bonds |
+| --- | --- | --- |
+| the font's far pointer | data-segment `0x5E20` | data-segment `0x65AE`, loaded from `8X8D1.DAX` block 201 |
+| what the blitter draws from | the font, through ES:DI | a copy of the glyph at data-segment `0x65B2`, just past the pointer |
+| the points | image `0x749A` and `0x74C0`, after the fetch for each page; DL holds the row | image `0x5A91`, after the EGA path's read out of the copy; AH holds the row, BX its number, and the glyph's index is the path's first argument, the byte at `[BP+4]` |
+| the guard | ES is the pointer's segment and DI falls inside the buffer | DS is the data segment, BX is under 8, the index is under 177, and AH is the font's own row for that index and row |
+| what the handler writes | DL | AH |
+
+- **The other adapters' paths** (CGA and Tandy, chosen by the program's
+  video-mode byte at data-segment `0x5000`) read the same copy and are
+  not hooked: this machine has the EGA only, as on Pool of Radiance.
+- **Fidelity**: the pair is `curse-quiet-font-sans` and
+  `curse-quiet-font-chisel`, each a `contrast` with `curse-quiet` at its
+  keys and ticks: 1 of 58 checkpoints identical, then divergent from
+  the loading line on (agreeing again while the title's art is up), in
+  `devices` and `display`, and from the challenge screen on in `ram` as
+  well, by one byte. That byte is in the stack, below where it stands:
+  a word an interrupt pushed in the middle of a glyph, AX with AL the
+  register index the path sends and AH the row, the face's where the
+  program's was. Never `cpu`. Unit: `SeamFontOnCurse.*`.
+- **Driven** on the Steam copy over `curse-quiet`'s keys, either face:
+  the loading line, the credits, the challenge, the party menu, the
+  `LOAD WHICH GAME` bar, the roster and coordinates and the opening
+  message, and the adventuring bar are lettered in the face; the rope
+  border, the frames, the runes on the challenge screen and the 3-D
+  view are the program's. The challenge's path, drawn with the
+  program's dash and dot glyphs, is drawn with the face's. The title's
+  art has no text in the font. No handler declined; `fired=22408` over
+  the run.
+
 ### The debug cheats (#99, #161, #163, #196)
 
 Three seams, not one with three switches (PLAN.md §5's toggle per seam);

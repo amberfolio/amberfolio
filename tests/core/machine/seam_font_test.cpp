@@ -22,6 +22,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <set>
 #include <span>
 #include <string>
@@ -412,6 +413,195 @@ TEST(SeamFontScreenText, AFaceThatIsOffIsNotRead) {
   text_grid grid{};
   ASSERT_EQ(read_screen_text(*r.box, grid), screen_text_trouble::none);
   EXPECT_EQ(grid[0].code, cell_not_text);
+}
+
+// --- The seam on Curse of the Azure Bonds (#555) ----------------------------
+//
+// The same font and the same faces, through a different blitter: it
+// copies the glyph out of the font into eight bytes of its own and draws
+// a row at a time out of the copy, the row in AH, its number in BX and
+// the glyph's index the first argument of the call, a byte four above
+// BP. The rig stands the processor on that one point with the program's
+// row in AH.
+
+namespace curse {
+constexpr std::string_view fingerprint =
+    "42fcefd6785679568b00bc1fb5b1d81ac2773416be4a35e0363920ddf6b78acd";
+constexpr std::uint32_t dgroup_offset = 0xABE0;
+constexpr std::uint16_t data_font_pointer = 0x65AE;
+/// The instruction after the row read out of the copy.
+constexpr std::uint32_t row_copied = 0x5A91;
+/// Where the test keeps the blitter's frame.
+constexpr std::uint16_t stack_segment = 0x2000;
+constexpr std::uint16_t frame = 0x0300;
+}  // namespace curse
+
+[[nodiscard]] sha256_digest curse_digest() {
+  sha256_digest digest;
+  EXPECT_TRUE(parse_digest(curse::fingerprint, digest));
+  return digest;
+}
+
+struct curse_rig {
+  curse_rig() : box(std::make_unique<machine>(memory_layout::pc, &log)) {
+    box->seams().loaded(curse_digest(), image_load_segment);
+    install(make_program_font());
+  }
+
+  [[nodiscard]] cpu::registers& regs() const noexcept {
+    return box->processor().regs();
+  }
+
+  [[nodiscard]] static std::uint16_t dgroup() noexcept {
+    return static_cast<std::uint16_t>(image_load_segment +
+                                      (curse::dgroup_offset / 16));
+  }
+
+  void put_byte(std::uint32_t address, std::uint8_t value) const {
+    box->memory().ram()[address] = value;
+  }
+
+  [[nodiscard]] std::uint8_t program_row(unsigned glyph, unsigned row) const {
+    return box->memory().ram()[cpu::physical_address(glyph_segment, 0) +
+                               glyph_offset + (glyph * 8) + row];
+  }
+
+  void install(const program_table& font) const {
+    const std::uint32_t glyphs =
+        cpu::physical_address(glyph_segment, 0) + glyph_offset;
+    for (std::size_t i = 0; i < std::size_t{buffer_glyphs} * 8; ++i) {
+      put_byte(static_cast<std::uint32_t>(glyphs + i),
+               i < font.size() ? font[i] : 0x81);
+    }
+    const std::uint32_t at =
+        cpu::physical_address(dgroup(), 0) + curse::data_font_pointer;
+    put_byte(at, static_cast<std::uint8_t>(glyph_offset & 0xFFU));
+    put_byte(at + 1, static_cast<std::uint8_t>(glyph_offset >> 8U));
+    put_byte(at + 2, static_cast<std::uint8_t>(glyph_segment & 0xFFU));
+    put_byte(at + 3, static_cast<std::uint8_t>(glyph_segment >> 8U));
+  }
+
+  void enable(std::string_view id) const {
+    ASSERT_EQ(box->seams().enable(id), seam_reason::none);
+  }
+
+  [[nodiscard]] std::span<const seam_point> points(std::string_view id) const {
+    const seam_definition* found = box->seams().find(id);
+    EXPECT_NE(found, nullptr);
+    return points_on(*found, curse_digest());
+  }
+
+  /// Stand on the point with glyph `glyph`'s index four above BP, `row`
+  /// in BX and `in_ah` in AH (the program's row, unless a test says
+  /// otherwise), and step once. Answers AH afterwards.
+  [[nodiscard]] std::uint8_t read(unsigned glyph, unsigned row,
+                                  std::optional<std::uint8_t> in_ah = {},
+                                  std::uint16_t ds = dgroup()) const {
+    const std::uint32_t address =
+        cpu::physical_address(image_load_segment, 0) + curse::row_copied;
+    box->memory().ram()[address] = 0xF4;  // HLT, for after the handler
+    put_byte(cpu::physical_address(curse::stack_segment, curse::frame + 4),
+             static_cast<std::uint8_t>(glyph));
+    box->processor().reset();
+    cpu::registers& r = regs();
+    r[cpu::sreg::cs] = image_load_segment;
+    r.ip = static_cast<std::uint16_t>(curse::row_copied);
+    r[cpu::sreg::ds] = ds;
+    r[cpu::sreg::ss] = curse::stack_segment;
+    r[cpu::reg16::bp] = curse::frame;
+    r[cpu::reg16::sp] = curse::frame - 2;
+    r[cpu::sreg::es] = 0xA000;
+    r[cpu::reg16::bx] = static_cast<std::uint16_t>(row);
+    r.set(cpu::reg8::al, 0x08);
+    r.set(cpu::reg8::ah, in_ah.value_or(program_row(glyph, row & 7U)));
+    box->step();
+    return r.get(cpu::reg8::ah);
+  }
+
+  diagnostic_log log;
+  std::unique_ptr<machine> box;
+};
+
+TEST(SeamFontOnCurse, HasOnePointOfItsOwnAndTheBaselineKeepsItsTwo) {
+  const curse_rig r;
+  for (const std::string_view id : {"font-sans", "font-chisel"}) {
+    const std::span<const seam_point> mine = r.points(id);
+    ASSERT_EQ(mine.size(), 1U) << id;
+    EXPECT_EQ(mine.front().offset, curse::row_copied) << id;
+    EXPECT_TRUE(mine.front().inside_calls) << id;
+    EXPECT_EQ(r.box->seams().find(id)->points.size(), 2U) << id;
+    EXPECT_EQ(r.box->seams().enable(id), seam_reason::none) << id;
+  }
+}
+
+TEST(SeamFontOnCurse, SwapsEveryRowOfALetter) {
+  const curse_rig r;
+  r.enable("font-sans");
+  // The sans `A`'s apex, restated: three pixels from column two.
+  EXPECT_EQ(r.read(index_of('A'), 0), 0x1C);
+  for (unsigned row = 0; row < 8; ++row) {
+    EXPECT_EQ(r.read(index_of('7'), row),
+              text_face::row(face::sans, index_of('7'), row));
+  }
+  // AL, the register index the program sends with the row, is its own.
+  EXPECT_EQ(r.regs().get(cpu::reg8::al), 0x08);
+}
+
+TEST(SeamFontOnCurse, EachFaceDrawsItsOwn) {
+  const curse_rig r;
+  r.enable("font-chisel");
+  const unsigned h = index_of('H');
+  EXPECT_EQ(r.read(h, 0), text_face::row(face::chisel, h, 0));
+}
+
+TEST(SeamFontOnCurse, LeavesTheGlyphsThatAreNotLetteringAlone) {
+  const curse_rig r;
+  r.enable("font-sans");
+  for (const unsigned index : kept_indices) {
+    EXPECT_EQ(r.read(index, 3), r.program_row(index, 3)) << index;
+  }
+  // A picture past the text table.
+  EXPECT_EQ(r.read(100, 3), 0x81);
+  EXPECT_EQ(r.box->seams().status("font-sans").fired, kept_indices.size() + 1);
+}
+
+TEST(SeamFontOnCurse, DeclinesARowThatIsNotTheGlyphs) {
+  const curse_rig r;
+  r.enable("font-sans");
+  const unsigned a = index_of('A');
+  // AH is not the font's row for the index the call was given.
+  const auto other = static_cast<std::uint8_t>(r.program_row(a, 2) ^ 0xFFU);
+  EXPECT_EQ(r.read(a, 2, other), other);
+  // Not the data segment, not a row, not a glyph.
+  EXPECT_EQ(r.read(a, 2, {}, 0x4000), r.program_row(a, 2));
+  EXPECT_EQ(r.read(a, 8, 0x5A), 0x5A);
+  EXPECT_EQ(r.read(buffer_glyphs, 0, 0x5A), 0x5A);
+  EXPECT_EQ(r.box->seams().status("font-sans").fired, 0U);
+}
+
+TEST(SeamFontOnCurse, DeclinesWhenTheProgramHasNoFont) {
+  const curse_rig r;
+  const std::uint32_t at =
+      cpu::physical_address(curse_rig::dgroup(), 0) + curse::data_font_pointer;
+  for (std::uint32_t i = 0; i < 4; ++i) {
+    r.put_byte(at + i, 0);
+  }
+  r.enable("font-sans");
+  EXPECT_EQ(r.read(index_of('A'), 0, 0x5A), 0x5A);
+  EXPECT_EQ(r.box->seams().status("font-sans").fired, 0U);
+}
+
+TEST(SeamFontOnCurse, OffIsTheProgramsRowAndTheFontIsNeverWritten) {
+  const curse_rig r;
+  EXPECT_EQ(r.read(index_of('A'), 0), r.program_row(index_of('A'), 0));
+  r.enable("font-sans");
+  const program_table before = make_program_font();
+  for (unsigned index = 0; index < text_face::glyph_count; ++index) {
+    static_cast<void>(r.read(index, 2));
+  }
+  for (unsigned index = 0; index < text_face::glyph_count; ++index) {
+    EXPECT_EQ(r.program_row(index, 2), before[(index * 8) + 2]) << index;
+  }
 }
 
 }  // namespace
