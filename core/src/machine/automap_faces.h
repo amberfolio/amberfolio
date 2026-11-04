@@ -111,11 +111,11 @@ inline constexpr int map_side = static_cast<int>(automap_map_side);
 /// value the loader itself stamps.
 inline constexpr std::uint16_t wall_set_unknown = 0xFFFF;
 
-/// The wall-set descriptor in the data segment: which WALLDEF block is
-/// loaded in each of the three slots, a word per slot at a stride of four
-/// from this offset (slot 1 at `+4`). Slot 1 serves wall faces 1 to 5,
-/// slot 2 serves 6 to 10, slot 3 serves 11 to 15.
-inline constexpr std::uint16_t data_wall_set = 0x6AAE;
+/// The wall-set descriptor in the data segment (the profile's
+/// `data_wall_set`): which WALLDEF block is loaded in each of the three
+/// slots, a word per slot at a stride of four from it (slot 1 at `+4`).
+/// Slot 1 serves wall faces 1 to 5, slot 2 serves 6 to 10, slot 3 serves
+/// 11 to 15.
 inline constexpr std::uint16_t wall_set_stride = 4;
 inline constexpr unsigned wall_set_slots = 3;
 inline constexpr unsigned wall_faces_per_slot = 5;
@@ -142,9 +142,26 @@ struct door_evidence {
   }
 };
 
+// --- Whose places (#555) ---------------------------------------------------
+
+/// One program's tables of places: which WALLDEF blocks hold door
+/// graphics, what its maps are called, and the lairs its wilderness grids
+/// are divided into. They are keyed by the disk and area numbers the
+/// program uses, which another program numbers its own maps with too, so a
+/// table is only ever consulted for the program it was measured on.
+struct place_tables;
+
+/// Pool of Radiance's: measured (`docs/seams.md` §10, the automap).
+[[nodiscard]] const place_tables& pool_of_radiance_places() noexcept;
+
+/// A program nobody has measured places for: every map is `AREA <n>`, no
+/// grid is divided into lairs, and a door is known by being seen shut.
+[[nodiscard]] const place_tables& no_places() noexcept;
+
 /// Which wall faces of this map are doors: its own shut faces, and the
 /// table's answer for the wall sets loaded with it.
-[[nodiscard]] door_evidence door_kinds(const grid& map, std::uint8_t disk,
+[[nodiscard]] door_evidence door_kinds(const place_tables& places,
+                                       const grid& map, std::uint8_t disk,
                                        const wall_set_blocks& blocks) noexcept;
 
 /// What one border between two cells is, as the panel draws it and the
@@ -245,7 +262,8 @@ struct zone_place {
 
 /// `geo` is the loaded geometry block, which names the few sub-maps that
 /// are a place of their own; pass zero where there is none (the overland).
-[[nodiscard]] std::string_view zone_label(std::uint8_t disk, std::uint8_t area,
+[[nodiscard]] std::string_view zone_label(const place_tables& places,
+                                          std::uint8_t disk, std::uint8_t area,
                                           std::uint8_t geo,
                                           const zone_place& where,
                                           zone_fallback& fallback) noexcept;
@@ -259,7 +277,8 @@ using place_squares =
 /// else, every square. What has been explored of the other lairs is kept
 /// but not shown, because it is somewhere else that happens to share a
 /// grid; a region `zone_label` cannot name is shown whole, as before.
-[[nodiscard]] place_squares place_of(std::uint8_t disk, std::uint8_t area,
+[[nodiscard]] place_squares place_of(const place_tables& places,
+                                     std::uint8_t disk, std::uint8_t area,
                                      std::uint8_t geo,
                                      const zone_place& where) noexcept;
 

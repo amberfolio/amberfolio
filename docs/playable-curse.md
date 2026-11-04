@@ -19,10 +19,12 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
 ```
 
 No `--install`: a Steam copy is recognized and laid out at `\CURSE`, a
-GOG copy at the root (`docs/hosts.md` §2c). No seam is needed to play,
-and none but the debug cheats and the text faces is available on this
-program. Sixty frames to the virtual second; `TICKS = FRAME * 19,887`
-at `--speed 386` is close enough for `--until`.
+GOG copy at the root (`docs/hosts.md` §2c). No seam is needed to play.
+The legs below answer the challenge themselves; with `--seam code-wheel
+--code-wheel-answered` the boot goes from `P` straight to the party
+menu, and every frame after it comes earlier (`docs/seams.md` §10). Sixty
+frames to the virtual second; `TICKS = FRAME * 19,887` at `--speed 386`
+is close enough for `--until`.
 
 Every script below is on a fresh copy of the Steam disk with its shipped
 slots (the `curse-slots` snapshot), keys **150 frames apart** from frame
@@ -44,8 +46,9 @@ Rules:
   selection**, the party list and a menu's items alike; the arrows do
   nothing there. A bar takes its command's first letter, and `Return`
   takes the highlighted one.
-- The `.txt` and `.scene.json` beside a still say `wrong_binary`: screen
-  text and the scene have no facts for this program yet (#555).
+- The `.txt` and `.scene.json` beside a still are the screen's text and
+  the scene (`docs/hosts.md` §10, §13). Every map is `AREA <n>`: nobody
+  has named Curse's places.
 
 ---
 

@@ -349,5 +349,37 @@ TEST(ScreenTextOnAMachine, ReadingChangesNothing) {
   EXPECT_TRUE(hash_state(*r.box) == before);
 }
 
+// --- On Curse of the Azure Bonds (#555) -------------------------------------
+//
+// The same table of sixty-four 8x8 glyphs, through Curse's own far pointer.
+
+TEST(ScreenTextOnCurse, ReadsTheScreenThroughItsOwnFontPointer) {
+  rig r;
+  sha256_digest curse;
+  ASSERT_TRUE(parse_digest(
+      "42fcefd6785679568b00bc1fb5b1d81ac2773416be4a35e0363920ddf6b78acd",
+      curse));
+  r.load(curse);
+  const program_font font = make_font();
+  // Curse's data segment, and the far pointer in it.
+  constexpr std::uint32_t curse_dgroup = 0xABE0;
+  constexpr std::uint16_t curse_font_pointer = 0x65AE;
+  const std::span<std::uint8_t> ram = r.box->memory().ram();
+  const std::uint32_t glyphs = std::uint32_t{glyph_segment} * 16U;
+  for (std::size_t i = 0; i < font.size(); ++i) {
+    ram[glyphs + i] = font[i];
+  }
+  const std::uint32_t at =
+      (std::uint32_t{image_segment} * 16U) + curse_dgroup + curse_font_pointer;
+  ram[at + 2] = static_cast<std::uint8_t>(glyph_segment & 0xFFU);
+  ram[at + 3] = static_cast<std::uint8_t>(glyph_segment >> 8U);
+  draw(r.box->display().writable_pixels(), font, 0, 24, "CHOOSE A FUNCTION", 13,
+       0);
+
+  text_grid grid{};
+  ASSERT_EQ(read_screen_text(*r.box, grid), screen_text_trouble::none);
+  EXPECT_EQ(read(grid, 0, 24, 17), "CHOOSE A FUNCTION");
+}
+
 }  // namespace
 }  // namespace amberfolio::machine

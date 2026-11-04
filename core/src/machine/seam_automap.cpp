@@ -751,7 +751,7 @@ void histogram_tile(cpu::processor& cpu, std::uint16_t ds, std::uint16_t code,
   map_format::wall_set_blocks blocks{};
   for (unsigned slot = 0; slot < map_format::wall_set_slots; ++slot) {
     blocks[slot] =
-        cpu.read_word(ds, at(map_format::data_wall_set,
+        cpu.read_word(ds, at(profile.data_wall_set,
                              static_cast<std::uint16_t>(
                                  (slot + 1U) * map_format::wall_set_stride)));
   }
@@ -969,8 +969,8 @@ void draw_label(panel_pixels& panel, const sample& now, const map_grid& grid,
                 const font_table& font) noexcept {
   zone_fallback fallback{};
   const std::string_view name =
-      zone_label(now.disk, now.area, now.geo,
-                 {.map = &grid, .x = now.x, .y = now.y}, fallback);
+      zone_label(map_format::pool_of_radiance_places(), now.disk, now.area,
+                 now.geo, {.map = &grid, .x = now.x, .y = now.y}, fallback);
 
   constexpr auto columns = static_cast<std::size_t>(automap_text_columns);
   constexpr int band_x = static_cast<int>(automap_band_x);
@@ -1106,7 +1106,8 @@ void learn_appearance(machine& box, std::uint16_t ds, const sample& now,
   automap_state& state = box.automap();
   state.begin_appearance(now.area, now.geo, banks);
   const map_format::door_evidence doors =
-      map_format::door_kinds(grid, now.disk, wall_set_of(box.processor(), ds));
+      map_format::door_kinds(map_format::pool_of_radiance_places(), grid,
+                             now.disk, wall_set_of(box.processor(), ds));
   state.set_door_nibbles(doors.seen, doors.from_table);
 
   std::uint16_t wanted = 0;
@@ -1160,7 +1161,8 @@ void render(automap_state& state, const automap_record& map,
   // with the area's other lairs, and what was explored of those is
   // somewhere else (`map_format::place_of`).
   const map_format::place_squares here = map_format::place_of(
-      now.disk, now.area, now.geo, {.map = &grid, .x = now.x, .y = now.y});
+      map_format::pool_of_radiance_places(), now.disk, now.area, now.geo,
+      {.map = &grid, .x = now.x, .y = now.y});
   const auto shown = [&](unsigned cx, unsigned cy) {
     return here[map_format::cell_of(cx, cy)] &&
            automap_state::seen(map, cx, cy);
