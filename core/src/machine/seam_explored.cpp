@@ -296,12 +296,6 @@ namespace {
 // The facts (docs/explored-overlay.md §2)
 // ---------------------------------------------------------------------------
 
-/// The program this seam's facts are about (program_profile.h): the
-/// baseline edition, and only it. The seam is available on it and on no
-/// other binary.
-constexpr const program_profile& profile = pool_of_radiance;
-constexpr auto explored_binaries = fingerprints_of(std::array{&profile});
-
 /// **The points**, as offsets from the image segment, all four resident.
 ///
 /// The first is this seam's own: the far return of the routine that
@@ -325,18 +319,12 @@ constexpr auto explored_binaries = fingerprints_of(std::array{&profile});
 /// caller is the combat view's, which is never the travel view. Second
 /// route: a step's redraw reaches it 25 times, and a run that ends an
 /// event with its picture still up does not reach it at all (#545).
-constexpr std::uint32_t present_return = 0x649B;
-constexpr std::uint32_t window_square_blit = 0x3EBA;
-
+///
 /// Which view is up — 2, 3 and 4 are the three wilderness areas — is
 /// the shared recorder's to check, and it hands the answer back in its
 /// `overland_look` (`automap_overland.h`), so this file does not name
 /// that offset a second time.
-
-/// The widest bias a 44-column table could carry, which is what says a
-/// byte read here is the byte the facts describe.
-constexpr int max_column_bias = 0x2B;
-
+///
 /// **The program's own word that the window is not the map.** A script
 /// can draw over the travel view's window: the picture opcode (overlay 3,
 /// `0x08B2`) and the message printer's picture branch (overlay 7,
@@ -348,9 +336,32 @@ constexpr int max_column_bias = 0x2B;
 /// branch), and `0x84C9`, the picture opcode's own (`0x08AD`). Second
 /// route: the disassembly of each writer, and a player's screen, where
 /// the fog was laid over the picture an arrival event drew (#535).
-constexpr std::uint16_t data_picture_in_view = 0x84E0;
-constexpr std::uint16_t data_figure_in_view = 0x84C8;
-constexpr std::uint16_t data_picture_open = 0x84C9;
+struct explored_facts {
+  /// The program these facts are about (program_profile.h).
+  const program_profile& profile;
+  std::uint32_t present_return;
+  std::uint32_t window_square_blit;
+  /// The widest bias a 44-column table could carry, which is what says a
+  /// byte read here is the byte the facts describe.
+  int max_column_bias;
+  std::uint16_t data_picture_in_view;
+  std::uint16_t data_figure_in_view;
+  std::uint16_t data_picture_open;
+};
+
+/// Pool of Radiance, the baseline edition: the travel view's five-by-five
+/// window of a wilderness area walked square by square.
+constexpr explored_facts pool_of_radiance_explored{
+    .profile = pool_of_radiance,
+    .present_return = 0x649B,
+    .window_square_blit = 0x3EBA,
+    .max_column_bias = 0x2B,
+    .data_picture_in_view = 0x84E0,
+    .data_figure_in_view = 0x84C8,
+    .data_picture_open = 0x84C9};
+
+constexpr auto explored_binaries =
+    fingerprints_of(std::array{&pool_of_radiance});
 
 /// The seam's one word of its own: the program has put something over the
 /// window since it last painted its map there.
@@ -409,10 +420,11 @@ constexpr std::uint16_t video_window_segment = 0xA000;
 /// The data segment, derived from where the loader put the image and
 /// checked against what the program is holding. Zero means "not it", and
 /// every handler declines on that.
+template <const program_profile& P>
 [[nodiscard]] std::uint16_t data_segment(cpu::processor& cpu,
                                          const seam_context& ctx) noexcept {
-  const auto wanted = static_cast<std::uint16_t>(
-      (ctx.image_base() / 16U) + (profile.dgroup_offset() / 16U));
+  const auto wanted = static_cast<std::uint16_t>((ctx.image_base() / 16U) +
+                                                 (P.dgroup_offset() / 16U));
   const std::uint16_t held = cpu.regs()[cpu::sreg::ds];
   return held == wanted ? held : static_cast<std::uint16_t>(0);
 }
@@ -564,11 +576,12 @@ constexpr int window_cells = static_cast<int>(explored_window_cells);
 // ---------------------------------------------------------------------------
 
 /// Whether a script has drawn into the window and not given it back.
+template <const explored_facts& F>
 [[nodiscard]] bool script_holds_the_window(cpu::processor& cpu,
                                            std::uint16_t ds) {
-  return cpu.read_byte(ds, data_picture_in_view) != 0 ||
-         cpu.read_byte(ds, data_figure_in_view) != 0 ||
-         cpu.read_byte(ds, data_picture_open) != 0;
+  return cpu.read_byte(ds, F.data_picture_in_view) != 0 ||
+         cpu.read_byte(ds, F.data_figure_in_view) != 0 ||
+         cpu.read_byte(ds, F.data_picture_open) != 0;
 }
 
 /// A cheap mixed hash of the few things a repaint depends on. Not a
@@ -595,6 +608,7 @@ constexpr int window_cells = static_cast<int>(explored_window_cells);
 /// table in (M5-E2c) — which is the case a present alone never covers,
 /// since a party that loads a save and stands still gives the program
 /// nothing to redraw.
+template <const explored_facts& F>
 void paint(machine& box, seam_context& ctx, std::uint16_t ds,
            const overland_look& look, bool after_a_present) {
   cpu::processor& cpu = box.processor();
@@ -612,7 +626,7 @@ void paint(machine& box, seam_context& ctx, std::uint16_t ds,
     return;
   }
 
-  if (script_holds_the_window(cpu, ds)) {
+  if (script_holds_the_window<F>(cpu, ds)) {
     // A script has put a picture or a figure where the map was, and is
     // still at the party's own bar while it types its text: an arrival
     // event, whose first polls are where a step's position settles. It
@@ -651,8 +665,8 @@ void paint(machine& box, seam_context& ctx, std::uint16_t ds,
   }
 
   const int bias =
-      cpu.read_byte(ds, at(profile.data_view_column_bias, look.view_kind));
-  if (bias > max_column_bias) {
+      cpu.read_byte(ds, at(F.profile.data_view_column_bias, look.view_kind));
+  if (bias > F.max_column_bias) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
@@ -712,9 +726,10 @@ void paint(machine& box, seam_context& ctx, std::uint16_t ds,
 
 /// The program has just put the screen up. If it is the overworld, the
 /// country the party has not been near goes back under fog.
+template <const explored_facts& F>
 void at_present_return(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
-  const std::uint16_t ds = data_segment(cpu, ctx);
+  const std::uint16_t ds = data_segment<F.profile>(cpu, ctx);
   if (ds == 0) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
@@ -723,7 +738,7 @@ void at_present_return(machine& box, seam_context& ctx) {
   // The cheapest byte first. This routine is the program's one present
   // and is reached from every screen it draws, so the common case by an
   // enormous margin is one read and a return.
-  if (cpu.read_byte(ds, profile.data_game_mode) != profile.mode_travel) {
+  if (cpu.read_byte(ds, F.profile.data_game_mode) != F.profile.mode_travel) {
     return;
   }
 
@@ -736,19 +751,20 @@ void at_present_return(machine& box, seam_context& ctx) {
   if (!look.on_screen || !look.settled) {
     return;
   }
-  paint(box, ctx, ds, look, true);
+  paint<F>(box, ctx, ds, look, true);
 }
 
 /// The program is painting a square of its map into the window, so
 /// whatever a script put there is going.
+template <const explored_facts& F>
 void at_window_square(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
-  const std::uint16_t ds = data_segment(cpu, ctx);
+  const std::uint16_t ds = data_segment<F.profile>(cpu, ctx);
   if (ds == 0) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
-  if (cpu.read_byte(ds, profile.data_game_mode) == profile.mode_travel) {
+  if (cpu.read_byte(ds, F.profile.data_game_mode) == F.profile.mode_travel) {
     ctx.set_scratch(word_window_taken, 0);
   }
 }
@@ -759,9 +775,10 @@ void at_window_square(machine& box, seam_context& ctx) {
 /// something has changed that no repaint of the program's would have
 /// shown — a saved slot's table read in under a party that is standing
 /// still, most of all.
+template <const explored_facts& F>
 void at_key_pending(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
-  const std::uint16_t ds = data_segment(cpu, ctx);
+  const std::uint16_t ds = data_segment<F.profile>(cpu, ctx);
   if (ds == 0) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
@@ -773,16 +790,17 @@ void at_key_pending(machine& box, seam_context& ctx) {
     box.automap().set_explored_signature(0);
     return;
   }
-  paint(box, ctx, ds, look, false);
+  paint<F>(box, ctx, ds, look, false);
 }
 
 /// The program is putting a command bar up, and which bar it is says
 /// whose screen this is. The same point, the same reading and the same
 /// note as the automap's (M5-E2d): either seam alone keeps it current,
 /// and both together write it twice with the same answer.
+template <const explored_facts& F>
 void at_command_bar(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
-  const std::uint16_t ds = data_segment(cpu, ctx);
+  const std::uint16_t ds = data_segment<F.profile>(cpu, ctx);
   if (ds == 0) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
@@ -794,19 +812,19 @@ void at_command_bar(machine& box, seam_context& ctx) {
 // The definition
 // ---------------------------------------------------------------------------
 
-constexpr std::array<seam_point, 4> explored_points{
+constexpr std::array<seam_point, 4> pool_of_radiance_explored_points{
     {{.module = resident_image,
-      .offset = present_return,
-      .run = &at_present_return},
+      .offset = pool_of_radiance_explored.present_return,
+      .run = &at_present_return<pool_of_radiance_explored>},
      {.module = resident_image,
-      .offset = profile.key_pending_entry,
-      .run = &at_key_pending},
+      .offset = pool_of_radiance_explored.profile.key_pending_entry,
+      .run = &at_key_pending<pool_of_radiance_explored>},
      {.module = resident_image,
-      .offset = profile.command_bar_entry,
-      .run = &at_command_bar},
+      .offset = pool_of_radiance_explored.profile.command_bar_entry,
+      .run = &at_command_bar<pool_of_radiance_explored>},
      {.module = resident_image,
-      .offset = window_square_blit,
-      .run = &at_window_square}}};
+      .offset = pool_of_radiance_explored.window_square_blit,
+      .run = &at_window_square<pool_of_radiance_explored>}}};
 
 constexpr seam_definition explored_definition{
     .id = "explored",
@@ -814,7 +832,7 @@ constexpr seam_definition explored_definition{
         "fog of war on the overworld map: the country the party has "
         "walked is the game's own, and the rest is covered",
     .fingerprints = explored_binaries,
-    .points = explored_points,
+    .points = pool_of_radiance_explored_points,
     .trigger = false,
     .gate = document_kind::none,
     .schema = seam_schema_version};
