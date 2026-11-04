@@ -50,7 +50,9 @@
 //   1. **Runs in the box.** A run belongs to a fragment when its origin is
 //      inside the fragment's box (`journal_text_box`). A run inside a box,
 //      in a font the page's facts do not name or with a code the font's
-//      map does not, is `text_unreadable`: never a guessed letter.
+//      map does not, is `text_unreadable`: never a guessed letter. A run
+//      in a font the facts call an ornament is dropped: a dingbat before
+//      a heading is not the item's text.
 //   2. **Lines.** Runs whose baselines are within half a point are one
 //      line; a line reads left to right.
 //   3. **The discretionary hyphen.** A typesetter that breaks a word

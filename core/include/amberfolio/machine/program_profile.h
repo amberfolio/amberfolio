@@ -225,6 +225,11 @@ struct program_profile {
   std::uint16_t data_party_y;
   std::uint16_t data_party_facing;
 
+  /// The wall-set descriptor: which WALLDEF block each of the three slots
+  /// holds, a word per slot at a stride of four from here, slot 1 at `+4`
+  /// (`automap_faces.h`).
+  std::uint16_t data_wall_set;
+
   /// The loaded map: a far pointer, offset then segment. A zero segment is
   /// "no map", which is the state every screen that is not the adventure
   /// screen leaves it in.
@@ -464,6 +469,7 @@ inline constexpr program_profile pool_of_radiance{
     .data_party_x = 0x6AAD,
     .data_party_y = 0x6AAE,
     .data_party_facing = 0x6AAF,
+    .data_wall_set = 0x6AAE,
     .data_map_pointer = 0x6A5C,
 
     .data_area_record = 0x49D2,
@@ -494,6 +500,17 @@ inline constexpr program_profile pool_of_radiance{
 /// names. Numbered, like Pool of Radiance's, by their place in the
 /// program's own stub table.
 namespace curse_of_the_azure_bonds_modules {
+
+/// Overlay 3: the event-script interpreter, which carries a script's own
+/// protection command (`seam_code_wheel.cpp`). The stub's record is at
+/// image `0x03C0`.
+inline constexpr seam_module interpreter{
+    .file = "GAME.OVR",
+    .file_offset = 2313,
+    .length = 14858,
+    .digest =
+        "323a088764862961e792f70af6091e8d72dddd748c0f46a78a9469000a80888c",
+    .load_segment_at = 0x3D0};
 
 /// Overlay 9: tactical combat's round loop and its end check. The stub's
 /// record is at image `0x0570`: the module's file offset and length, and
@@ -558,18 +575,17 @@ inline constexpr seam_module menu{
 }  // namespace curse_of_the_azure_bonds_modules
 
 /// Curse of the Azure Bonds, the program Steam and GOG sell (v1.3;
-/// edition.h), **in part** (#554, #555). Only the members its seams so
-/// far read are filled in, each checked against the program's own image
-/// and by a driven run (`docs/seams.md` §10): the data segment, the game
-/// mode byte and its values, the party's head, the combat overlay and
-/// the character record's offsets (the debug cheats); the menu overlay,
-/// the menu-bar routine's read call and its bar's copy, the pick-list's
-/// return, the bar highlight, the pushback slot, and the modules and
-/// words the routine's callers are named by (modern controls). Every
-/// other member is zero, which is
-/// not a fact about this program but the absence of one, and no seam
-/// available on this program reads it: a seam's `fingerprints` name this
-/// profile only once the facts it reads are here.
+/// edition.h), **in part** (#554, #555). Only the members the seams and
+/// reads ported to it use are filled in, each checked against the
+/// program's own image and by a driven run (`docs/seams.md` §10,
+/// `docs/hosts.md` §13). Every other member is zero, which is not a fact
+/// about this program but the absence of one, and nothing available on
+/// this program reads it.
+///
+/// **No view kind.** The program has one view in the adventuring mode,
+/// the grid, and its mode 3 is the overland journey, a list of places
+/// rather than a map walked square by square, so `data_view_kind` is zero
+/// and a read takes the grid as given.
 ///
 /// The record is the 422-byte one the program also saves, so its offsets
 /// are the save file's: the same fields as Pool of Radiance's in the
@@ -583,7 +599,7 @@ inline constexpr program_profile curse_of_the_azure_bonds{
     .roster_draw_offset = {},
     .screen_composer_offset = {},
     .key_pending_entry = {},
-    .key_read_entry = {},
+    .key_read_entry = 0x86FD,
     .clear_region_entry = {},
     .clear_screen_entry = {},
     .draw_frame_entry = {},
@@ -591,7 +607,7 @@ inline constexpr program_profile curse_of_the_azure_bonds{
     .command_bar_entry = {},
     .roster_drawn_return = {},
     .titles_overlay = {},
-    .interpreter_overlay = {},
+    .interpreter_overlay = curse_of_the_azure_bonds_modules::interpreter,
     .combat_overlay = curse_of_the_azure_bonds_modules::combat,
     .aim_overlay = curse_of_the_azure_bonds_modules::aim,
     .adventure_overlay = curse_of_the_azure_bonds_modules::adventure,
@@ -606,7 +622,7 @@ inline constexpr program_profile curse_of_the_azure_bonds{
     .script_runner_load_segment_at = 0x4D0,  // overlay 8
     .rest_load_segment_at = {},
     .appraise_load_segment_at = {},
-    .death_load_segment_at = {},
+    .death_load_segment_at = 0x1220,  // overlay 33
     .menu_key_read_call = 0x05F1,
     .menu_local_bar = 0x53,
     .menu_bar_capacity = 40,
@@ -624,25 +640,26 @@ inline constexpr program_profile curse_of_the_azure_bonds{
     .view_kind_grid = {},
     .view_kind_first_overland = {},
     .view_kind_last_overland = {},
-    .data_in_transition = {},
-    .data_disk_number = {},
-    .data_area_id = {},
-    .data_party_x = {},
-    .data_party_y = {},
-    .data_party_facing = {},
-    .data_map_pointer = {},
-    .data_area_record = {},
-    .area_overland_column = {},
-    .area_overland_row = {},
-    .area_geometry_block = {},
-    .area_shown_in_3d = {},
+    .data_in_transition = 0x47F9,
+    .data_disk_number = 0x5C08,
+    .data_area_id = 0x8B78,
+    .data_party_x = 0x7229,
+    .data_party_y = 0x722A,
+    .data_party_facing = 0x722B,
+    .data_wall_set = 0x722A,
+    .data_map_pointer = 0x7220,
+    .data_area_record = 0x4FB2,
+    .area_overland_column = 0x186,
+    .area_overland_row = 0x188,
+    .area_geometry_block = 0x18A,
+    .area_shown_in_3d = 0x1CC,
     .data_area_bar = {},
     .data_view_bar = {},
-    .data_current_member = {},
+    .data_current_member = 0x6520,
     .data_roster_head = 0x6524,
     .data_bar_highlight = 0x72AE,
     .data_key_pushback = 0x8CBF,
-    .data_font_pointer = {},
+    .data_font_pointer = 0x65AE,
     .data_view_column_bias = {},
     .data_sound_busy = {},
     .record_next = 0x189,

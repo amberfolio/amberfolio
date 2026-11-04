@@ -41,7 +41,12 @@ namespace {
 /// document rather than by an engine (`hosts/common/.../journal_text.h`);
 /// its code wheel is a row like the one above, a fact that gates nothing
 /// since #290.
-constexpr std::array<document_edition, 4> table{{
+///
+/// **Curse of the Azure Bonds' journal** arrived with #555: the Steam
+/// release's, typeset as text with its pictures placed as images, read
+/// the same way. The GOG release's is page scans and has no row: it
+/// would need an engine and a fact table measured off the scans.
+constexpr std::array<document_edition, 5> table{{
     {.fingerprint =
          "0db301aeac4d2ec1e63b409ca6d3c9d39c63381d6712ff2ce7edc0528c6586fd",
      .name = "Pool of Radiance code wheel, archive release (PDF)",
@@ -57,6 +62,11 @@ constexpr std::array<document_edition, 4> table{{
     {.fingerprint =
          "a31368c35c527ce3f760ffac0596ab96254c79b22f7e89be219c6238954ac1ee",
      .name = "Pool of Radiance Adventurer's Journal, Steam release (PDF)",
+     .kind = document_kind::journal},
+    {.fingerprint =
+         "68bd9d4734a232a0a18c44510985e61a489adc17693ecdfb411c6cd2dfec8031",
+     .name = "Curse of the Azure Bonds Adventurer's Journal, Steam release "
+             "(PDF)",
      .kind = document_kind::journal},
 }};
 

@@ -2076,7 +2076,8 @@ TEST(JournalDefinition, ItIsACommandAndNotAPullAndItNamesTheBaseline) {
   // point at the call's own return can keep it.
   EXPECT_EQ(resident, 6u);
   EXPECT_EQ(overlaid, 4u);
-  ASSERT_EQ(journal->fingerprints.size(), 1u);
+  ASSERT_EQ(journal->fingerprints.size(), 2u)
+      << "the baseline, and Curse of the Azure Bonds (#555)";
   EXPECT_EQ(journal->fingerprints.front(),
             known_editions().front().fingerprint);
 }
@@ -4211,6 +4212,142 @@ TEST(JournalBarKeys, ABarOfOneCommandIsLitLikeAnyOther) {
   press_and_settle(r, key_right);
   EXPECT_EQ(r.bar_calls(),
             (calls{{bar_word_colour, 0}, {lit_key, 0}, {lit_yellow, 1}}));
+}
+
+// ---------------------------------------------------------------------------
+// Curse of the Azure Bonds (#555)
+// ---------------------------------------------------------------------------
+//
+// The citation watch on a second program, with that program's own facts
+// (seam_journal.cpp, `curse_journal`): the message box alone, chosen by
+// the digest the engine was told is running.
+
+namespace curse {
+constexpr std::uint16_t dgroup_paragraphs = 0xABE;
+constexpr std::uint16_t message_box = 0x5178;
+constexpr std::uint16_t box_frame_clear = 8;
+}  // namespace curse
+
+[[nodiscard]] sha256_digest curse_digest() {
+  sha256_digest digest;
+  EXPECT_TRUE(parse_digest(
+      "42fcefd6785679568b00bc1fb5b1d81ac2773416be4a35e0363920ddf6b78acd",
+      digest));
+  return digest;
+}
+
+/// A machine told Curse is running, with the journal on and a host.
+struct curse_rig : rig {
+  curse_rig() {
+    box->seams().loaded(curse_digest(), image_load_segment);
+    enable();
+    attach_host();
+  }
+
+  [[nodiscard]] static std::uint16_t curse_dgroup() noexcept {
+    return static_cast<std::uint16_t>(image_load_segment +
+                                      curse::dgroup_paragraphs);
+  }
+
+  /// The program prints `what` into its message box, its flag word
+  /// `flag`: the low byte is what the routine reads, the high byte is
+  /// whatever the caller's AH held.
+  void curse_draws(std::string_view what, std::uint16_t flag,
+                   std::uint16_t ds = curse_dgroup()) const {
+    constexpr std::uint16_t sp = 0x0400;
+    constexpr std::uint16_t where = 0x0100;
+    const std::uint32_t address =
+        cpu::physical_address(image_load_segment, curse::message_box);
+    box->memory().ram()[address] = 0xF4;
+    box->processor().reset();
+    cpu::registers& r = box->processor().regs();
+    r[cpu::sreg::cs] = image_load_segment;
+    r.ip = curse::message_box;
+    r[cpu::sreg::ds] = ds;
+    r[cpu::sreg::ss] = ds;
+    r[cpu::reg16::sp] = sp;
+    put_word(ds, static_cast<std::uint16_t>(sp + 4), where);
+    put_word(ds, static_cast<std::uint16_t>(sp + 6), string_segment);
+    put_word(ds, static_cast<std::uint16_t>(sp + curse::box_frame_clear), flag);
+    put_byte(string_segment, where, static_cast<std::uint8_t>(what.size()));
+    for (std::size_t i = 0; i < what.size(); ++i) {
+      put_byte(string_segment, static_cast<std::uint16_t>(where + 1 + i),
+               static_cast<std::uint8_t>(what[i]));
+    }
+    box->step();
+  }
+};
+
+TEST(JournalOnCurse, IsAvailableWithTheMessageBoxAlone) {
+  const curse_rig r;
+  const seam_definition* journal = r.pc().seams().find("journal");
+  ASSERT_NE(journal, nullptr);
+  const std::span<const seam_point> mine = points_on(*journal, curse_digest());
+  ASSERT_EQ(mine.size(), 1u)
+      << "the citation watch, and none of the reader's points yet";
+  EXPECT_NE(mine.data(), journal->points.data());
+  EXPECT_EQ(mine.front().offset, curse::message_box);
+  EXPECT_EQ(mine.front().module.file, resident_image.file);
+}
+
+TEST(JournalOnCurse, ACitationInTwoPiecesGoesOnTheLog) {
+  // The script prints its sentence and then the number it cites, the
+  // number with the flag clear: one message, one citation.
+  const curse_rig r;
+  r.curse_draws("THE INNKEEPER SAYS TO READ JOURNAL ENTRY ", 0x0001);
+  EXPECT_TRUE(r.reader().seen().empty());
+  r.curse_draws("31", 0x0000);
+  ASSERT_EQ(r.reader().seen().size(), 1u);
+  EXPECT_EQ(r.reader().seen().front().what, Entry(31));
+  EXPECT_FALSE(r.reader().seen().front().read);
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed)
+      << "a citation opens nothing";
+  EXPECT_EQ(r.host.calls, 0u);
+}
+
+TEST(JournalOnCurse, TheFlagIsAByteAndTheCallersHighByteIsNotRead) {
+  // The caller pushes the flag as AL with AH left over, so a continuation
+  // can arrive as a word of 0x0100. Read as a word it would look like a new
+  // message and empty the window between the sentence and its number.
+  const curse_rig r;
+  r.curse_draws("READ JOURNAL ENTRY ", 0x0001);
+  r.curse_draws("31", 0x0100);
+  ASSERT_EQ(r.reader().seen().size(), 1u);
+  EXPECT_EQ(r.reader().seen().front().what, Entry(31));
+}
+
+TEST(JournalOnCurse, ANewMessageStillEmptiesTheWindow) {
+  const curse_rig r;
+  r.curse_draws("READ JOURNAL ENTRY ", 0xFF01);
+  r.curse_draws("31", 0xFF01);
+  EXPECT_TRUE(r.reader().seen().empty())
+      << "a number that begins a message of its own is nobody's citation";
+}
+
+TEST(JournalOnCurse, WatchingIsNotMachineState) {
+  const curse_rig r;
+  r.curse_draws("READ JOURNAL ENTRY ", 0x0001);
+  r.curse_draws("31", 0x0000);
+  ASSERT_EQ(r.reader().seen().size(), 1u);
+
+  curse_rig plain;
+  ASSERT_EQ(plain.pc().seams().disable("journal"), seam_reason::none);
+  plain.curse_draws("READ JOURNAL ENTRY ", 0x0001);
+  plain.curse_draws("31", 0x0000);
+  EXPECT_TRUE(plain.reader().seen().empty());
+  EXPECT_EQ(hash_state(r.pc()), hash_state(plain.pc()))
+      << "the log is observation, and the watch writes nothing the machine "
+         "holds";
+}
+
+TEST(JournalOnCurse, ADataSegmentThatIsNotTheProgramsIsDeclined) {
+  // Pool of Radiance's data segment is not Curse's: the message box's
+  // point, reached with DS anywhere else, reads nothing.
+  const curse_rig r;
+  r.curse_draws("READ JOURNAL ENTRY 31", 0x0001, rig::dgroup());
+  EXPECT_TRUE(r.reader().seen().empty());
+  r.curse_draws("READ JOURNAL ENTRY 31", 0x0001);
+  EXPECT_EQ(r.reader().seen().size(), 1u);
 }
 
 }  // namespace

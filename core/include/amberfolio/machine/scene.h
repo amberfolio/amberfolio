@@ -71,6 +71,8 @@
 
 namespace amberfolio::machine {
 
+struct program_profile;
+
 class machine;
 class automap_state;
 
@@ -375,12 +377,14 @@ struct scene {
 /// is `scene_trouble::none`.
 [[nodiscard]] scene_trouble read_scene(const machine& box, scene& out) noexcept;
 
-/// The same, from the parts of a machine it reads: conventional memory,
-/// where the program's data segment begins in it, the automap's store
-/// when the automap seam is on (null when it is not), and the aim bar's
-/// frame when `modern-controls` is on (null when it is not). No program
-/// facts are checked here: the caller has already matched the fingerprint.
-[[nodiscard]] scene_trouble read_scene_in(std::span<const std::uint8_t> ram,
+/// The same, from the parts of a machine it reads: the program running,
+/// conventional memory, where the program's data segment begins in it, the
+/// automap's store when the automap seam is on (null when it is not), and
+/// the aim bar's frame when `modern-controls` is on (null when it is not).
+/// `scene_trouble::wrong_binary` for a program this read has no facts
+/// about.
+[[nodiscard]] scene_trouble read_scene_in(const program_profile& program,
+                                          std::span<const std::uint8_t> ram,
                                           std::uint32_t data_base,
                                           const automap_state* kept,
                                           const scene_aim_frame* aim,

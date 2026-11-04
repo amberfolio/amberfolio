@@ -54,14 +54,24 @@ TEST(ProgramProfile, TheBaselineAndCurseHaveOne) {
   EXPECT_EQ(program_profiles().back(), &curse_of_the_azure_bonds);
   EXPECT_EQ(pool_of_radiance.dgroup_offset(),
             std::uint32_t{pool_of_radiance.dgroup_paragraphs} * 16U);
-  // The facts the cheats read on Curse (#554), and nothing pretending to
-  // be one: a member nobody has measured there is zero.
+  // The facts the cheats and the host reads use on Curse (#554, #555), and
+  // nothing pretending to be one: a member nobody has measured there is
+  // zero, and the view kind is zero because the program has none.
   EXPECT_NE(curse_of_the_azure_bonds.dgroup_paragraphs, 0U);
   EXPECT_NE(curse_of_the_azure_bonds.data_game_mode, 0U);
   EXPECT_NE(curse_of_the_azure_bonds.data_roster_head, 0U);
+  EXPECT_NE(curse_of_the_azure_bonds.data_font_pointer, 0U);
+  EXPECT_NE(curse_of_the_azure_bonds.data_map_pointer, 0U);
   EXPECT_TRUE(curse_of_the_azure_bonds.combat_overlay.has_load_segment());
-  EXPECT_EQ(curse_of_the_azure_bonds.key_read_entry, 0U);
-  EXPECT_EQ(curse_of_the_azure_bonds.data_font_pointer, 0U);
+  EXPECT_EQ(curse_of_the_azure_bonds.data_view_kind, 0U);
+  // The message pause's (#555): the runtime's key read, the interpreter
+  // overlay and the death routine's load-segment word.
+  EXPECT_NE(curse_of_the_azure_bonds.key_read_entry, 0U);
+  EXPECT_TRUE(curse_of_the_azure_bonds.interpreter_overlay.has_load_segment());
+  EXPECT_NE(curse_of_the_azure_bonds.death_load_segment_at, 0U);
+  EXPECT_EQ(curse_of_the_azure_bonds.key_pending_entry, 0U);
+  // modern-controls' (#555): the pushback slot its keys are written to.
+  EXPECT_NE(curse_of_the_azure_bonds.data_key_pushback, 0U);
 }
 
 TEST(ProgramProfile, EverySeamIsAvailableOnlyOnProgramsWithAProfile) {

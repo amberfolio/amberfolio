@@ -20,8 +20,13 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
 
 No `--install`: a Steam copy is recognized and laid out at `\CURSE`, a
 GOG copy at the root (`docs/hosts.md` §2c). No seam is needed to play;
-the debug cheats and `modern-controls` (five of its pieces, `docs/seams.md`
-§10) are available on this program. Sixty
+those available on this program are the debug cheats, the code wheel,
+the text faces, the message pause, the journal and `modern-controls`
+(five of its pieces), each with its facts in `docs/seams.md` §10. The
+legs below answer the challenge themselves; with `--seam code-wheel
+--code-wheel-answered` the boot goes from `P` straight to the party
+menu, and every frame after it comes earlier. Leg 3 with `--seam
+message-pause` stands each combat line the setting. Sixty
 frames to the virtual second; `TICKS = FRAME * 19,887` at `--speed 386`
 is close enough for `--until`.
 
@@ -46,8 +51,9 @@ Rules:
   nothing there (with `modern-controls` on, Up and Down do what Home and
   End do, and Left and Right step a bar's highlight). A bar takes its command's first letter, and `Return`
   takes the highlighted one.
-- The `.txt` and `.scene.json` beside a still say `wrong_binary`: screen
-  text and the scene have no facts for this program yet (#555).
+- The `.txt` and `.scene.json` beside a still are the screen's text and
+  the scene (`docs/hosts.md` §10, §13). Every map is `AREA <n>`: nobody
+  has named Curse's places.
 
 ---
 
@@ -101,7 +107,8 @@ runs at once: two screens that `Return` answers. Recorded as
 
 From the opening, `Return Return Left` (facing a wall north), then
 `Left Up` steps west into `6,13` and the innkeeper's event: two screens,
-the second citing journal entry 31. `Right Up` is the street at `6,12 N`
+the second citing journal entry 31, which `--seam journal` puts on the
+journal's log (`curse-cite`). `Right Up` is the street at `6,12 N`
 and a sign. `Left Up Up Up Return Up` walks west along the street to the
 weapon shop's sign at `3,12` and into the shop at `2,12`; `Y` takes the
 shopkeeper's offer and the bar is `BUY VIEW POOL APPRAISE EXIT`; `B`
@@ -308,8 +315,14 @@ lines, at `--speed 386` and `--wall none`:
 | session | disk | seams | relation |
 | --- | --- | --- | --- |
 | `curse-boot` | `curse-slots` | none | |
+| `curse-boot-wheel` | `curse-slots` | `code-wheel`, a wrong letter typed | `identical curse-boot` |
+| `curse-boot-answered` | `curse-slots` | `code-wheel`, answered | `contrast curse-boot` |
 | `curse-quiet` | `curse-slots` | none | |
 | `curse-quiet-cheats` | `curse-slots` | the three cheats, none pulled | `identical curse-quiet` |
+| `curse-quiet-font-sans` | `curse-slots` | `font-sans` | `contrast curse-quiet` |
+| `curse-quiet-font-chisel` | `curse-slots` | `font-chisel` | `contrast curse-quiet` |
+| `curse-quiet-message-pause` | `curse-slots` | `message-pause` | `identical curse-quiet` |
+| `curse-quiet-controls` | `curse-slots` | `modern-controls` | `identical curse-quiet` |
 | `curse-town` | `curse-slots` | none | |
 | `curse-temple` | `curse-slots` | none | |
 | `curse-camp` | `curse-slots` | none | |
@@ -319,6 +332,7 @@ lines, at `--speed 386` and `--wall none`:
 | `curse-fight` | `curse-slots` | none | |
 | `curse-fight-cheat` | `curse-slots` | `cheat-invulnerable` | `contrast curse-fight` |
 | `curse-fight-kill` | `curse-slots` | `cheat-kill-all`, pulled | `contrast curse-fight` |
+| `curse-fight-pause` | `curse-slots` | `message-pause` | `contrast curse-fight` |
 | `curse-new-party` | `curse-slots` | none | |
 | `curse-buy` | `curse-slots` | none | |
 | `curse-heal` | `curse-slots` | none | |
@@ -326,7 +340,8 @@ lines, at `--speed 386` and `--wall none`:
 | `curse-carriage` | `curse-slots` | none | |
 | `curse-journey` | `curse-wild` | none | |
 | `curse-journey-kill` | `curse-wild` | `cheat-kill-all`, pulled | `contrast curse-journey` |
-| `curse-quiet-controls` | `curse-slots` | `modern-controls` | `identical curse-quiet` |
+| `curse-journey-journal` | `curse-wild` | `journal` | `identical curse-journey` |
+| `curse-cite` | `curse-slots` | `journal`, entry 31 cited | `identical curse-buy` |
 | `curse-camp-keys` | `curse-slots` | none | |
 | `curse-camp-arrows` | `curse-slots` | `modern-controls` | `contrast curse-camp-keys` |
 | `curse-name-keys` | `curse-slots` | none | |
