@@ -135,6 +135,31 @@ TEST(JournalText, AFontTheFactsDoNotNameIsRefusedInsideABox) {
       journal_trouble::text_unreadable);
 }
 
+TEST(JournalText, AFontTheFactsCallAnOrnamentIsDroppedInsideABox) {
+  // A typesetter's dingbat before each heading (#555): its map reads it as
+  // a letter, and it is not the item's text. The same box as the refusal
+  // above, with the font it holds named an ornament, reads as nothing.
+  journal_edition edition = journal_text_probe_edition();
+  const journal_text_page& first = edition.pages[0];
+  ASSERT_FALSE(first.fonts.empty());
+  const std::array<journal_text_font, 2> fonts{
+      first.fonts[0], journal_text_font{.resource = "F2",
+                                        .offset = first.fonts[0].offset,
+                                        .length = first.fonts[0].length,
+                                        .decoded = first.fonts[0].decoded,
+                                        .filter = first.fonts[0].filter,
+                                        .ornament = true}};
+  std::array<journal_text_page, 2> pages{edition.pages[0], edition.pages[1]};
+  pages[0].fonts = fonts;
+  edition.pages = pages;
+  const std::array<journal_text_fragment, 1> box{
+      {{.page = 1, .box = journal_text_probe_unnamed_font}}};
+  std::string text = "left over";
+  EXPECT_EQ(read_text_fragments(journal_text_probe_pdf(), edition, box, text),
+            journal_trouble::none);
+  EXPECT_TRUE(text.empty());
+}
+
 TEST(JournalText, ACodeTheMapDoesNotNameIsRefusedInsideABox) {
   const std::array<journal_text_fragment, 1> box{
       {{.page = 1, .box = journal_text_probe_unmapped_code}}};
@@ -206,6 +231,18 @@ TEST(JournalText, ACMapReadsInBothOfItsFormsAndFoldsLookAlikes) {
       journal_trouble::text_unreadable);
   EXPECT_EQ(read_to_unicode(bytes("no map in here"), broken),
             journal_trouble::text_unreadable);
+}
+
+TEST(JournalText, TwoCursiveLookAlikesAreFoldedToo) {
+  // Curse of the Azure Bonds' journal is set in an italic face whose map
+  // reads a `u` and an `n` as the two Cyrillic letters drawn the same way
+  // in a cursive hand (#555).
+  const std::string_view cmap =
+      "begincmap 2 beginbfchar <75> <0438> <6E> <043F> endbfchar endcmap";
+  journal_font_map map;
+  ASSERT_EQ(read_to_unicode(bytes(cmap), map), journal_trouble::none);
+  EXPECT_EQ(map.text['u'], "u");
+  EXPECT_EQ(map.text['n'], "n");
 }
 
 TEST(JournalText, RunsArePlacedByTheirOrigin) {

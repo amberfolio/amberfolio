@@ -62,12 +62,18 @@ amberfolio <dir> <program.exe> --seam journal
 
 ## 3. Adding an edition
 
-Two editions are in the table:
+Three editions are in the table:
 
 | edition | fingerprint | its words are | pieces | pictures |
 | --- | --- | --- | --- | --- |
-| the GOG release's (#214) | `67cbfc0c…c737c` | scans, `/DCTDecode` (§4a), read by an engine | 58 entries in 75 pieces; 99 items in 117 | 14 on 12 entries |
-| the Steam release's (#398) | `a31368c3…4ac1ee` | text, read out of the document (§3a) | 99 items in 115 pieces | 14 on the same 12 entries |
+| Pool of Radiance, the GOG release's (#214) | `67cbfc0c…c737c` | scans, `/DCTDecode` (§4a), read by an engine | 58 entries in 75 pieces; 99 items in 117 | 14 on 12 entries |
+| Pool of Radiance, the Steam release's (#398) | `a31368c3…4ac1ee` | text, read out of the document (§3a) | 99 items in 115 pieces | 14 on the same 12 entries |
+| Curse of the Azure Bonds, the Steam release's (#555) | `68bd9d47…fec8031` | text, read out of the document (§3a) | 121 items in 141 pieces | 9 on 9 entries |
+
+Curse's journal has two numbered sections, fifty-nine entries and
+sixty-two tavern tales. **Curse's GOG journal is not in the table**: it
+is page scans (`7c918ead…`), which would need an engine and a fact table
+measured off the scans the way §3 measures Pool of Radiance's.
 
 Both have the same ninety-nine items by the same numbers — 58 entries,
 23 tales, 18 proclamations — which the suite checks, because the game
@@ -207,7 +213,12 @@ measured:
 - A **Cyrillic letter drawn as a Latin one** is the Latin one. This
   edition's font maps five glyphs to Cyrillic twins (`Т`, `а`, `с`, `е`,
   `р`); the reader draws sixty-four glyphs and would otherwise draw a
-  substitute where the page has a `T`.
+  substitute where the page has a `T`. Curse's italic face adds two that
+  are twins only in a cursive hand: U+0438 is a `u` and U+043F an `n`.
+- A font the facts call an **ornament** is dropped wherever it is
+  (`journal_text_font::ornament`, #555). Curse's headings open with a
+  dingbat its map reads as a letter, set at the column's margin like the
+  text, so no box can leave it out.
 
 Then the digest: an item a byte different is `text_mismatch` and nothing
 is kept for it. That is also what makes the two hosts agree: the store
@@ -228,6 +239,19 @@ reads, and check the count, the numbering and that every item begins with
 its own heading. Pictures are §11.1's rule, with one difference: an image
 is already cut out, so its rectangle is the part of it the page's clip
 shows.
+
+**Curse's edition** (#555) is set the same way, four column bands at
+28.35, 211.2, 416.7 and 599.5 points, with two differences a measurement
+has to know. Three tales are set narrower beside a drawing that belongs
+to none of them, so a run is cut into two boxes where the margin moves
+(a box's left edge is the margin its indents are read against). And two
+maps span both columns of a printed page under their own entry's
+heading, with the entry before carried on at the top of both columns, so
+reading order there is the first column's top, the second column's top,
+then the heading: a walk down one column and then the next gives the
+second column's top to the entry under the map. Its matter outside the
+grid is the introduction and its printed notes, set in another face, the
+two sections' titles and introductions, and the last page.
 
 **What it read**, by hand, over the real document on both hosts:
 `entries=99 extracted=99 recognized=99`, `pictures=14/14`, and the same
@@ -617,6 +641,13 @@ off by default and no runner has the document. Huffman-coded Flate
 streams are not exercised either: the probe's are stored blocks, and
 inflation is libdeflate's business (`cmake/AmberfolioLibdeflate.cmake`).
 
+**By hand, Curse's Steam edition** (#555), through the desktop host:
+`entries=121 extracted=121 recognized=121`, `pictures=9/9`, store
+`sha256=f4cea20cd3b573d303b718fd79569872b8caa00cffa9325e6141282a038b3159`;
+every item begins with its own heading and the longest is about three
+kilobytes. Not done: an entry opened in the game, because the reader is
+not ported to Curse yet (`docs/seams.md` §10).
+
 **By hand, the Steam edition** (§3a): every item through the desktop host
 and through the module under node with the page's own `journal.mjs`, one
 store fingerprint between them; in the game, `--cite-all-journal` and the
@@ -832,6 +863,13 @@ The result is in `hosts/common/src/journal_facts.cpp`. Not in the table:
 the edition's legend for its map symbols, printed under its own heading
 and belonging to no numbered item, so it has no key and is unreachable
 from the game.
+
+Curse's Steam edition has nine, on entries 1, 4, 8, 9, 17, 20, 39, 52
+and 59, each an image of its own and its rectangle the part the page's
+clip shows; the maps' labels are in the images. Not in the table: the
+introduction's map and the three drawings in its printed notes, which
+belong to no numbered item, and a drawing beside the tales that belongs
+to none of them.
 
 The Steam edition's fourteen are the same drawings on the same entries,
 each an image of its own. Entry 37's first two maps are one image there,

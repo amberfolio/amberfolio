@@ -100,9 +100,11 @@ TEST(DocumentTable, KnowsOneDocumentOfEachKindPerReleaseItHasSeen) {
   // The journal's line arrived with M5-E3b (#214); until then a
   // fingerprint was a fact about a file nobody had hashed, and this test
   // said so. Two releases' documents are here now (#398): the archive
-  // release's and the Steam release's, a code wheel and a journal each.
-  // The count is what catches a row added without a thought about which
-  // kind it is.
+  // release's and the Steam release's, a code wheel and a journal each;
+  // and Curse of the Azure Bonds' Steam journal (#555), with no wheel
+  // beside it because nothing has been gated on a wheel since #290. The
+  // count is what catches a row added without a thought about which kind
+  // it is.
   std::size_t wheels = 0;
   std::size_t journals = 0;
   for (const document_edition& known : known_documents()) {
@@ -112,7 +114,7 @@ TEST(DocumentTable, KnowsOneDocumentOfEachKindPerReleaseItHasSeen) {
         << known.name << " is in the table as no document at all";
   }
   EXPECT_EQ(wheels, 2U);
-  EXPECT_EQ(journals, 2U);
+  EXPECT_EQ(journals, 3U);
 }
 
 TEST(DocumentKindName, IsTheWordsAPersonReads) {

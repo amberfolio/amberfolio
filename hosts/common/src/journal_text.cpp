@@ -348,14 +348,17 @@ class tokenizer {
 // --- code points -------------------------------------------------------
 
 /// A Cyrillic letter that is drawn as a Latin one, and the Latin letter
-/// (step 6 of journal_text.h). Only letters with an identical twin: a
-/// Cyrillic letter with no Latin double stays what it is.
+/// (step 6 of journal_text.h). Only letters with a twin: a Cyrillic letter
+/// with no Latin double stays what it is. Two of them are twins in an
+/// italic face and not an upright one, and an italic face is where they
+/// were found (#555): a cursive U+0438 is a `u`, and a cursive
+/// U+043F an `n`.
 [[nodiscard]] char32_t fold_look_alike(char32_t c) noexcept {
   struct pair {
     char32_t from;
     char32_t to;
   };
-  static constexpr std::array<pair, 22> twins{{
+  static constexpr std::array<pair, 24> twins{{
       {.from = U'\u0405', .to = U'S'}, {.from = U'\u0406', .to = U'I'},
       {.from = U'\u0408', .to = U'J'}, {.from = U'\u0410', .to = U'A'},
       {.from = U'\u0412', .to = U'B'}, {.from = U'\u0415', .to = U'E'},
@@ -364,6 +367,7 @@ class tokenizer {
       {.from = U'\u0420', .to = U'P'}, {.from = U'\u0421', .to = U'C'},
       {.from = U'\u0422', .to = U'T'}, {.from = U'\u0425', .to = U'X'},
       {.from = U'\u0430', .to = U'a'}, {.from = U'\u0435', .to = U'e'},
+      {.from = U'\u0438', .to = U'u'}, {.from = U'\u043F', .to = U'n'},
       {.from = U'\u043E', .to = U'o'}, {.from = U'\u0440', .to = U'p'},
       {.from = U'\u0441', .to = U'c'}, {.from = U'\u0443', .to = U'y'},
       {.from = U'\u0445', .to = U'x'}, {.from = U'\u0455', .to = U's'},
@@ -657,11 +661,18 @@ struct line {
   return std::ranges::all_of(text, [](char c) { return c == ' '; });
 }
 
+/// One font of a page, its map read.
+struct read_font {
+  std::string_view resource;
+  journal_font_map map;
+  bool ornament{false};
+};
+
 /// One page's content, read, and its fonts' maps.
 struct read_page {
   std::uint16_t number{};
   std::vector<journal_text_run> runs{};
-  std::vector<std::pair<std::string_view, journal_font_map>> fonts;
+  std::vector<read_font> fonts;
 };
 
 [[nodiscard]] journal_trouble read_page_facts(
@@ -692,7 +703,9 @@ struct read_page {
         why != journal_trouble::none) {
       return why;
     }
-    out.fonts.emplace_back(font.resource, std::move(map));
+    out.fonts.push_back(read_font{.resource = font.resource,
+                                  .map = std::move(map),
+                                  .ornament = font.ornament});
   }
   return journal_trouble::none;
 }
@@ -701,19 +714,28 @@ struct read_page {
 /// the facts say nothing about.
 [[nodiscard]] bool decode_run(const read_page& page,
                               const journal_text_run& run, std::string& out) {
-  const auto font = std::ranges::find_if(
-      page.fonts, [&](const auto& one) { return one.first == run.font; });
+  const auto font = std::ranges::find_if(page.fonts, [&](const read_font& one) {
+    return one.resource == run.font;
+  });
   if (font == page.fonts.end()) {
     return false;
   }
   out.clear();
   for (const std::uint8_t code : run.codes) {
-    if (!font->second.mapped.at(code)) {
+    if (!font->map.mapped.at(code)) {
       return false;
     }
-    out += font->second.text.at(code);
+    out += font->map.text.at(code);
   }
   return true;
+}
+
+/// Whether a run is in a font the page's facts call an ornament.
+[[nodiscard]] bool ornamental(const read_page& page,
+                              const journal_text_run& run) {
+  return std::ranges::any_of(page.fonts, [&](const read_font& one) {
+    return one.ornament && one.resource == run.font;
+  });
 }
 
 /// Everything inside `box` on `page`, as lines top to bottom.
@@ -724,7 +746,7 @@ struct read_page {
   std::vector<placed_run> kept;
   for (std::size_t i = 0; i < page.runs.size(); ++i) {
     const journal_text_run& run = page.runs[i];
-    if (!inside(box, run.x, run.y)) {
+    if (!inside(box, run.x, run.y) || ornamental(page, run)) {
       continue;
     }
     placed_run placed{.x = run.x, .y = run.y, .order = i};

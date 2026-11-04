@@ -2406,12 +2406,1345 @@ constexpr std::array<journal_entry_fact, 99> steam_entries{{
          "577d8db41a73af2a061365e0f11cd1feabc9dca9488b244da094cf46005a6285"},
 }};
 
+// --- curse edition begin
+/// The Adventurer's Journal of **Curse of the Azure Bonds** as the Steam
+/// release ships it (#555): seventeen pages, typeset as text with its
+/// pictures placed as images, so it is read by §3a's route and no engine.
+/// The pages are two printed pages to a sheet and two columns to a printed
+/// page, like the Pool of Radiance Steam edition's.
+///
+/// **Measured, never transcribed**: offsets, lengths, decoded sizes, boxes
+/// in points, and a SHA-256 per item of the text this build reads out of
+/// those boxes. No word of the document is here.
+///
+/// How the boxes were found. Every line of the pages with items on them
+/// was placed by its origin and cut into the four column bands, whose
+/// margins are 28.35, 211.2, 416.7 and 599.5 points. An item runs from
+/// its heading to the next in reading order: `Journal Entry N` and
+/// `Tavern Tale N`, set larger than the body and, all but four of them,
+/// after a dingbat. **Matter outside the grid ends an item's run**: the
+/// introduction and its printed notes, set in another face, the two
+/// sections' titles and their introductions, and the page at the end.
+/// A box's top and bottom are the midpoints to the nearest line outside
+/// the item. Two of them are cut where the column's margin moves: three
+/// tales are set narrower beside a drawing of a wand that belongs to none
+/// of them. And two pictures span both columns of a printed page, under
+/// their own entry's heading, with the entry before it carried on at the
+/// top of both columns; that entry's piece in the second column is its
+/// last, not the next entry's first.
+///
+/// **The dingbat is an ornament** (`journal_text_font::ornament`): its map
+/// reads it as a letter, and it is dropped.
+///
+/// What came out: fifty-nine entries and sixty-two tales in a hundred and
+/// forty-one pieces; each section ascends in reading order and every item
+/// begins with its own heading.
+///
+/// **The pictures** are nine, on nine entries, each an image placed in
+/// its entry's column or across the page under its heading, and each
+/// rectangle is the part of the image the page's clip shows. The map's
+/// labels are in the images. Not in the table: the introduction's map and
+/// the printed notes' three drawings, which belong to no numbered item,
+/// and the wand beside the tales.
+constexpr std::array<journal_text_font, 1> curse_fonts_1{{
+    {.resource = "T1_1", .offset = 8496408, .length = 601, .decoded = 1323},
+}};
+constexpr std::array<journal_text_font, 2> curse_fonts_2{{
+    {.resource = "T1_2", .offset = 8496408, .length = 601, .decoded = 1323},
+    {.resource = "TT0",
+     .offset = 8687742,
+     .length = 235,
+     .decoded = 350,
+     .ornament = true},
+}};
+constexpr std::array<journal_text_font, 2> curse_fonts_3{{
+    {.resource = "T1_1", .offset = 8496408, .length = 601, .decoded = 1323},
+    {.resource = "TT0",
+     .offset = 8687742,
+     .length = 235,
+     .decoded = 350,
+     .ornament = true},
+}};
+constexpr std::array<journal_text_page, 12> curse_pages{{
+    {.page = 2,
+     .offset = 1151458,
+     .length = 5250,
+     .decoded = 26667,
+     .fonts = curse_fonts_1},
+    {.page = 6,
+     .offset = 2406150,
+     .length = 6292,
+     .decoded = 34228,
+     .fonts = curse_fonts_2},
+    {.page = 7,
+     .offset = 2555607,
+     .length = 4794,
+     .decoded = 23868,
+     .fonts = curse_fonts_3},
+    {.page = 8,
+     .offset = 3030300,
+     .length = 7072,
+     .decoded = 37736,
+     .fonts = curse_fonts_3},
+    {.page = 9,
+     .offset = 3038559,
+     .length = 5502,
+     .decoded = 27810,
+     .fonts = curse_fonts_3},
+    {.page = 10,
+     .offset = 3456286,
+     .length = 6941,
+     .decoded = 36821,
+     .fonts = curse_fonts_3},
+    {.page = 11,
+     .offset = 3464404,
+     .length = 5956,
+     .decoded = 30687,
+     .fonts = curse_fonts_3},
+    {.page = 12,
+     .offset = 3680648,
+     .length = 4037,
+     .decoded = 19698,
+     .fonts = curse_fonts_3},
+    {.page = 13,
+     .offset = 6457170,
+     .length = 4776,
+     .decoded = 24139,
+     .fonts = curse_fonts_3},
+    {.page = 14,
+     .offset = 6652059,
+     .length = 4789,
+     .decoded = 27982,
+     .fonts = curse_fonts_3},
+    {.page = 15,
+     .offset = 6658025,
+     .length = 4738,
+     .decoded = 26706,
+     .fonts = curse_fonts_3},
+    {.page = 16,
+     .offset = 6715160,
+     .length = 3831,
+     .decoded = 18026,
+     .fonts = curse_fonts_3},
+}};
+constexpr std::array<journal_text_fragment, 2> curse_entry001{{
+    {.page = 2, .box = {.left = 28, .bottom = 22, .right = 205, .top = 479}},
+    {.page = 2, .box = {.left = 211, .bottom = 74, .right = 400, .top = 479}},
+}};
+constexpr std::array<journal_fragment, 1> curse_entry001_art{{
+    {.page = 2,
+     .offset = 1158684,
+     .length = 30068,
+     .image = {.width = 567,
+               .height = 124,
+               .bits_per_component = 8,
+               .components = 3,
+               .filter = journal_filter::dct},
+     .region = {.left = 0, .top = 0, .width = 567, .height = 124}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry002{{
+    {.page = 6, .box = {.left = 416, .bottom = 129, .right = 595, .top = 372}},
+}};
+constexpr std::array<journal_text_fragment, 3> curse_entry003{{
+    {.page = 6, .box = {.left = 416, .bottom = 44, .right = 595, .top = 130}},
+    {.page = 6, .box = {.left = 599, .bottom = 27, .right = 790, .top = 543}},
+    {.page = 7, .box = {.left = 28, .bottom = 71, .right = 205, .top = 543}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry004{{
+    {.page = 7, .box = {.left = 211, .bottom = 503, .right = 400, .top = 538}},
+}};
+constexpr std::array<journal_fragment, 1> curse_entry004_art{{
+    {.page = 7,
+     .offset = 2562382,
+     .length = 124244,
+     .image = {.width = 561,
+               .height = 1997,
+               .bits_per_component = 8,
+               .components = 3,
+               .filter = journal_filter::dct},
+     .region = {.left = 0, .top = 4, .width = 561, .height = 1989}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry005{{
+    {.page = 7, .box = {.left = 416, .bottom = 359, .right = 595, .top = 538}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry006{{
+    {.page = 7, .box = {.left = 416, .bottom = 254, .right = 595, .top = 360}},
+}};
+constexpr std::array<journal_text_fragment, 2> curse_entry007{{
+    {.page = 7, .box = {.left = 416, .bottom = 32, .right = 595, .top = 255}},
+    {.page = 7, .box = {.left = 599, .bottom = 492, .right = 790, .top = 543}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry008{{
+    {.page = 7, .box = {.left = 599, .bottom = 413, .right = 790, .top = 493}},
+}};
+constexpr std::array<journal_fragment, 1> curse_entry008_art{{
+    {.page = 7,
+     .offset = 2688664,
+     .length = 309706,
+     .image = {.width = 701,
+               .height = 371,
+               .bits_per_component = 8,
+               .components = 3,
+               .filter = journal_filter::flate},
+     .region = {.left = 5, .top = 0, .width = 691, .height = 371}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry009{{
+    {.page = 7, .box = {.left = 599, .bottom = 209, .right = 790, .top = 414}},
+}};
+constexpr std::array<journal_fragment, 1> curse_entry009_art{{
+    {.page = 7,
+     .offset = 3000340,
+     .length = 28795,
+     .image = {.width = 323,
+               .height = 299,
+               .bits_per_component = 8,
+               .components = 3,
+               .filter = journal_filter::dct},
+     .region = {.left = 0, .top = 0, .width = 323, .height = 294}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry010{{
+    {.page = 7, .box = {.left = 599, .bottom = 39, .right = 790, .top = 210}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry011{{
+    {.page = 8, .box = {.left = 28, .bottom = 246, .right = 205, .top = 538}},
+}};
+constexpr std::array<journal_text_fragment, 3> curse_entry012{{
+    {.page = 8, .box = {.left = 28, .bottom = 33, .right = 205, .top = 247}},
+    {.page = 8, .box = {.left = 211, .bottom = 49, .right = 400, .top = 543}},
+    {.page = 8, .box = {.left = 416, .bottom = 204, .right = 595, .top = 543}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry013{{
+    {.page = 8, .box = {.left = 416, .bottom = 69, .right = 595, .top = 205}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry014{{
+    {.page = 8, .box = {.left = 599, .bottom = 384, .right = 790, .top = 538}},
+}};
+constexpr std::array<journal_text_fragment, 2> curse_entry015{{
+    {.page = 8, .box = {.left = 599, .bottom = 33, .right = 790, .top = 385}},
+    {.page = 9, .box = {.left = 28, .bottom = 454, .right = 205, .top = 543}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry016{{
+    {.page = 9, .box = {.left = 28, .bottom = 312, .right = 205, .top = 455}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry017{{
+    {.page = 9, .box = {.left = 28, .bottom = 221, .right = 205, .top = 313}},
+}};
+constexpr std::array<journal_fragment, 1> curse_entry017_art{{
+    {.page = 9,
+     .offset = 3348146,
+     .length = 106975,
+     .image = {.width = 578,
+               .height = 549,
+               .bits_per_component = 8,
+               .components = 3,
+               .filter = journal_filter::dct},
+     .region = {.left = 0, .top = 5, .width = 578, .height = 539}},
+}};
+constexpr std::array<journal_text_fragment, 2> curse_entry018{{
+    {.page = 9, .box = {.left = 28, .bottom = 39, .right = 205, .top = 222}},
+    {.page = 9, .box = {.left = 211, .bottom = 454, .right = 400, .top = 543}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry019{{
+    {.page = 9, .box = {.left = 211, .bottom = 325, .right = 400, .top = 455}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry020{{
+    {.page = 9, .box = {.left = 211, .bottom = 305, .right = 400, .top = 326}},
+}};
+constexpr std::array<journal_fragment, 1> curse_entry020_art{{
+    {.page = 9,
+     .offset = 3046099,
+     .length = 300067,
+     .image = {.width = 760,
+               .height = 986,
+               .bits_per_component = 8,
+               .components = 3,
+               .filter = journal_filter::flate},
+     .region = {.left = 0, .top = 0, .width = 760, .height = 986}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry021{{
+    {.page = 9, .box = {.left = 416, .bottom = 259, .right = 595, .top = 538}},
+}};
+constexpr std::array<journal_text_fragment, 2> curse_entry022{{
+    {.page = 9, .box = {.left = 416, .bottom = 61, .right = 595, .top = 260}},
+    {.page = 9, .box = {.left = 599, .bottom = 467, .right = 790, .top = 543}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry023{{
+    {.page = 9, .box = {.left = 599, .bottom = 275, .right = 790, .top = 468}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry024{{
+    {.page = 9, .box = {.left = 599, .bottom = 145, .right = 790, .top = 276}},
+}};
+constexpr std::array<journal_text_fragment, 2> curse_entry025{{
+    {.page = 9, .box = {.left = 599, .bottom = 39, .right = 790, .top = 146}},
+    {.page = 10, .box = {.left = 28, .bottom = 467, .right = 205, .top = 543}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry026{{
+    {.page = 10, .box = {.left = 28, .bottom = 375, .right = 205, .top = 468}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry027{{
+    {.page = 10, .box = {.left = 28, .bottom = 283, .right = 205, .top = 376}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry028{{
+    {.page = 10, .box = {.left = 28, .bottom = 153, .right = 205, .top = 284}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry029{{
+    {.page = 10, .box = {.left = 28, .bottom = 37, .right = 205, .top = 154}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry030{{
+    {.page = 10, .box = {.left = 211, .bottom = 296, .right = 400, .top = 538}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry031{{
+    {.page = 10, .box = {.left = 211, .bottom = 154, .right = 400, .top = 297}},
+}};
+constexpr std::array<journal_text_fragment, 2> curse_entry032{{
+    {.page = 10, .box = {.left = 211, .bottom = 32, .right = 400, .top = 155}},
+    {.page = 10, .box = {.left = 416, .bottom = 467, .right = 595, .top = 543}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry033{{
+    {.page = 10, .box = {.left = 416, .bottom = 325, .right = 595, .top = 468}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry034{{
+    {.page = 10, .box = {.left = 416, .bottom = 95, .right = 595, .top = 326}},
+}};
+constexpr std::array<journal_text_fragment, 2> curse_entry035{{
+    {.page = 10, .box = {.left = 416, .bottom = 35, .right = 595, .top = 96}},
+    {.page = 10, .box = {.left = 599, .bottom = 429, .right = 790, .top = 543}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry036{{
+    {.page = 10, .box = {.left = 599, .bottom = 237, .right = 790, .top = 430}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry037{{
+    {.page = 10, .box = {.left = 599, .bottom = 47, .right = 790, .top = 238}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry038{{
+    {.page = 11, .box = {.left = 28, .bottom = 98, .right = 205, .top = 538}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry039{{
+    {.page = 11, .box = {.left = 211, .bottom = 429, .right = 400, .top = 538}},
+}};
+constexpr std::array<journal_fragment, 1> curse_entry039_art{{
+    {.page = 11,
+     .offset = 3472340,
+     .length = 207131,
+     .image = {.width = 677,
+               .height = 735,
+               .bits_per_component = 8,
+               .components = 3,
+               .filter = journal_filter::dct},
+     .region = {.left = 0, .top = 0, .width = 677, .height = 735}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry040{{
+    {.page = 11, .box = {.left = 211, .bottom = 166, .right = 400, .top = 430}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry041{{
+    {.page = 11, .box = {.left = 211, .bottom = 57, .right = 400, .top = 167}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry042{{
+    {.page = 11, .box = {.left = 416, .bottom = 396, .right = 595, .top = 538}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry043{{
+    {.page = 11, .box = {.left = 416, .bottom = 316, .right = 595, .top = 397}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry044{{
+    {.page = 11, .box = {.left = 416, .bottom = 82, .right = 595, .top = 317}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry045{{
+    {.page = 11, .box = {.left = 599, .bottom = 409, .right = 790, .top = 538}},
+}};
+constexpr std::array<journal_text_fragment, 2> curse_entry046{{
+    {.page = 11, .box = {.left = 599, .bottom = 39, .right = 790, .top = 410}},
+    {.page = 12, .box = {.left = 28, .bottom = 467, .right = 205, .top = 543}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry047{{
+    {.page = 12, .box = {.left = 28, .bottom = 362, .right = 205, .top = 468}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry048{{
+    {.page = 12, .box = {.left = 28, .bottom = 170, .right = 205, .top = 363}},
+}};
+constexpr std::array<journal_text_fragment, 2> curse_entry049{{
+    {.page = 12, .box = {.left = 28, .bottom = 33, .right = 205, .top = 171}},
+    {.page = 12, .box = {.left = 211, .bottom = 379, .right = 400, .top = 543}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry050{{
+    {.page = 12, .box = {.left = 211, .bottom = 175, .right = 400, .top = 380}},
+}};
+constexpr std::array<journal_text_fragment, 3> curse_entry051{{
+    {.page = 12, .box = {.left = 211, .bottom = 40, .right = 400, .top = 176}},
+    {.page = 12, .box = {.left = 416, .bottom = 490, .right = 595, .top = 543}},
+    {.page = 12, .box = {.left = 599, .bottom = 258, .right = 790, .top = 543}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry052{{
+    {.page = 12, .box = {.left = 416, .bottom = 468, .right = 595, .top = 491}},
+}};
+constexpr std::array<journal_fragment, 1> curse_entry052_art{{
+    {.page = 12,
+     .offset = 3686727,
+     .length = 2769266,
+     .image = {.width = 1510,
+               .height = 1687,
+               .bits_per_component = 8,
+               .components = 3,
+               .filter = journal_filter::flate},
+     .region = {.left = 0, .top = 0, .width = 1510, .height = 1683}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry053{{
+    {.page = 13, .box = {.left = 28, .bottom = 121, .right = 205, .top = 538}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry054{{
+    {.page = 13, .box = {.left = 28, .bottom = 27, .right = 205, .top = 122}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry055{{
+    {.page = 13, .box = {.left = 211, .bottom = 396, .right = 400, .top = 538}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry056{{
+    {.page = 13, .box = {.left = 211, .bottom = 154, .right = 400, .top = 397}},
+}};
+constexpr std::array<journal_text_fragment, 2> curse_entry057{{
+    {.page = 13, .box = {.left = 211, .bottom = 32, .right = 400, .top = 155}},
+    {.page = 13, .box = {.left = 416, .bottom = 454, .right = 595, .top = 543}},
+}};
+constexpr std::array<journal_text_fragment, 2> curse_entry058{{
+    {.page = 13, .box = {.left = 416, .bottom = 398, .right = 595, .top = 455}},
+    {.page = 13, .box = {.left = 599, .bottom = 214, .right = 790, .top = 543}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_entry059{{
+    {.page = 13, .box = {.left = 416, .bottom = 376, .right = 595, .top = 399}},
+}};
+constexpr std::array<journal_fragment, 1> curse_entry059_art{{
+    {.page = 13,
+     .offset = 6463928,
+     .length = 186965,
+     .image = {.width = 1398,
+               .height = 1283,
+               .bits_per_component = 8,
+               .components = 3,
+               .filter = journal_filter::dct},
+     .region = {.left = 0, .top = 5, .width = 1398, .height = 1278}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale001{{
+    {.page = 14, .box = {.left = 28, .bottom = 307, .right = 205, .top = 362}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale002{{
+    {.page = 14, .box = {.left = 28, .bottom = 227, .right = 205, .top = 308}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale003{{
+    {.page = 14, .box = {.left = 28, .bottom = 160, .right = 205, .top = 228}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale004{{
+    {.page = 14, .box = {.left = 28, .bottom = 106, .right = 205, .top = 161}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale005{{
+    {.page = 14, .box = {.left = 28, .bottom = 38, .right = 205, .top = 107}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale006{{
+    {.page = 14, .box = {.left = 211, .bottom = 459, .right = 400, .top = 538}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale007{{
+    {.page = 14, .box = {.left = 211, .bottom = 404, .right = 400, .top = 460}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale008{{
+    {.page = 14, .box = {.left = 211, .bottom = 349, .right = 400, .top = 405}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale009{{
+    {.page = 14, .box = {.left = 211, .bottom = 282, .right = 400, .top = 350}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale010{{
+    {.page = 14, .box = {.left = 211, .bottom = 215, .right = 400, .top = 283}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale011{{
+    {.page = 14, .box = {.left = 211, .bottom = 161, .right = 400, .top = 216}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale012{{
+    {.page = 14, .box = {.left = 211, .bottom = 89, .right = 400, .top = 162}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale013{{
+    {.page = 14, .box = {.left = 416, .bottom = 484, .right = 595, .top = 538}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale014{{
+    {.page = 14, .box = {.left = 416, .bottom = 416, .right = 595, .top = 485}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale015{{
+    {.page = 14, .box = {.left = 416, .bottom = 349, .right = 595, .top = 417}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale016{{
+    {.page = 14, .box = {.left = 416, .bottom = 245, .right = 595, .top = 350}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale017{{
+    {.page = 14, .box = {.left = 416, .bottom = 190, .right = 595, .top = 246}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale018{{
+    {.page = 14, .box = {.left = 416, .bottom = 136, .right = 595, .top = 191}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale019{{
+    {.page = 14, .box = {.left = 416, .bottom = 76, .right = 595, .top = 137}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale020{{
+    {.page = 14, .box = {.left = 599, .bottom = 484, .right = 790, .top = 538}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale021{{
+    {.page = 14, .box = {.left = 599, .bottom = 429, .right = 790, .top = 485}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale022{{
+    {.page = 14, .box = {.left = 599, .bottom = 374, .right = 790, .top = 430}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale023{{
+    {.page = 14, .box = {.left = 599, .bottom = 320, .right = 790, .top = 375}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale024{{
+    {.page = 14, .box = {.left = 599, .bottom = 253, .right = 790, .top = 321}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale025{{
+    {.page = 14, .box = {.left = 599, .bottom = 186, .right = 790, .top = 254}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale026{{
+    {.page = 14, .box = {.left = 599, .bottom = 131, .right = 790, .top = 187}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale027{{
+    {.page = 14, .box = {.left = 599, .bottom = 51, .right = 790, .top = 132}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale028{{
+    {.page = 15, .box = {.left = 28, .bottom = 471, .right = 205, .top = 538}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale029{{
+    {.page = 15, .box = {.left = 28, .bottom = 404, .right = 205, .top = 472}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale030{{
+    {.page = 15, .box = {.left = 28, .bottom = 337, .right = 205, .top = 405}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale031{{
+    {.page = 15, .box = {.left = 28, .bottom = 295, .right = 205, .top = 338}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale032{{
+    {.page = 15, .box = {.left = 28, .bottom = 228, .right = 205, .top = 296}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale033{{
+    {.page = 15, .box = {.left = 28, .bottom = 148, .right = 205, .top = 229}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale034{{
+    {.page = 15, .box = {.left = 28, .bottom = 53, .right = 205, .top = 149}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale035{{
+    {.page = 15, .box = {.left = 211, .bottom = 471, .right = 400, .top = 538}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale036{{
+    {.page = 15, .box = {.left = 211, .bottom = 416, .right = 400, .top = 472}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale037{{
+    {.page = 15, .box = {.left = 211, .bottom = 362, .right = 400, .top = 417}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale038{{
+    {.page = 15, .box = {.left = 211, .bottom = 295, .right = 400, .top = 363}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale039{{
+    {.page = 15, .box = {.left = 211, .bottom = 215, .right = 400, .top = 296}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale040{{
+    {.page = 15, .box = {.left = 211, .bottom = 148, .right = 400, .top = 216}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale041{{
+    {.page = 15, .box = {.left = 211, .bottom = 101, .right = 400, .top = 149}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale042{{
+    {.page = 15, .box = {.left = 416, .bottom = 471, .right = 595, .top = 538}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale043{{
+    {.page = 15, .box = {.left = 416, .bottom = 404, .right = 595, .top = 472}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale044{{
+    {.page = 15, .box = {.left = 416, .bottom = 337, .right = 595, .top = 405}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale045{{
+    {.page = 15, .box = {.left = 416, .bottom = 270, .right = 595, .top = 338}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale046{{
+    {.page = 15, .box = {.left = 416, .bottom = 190, .right = 595, .top = 271}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale047{{
+    {.page = 15, .box = {.left = 416, .bottom = 136, .right = 595, .top = 191}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale048{{
+    {.page = 15, .box = {.left = 416, .bottom = 64, .right = 595, .top = 137}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale049{{
+    {.page = 15, .box = {.left = 599, .bottom = 484, .right = 790, .top = 538}},
+}};
+constexpr std::array<journal_text_fragment, 2> curse_tale050{{
+    {.page = 15, .box = {.left = 599, .bottom = 436, .right = 790, .top = 485}},
+    {.page = 15, .box = {.left = 634, .bottom = 404, .right = 790, .top = 437}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale051{{
+    {.page = 15, .box = {.left = 634, .bottom = 324, .right = 790, .top = 405}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale052{{
+    {.page = 15, .box = {.left = 634, .bottom = 257, .right = 790, .top = 325}},
+}};
+constexpr std::array<journal_text_fragment, 2> curse_tale053{{
+    {.page = 15, .box = {.left = 634, .bottom = 223, .right = 790, .top = 258}},
+    {.page = 15, .box = {.left = 599, .bottom = 190, .right = 790, .top = 224}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale054{{
+    {.page = 15, .box = {.left = 599, .bottom = 62, .right = 790, .top = 191}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale055{{
+    {.page = 16, .box = {.left = 28, .bottom = 459, .right = 205, .top = 538}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale056{{
+    {.page = 16, .box = {.left = 28, .bottom = 391, .right = 205, .top = 460}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale057{{
+    {.page = 16, .box = {.left = 28, .bottom = 324, .right = 205, .top = 392}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale058{{
+    {.page = 16, .box = {.left = 28, .bottom = 147, .right = 205, .top = 325}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale059{{
+    {.page = 16, .box = {.left = 211, .bottom = 459, .right = 400, .top = 538}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale060{{
+    {.page = 16, .box = {.left = 211, .bottom = 404, .right = 400, .top = 460}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale061{{
+    {.page = 16, .box = {.left = 211, .bottom = 337, .right = 400, .top = 405}},
+}};
+constexpr std::array<journal_text_fragment, 1> curse_tale062{{
+    {.page = 16, .box = {.left = 211, .bottom = 290, .right = 400, .top = 338}},
+}};
+constexpr std::array<journal_entry_fact, 121> curse_entries{{
+    {.kind = journal_kind::entry,
+     .number = 1,
+     .art = curse_entry001_art,
+     .text = curse_entry001,
+     .text_sha256 =
+         "6518e2785645f484d13f952453bfa97349c139be3006bc44711a9994b7cd17ad"},
+    {.kind = journal_kind::entry,
+     .number = 2,
+     .art = {},
+     .text = curse_entry002,
+     .text_sha256 =
+         "8a2eb5425f6a3bd07b168f97c8a5f621ae8c757b0fc3dd8cd3b4c733e70e15bd"},
+    {.kind = journal_kind::entry,
+     .number = 3,
+     .art = {},
+     .text = curse_entry003,
+     .text_sha256 =
+         "981316b2b18d3d1f4655cf91b99c988213fda0cd947de78610d3368d3c2ee525"},
+    {.kind = journal_kind::entry,
+     .number = 4,
+     .art = curse_entry004_art,
+     .text = curse_entry004,
+     .text_sha256 =
+         "b5b9518ba83c96df1bbc840250835eddfae1cd28ae1145e35a99c0198fa6c1ed"},
+    {.kind = journal_kind::entry,
+     .number = 5,
+     .art = {},
+     .text = curse_entry005,
+     .text_sha256 =
+         "c6d437a1cc46c7101e076350ed445e9c3adf89d518db3c3b133c4e7d56c57a09"},
+    {.kind = journal_kind::entry,
+     .number = 6,
+     .art = {},
+     .text = curse_entry006,
+     .text_sha256 =
+         "844004120589e8e63933f477945c9abcb0907a18e5771eedf4898c66b3dda9cd"},
+    {.kind = journal_kind::entry,
+     .number = 7,
+     .art = {},
+     .text = curse_entry007,
+     .text_sha256 =
+         "21e9a2a3e09939f5d230186fb565d1b41b605bff2e5f8e6ceb85fb9f3c746f97"},
+    {.kind = journal_kind::entry,
+     .number = 8,
+     .art = curse_entry008_art,
+     .text = curse_entry008,
+     .text_sha256 =
+         "ff15bd329b129723793e081edbd6d00fa6b13426c0749e3b513120b93905dbef"},
+    {.kind = journal_kind::entry,
+     .number = 9,
+     .art = curse_entry009_art,
+     .text = curse_entry009,
+     .text_sha256 =
+         "b5362e17e6c72c573ce8fa228c732496947f7b0ad9b32b732a4802f85e34c7fe"},
+    {.kind = journal_kind::entry,
+     .number = 10,
+     .art = {},
+     .text = curse_entry010,
+     .text_sha256 =
+         "cbe2af78303f2496407e275b402c158a93d208b7795b502e41afad88c500a39b"},
+    {.kind = journal_kind::entry,
+     .number = 11,
+     .art = {},
+     .text = curse_entry011,
+     .text_sha256 =
+         "daf5d92a8422a9313d0c8cce5e7203cb01713deb8eeb4ecddd0d4d014539d8ca"},
+    {.kind = journal_kind::entry,
+     .number = 12,
+     .art = {},
+     .text = curse_entry012,
+     .text_sha256 =
+         "ee5c2037a2508cd26e29fe6d1bf8aca08e35f7cc3ed9278cf5f1fc8ff9446368"},
+    {.kind = journal_kind::entry,
+     .number = 13,
+     .art = {},
+     .text = curse_entry013,
+     .text_sha256 =
+         "3d8445e0e99736f229d6cc2d00f5333df801ae35eb15cb87a5fc3ccee7f0cc56"},
+    {.kind = journal_kind::entry,
+     .number = 14,
+     .art = {},
+     .text = curse_entry014,
+     .text_sha256 =
+         "86cfe790e72faa4efcf40af2081c0f2ae133594962c54e8b01c956cd4ea8ccb6"},
+    {.kind = journal_kind::entry,
+     .number = 15,
+     .art = {},
+     .text = curse_entry015,
+     .text_sha256 =
+         "5c707eccc8284b3bc08c279d47372a71359f7b8e28b611d85425081fb5c696fc"},
+    {.kind = journal_kind::entry,
+     .number = 16,
+     .art = {},
+     .text = curse_entry016,
+     .text_sha256 =
+         "ab6e3e94d876aef724614065b6fac0ba95a2bb4c478a8bfe45b3efed90cefafe"},
+    {.kind = journal_kind::entry,
+     .number = 17,
+     .art = curse_entry017_art,
+     .text = curse_entry017,
+     .text_sha256 =
+         "a8626ecbed1db6411876fa626ca462a5de9416c40ca3420199c06ba336383594"},
+    {.kind = journal_kind::entry,
+     .number = 18,
+     .art = {},
+     .text = curse_entry018,
+     .text_sha256 =
+         "91991a71ef1dba40376736cc7111d0ea52c2b6610887a47cf6ab015029565140"},
+    {.kind = journal_kind::entry,
+     .number = 19,
+     .art = {},
+     .text = curse_entry019,
+     .text_sha256 =
+         "387e0f8ff48fc8d0032427e3c8b9aff422cb2f2818ac5ce6267901fec6eadba2"},
+    {.kind = journal_kind::entry,
+     .number = 20,
+     .art = curse_entry020_art,
+     .text = curse_entry020,
+     .text_sha256 =
+         "c5bb493dbb1c7217f7703627d97562b20835c57987e2fa569ebed9cc0f13114c"},
+    {.kind = journal_kind::entry,
+     .number = 21,
+     .art = {},
+     .text = curse_entry021,
+     .text_sha256 =
+         "554c4741a91385235d87b7e78d84bf16975796ed4bcf639a498e41de950279b9"},
+    {.kind = journal_kind::entry,
+     .number = 22,
+     .art = {},
+     .text = curse_entry022,
+     .text_sha256 =
+         "760049ad0f6b0850d0b358547f3336e8ff1255455a3c6be5b787a52b659820ab"},
+    {.kind = journal_kind::entry,
+     .number = 23,
+     .art = {},
+     .text = curse_entry023,
+     .text_sha256 =
+         "c3d3267390050c270342e7bc286f819a3e561cd55e571d1b7ade44bfdf4d5e2d"},
+    {.kind = journal_kind::entry,
+     .number = 24,
+     .art = {},
+     .text = curse_entry024,
+     .text_sha256 =
+         "b91c4d07025e727022ecbd60a0e6f7a18b35612c7991936e482a621eee3b9c8a"},
+    {.kind = journal_kind::entry,
+     .number = 25,
+     .art = {},
+     .text = curse_entry025,
+     .text_sha256 =
+         "240fce3534964649f446c36c14e88f5beddb629a6ddcdbaeed7b4ce01027fa5c"},
+    {.kind = journal_kind::entry,
+     .number = 26,
+     .art = {},
+     .text = curse_entry026,
+     .text_sha256 =
+         "690b8a54841ed02dc18efce9053bdd6b747bdc0fc788c9414ce4e19dadde763b"},
+    {.kind = journal_kind::entry,
+     .number = 27,
+     .art = {},
+     .text = curse_entry027,
+     .text_sha256 =
+         "c71bb15fbb24028b8914b3d8a0815269ad9557cbd3f5c9e7b46319dc9ba45b6e"},
+    {.kind = journal_kind::entry,
+     .number = 28,
+     .art = {},
+     .text = curse_entry028,
+     .text_sha256 =
+         "d95b0614c197e954f7b6983ed63e9a871f12329bf20209c32fa321b34d1206e1"},
+    {.kind = journal_kind::entry,
+     .number = 29,
+     .art = {},
+     .text = curse_entry029,
+     .text_sha256 =
+         "531fdc0bd280ec250c049dcfd9bbca12a47e2bd5536ce787dd94969fcaaeb89f"},
+    {.kind = journal_kind::entry,
+     .number = 30,
+     .art = {},
+     .text = curse_entry030,
+     .text_sha256 =
+         "fd6c3e7d8f4588cba7d090687168481801d277421017dab552d37d85c6780546"},
+    {.kind = journal_kind::entry,
+     .number = 31,
+     .art = {},
+     .text = curse_entry031,
+     .text_sha256 =
+         "2657b6179628f0bb68bb6f735443c4a6ff8984caf44fd6da96da403eacd6ce79"},
+    {.kind = journal_kind::entry,
+     .number = 32,
+     .art = {},
+     .text = curse_entry032,
+     .text_sha256 =
+         "1c933d9be1e65b74810dfdd251796a9dec20d204f55f32e3a8fb7f0e5b7a4df5"},
+    {.kind = journal_kind::entry,
+     .number = 33,
+     .art = {},
+     .text = curse_entry033,
+     .text_sha256 =
+         "b4473bd05b1c9e65c7ad1f4851980d85d68b93ac05a07d0766ab486328aa8dce"},
+    {.kind = journal_kind::entry,
+     .number = 34,
+     .art = {},
+     .text = curse_entry034,
+     .text_sha256 =
+         "2c10af0c81641da43c111638976bd41e55241cc1cc67d98bed9d2a3a4aa13546"},
+    {.kind = journal_kind::entry,
+     .number = 35,
+     .art = {},
+     .text = curse_entry035,
+     .text_sha256 =
+         "e28b9a5a4d21625acae786dc4ba1e8ec8d3c8795d053e9f1bfd3f83dacb03422"},
+    {.kind = journal_kind::entry,
+     .number = 36,
+     .art = {},
+     .text = curse_entry036,
+     .text_sha256 =
+         "498731aafc8e9c3565a63a25e0df1724e4fc4de9a38d15e71b0dff05a3994b03"},
+    {.kind = journal_kind::entry,
+     .number = 37,
+     .art = {},
+     .text = curse_entry037,
+     .text_sha256 =
+         "7fbc3e23fa3a471ef0a8b990997bad27cfbb2b6e9bfc93a4ad68bb5b5cfb7093"},
+    {.kind = journal_kind::entry,
+     .number = 38,
+     .art = {},
+     .text = curse_entry038,
+     .text_sha256 =
+         "02f2d7041a401adebb5f1bdb7d553a10724d0eee688f3028f196263be98f7c16"},
+    {.kind = journal_kind::entry,
+     .number = 39,
+     .art = curse_entry039_art,
+     .text = curse_entry039,
+     .text_sha256 =
+         "4fcd2a5a08da5f11f21d78c626d11547d8bf42f9d7bd4e59c620e80ef4725927"},
+    {.kind = journal_kind::entry,
+     .number = 40,
+     .art = {},
+     .text = curse_entry040,
+     .text_sha256 =
+         "b33f38cead0e929e662c83c22a6ebf36c294c1f01eac58fb338dd96ecd847989"},
+    {.kind = journal_kind::entry,
+     .number = 41,
+     .art = {},
+     .text = curse_entry041,
+     .text_sha256 =
+         "7664c93433d105d357d4a80957ceb5b725d918a2f666c887db446644bfeb98a7"},
+    {.kind = journal_kind::entry,
+     .number = 42,
+     .art = {},
+     .text = curse_entry042,
+     .text_sha256 =
+         "467c68f8245f2373d56d90bf87f10328cadf6afcfbd2305077d1a486f9cf5a11"},
+    {.kind = journal_kind::entry,
+     .number = 43,
+     .art = {},
+     .text = curse_entry043,
+     .text_sha256 =
+         "e012324af90a6f949e4eb6c9ca9558ff59fb03b87d0667e821ea91583f10fcbc"},
+    {.kind = journal_kind::entry,
+     .number = 44,
+     .art = {},
+     .text = curse_entry044,
+     .text_sha256 =
+         "204b5bb2e6ccf77b62acc7dc95b0c4d0877023d9c44ba367da44350b7109666e"},
+    {.kind = journal_kind::entry,
+     .number = 45,
+     .art = {},
+     .text = curse_entry045,
+     .text_sha256 =
+         "5de2028a9a08d4713015573a40bd106fd227a5d5010922f3f290fdc658bf2f76"},
+    {.kind = journal_kind::entry,
+     .number = 46,
+     .art = {},
+     .text = curse_entry046,
+     .text_sha256 =
+         "f47d3bf8db8b9cfca88a36955f0b55e41302e89a964736c3db4bdf1393c4e706"},
+    {.kind = journal_kind::entry,
+     .number = 47,
+     .art = {},
+     .text = curse_entry047,
+     .text_sha256 =
+         "aa9bac9fb7f0b3bcf66c55d5779600055fd398cf2a412d50c687cdb3c343de6c"},
+    {.kind = journal_kind::entry,
+     .number = 48,
+     .art = {},
+     .text = curse_entry048,
+     .text_sha256 =
+         "f7a24c044a8ec1fd14bac98dde8fba6c030acb2d4ce5b4019d00244ac5687219"},
+    {.kind = journal_kind::entry,
+     .number = 49,
+     .art = {},
+     .text = curse_entry049,
+     .text_sha256 =
+         "c7322b7f4ab654ada24311065ee5af1794a14ad7bd59c65bb9fa9ee4f9664187"},
+    {.kind = journal_kind::entry,
+     .number = 50,
+     .art = {},
+     .text = curse_entry050,
+     .text_sha256 =
+         "429f0f32c5701de1f45c28346a86f6544a157ec89dfab8c2c83f2876c79b6ec4"},
+    {.kind = journal_kind::entry,
+     .number = 51,
+     .art = {},
+     .text = curse_entry051,
+     .text_sha256 =
+         "5aa912bd2f9777f4a26b345221d1ff6c04fe6e0c68adbe74752ecaf66e9881b2"},
+    {.kind = journal_kind::entry,
+     .number = 52,
+     .art = curse_entry052_art,
+     .text = curse_entry052,
+     .text_sha256 =
+         "1b3a48ba943644002955a8d9352f933806de97d795f52055370ddd381b4e337c"},
+    {.kind = journal_kind::entry,
+     .number = 53,
+     .art = {},
+     .text = curse_entry053,
+     .text_sha256 =
+         "3af00d3d9f98c5a65d0adc30566e1593fd49179950480534460081b2c368f938"},
+    {.kind = journal_kind::entry,
+     .number = 54,
+     .art = {},
+     .text = curse_entry054,
+     .text_sha256 =
+         "a20e982b19108c990952ec682231b043fecc74f2911e90f4d086e2379f8f1d7a"},
+    {.kind = journal_kind::entry,
+     .number = 55,
+     .art = {},
+     .text = curse_entry055,
+     .text_sha256 =
+         "188c90e30b38e989cd0268cd8895e45475c7f63222a80df202580739356c3e35"},
+    {.kind = journal_kind::entry,
+     .number = 56,
+     .art = {},
+     .text = curse_entry056,
+     .text_sha256 =
+         "76bdd6172a125e71612f7759c602f68bc20bca53770adc7a6ea476acbcf8765d"},
+    {.kind = journal_kind::entry,
+     .number = 57,
+     .art = {},
+     .text = curse_entry057,
+     .text_sha256 =
+         "c15db9dac230d72396123ca9e9093413bf021f103a0ee4bdb2190b811a481284"},
+    {.kind = journal_kind::entry,
+     .number = 58,
+     .art = {},
+     .text = curse_entry058,
+     .text_sha256 =
+         "fcb4e80215f5bf6861923ba4316b58ce20ef6c631c59079785900dbd73305cbf"},
+    {.kind = journal_kind::entry,
+     .number = 59,
+     .art = curse_entry059_art,
+     .text = curse_entry059,
+     .text_sha256 =
+         "38b2d0815916bffbe7e37300c464dc23c4286d2916e1172a6670575b072f593e"},
+    {.kind = journal_kind::tale,
+     .number = 1,
+     .art = {},
+     .text = curse_tale001,
+     .text_sha256 =
+         "6ec55f0e61296e869351ac5b7e10dfad0a320180e70d187414cbc27eb160fb8c"},
+    {.kind = journal_kind::tale,
+     .number = 2,
+     .art = {},
+     .text = curse_tale002,
+     .text_sha256 =
+         "72bb350175c557e30975c940d15167d36753dff7cf89e4ae551bc430d4730a4c"},
+    {.kind = journal_kind::tale,
+     .number = 3,
+     .art = {},
+     .text = curse_tale003,
+     .text_sha256 =
+         "861573ebe146b4f10f413f49b8f81c2fccb192d4430e6b34659183790bc743e8"},
+    {.kind = journal_kind::tale,
+     .number = 4,
+     .art = {},
+     .text = curse_tale004,
+     .text_sha256 =
+         "64edae04f973cdf2de38fe0e7c6a3b811e3dd9ab217a975694231a2be2382e5c"},
+    {.kind = journal_kind::tale,
+     .number = 5,
+     .art = {},
+     .text = curse_tale005,
+     .text_sha256 =
+         "3dee2dd5bc5a5c875b4787b655b085139149a65671e5318d07bf967bf4f93edd"},
+    {.kind = journal_kind::tale,
+     .number = 6,
+     .art = {},
+     .text = curse_tale006,
+     .text_sha256 =
+         "d5a74ea334fdb95fefe09c8dbf87ab4f6839d96d0c2a4236f7fd05eef147e877"},
+    {.kind = journal_kind::tale,
+     .number = 7,
+     .art = {},
+     .text = curse_tale007,
+     .text_sha256 =
+         "7ab12bb74e9f59d0eb1b873d637ef9c93d3db303b149f4179091939371ea253b"},
+    {.kind = journal_kind::tale,
+     .number = 8,
+     .art = {},
+     .text = curse_tale008,
+     .text_sha256 =
+         "65675778716c52207dd8ecd2aacff95feb4cccbca9528f1076edb1cd6348ae1e"},
+    {.kind = journal_kind::tale,
+     .number = 9,
+     .art = {},
+     .text = curse_tale009,
+     .text_sha256 =
+         "eb7e9c4fee74689bcc50af0b943c0e5fb3036753edc7bb0746e0b46b1987da94"},
+    {.kind = journal_kind::tale,
+     .number = 10,
+     .art = {},
+     .text = curse_tale010,
+     .text_sha256 =
+         "8f089a8579b9426a49ab5cf5890fe52116e0d66d0a4e95d707606bdba2d6b0ef"},
+    {.kind = journal_kind::tale,
+     .number = 11,
+     .art = {},
+     .text = curse_tale011,
+     .text_sha256 =
+         "c111fc14f8206cda09b9846c6afbff88fb8fb66011d1c44543a8f91948deed71"},
+    {.kind = journal_kind::tale,
+     .number = 12,
+     .art = {},
+     .text = curse_tale012,
+     .text_sha256 =
+         "4595fcfeede17b77548343e8c7d1b45c1c028c9cd67387b54063fba9d3afe7eb"},
+    {.kind = journal_kind::tale,
+     .number = 13,
+     .art = {},
+     .text = curse_tale013,
+     .text_sha256 =
+         "d71dc87ae2f39cb723f7f9a2e42940dbaceda7c31516278100ebb5e5b33b47cf"},
+    {.kind = journal_kind::tale,
+     .number = 14,
+     .art = {},
+     .text = curse_tale014,
+     .text_sha256 =
+         "78162f50ea9d5a680681cf878318872c28fb12e795790b54a1f81718b93a37dc"},
+    {.kind = journal_kind::tale,
+     .number = 15,
+     .art = {},
+     .text = curse_tale015,
+     .text_sha256 =
+         "5d69acf587dce9d9ed822189bb94cc4fbaba0d42e1fc0e367c5d3f39e9dcf73a"},
+    {.kind = journal_kind::tale,
+     .number = 16,
+     .art = {},
+     .text = curse_tale016,
+     .text_sha256 =
+         "44a4950cbca21ce65f1422da34b653f9c6e8efcbd1562e09e2c4a419be296c36"},
+    {.kind = journal_kind::tale,
+     .number = 17,
+     .art = {},
+     .text = curse_tale017,
+     .text_sha256 =
+         "8c180b66da70392dcf761727a334e4ff5c1cc859af23dc9f7618c4620c8986ed"},
+    {.kind = journal_kind::tale,
+     .number = 18,
+     .art = {},
+     .text = curse_tale018,
+     .text_sha256 =
+         "c6972a9492242c4f2f4e867ed26da72a9ea43366621849690b817b6c4bbee5f7"},
+    {.kind = journal_kind::tale,
+     .number = 19,
+     .art = {},
+     .text = curse_tale019,
+     .text_sha256 =
+         "8c4fc1c09a91e98eecf3191ed136afc32644b7677f0c8df64b274a1b4700aa35"},
+    {.kind = journal_kind::tale,
+     .number = 20,
+     .art = {},
+     .text = curse_tale020,
+     .text_sha256 =
+         "fa1f8d78901304f06f8ccb503e762bd2ba40e0d551c39d9f717ff31dd1a890d1"},
+    {.kind = journal_kind::tale,
+     .number = 21,
+     .art = {},
+     .text = curse_tale021,
+     .text_sha256 =
+         "c06fe8236ac88b21f132731ce85ba1c63bcc0ac2badc81be1305c8b2c6d6916d"},
+    {.kind = journal_kind::tale,
+     .number = 22,
+     .art = {},
+     .text = curse_tale022,
+     .text_sha256 =
+         "405958daff072736cfe9202240046b359ecceb22e6bbd34d5e495d0b7bb6c91c"},
+    {.kind = journal_kind::tale,
+     .number = 23,
+     .art = {},
+     .text = curse_tale023,
+     .text_sha256 =
+         "35da6d925780fc1093d2c97f3786830ddd5f1b185b23169ea0fb117618ff6cef"},
+    {.kind = journal_kind::tale,
+     .number = 24,
+     .art = {},
+     .text = curse_tale024,
+     .text_sha256 =
+         "cdf9b223af117966c887b1984418312b2089922d0b21ffda4bb42b70b9462f02"},
+    {.kind = journal_kind::tale,
+     .number = 25,
+     .art = {},
+     .text = curse_tale025,
+     .text_sha256 =
+         "654ae14512a342c9821499664fbc4f6cc1ee06ebedec0afd1539fa64378117dd"},
+    {.kind = journal_kind::tale,
+     .number = 26,
+     .art = {},
+     .text = curse_tale026,
+     .text_sha256 =
+         "958bec196d5a0fa43e7aad8e5adc5b25fa58dce1b9f257f8faca9d26d075b355"},
+    {.kind = journal_kind::tale,
+     .number = 27,
+     .art = {},
+     .text = curse_tale027,
+     .text_sha256 =
+         "f37c514303de97faea1da53f79a0651f1ca8897d1b172398b0b18ef524114a07"},
+    {.kind = journal_kind::tale,
+     .number = 28,
+     .art = {},
+     .text = curse_tale028,
+     .text_sha256 =
+         "bd8bef7efa2eb9fa300c261ba0133bf202afdc6ca78027cc92fa3d1271399280"},
+    {.kind = journal_kind::tale,
+     .number = 29,
+     .art = {},
+     .text = curse_tale029,
+     .text_sha256 =
+         "8e7797a6695d0b864b86c349d1ab07ba2f9e233a72bf09855bed834c965e3c15"},
+    {.kind = journal_kind::tale,
+     .number = 30,
+     .art = {},
+     .text = curse_tale030,
+     .text_sha256 =
+         "1d74a9b25972a2b95e5d86f56de3acf29364fd4e160cc4adcf07331bf225061b"},
+    {.kind = journal_kind::tale,
+     .number = 31,
+     .art = {},
+     .text = curse_tale031,
+     .text_sha256 =
+         "f8d197d94935c951b1759559d1fad1d4d31355b8d61386706b24eb846e1f3711"},
+    {.kind = journal_kind::tale,
+     .number = 32,
+     .art = {},
+     .text = curse_tale032,
+     .text_sha256 =
+         "0e876f82caa69ced907a8ceb55643392b0cecacbffc8e35fb620b9bf0b4123c3"},
+    {.kind = journal_kind::tale,
+     .number = 33,
+     .art = {},
+     .text = curse_tale033,
+     .text_sha256 =
+         "1e44512e8e691c62ec51f814d53293083c1514bc526a1c021ae98c1c48495007"},
+    {.kind = journal_kind::tale,
+     .number = 34,
+     .art = {},
+     .text = curse_tale034,
+     .text_sha256 =
+         "761199e9b56da68f487bf882fabf3b10a8c31291094a6a37e723bcce61787329"},
+    {.kind = journal_kind::tale,
+     .number = 35,
+     .art = {},
+     .text = curse_tale035,
+     .text_sha256 =
+         "9af29126234043a3d7a675189a75f091623d604aa085f0e5589619c90b6755a6"},
+    {.kind = journal_kind::tale,
+     .number = 36,
+     .art = {},
+     .text = curse_tale036,
+     .text_sha256 =
+         "51fde325e77a2699b93e6d9c4913fe59459c0b40afaaf7c51bc811daf0bd0f80"},
+    {.kind = journal_kind::tale,
+     .number = 37,
+     .art = {},
+     .text = curse_tale037,
+     .text_sha256 =
+         "67957bf1a3c75b9e0198aae16944e033ff8013c39504bc77b9507091ba8e8e28"},
+    {.kind = journal_kind::tale,
+     .number = 38,
+     .art = {},
+     .text = curse_tale038,
+     .text_sha256 =
+         "0dc3bb21229e21dbbfdf48562f8d3c943df79d607d3ffb52524eb282dd5101fc"},
+    {.kind = journal_kind::tale,
+     .number = 39,
+     .art = {},
+     .text = curse_tale039,
+     .text_sha256 =
+         "67b1a31b946549b2e68b55c8c64b6ee71124c80db8022eccbbb51ae33933321c"},
+    {.kind = journal_kind::tale,
+     .number = 40,
+     .art = {},
+     .text = curse_tale040,
+     .text_sha256 =
+         "decb4865eca3126b78e93ce88a7066d94935ee5146b524f77bb6ad329d742299"},
+    {.kind = journal_kind::tale,
+     .number = 41,
+     .art = {},
+     .text = curse_tale041,
+     .text_sha256 =
+         "4193257b14a80c37c7c5dfea6c46bd435b253d5f3a4f118175d28ae53c88a4ca"},
+    {.kind = journal_kind::tale,
+     .number = 42,
+     .art = {},
+     .text = curse_tale042,
+     .text_sha256 =
+         "cea821eba346ec6602df59f48154b17fb1bbc6fc53a3b7bd21ce240af67b1eb1"},
+    {.kind = journal_kind::tale,
+     .number = 43,
+     .art = {},
+     .text = curse_tale043,
+     .text_sha256 =
+         "5998a6bfcfb1ecdcb5150740ce770e6e9df5ad1309065d9e94d04549ca1c3c34"},
+    {.kind = journal_kind::tale,
+     .number = 44,
+     .art = {},
+     .text = curse_tale044,
+     .text_sha256 =
+         "69737908c507196f4d1d2bf420b5d1e837e925cc7f969be9e3ff4779b3c3c5c4"},
+    {.kind = journal_kind::tale,
+     .number = 45,
+     .art = {},
+     .text = curse_tale045,
+     .text_sha256 =
+         "8d11c83963e972ee3ca8ce6c1f1405b65bd213fe2918193683255ec614fe6984"},
+    {.kind = journal_kind::tale,
+     .number = 46,
+     .art = {},
+     .text = curse_tale046,
+     .text_sha256 =
+         "f589a3278143681e4cf03874e6297682b00aa323221ebbf885de522c2bb79ab1"},
+    {.kind = journal_kind::tale,
+     .number = 47,
+     .art = {},
+     .text = curse_tale047,
+     .text_sha256 =
+         "c681fc13240fa484333da27d3048b2abd4b7c99d833bd12fbebb9eeb52d080fd"},
+    {.kind = journal_kind::tale,
+     .number = 48,
+     .art = {},
+     .text = curse_tale048,
+     .text_sha256 =
+         "347678458f040484e44ebe5a57a14b1b93432f0b4ffed438b655db9f4b305d24"},
+    {.kind = journal_kind::tale,
+     .number = 49,
+     .art = {},
+     .text = curse_tale049,
+     .text_sha256 =
+         "66772788659d9287a21c2ec7759a7269328ca7ad28e87aec286cc1b769db7138"},
+    {.kind = journal_kind::tale,
+     .number = 50,
+     .art = {},
+     .text = curse_tale050,
+     .text_sha256 =
+         "442fd77d42a80f81bc76627f08f2f1a28da168c316987e20251c2939b28ca3d6"},
+    {.kind = journal_kind::tale,
+     .number = 51,
+     .art = {},
+     .text = curse_tale051,
+     .text_sha256 =
+         "0f00039b7d8f43abbba3ea7ab099b2d0a8bfcb5402390e5ced0ac8512737eaff"},
+    {.kind = journal_kind::tale,
+     .number = 52,
+     .art = {},
+     .text = curse_tale052,
+     .text_sha256 =
+         "dd6fe5f729bccb8615c9346651f79b51a2a2e1c05b54d2de43e4088dead8f353"},
+    {.kind = journal_kind::tale,
+     .number = 53,
+     .art = {},
+     .text = curse_tale053,
+     .text_sha256 =
+         "31cf674254a3e1ab772e7767b8b87a865979ce1d91ec56e4cc8407997ca45cf7"},
+    {.kind = journal_kind::tale,
+     .number = 54,
+     .art = {},
+     .text = curse_tale054,
+     .text_sha256 =
+         "c9d6beb2818db214aaa1d7685deed35a527434e73db3c9215bd1040addc52c2e"},
+    {.kind = journal_kind::tale,
+     .number = 55,
+     .art = {},
+     .text = curse_tale055,
+     .text_sha256 =
+         "a7eeafcb0809f037acd69035600358276dccdcecb477d5fec4128dfd9375971b"},
+    {.kind = journal_kind::tale,
+     .number = 56,
+     .art = {},
+     .text = curse_tale056,
+     .text_sha256 =
+         "89306f01d845eb962310b25f95a2b11c2b82d5897785a1345171999f3fffc550"},
+    {.kind = journal_kind::tale,
+     .number = 57,
+     .art = {},
+     .text = curse_tale057,
+     .text_sha256 =
+         "267b126c65e9f07de60ae07d75d787692292dd3b817824edf39dc4a6abc8adef"},
+    {.kind = journal_kind::tale,
+     .number = 58,
+     .art = {},
+     .text = curse_tale058,
+     .text_sha256 =
+         "25d1749a613e4e336d0cfa81ee57e91c4d5dc9e38b56b17bada03bb5fd010a1b"},
+    {.kind = journal_kind::tale,
+     .number = 59,
+     .art = {},
+     .text = curse_tale059,
+     .text_sha256 =
+         "59bf05adce3a80195ce974e977b9f868830ee2eb8a7699eb11f3117b653a159f"},
+    {.kind = journal_kind::tale,
+     .number = 60,
+     .art = {},
+     .text = curse_tale060,
+     .text_sha256 =
+         "700e425ced1be47d24bb5ba87d4fa2e79f9ebfca997fc94d33c3edf20d5d52c4"},
+    {.kind = journal_kind::tale,
+     .number = 61,
+     .art = {},
+     .text = curse_tale061,
+     .text_sha256 =
+         "5673a7a48cb0729b88025da90ceb14a84b5090aaa101be1fefba0806c102eef8"},
+    {.kind = journal_kind::tale,
+     .number = 62,
+     .art = {},
+     .text = curse_tale062,
+     .text_sha256 =
+         "c3f204e7fe8b528b2f8e5651ba76bd599f883db55f356b9be047d8e939e90843"},
+}};
+// --- curse edition end
+
 /// The editions this build knows the insides of.
 ///
 /// Each fingerprint is the same one `machine::known_documents()` carries
 /// for the gate: one artifact seen twice, and the suite checks that the
 /// two agree.
-constexpr std::array<journal_edition, 2> table{{
+constexpr std::array<journal_edition, 3> table{{
     {.fingerprint =
          "67cbfc0c833b835494310680ad298bc4de1cdcc0168115cc3608c2f6074c737c",
      .name = "Pool of Radiance Adventurer's Journal, archive release",
@@ -2421,6 +3754,11 @@ constexpr std::array<journal_edition, 2> table{{
      .name = "Pool of Radiance Adventurer's Journal, Steam release",
      .entries = steam_entries,
      .pages = steam_pages},
+    {.fingerprint =
+         "68bd9d4734a232a0a18c44510985e61a489adc17693ecdfb411c6cd2dfec8031",
+     .name = "Curse of the Azure Bonds Adventurer's Journal, Steam release",
+     .entries = curse_entries,
+     .pages = curse_pages},
 }};
 
 }  // namespace
