@@ -51,7 +51,7 @@
 //
 // **The challenge is put on the screen by one far call**, in the boot's
 // own tail, five bytes long, into the overlay stub the protection
-// routine lives behind. `challenge_call_offset` is that call and
+// routine lives behind. `pool_of_radiance_challenge_call` is that call and
 // `challenge_call_length` is how far past it the program continues.
 // The routine behind it **sets no persistent state and returns on
 // success**, which is the fact the skip below rests on: a program that
@@ -121,43 +121,64 @@
 namespace amberfolio::machine {
 namespace {
 
-/// The program this seam's facts are about (program_profile.h): the
-/// baseline edition, and only it. The seam is available on it and on no
-/// other binary.
-constexpr const program_profile& profile = pool_of_radiance;
-constexpr auto code_wheel_binaries = fingerprints_of(std::array{&profile});
+/// This seam's facts about one program (#555): the shared ones through
+/// its profile (program_profile.h), and the ones only this seam reads.
+/// One row per program it is available on; every handler is
+/// instantiated on one row, so a handler never asks which program it is
+/// on (the cheats' pattern, seam_cheats.cpp).
+struct code_wheel_facts {
+  const program_profile& profile;
 
-/// The `REPE CMPSB` inside the program's string-compare routine, as an
-/// offset from the image segment.
-constexpr std::uint32_t compare_loop_offset = 0xBBB0;
+  /// The far call into the protection routine: the overlay stub's own
+  /// paragraph, counted from the image segment, and the entry's offset
+  /// within it. The two words of the instruction's operand, and what the
+  /// skip checks it is looking at before it jumps over anything.
+  std::uint16_t challenge_stub_paragraph;
+  std::uint16_t challenge_stub_offset;
 
-/// The candidate-word table: thirteen length-prefixed six-character
-/// entries, twenty-one bytes apart. Named as the span of *characters* the
-/// comparison can point at, first byte to last, because that span is the
-/// whole qualifier.
-constexpr std::uint32_t word_table_offset = 0xC7C2;
-constexpr std::uint32_t word_table_stride = 21;
-constexpr std::uint32_t word_table_entries = 13;
-constexpr std::uint32_t word_length = 6;
+  /// The `REPE CMPSB` inside the program's string-compare routine, as an
+  /// offset from the image segment.
+  std::uint32_t compare_loop_offset;
 
-/// First and last character byte any entry's comparison can address.
-constexpr std::uint32_t word_chars_first = word_table_offset + 1;
-constexpr std::uint32_t word_chars_last =
-    word_table_offset + (word_table_entries - 1) * word_table_stride +
-    word_length;
+  /// The candidate-word table: length-prefixed entries, a stride apart,
+  /// each `word_length` characters.
+  std::uint32_t word_table_offset;
+  std::uint32_t word_table_stride;
+  std::uint32_t word_table_entries;
+  std::uint32_t word_length;
+
+  /// First and last character byte any entry's comparison can address:
+  /// the span of *characters* the comparison can point at, first byte to
+  /// last, because that span is the whole qualifier.
+  [[nodiscard]] constexpr std::uint32_t word_chars_first() const noexcept {
+    return word_table_offset + 1;
+  }
+  [[nodiscard]] constexpr std::uint32_t word_chars_last() const noexcept {
+    return word_table_offset + (word_table_entries - 1) * word_table_stride +
+           word_length;
+  }
+};
+
+/// Pool of Radiance: thirteen six-character words, twenty-one bytes apart,
+/// and one call into the protection overlay, in the boot's own tail.
+constexpr code_wheel_facts pool_of_radiance_code_wheel{
+    .profile = pool_of_radiance,
+    .challenge_stub_paragraph = 0x001C,
+    .challenge_stub_offset = 0x0025,
+    .compare_loop_offset = 0xBBB0,
+    .word_table_offset = 0xC7C2,
+    .word_table_stride = 21,
+    .word_table_entries = 13,
+    .word_length = 6};
 
 /// The far call into the protection overlay, in the boot's own tail, as
-/// an offset from the image segment — and how many bytes past it the
-/// program goes on at.
-constexpr std::uint16_t challenge_call_offset = 0x0122;
+/// an offset from the image segment. A far call is five bytes, and the
+/// program goes on at the instruction after it.
+constexpr std::uint16_t pool_of_radiance_challenge_call = 0x0122;
 constexpr std::uint16_t challenge_call_length = 5;
 
-/// Where that call goes: the overlay stub's own paragraph, counted from
-/// the image segment, and its offset within it. The two words of the
-/// instruction's operand, and what the handler checks it is looking at
-/// before it jumps over anything.
-constexpr std::uint16_t challenge_stub_paragraph = 0x001C;
-constexpr std::uint16_t challenge_stub_offset = 0x0025;
+constexpr auto code_wheel_binaries =
+    fingerprints_of(std::array{&pool_of_radiance});
 
 /// `offset + by`, wrapping in the segment as the program's own
 /// addressing does.
@@ -168,6 +189,7 @@ constexpr std::uint16_t challenge_stub_offset = 0x0025;
 
 /// The compare loop: watch for the player getting it right, and do
 /// nothing else, ever.
+template <const code_wheel_facts& F>
 void watch_the_answer(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   cpu::registers& regs = cpu.regs();
@@ -180,7 +202,8 @@ void watch_the_answer(machine& box, seam_context& ctx) {
   const std::uint16_t di = regs[cpu::reg16::di];
   const std::uint32_t expected = cpu::physical_address(es, di);
   const std::uint32_t base = ctx.image_base();
-  if (expected < base + word_chars_first || expected > base + word_chars_last) {
+  if (expected < base + F.word_chars_first() ||
+      expected > base + F.word_chars_last()) {
     // Some other string comparison, of which this program makes many.
     return;
   }
@@ -192,7 +215,7 @@ void watch_the_answer(machine& box, seam_context& ctx) {
   }
 
   const std::uint16_t count = regs[cpu::reg16::cx];
-  if (count > word_length) {
+  if (count > F.word_length) {
     // The routine puts the *smaller* length in CX and these words are
     // six characters, so a longer count is not the comparison this
     // seam's facts describe. Decline, and touch nothing.
@@ -226,6 +249,7 @@ void watch_the_answer(machine& box, seam_context& ctx) {
 
 /// The boot's call into the protection overlay: once the challenge has
 /// been answered, go on at the instruction after it.
+template <const code_wheel_facts& F>
 void skip_the_challenge(machine& box, seam_context& ctx) {
   if (!box.seams().code_wheel_answered()) {
     // Not yet. The program calls its own routine and asks, which is the
@@ -246,9 +270,9 @@ void skip_the_challenge(machine& box, seam_context& ctx) {
   const std::uint16_t target_segment = cpu.read_word(cs, at(ip, 3));
   const auto image_paragraph =
       static_cast<std::uint16_t>(ctx.image_base() / 16U);
-  if (target_offset != challenge_stub_offset ||
-      target_segment != static_cast<std::uint16_t>(image_paragraph +
-                                                   challenge_stub_paragraph)) {
+  if (target_offset != F.challenge_stub_offset ||
+      target_segment != static_cast<std::uint16_t>(
+                            image_paragraph + F.challenge_stub_paragraph)) {
     // Not the instruction these facts describe. Decline and touch
     // nothing: a seam that jumped five bytes over something else would
     // do its damage three layers from here.
@@ -262,19 +286,19 @@ void skip_the_challenge(machine& box, seam_context& ctx) {
 /// Both points are in the resident image (seam.h: neither the compare
 /// loop nor the boot's own tail can be overlaid), so both are qualified
 /// by `resident_image` and both offsets are from the image segment.
-constexpr std::array<seam_point, 2> code_wheel_points{
+constexpr std::array<seam_point, 2> pool_of_radiance_code_wheel_points{
     {{.module = resident_image,
-      .offset = compare_loop_offset,
-      .run = &watch_the_answer},
+      .offset = pool_of_radiance_code_wheel.compare_loop_offset,
+      .run = &watch_the_answer<pool_of_radiance_code_wheel>},
      {.module = resident_image,
-      .offset = challenge_call_offset,
-      .run = &skip_the_challenge}}};
+      .offset = pool_of_radiance_challenge_call,
+      .run = &skip_the_challenge<pool_of_radiance_code_wheel>}}};
 
 constexpr seam_definition code_wheel_definition{
     .id = "code-wheel",
     .about = "answer the code-wheel challenge once, and never be asked again",
     .fingerprints = code_wheel_binaries,
-    .points = code_wheel_points,
+    .points = pool_of_radiance_code_wheel_points,
     // **No gate** (#290, #291). It had one — `document_kind::code_wheel`,
     // a fingerprint over a PDF of the wheel — from M5-D3 (#171) until the
     // releases sold today turned out to ship a code generator application
