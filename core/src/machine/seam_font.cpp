@@ -227,39 +227,43 @@ void swap_copied_row(machine& box, seam_context& ctx) {
   regs.set(cpu::reg8::ah, text_face::row(Which, index, row));
 }
 
-/// Both fetches, swapped into `Which`.
-template <const font_facts& F, text_face::face Which>
+/// Both fetches, swapped by `Run`.
+template <const font_facts& F, seam_handler Run>
 constexpr std::array<seam_point, 2> fetched_row_points{
     {{.module = resident_image,
       .offset = F.row_fetched_offsets[0],
-      .run = &swap_row<F, Which>,
+      .run = Run,
       .inside_calls = true},
      {.module = resident_image,
       .offset = F.row_fetched_offsets[1],
-      .run = &swap_row<F, Which>,
+      .run = Run,
       .inside_calls = true}}};
 
 constexpr const auto& sans_points =
-    fetched_row_points<pool_of_radiance_font, text_face::face::sans>;
-constexpr const auto& chisel_points =
-    fetched_row_points<pool_of_radiance_font, text_face::face::chisel>;
+    fetched_row_points<pool_of_radiance_font,
+                       &swap_row<pool_of_radiance_font, text_face::face::sans>>;
+constexpr const auto& chisel_points = fetched_row_points<
+    pool_of_radiance_font,
+    &swap_row<pool_of_radiance_font, text_face::face::chisel>>;
 
-/// The one read out of the copy, swapped into `Which`.
-template <const font_facts& F, text_face::face Which>
+/// The one read out of the copy, swapped by `Run`.
+template <const font_facts& F, seam_handler Run>
 constexpr std::array<seam_point, 1> copied_row_points{
     {{.module = resident_image,
       .offset = F.row_copied_offset,
-      .run = &swap_copied_row<F, Which>,
+      .run = Run,
       .inside_calls = true}}};
 
 /// The points on every program but the baseline, whose points are the
 /// definition's own (seam.h, schema 9).
 constexpr std::array<seam_program_points, 1> sans_programs{
     {{.fingerprint = curse_of_the_azure_bonds.fingerprint,
-      .points = copied_row_points<curse_font, text_face::face::sans>}}};
+      .points = copied_row_points<
+          curse_font, &swap_copied_row<curse_font, text_face::face::sans>>}}};
 constexpr std::array<seam_program_points, 1> chisel_programs{
     {{.fingerprint = curse_of_the_azure_bonds.fingerprint,
-      .points = copied_row_points<curse_font, text_face::face::chisel>}}};
+      .points = copied_row_points<
+          curse_font, &swap_copied_row<curse_font, text_face::face::chisel>>}}};
 
 /// The group the faces share: at most one is on.
 constexpr std::string_view font_group = "font";
