@@ -499,16 +499,18 @@ watches or calls (the keyboard's two entries, the clears, the frame and
 string drawers, the command-bar thunk, the roster drawer and the screen
 composer), the overlay modules with their load-segment words, and the
 menu-bar routine's and the adventuring loop's shared offsets. Each is
-stated once. Only Pool of Radiance has a profile (`pool_of_radiance`),
-and `find_program_profile()` answers null for anything else.
+stated once. Pool of Radiance has a profile (`pool_of_radiance`) and
+Curse of the Azure Bonds a partial one (`curse_of_the_azure_bonds`, the
+members its ported seams and reads use); `find_program_profile()` answers
+null for anything else.
 
 A seam's `fingerprints` are the fingerprints of the profiles its facts
 are about (`fingerprints_of()`): each seam file names its program once
 (`constexpr const program_profile& profile = pool_of_radiance;`) and
 reads the shared facts through it. A seam's own facts, the ones no other
-file reads, stay in its own file beside its mechanism. The scene and
-screen-text reads check the program the same way and answer
-`wrong_binary` for one without a profile. `ProgramProfile.*` in
+file reads, stay in its own file beside its mechanism, one row per
+program. The scene and screen-text reads pick their row the same way and
+answer `wrong_binary` for a program without one. `ProgramProfile.*` in
 `tests/core/machine/program_profile_test.cpp` checks that every seam is
 available only on programs that have one.
 

@@ -24,11 +24,18 @@ namespace {
 // The facts
 // ---------------------------------------------------------------------------
 
-/// The program whose font this read finds (program_profile.h): the
-/// baseline edition, and only it. The font is where the seams read it
-/// from (seams.md §10, the zone label): the far pointer in the data
-/// segment.
-constexpr const program_profile& profile = pool_of_radiance;
+/// The program whose font this read finds (program_profile.h): any program
+/// whose profile has the far pointer to it in the data segment, which is
+/// where the seams read it from (seams.md §10, the zone label). Both the
+/// programs with a profile draw every menu and message from one table of
+/// sixty-four 8x8 glyphs, indexed by the character upper-cased modulo
+/// sixty-four.
+[[nodiscard]] const program_profile* font_profile(
+    const sha256_digest& program) noexcept {
+  const program_profile* profile = find_program_profile(program);
+  return profile != nullptr && profile->data_font_pointer != 0 ? profile
+                                                               : nullptr;
+}
 
 // ---------------------------------------------------------------------------
 // The matcher
@@ -218,9 +225,11 @@ screen_text_trouble read_screen_text(const machine& box,
   if (!seams.have_program()) {
     return screen_text_trouble::no_program;
   }
-  if (!digest_is(seams.program(), profile.fingerprint)) {
+  const program_profile* found = font_profile(seams.program());
+  if (found == nullptr) {
     return screen_text_trouble::wrong_binary;
   }
+  const program_profile& profile = *found;
 
   // The far pointer, and the glyphs it names, straight out of RAM: a read
   // of the machine's storage and not a bus cycle, so nothing the program
