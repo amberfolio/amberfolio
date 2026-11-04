@@ -321,30 +321,57 @@ namespace {
 // The facts
 // ---------------------------------------------------------------------------
 
-/// The program this seam's facts are about (program_profile.h): the
-/// baseline edition, and only it. The seam is available on it and on no
-/// other binary.
-constexpr const program_profile& profile = pool_of_radiance;
-constexpr auto journal_binaries = fingerprints_of(std::array{&profile});
+/// One program's facts, the ones this seam alone acts on; the ones other
+/// files act on too are its `profile` (program_profile.h). Every handler
+/// below is handed the row of the program it is running on, and the
+/// definition names each program's points (#555).
+struct journal_facts {
+  const program_profile& profile;
 
-/// **The points**, as offsets from the image segment, all in the resident
-/// image. Five of them are the profile's, and the automap's points too, so
-/// those have been
-/// reached on a driven run of the real program since before this file
-/// existed; the sixth is the message box, and #232 is the run that
-/// reached it.
-constexpr std::uint32_t message_box_entry = 0x77F8;
+  /// **The message box**, as an offset from the image segment, in the
+  /// resident image: the routine every word of a script's narration goes
+  /// through (#232).
+  std::uint16_t message_box_entry;
 
-/// The message box's frame at its entry, in the same convention: the far
-/// return address on top, then the arguments with the first of them
-/// nearest SP — the string, then the flag that says to home the cursor
-/// and clear the box, then the colour, then the box's own four cells.
-/// Only the first three are wanted here; the colour and the cells were
-/// read on the run that found this address and are what identified it as
-/// the message panel's own box, which is why they are named and not taken.
-constexpr std::uint16_t box_frame_string_offset = 4;
-constexpr std::uint16_t box_frame_string_segment = 6;
-constexpr std::uint16_t box_frame_clear = 8;
+  /// The message box's frame at its entry: the far return address on top,
+  /// then the arguments with the first of them nearest SP — the string,
+  /// then the flag that says to home the cursor and clear the box, then
+  /// the colour, then the box's own four cells. Only the first three are
+  /// wanted here; the colour and the cells were read on the run that found
+  /// the address and are what identified it as the message panel's own
+  /// box, which is why they are named and not taken.
+  std::uint16_t box_frame_string_offset;
+  std::uint16_t box_frame_string_segment;
+  std::uint16_t box_frame_clear;
+
+  /// Whether the flag is read as a byte rather than a word. A caller that
+  /// pushes the flag as `mov al, n` and `push ax` hands the routine a word
+  /// whose high byte is whatever AH held, and a routine that reads the
+  /// flag as a byte never looks at it; so a seam that read the word would
+  /// see a boundary the program did not.
+  bool box_clear_is_byte;
+
+  /// Where the adventuring loop keeps the menu-bar routine's out-parameter,
+  /// below its own frame pointer. Zero means "a letter was selected off
+  /// the bar", which is the only case this seam has any business in:
+  /// anything else is a movement key or a key the routine handled itself.
+  std::uint16_t frame_out_flag;
+};
+
+/// Pool of Radiance, the baseline edition. Five of the resident points are
+/// the profile's, and the automap's points too, so those have been reached
+/// on a driven run of the real program since before this file existed;
+/// the sixth is the message box, and #232 is the run that reached it.
+constexpr journal_facts pool_of_radiance_journal{.profile = pool_of_radiance,
+                                                 .message_box_entry = 0x77F8,
+                                                 .box_frame_string_offset = 4,
+                                                 .box_frame_string_segment = 6,
+                                                 .box_frame_clear = 8,
+                                                 .box_clear_is_byte = false,
+                                                 .frame_out_flag = 0x04};
+
+constexpr auto journal_binaries =
+    fingerprints_of(std::array{&pool_of_radiance});
 
 /// The longest Pascal string there can be, which is what the box takes.
 constexpr std::size_t longest_message = 255;
@@ -463,11 +490,8 @@ static_assert(art_ramp[journal_art_paper] == colour_black,
 /// screen in characters.
 constexpr std::uint8_t menu_bar_capacity = 40;
 
-/// Where the loop keeps the routine's out-parameter, below its own frame
-/// pointer. Zero means "a letter was selected off the bar", which is the
-/// only case this seam has any business in: anything else is a movement
-/// key or a key the routine handled itself.
-constexpr std::uint16_t frame_out_flag = 0x04;
+// Where the loop keeps the routine's out-parameter is each program's
+// (`journal_facts::frame_out_flag`).
 
 // --- The journal's own screen (M5-E4b, #222) -------------------------------
 //
@@ -695,10 +719,11 @@ constexpr std::uint8_t notes_key_ascii = 'N';
 /// Zero — which is never a data segment, because that is the interrupt
 /// vector table — when it is not, and every handler treats that as a
 /// decline.
-[[nodiscard]] std::uint16_t data_segment(cpu::processor& cpu,
+[[nodiscard]] std::uint16_t data_segment(const journal_facts& f,
+                                         cpu::processor& cpu,
                                          const seam_context& ctx) noexcept {
   const auto expected = static_cast<std::uint16_t>(
-      (ctx.image_base() + profile.dgroup_offset()) / 16U);
+      (ctx.image_base() + f.profile.dgroup_offset()) / 16U);
   const std::uint16_t ds = cpu.regs()[cpu::sreg::ds];
   return ds == expected ? ds : 0;
 }
@@ -732,10 +757,11 @@ struct far_pointer {
 /// Whether the screen the program is showing has a party roster on it,
 /// which is the only screen whose right-hand panel is this seam's to take
 /// and — the part that matters — to give back.
-[[nodiscard]] bool has_roster(cpu::processor& cpu, std::uint16_t ds) {
-  const std::uint8_t mode = cpu.read_byte(ds, profile.data_game_mode);
-  return mode == profile.mode_camp || mode == profile.mode_travel ||
-         mode == profile.mode_adventure;
+[[nodiscard]] bool has_roster(const journal_facts& f, cpu::processor& cpu,
+                              std::uint16_t ds) {
+  const std::uint8_t mode = cpu.read_byte(ds, f.profile.data_game_mode);
+  return mode == f.profile.mode_camp || mode == f.profile.mode_travel ||
+         mode == f.profile.mode_adventure;
 }
 
 // ---------------------------------------------------------------------------
@@ -1625,10 +1651,10 @@ enum class claimable : std::uint8_t {
 /// their count, never while the program's own pushback slot is armed
 /// because the two halves of an extended key have to stay adjacent, and
 /// the whole keystroke word rather than the character.
-[[nodiscard]] claimable claim_key(cpu::processor& cpu, std::uint16_t ds,
-                                  journal_reader_mode mode, bool bar_keys,
-                                  std::uint16_t& taken) {
-  if (cpu.read_byte(ds, profile.data_key_pushback) != 0) {
+[[nodiscard]] claimable claim_key(const journal_facts& f, cpu::processor& cpu,
+                                  std::uint16_t ds, journal_reader_mode mode,
+                                  bool bar_keys, std::uint16_t& taken) {
+  if (cpu.read_byte(ds, f.profile.data_key_pushback) != 0) {
     return claimable::none;
   }
   const std::uint16_t head =
@@ -1664,9 +1690,10 @@ enum class claimable : std::uint8_t {
 // ---------------------------------------------------------------------------
 
 /// Draw one string with the program's own string drawer.
-[[nodiscard]] bool draw_line(seam_context& ctx, std::uint16_t image,
-                             list_line& line, std::uint16_t colour,
-                             std::uint16_t row, std::uint16_t column) {
+[[nodiscard]] bool draw_line(const journal_facts& f, seam_context& ctx,
+                             std::uint16_t image, list_line& line,
+                             std::uint16_t colour, std::uint16_t row,
+                             std::uint16_t column) {
   std::uint16_t segment = 0;
   std::uint16_t offset = 0;
   if (!ctx.place_bytes(line.bytes(), segment, offset)) {
@@ -1674,7 +1701,7 @@ enum class claimable : std::uint8_t {
   }
   const std::array<std::uint16_t, 5> where{column, row, colour, segment,
                                            offset};
-  return ctx.call_program(image, profile.draw_string_entry, where);
+  return ctx.call_program(image, f.profile.draw_string_entry, where);
 }
 
 /// The reader's own command bar (M5-E4f, #317).
@@ -1841,10 +1868,11 @@ constexpr auto bar_selected_key_colour =
 /// A batch queues twelve calls and places 256 bytes (`seam.h`), so the
 /// extra calls are extra bytes of string each and are budgeted where the
 /// rows are: `list_rows_per_pass` and `page_rows_per_pass`.
-[[nodiscard]] bool draw_the_bar(seam_context& ctx, std::uint16_t image,
-                                list_line& line, const bar_word_set& words,
+[[nodiscard]] bool draw_the_bar(const journal_facts& f, seam_context& ctx,
+                                std::uint16_t image, list_line& line,
+                                const bar_word_set& words,
                                 const bar_look& look) {
-  if (!draw_line(ctx, image, line, bar_word_colour, list_exit_row,
+  if (!draw_line(f, ctx, image, line, bar_word_colour, list_exit_row,
                  list_exit_column)) {
     return false;
   }
@@ -1862,13 +1890,13 @@ constexpr auto bar_selected_key_colour =
       // way, as the program's own bars of one are.
       list_line lit;
       lit.add(word);
-      if (!draw_line(ctx, image, lit, bar_selected_key_colour, list_exit_row,
+      if (!draw_line(f, ctx, image, lit, bar_selected_key_colour, list_exit_row,
                      at_column)) {
         return false;
       }
       list_line tail;
       tail.add(word.substr(1));
-      if (!draw_line(ctx, image, tail, bar_selected_colour, list_exit_row,
+      if (!draw_line(f, ctx, image, tail, bar_selected_colour, list_exit_row,
                      static_cast<std::uint16_t>(at_column + 1U))) {
         return false;
       }
@@ -1876,7 +1904,7 @@ constexpr auto bar_selected_key_colour =
     }
     list_line initial;
     initial.add(word.substr(0, 1));
-    if (!draw_line(ctx, image, initial, bar_key_colour, list_exit_row,
+    if (!draw_line(f, ctx, image, initial, bar_key_colour, list_exit_row,
                    at_column)) {
       return false;
     }
@@ -1894,7 +1922,8 @@ constexpr auto bar_selected_key_colour =
 /// fit, and says whether there is more to do. The program is sitting in
 /// its own key loop while this happens and draws nothing itself, so a
 /// screen that arrives in two pieces arrives in two pieces of one frame.
-[[nodiscard]] bool draw_the_list(machine& box, seam_context& ctx) {
+[[nodiscard]] bool draw_the_list(const journal_facts& f, machine& box,
+                                 seam_context& ctx) {
   journal_state& state = box.journal();
   const auto image = static_cast<std::uint16_t>(ctx.image_base() / 16U);
   const std::span<const journal_seen_row> rows = state.seen();
@@ -1912,7 +1941,7 @@ constexpr auto bar_selected_key_colour =
     // is the shape M5-E1e's residue (#298) taught.
     const std::array<std::uint16_t, 4> clear{
         list_frame_left, list_frame_top, list_frame_right, list_frame_bottom};
-    if (!ctx.call_program(image, profile.clear_region_entry, clear)) {
+    if (!ctx.call_program(image, f.profile.clear_region_entry, clear)) {
       return false;
     }
     list_line title;
@@ -1926,7 +1955,7 @@ constexpr auto bar_selected_key_colour =
         list_frame_left,   list_frame_top,   list_frame_right,
         list_frame_bottom, list_frame_style, list_title_colour,
         title_segment,     title_offset};
-    if (!ctx.call_program(image, profile.draw_frame_entry, frame)) {
+    if (!ctx.call_program(image, f.profile.draw_frame_entry, frame)) {
       return false;
     }
     if (rows.empty()) {
@@ -1935,11 +1964,12 @@ constexpr auto bar_selected_key_colour =
       // either side of the one that says so (#341).
       list_line nothing;
       nothing.add("THE GAME HAS NOT SENT YOU HERE YET.");
-      static_cast<void>(draw_line(ctx, image, nothing, list_row_colour,
+      static_cast<void>(draw_line(f, ctx, image, nothing, list_row_colour,
                                   list_first_row + 1, list_name_column));
       const bar_word_set words = active_bar_words(0, 1);
       list_line bar = screen_bar(words, 0, 1, false);
-      return draw_the_bar(ctx, image, bar, words, look_of_the_bar(box, words));
+      return draw_the_bar(f, ctx, image, bar, words,
+                          look_of_the_bar(box, words));
     }
   }
 
@@ -1971,7 +2001,7 @@ constexpr auto bar_selected_key_colour =
     list_line line = list_row_text(row);
     line.pad_to(list_when_column - list_name_column);
     list_row_when(row, line);
-    if (!draw_line(ctx, image, line, colour, at_row, list_name_column)) {
+    if (!draw_line(f, ctx, image, line, colour, at_row, list_name_column)) {
       break;  // the batch is full; the next arrival carries on from here
     }
   }
@@ -1984,7 +2014,7 @@ constexpr auto bar_selected_key_colour =
   const auto list_page_count = static_cast<unsigned>(list_pages(rows.size()));
   const bar_word_set words = active_bar_words(list_page, list_page_count);
   list_line bar = screen_bar(words, list_page, list_page_count, false);
-  return draw_the_bar(ctx, image, bar, words, look_of_the_bar(box, words));
+  return draw_the_bar(f, ctx, image, bar, words, look_of_the_bar(box, words));
 }
 
 /// A page's own numbers, beside the listing's.
@@ -2076,7 +2106,8 @@ struct page_footer_bar {
 /// standing would be read as part of the next page. Doing it per page
 /// costs one call and needs no state to say what is already there, and
 /// what it buys is that no arrangement of pages can leave a residue.
-[[nodiscard]] bool draw_the_page(machine& box, seam_context& ctx) {
+[[nodiscard]] bool draw_the_page(const journal_facts& f, machine& box,
+                                 seam_context& ctx) {
   journal_state& state = box.journal();
   const auto image = static_cast<std::uint16_t>(ctx.image_base() / 16U);
   std::size_t done = state.screen_drawn();
@@ -2104,7 +2135,7 @@ struct page_footer_bar {
   if (done == 0) {
     const std::array<std::uint16_t, 4> clear{
         list_frame_left, list_frame_top, list_frame_right, list_frame_bottom};
-    if (!ctx.call_program(image, profile.clear_region_entry, clear)) {
+    if (!ctx.call_program(image, f.profile.clear_region_entry, clear)) {
       return false;
     }
     list_line title = page_title(state);
@@ -2117,7 +2148,7 @@ struct page_footer_bar {
         list_frame_left,   list_frame_top,   list_frame_right,
         list_frame_bottom, list_frame_style, page_title_colour,
         title_segment,     title_offset};
-    if (!ctx.call_program(image, profile.draw_frame_entry, frame)) {
+    if (!ctx.call_program(image, f.profile.draw_frame_entry, frame)) {
       return false;
     }
     if (picture) {
@@ -2129,7 +2160,7 @@ struct page_footer_bar {
       // and the arrival after this one paints into it — which is #303's
       // ordering with the program first and the seam after.
       page_footer_bar bar = page_footer(page, total, more, false);
-      if (!draw_the_bar(ctx, image, bar.line, bar.words,
+      if (!draw_the_bar(f, ctx, image, bar.line, bar.words,
                         look_of_the_bar(box, bar.words))) {
         return false;
       }
@@ -2146,13 +2177,13 @@ struct page_footer_bar {
         list_line said;
         said.add(line);
         static_cast<void>(
-            draw_line(ctx, image, said, page_body_colour,
+            draw_line(f, ctx, image, said, page_body_colour,
                       static_cast<std::uint16_t>(page_first_row + 8U + nth),
                       page_centred_column(line.size())));
         ++nth;
       }
       page_footer_bar footer = page_footer(page, total, more, false);
-      return draw_the_bar(ctx, image, footer.line, footer.words,
+      return draw_the_bar(f, ctx, image, footer.line, footer.words,
                           look_of_the_bar(box, footer.words));
     }
   }
@@ -2172,7 +2203,7 @@ struct page_footer_bar {
       list_line said;
       said.add(line);
       static_cast<void>(
-          draw_line(ctx, image, said, page_body_colour,
+          draw_line(f, ctx, image, said, page_body_colour,
                     static_cast<std::uint16_t>(page_first_row + 8U + line_nth),
                     page_centred_column(line.size())));
       ++line_nth;
@@ -2188,7 +2219,7 @@ struct page_footer_bar {
     }
     list_line row;
     row.add(line);
-    if (!draw_line(ctx, image, row, page_body_colour,
+    if (!draw_line(f, ctx, image, row, page_body_colour,
                    static_cast<std::uint16_t>(page_first_row + done),
                    list_frame_left)) {
       break;  // the batch is full; the next arrival carries on from here
@@ -2200,7 +2231,7 @@ struct page_footer_bar {
   }
 
   page_footer_bar footer = page_footer(page, total, more, state.truncated());
-  return draw_the_bar(ctx, image, footer.line, footer.words,
+  return draw_the_bar(f, ctx, image, footer.line, footer.words,
                       look_of_the_bar(box, footer.words));
 }
 
@@ -2216,7 +2247,8 @@ struct page_footer_bar {
 /// on one, and it starts from the scaffold - so every cell this screen
 /// covered is drawn again, which is what makes it a teardown rather than a
 /// partial one.
-void give_the_screen_back(machine& box, seam_context& ctx) {
+void give_the_screen_back(const journal_facts& f, machine& box,
+                          seam_context& ctx) {
   journal_state& state = box.journal();
   state.set_on_screen(false);
   state.set_drawn_signature(0);
@@ -2230,8 +2262,8 @@ void give_the_screen_back(machine& box, seam_context& ctx) {
   const auto image = static_cast<std::uint16_t>(ctx.image_base() / 16U);
   const std::array<std::uint16_t, 0> nothing{};
   static_cast<void>(ctx.call_program(
-      static_cast<std::uint16_t>(image + profile.screen_paragraph),
-      profile.screen_composer_offset, nothing));
+      static_cast<std::uint16_t>(image + f.profile.screen_paragraph),
+      f.profile.screen_composer_offset, nothing));
 
   // **And one keystroke, so the program redraws its own command bar.**
   // Composing the screen is everything but the bar: the bar belongs to the
@@ -2285,8 +2317,8 @@ void request(machine& box, seam_context& ctx, journal_citation what) {
 
 /// Put the reader away. True when a give-back is on its way through a
 /// batch, which is the caller's cue that nothing else happens this pass.
-[[nodiscard]] bool close_reader(machine& box, seam_context& ctx,
-                                std::uint16_t ds) {
+[[nodiscard]] bool close_reader(const journal_facts& f, machine& box,
+                                seam_context& ctx, std::uint16_t ds) {
   journal_state& state = box.journal();
   // **Anything of this seam's on the glass has to be given back, whether
   // or not the paint finished.** `on_screen()` says the *last* pass of a
@@ -2323,7 +2355,7 @@ void request(machine& box, seam_context& ctx, journal_citation what) {
   if (!was_up) {
     return false;
   }
-  give_the_screen_back(box, ctx);
+  give_the_screen_back(f, box, ctx);
   static_cast<void>(ds);
   return true;
 }
@@ -2529,13 +2561,13 @@ void give_the_rows_the_bar(journal_state& state) {
 /// Return with `modern-controls` on, on whichever bar is up (#471): take the
 /// highlighted command, by the route its letter takes. True when the
 /// screen is on its way back through a batch.
-[[nodiscard]] bool take_the_bar(machine& box, seam_context& ctx,
-                                std::uint16_t ds) {
+[[nodiscard]] bool take_the_bar(const journal_facts& f, machine& box,
+                                seam_context& ctx, std::uint16_t ds) {
   journal_state& state = box.journal();
   const bar_word_set before = bar_words_now(state);
   const std::uint8_t word = before.id[lit_word(before, state.bar_word())];
   if (word == 2) {  // EXIT
-    return close_reader(box, ctx, ds);
+    return close_reader(f, box, ctx, ds);
   }
   turn_the_page(state, word == 0 ? 1 : -1);
   // The bar the new screenful has may not have the word that was
@@ -2551,19 +2583,20 @@ void give_the_rows_the_bar(journal_state& state) {
 /// `claimed` says whether a keystroke was taken off the buffer at all,
 /// which the poll point does not care about and the blocking read must
 /// (`key_ignored_ascii`).
-[[nodiscard]] bool handle_keys(machine& box, seam_context& ctx,
-                               std::uint16_t ds, bool& claimed) {
+[[nodiscard]] bool handle_keys(const journal_facts& f, machine& box,
+                               seam_context& ctx, std::uint16_t ds,
+                               bool& claimed) {
   journal_state& state = box.journal();
   std::uint16_t key = 0;
   const bool bar_keys = modern_controls_on(box);
   const claimable which =
-      claim_key(box.processor(), ds, state.reader(), bar_keys, key);
+      claim_key(f, box.processor(), ds, state.reader(), bar_keys, key);
   claimed = which != claimable::none;
   switch (which) {
     case claimable::none:
       return false;
     case claimable::close:
-      return close_reader(box, ctx, ds);
+      return close_reader(f, box, ctx, ds);
     case claimable::back:
       // Backspace: a screenful back, which is the listing as well as an
       // entry (#319). It used to step `page()` on the listing too, where
@@ -2592,7 +2625,7 @@ void give_the_rows_the_bar(journal_state& state) {
       step_the_bar(state, 1);
       return false;
     case claimable::bar_take:
-      return take_the_bar(box, ctx, ds);
+      return take_the_bar(f, box, ctx, ds);
     case claimable::swallow:
       // Taken off the buffer and dropped. Nothing on the screen changes,
       // so nothing is drawn: the signature the next arrival computes is
@@ -2608,7 +2641,7 @@ void give_the_rows_the_bar(journal_state& state) {
         // The highlight is up, or there are no rows for Return to open
         // (#471): it takes the highlighted command, which is the way out
         // when the log is empty.
-        return take_the_bar(box, ctx, ds);
+        return take_the_bar(f, box, ctx, ds);
       }
       if (rows.empty()) {
         return false;
@@ -2688,11 +2721,12 @@ void fetch_art_if_wanted(machine& box, seam_context& ctx) {
 
 /// Draw the reader if it is up, is not covered, and what would be drawn is
 /// not already there.
-void draw_if_wanted(machine& box, seam_context& ctx, std::uint16_t ds) {
+void draw_if_wanted(const journal_facts& f, machine& box, seam_context& ctx,
+                    std::uint16_t ds) {
   journal_state& state = box.journal();
   cpu::processor& cpu = box.processor();
   if (state.reader() == journal_reader_mode::closed || state.covered() ||
-      !has_roster(cpu, ds)) {
+      !has_roster(f, cpu, ds)) {
     return;
   }
 
@@ -2739,8 +2773,8 @@ void draw_if_wanted(machine& box, seam_context& ctx, std::uint16_t ds) {
   // alone, so the next arrival comes back here and carries on rather than
   // deciding the screen is already right.
   const bool finished = state.reader() == journal_reader_mode::listing
-                            ? draw_the_list(box, ctx)
-                            : draw_the_page(box, ctx);
+                            ? draw_the_list(f, box, ctx)
+                            : draw_the_page(f, box, ctx);
   if (finished) {
     state.set_on_screen(true);
     state.set_drawn_signature(drawn);
@@ -2753,14 +2787,16 @@ void draw_if_wanted(machine& box, seam_context& ctx, std::uint16_t ds) {
 
 /// The workhorse: the program is asking whether a key is waiting, which is
 /// where it is between commands.
+template <const journal_facts& F>
 void at_key_pending(machine& box, seam_context& ctx) {
+  const journal_facts& f = F;
   cpu::processor& cpu = box.processor();
-  const std::uint16_t ds = data_segment(cpu, ctx);
+  const std::uint16_t ds = data_segment(f, cpu, ctx);
   if (ds == 0) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
-  if (!has_roster(cpu, ds)) {
+  if (!has_roster(f, cpu, ds)) {
     // Not a screen this reader can be on, so **its keys are nobody's
     // here**: a key claimed where nothing can be drawn is a key the
     // player pressed and saw no answer to. A screen that is open and not
@@ -2770,12 +2806,12 @@ void at_key_pending(machine& box, seam_context& ctx) {
     return;
   }
   bool claimed = false;
-  if (handle_keys(box, ctx, ds, claimed)) {
+  if (handle_keys(f, box, ctx, ds, claimed)) {
     // The screen is on its way back through a batch. Nothing else this
     // pass.
     return;
   }
-  draw_if_wanted(box, ctx, ds);
+  draw_if_wanted(f, box, ctx, ds);
 }
 
 /// The program is about to wait for a key.
@@ -2800,18 +2836,20 @@ void at_key_pending(machine& box, seam_context& ctx) {
 /// takes and acts on the last one, threw the space away: the screen came
 /// back and the bar never did, on exactly the presses that landed here
 /// rather than at the poll. One keystroke answers a read, whichever it is.
+template <const journal_facts& F>
 void at_key_read(machine& box, seam_context& ctx) {
+  const journal_facts& f = F;
   cpu::processor& cpu = box.processor();
-  const std::uint16_t ds = data_segment(cpu, ctx);
+  const std::uint16_t ds = data_segment(f, cpu, ctx);
   if (ds == 0) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
-  if (!has_roster(cpu, ds)) {
+  if (!has_roster(f, cpu, ds)) {
     return;
   }
   bool claimed = false;
-  const bool batched = handle_keys(box, ctx, ds, claimed);
+  const bool batched = handle_keys(f, box, ctx, ds, claimed);
   if (claimed && no_key_waiting(cpu)) {
     static_cast<void>(
         ctx.inject_keystroke(key_ignored_scan, key_ignored_ascii));
@@ -2819,14 +2857,16 @@ void at_key_read(machine& box, seam_context& ctx) {
   if (batched) {
     return;
   }
-  draw_if_wanted(box, ctx, ds);
+  draw_if_wanted(f, box, ctx, ds);
 }
 
 /// The program is about to put a message in its message box. Is it citing
 /// an entry?
+template <const journal_facts& F>
 void at_message_box(machine& box, seam_context& ctx) {
+  const journal_facts& f = F;
   cpu::processor& cpu = box.processor();
-  const std::uint16_t ds = data_segment(cpu, ctx);
+  const std::uint16_t ds = data_segment(f, cpu, ctx);
   if (ds == 0) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
@@ -2836,8 +2876,8 @@ void at_message_box(machine& box, seam_context& ctx) {
   const std::uint16_t ss = regs[cpu::sreg::ss];
   const std::uint16_t sp = regs[cpu::reg16::sp];
   const far_pointer where{
-      .offset = cpu.read_word(ss, at(sp, box_frame_string_offset)),
-      .segment = cpu.read_word(ss, at(sp, box_frame_string_segment))};
+      .offset = cpu.read_word(ss, at(sp, f.box_frame_string_offset)),
+      .segment = cpu.read_word(ss, at(sp, f.box_frame_string_segment))};
   if (!followable(where, 1)) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
@@ -2851,7 +2891,10 @@ void at_message_box(machine& box, seam_context& ctx) {
   // the same message continuing. Emptying the window here is what stops
   // a number appended to one sentence from being read against the one
   // before it.
-  if (cpu.read_word(ss, at(sp, box_frame_clear)) != 0) {
+  const std::uint16_t clear =
+      f.box_clear_is_byte ? cpu.read_byte(ss, at(sp, f.box_frame_clear))
+                          : cpu.read_word(ss, at(sp, f.box_frame_clear));
+  if (clear != 0) {
     state.forget_citation();
   }
 
@@ -2970,7 +3013,8 @@ void at_roster_drawn(machine& box, seam_context& ctx) {
 /// where the fact table says, a string that is not the shape the facts
 /// say - and the player sees the game's own bar, which is the failure
 /// this mechanism is supposed to have (`docs/seams.md` §2).
-void bar_before(machine& box, seam_context& ctx, std::uint16_t bar) {
+void bar_before(const journal_facts& f, machine& box, seam_context& ctx,
+                std::uint16_t bar) {
   // **The party's own bar routine is live from here**, which is what
   // says a seam may take the whole screen and give it back (#305,
   // `journal.h`'s `bar_live()`). Recorded before anything is checked,
@@ -2980,7 +3024,7 @@ void bar_before(machine& box, seam_context& ctx, std::uint16_t bar) {
   box.journal().set_bar_live(true);
   box.journal().forget_bar_highlight();
   cpu::processor& cpu = box.processor();
-  const std::uint16_t ds = data_segment(cpu, ctx);
+  const std::uint16_t ds = data_segment(f, cpu, ctx);
   if (ds == 0) {
     return;
   }
@@ -2991,7 +3035,7 @@ void bar_before(machine& box, seam_context& ctx, std::uint16_t bar) {
   // matched is this seam's. Read before the splice, because after it the
   // bar is not the program's.
   box.journal().note_bar_highlight(
-      cpu.read_byte(ds, profile.data_bar_highlight));
+      cpu.read_byte(ds, f.profile.data_bar_highlight));
   static_cast<void>(splice_in(cpu, ds, bar));
 }
 
@@ -3036,10 +3080,11 @@ void bar_before(machine& box, seam_context& ctx, std::uint16_t bar) {
 /// seam wrote, `bar_highlight_known()` says whether the pass in was this
 /// seam's, and nothing is written unless both hold and the command chosen
 /// was `Notes` - so a run that never opens the journal never writes here.
-void bar_after(machine& box, seam_context& ctx, std::uint16_t bar) {
+void bar_after(const journal_facts& f, machine& box, seam_context& ctx,
+               std::uint16_t bar) {
   box.journal().set_bar_live(false);
   cpu::processor& cpu = box.processor();
-  const std::uint16_t ds = data_segment(cpu, ctx);
+  const std::uint16_t ds = data_segment(f, cpu, ctx);
   if (ds == 0) {
     return;
   }
@@ -3048,13 +3093,13 @@ void bar_after(machine& box, seam_context& ctx, std::uint16_t bar) {
   const cpu::registers& regs = cpu.regs();
   const std::uint8_t out_flag = cpu.read_byte(
       regs[cpu::sreg::ss],
-      static_cast<std::uint16_t>(regs[cpu::reg16::bp] - frame_out_flag));
+      static_cast<std::uint16_t>(regs[cpu::reg16::bp] - f.frame_out_flag));
   if (out_flag != 0 || regs.get(cpu::reg8::al) != notes_key_ascii) {
     return;
   }
   journal_state& state = box.journal();
   if (was_spliced && state.bar_highlight_known()) {
-    cpu.write_byte(ds, profile.data_bar_highlight, state.bar_highlight());
+    cpu.write_byte(ds, f.profile.data_bar_highlight, state.bar_highlight());
   }
   if (state.reader() != journal_reader_mode::closed) {
     return;
@@ -3062,57 +3107,61 @@ void bar_after(machine& box, seam_context& ctx, std::uint16_t bar) {
   state.set_reader(journal_reader_mode::listing);
 }
 
+template <const journal_facts& F>
 void at_area_bar_before(machine& box, seam_context& ctx) {
-  bar_before(box, ctx, profile.data_area_bar);
+  bar_before(F, box, ctx, F.profile.data_area_bar);
 }
 
+template <const journal_facts& F>
 void at_area_bar_after(machine& box, seam_context& ctx) {
-  bar_after(box, ctx, profile.data_area_bar);
+  bar_after(F, box, ctx, F.profile.data_area_bar);
 }
 
+template <const journal_facts& F>
 void at_view_bar_before(machine& box, seam_context& ctx) {
-  bar_before(box, ctx, profile.data_view_bar);
+  bar_before(F, box, ctx, F.profile.data_view_bar);
 }
 
+template <const journal_facts& F>
 void at_view_bar_after(machine& box, seam_context& ctx) {
-  bar_after(box, ctx, profile.data_view_bar);
+  bar_after(F, box, ctx, F.profile.data_view_bar);
 }
 
 constexpr std::array<seam_point, 10> journal_points{
     {{.module = resident_image,
-      .offset = profile.key_pending_entry,
-      .run = &at_key_pending},
+      .offset = pool_of_radiance.key_pending_entry,
+      .run = &at_key_pending<pool_of_radiance_journal>},
      {.module = resident_image,
-      .offset = profile.key_read_entry,
-      .run = &at_key_read},
+      .offset = pool_of_radiance.key_read_entry,
+      .run = &at_key_read<pool_of_radiance_journal>},
      {.module = resident_image,
-      .offset = message_box_entry,
-      .run = &at_message_box},
+      .offset = pool_of_radiance_journal.message_box_entry,
+      .run = &at_message_box<pool_of_radiance_journal>},
      {.module = resident_image,
-      .offset = profile.clear_region_entry,
+      .offset = pool_of_radiance.clear_region_entry,
       .run = &at_clear_region},
      {.module = resident_image,
-      .offset = profile.clear_screen_entry,
+      .offset = pool_of_radiance.clear_screen_entry,
       .run = &at_clear_screen},
      {.module = resident_image,
-      .offset = profile.roster_drawn_return,
+      .offset = pool_of_radiance.roster_drawn_return,
       .run = &at_roster_drawn},
      // The four that put `Notes` on the party's own bar (#221). A pair per
      // view mode, and both pairs are in the adventuring loop's own module
      // rather than the resident image - which is what makes the splice
      // come out in the same call that drew it.
-     {.module = profile.adventure_overlay,
-      .offset = profile.area_bar_call,
-      .run = &at_area_bar_before},
-     {.module = profile.adventure_overlay,
-      .offset = profile.area_bar_return,
-      .run = &at_area_bar_after},
-     {.module = profile.adventure_overlay,
-      .offset = profile.view_bar_call,
-      .run = &at_view_bar_before},
-     {.module = profile.adventure_overlay,
-      .offset = profile.view_bar_return,
-      .run = &at_view_bar_after}}};
+     {.module = pool_of_radiance.adventure_overlay,
+      .offset = pool_of_radiance.area_bar_call,
+      .run = &at_area_bar_before<pool_of_radiance_journal>},
+     {.module = pool_of_radiance.adventure_overlay,
+      .offset = pool_of_radiance.area_bar_return,
+      .run = &at_area_bar_after<pool_of_radiance_journal>},
+     {.module = pool_of_radiance.adventure_overlay,
+      .offset = pool_of_radiance.view_bar_call,
+      .run = &at_view_bar_before<pool_of_radiance_journal>},
+     {.module = pool_of_radiance.adventure_overlay,
+      .offset = pool_of_radiance.view_bar_return,
+      .run = &at_view_bar_after<pool_of_radiance_journal>}}};
 
 /// **Ungated**, and that is a decision rather than an omission.
 ///
