@@ -141,6 +141,21 @@ constexpr aim_watch_facts pool_of_radiance_aim_watch{
     .manual_attack = 0x10,
     .manual_line = -0x39};
 
+/// Curse of the Azure Bonds (#555): overlay 14. Target to target is the
+/// routine at `0x3027`, manual the one at `0x3395`; both frames' arguments
+/// sit two bytes further up than Pool of Radiance's, and the locals are
+/// where Pool of Radiance keeps them.
+constexpr aim_watch_facts curse_aim_watch{.profile = curse_of_the_azure_bonds,
+                                          .target_decided = 0x314C,
+                                          .target_returned = 0x31CC,
+                                          .manual_line_ends = 0x3522,
+                                          .manual_decided = 0x36B3,
+                                          .manual_returned = 0x3721,
+                                          .target_attack = 0x0A,
+                                          .target_bar = -0x2A,
+                                          .manual_attack = 0x12,
+                                          .manual_line = -0x39};
+
 struct frame {
   std::uint16_t segment;
   std::uint16_t bp;
@@ -226,10 +241,17 @@ constexpr std::array<seam_point, 5> aim_watch_point_table =
     aim_watch_points_of<pool_of_radiance_aim_watch>();
 static_assert(aim_watch_point_table.size() == aim_watch_point_count);
 
+constexpr std::array<seam_point, 5> curse_aim_watch_point_table =
+    aim_watch_points_of<curse_aim_watch>();
+
 }  // namespace
 
 std::span<const seam_point> aim_watch_points() noexcept {
   return aim_watch_point_table;
+}
+
+std::span<const seam_point> curse_aim_watch_points() noexcept {
+  return curse_aim_watch_point_table;
 }
 
 bool aim_watch_now(const machine& box, scene_aim_frame& out) noexcept {

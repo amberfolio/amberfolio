@@ -126,7 +126,7 @@ frame that carries an input is checkpointed whatever the cadence says.
 
 ### Curse of the Azure Bonds
 
-Nineteen sessions, `curse-*`, on the Steam copy at `--speed 386` and
+Twenty-four sessions, `curse-*`, on the Steam copy at `--speed 386` and
 `--wall none` (#554). Every one is `disk external`: `curse-load` is
 pinned to the disk `curse-save` wrote (the `curse-saved` snapshot), the
 two `curse-journey` sessions to a disk with the party saved in slot D
@@ -135,8 +135,13 @@ shipped slots A and B (`curse-slots`).
 `docs/playable-curse.md` has the legs and the table; the pairs are the
 cheats': `curse-quiet-cheats` `identical curse-quiet` (all three on,
 none pulled), and `curse-fight-cheat`, `curse-fight-kill`, `curse-camp-wound` and
-`curse-journey-kill` each a `contrast` with the run it differs from. The
-other thirteen are the legs with no seam: a new character, a purchase, a
+`curse-journey-kill` each a `contrast` with the run it differs from; and
+`modern-controls`' (#555): `curse-quiet-controls` `identical curse-quiet`
+(on, none of its keys pressed: on this program none of its pieces draws
+on sight), `curse-camp-arrows` `contrast curse-camp-keys` (the arrows and
+Escape at the camp bar and its Yes/No question) and `curse-name-arrows`
+`contrast curse-name-keys` (the arrows at creation's lists and in the
+name). The other fifteen are the legs with no seam: a new character, a purchase, a
 cure at the temple, the game's own Fix, the royal carriage, a journey
 on the overland map, and the rest. Each verifies on the desktop host and on the wasm module
 (`drive.mjs --install '\CURSE' --replay`).
@@ -153,7 +158,7 @@ on the overland map, and the rest. Each verifies on the desktop host and on the 
 | `journal` | `reader`, `notes`, `cite` | `quiet-journal` (a `contrast`) |
 | `explored` | `wild-trail` | `quiet-explored` |
 | the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party`; on Curse `curse-fight-cheat`, `curse-fight-kill`, `curse-camp-wound` | `quiet-cheats`; on Curse `curse-quiet-cheats` |
-| `modern-controls` | `list-down-arrows`, `camp-down-arrows`, `camp-pad-arrows`, `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys`, `bar-esc-keys`, `bar-script-keys`, `bar-portrait-keys`, `menu-down-cursor`, `move-walk-mode`, `door-pick-3`, `list-keys-yellow`, `name-arrows-edit` (each a `contrast`; `door-pick-3` has the seam on at both ends and differs by its keys) | none can exist: three of its pieces draw on sight, so `quiet-modern-controls`, `menu-letters-cursor` and `quiet-all-on-sight` are `contrast`s too (the pair is a `contrast`, as the faces' is) |
+| `modern-controls` | `list-down-arrows`, `camp-down-arrows`, `camp-pad-arrows`, `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys`, `bar-esc-keys`, `bar-script-keys`, `bar-portrait-keys`, `menu-down-cursor`, `move-walk-mode`, `door-pick-3`, `list-keys-yellow`, `name-arrows-edit` (each a `contrast`; `door-pick-3` has the seam on at both ends and differs by its keys); on Curse `curse-camp-arrows`, `curse-name-arrows` | none can exist: three of its pieces draw on sight, so `quiet-modern-controls`, `menu-letters-cursor` and `quiet-all-on-sight` are `contrast`s too (the pair is a `contrast`, as the faces' is). On Curse, where those three are not ported, `curse-quiet-controls` |
 | `quick-steps` | `walk-quick` | `menu-letters-quick`. Not in `quiet-all`: `quiet`'s movement keys click |
 | `message-pause` | `fight-pause` | `quiet-message-pause`, and `quiet-all` |
 | `fanfare` | `quiet-fanfare` (a `contrast`) | none can exist: every boot runs the titles, where it starts. Not in `quiet-all` |

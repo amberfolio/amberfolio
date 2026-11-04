@@ -140,6 +140,11 @@ struct edit_keys_facts {
 constexpr edit_keys_facts pool_of_radiance_edit_keys{
     .profile = pool_of_radiance, .editor_after_read = 0x7AC0};
 
+/// Curse of the Azure Bonds (#555): the editor's entry is image `0x53F6`;
+/// its call into the program's key read is the five bytes before this.
+constexpr edit_keys_facts curse_edit_keys{.profile = curse_of_the_azure_bonds,
+                                          .editor_after_read = 0x5447};
+
 /// The editor has just been handed AL by the program's key read. If it is
 /// the zero that starts an extended key, and the read has kept the scan code
 /// for the next one, throw the scan code away.
@@ -174,10 +179,17 @@ constexpr std::array<seam_point, 1> edit_keys_point_table =
     edit_keys_points_of<pool_of_radiance_edit_keys>();
 static_assert(edit_keys_point_table.size() == edit_keys_point_count);
 
+constexpr std::array<seam_point, 1> curse_edit_keys_point_table =
+    edit_keys_points_of<curse_edit_keys>();
+
 }  // namespace
 
 std::span<const seam_point> edit_keys_points() noexcept {
   return edit_keys_point_table;
+}
+
+std::span<const seam_point> curse_edit_keys_points() noexcept {
+  return curse_edit_keys_point_table;
 }
 
 }  // namespace amberfolio::machine

@@ -89,6 +89,11 @@ struct text_entry_facts {
 constexpr text_entry_facts pool_of_radiance_text_entry{.editor_entry = 0x7A73,
                                                        .editor_return = 0x7BF3};
 
+/// Curse of the Azure Bonds (#555): `push bp` at image `0x53F6`, the one
+/// `retf 0Ah` at `0x5584`.
+constexpr text_entry_facts curse_text_entry{.editor_entry = 0x53F6,
+                                            .editor_return = 0x5584};
+
 void reading_begins(machine& /*box*/, seam_context& ctx) {
   ctx.set_scratch(text_entry_scratch, 1);
 }
@@ -111,10 +116,17 @@ constexpr std::array<seam_point, 2> text_entry_point_table =
     text_entry_points_of<pool_of_radiance_text_entry>();
 static_assert(text_entry_point_table.size() == text_entry_point_count);
 
+constexpr std::array<seam_point, 2> curse_text_entry_point_table =
+    text_entry_points_of<curse_text_entry>();
+
 }  // namespace
 
 std::span<const seam_point> text_entry_points() noexcept {
   return text_entry_point_table;
+}
+
+std::span<const seam_point> curse_text_entry_points() noexcept {
+  return curse_text_entry_point_table;
 }
 
 text_entry text_entry_now(const machine& box) noexcept {

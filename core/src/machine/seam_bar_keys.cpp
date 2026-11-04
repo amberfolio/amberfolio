@@ -443,6 +443,61 @@ constexpr bar_keys_facts pool_of_radiance_bar_keys{
     .picker_takes_enter = true,
     .arrow_callers = pool_of_radiance_arrow_callers};
 
+// --- Curse of the Azure Bonds ---------------------------------------------
+
+constexpr const program_profile& curse = curse_of_the_azure_bonds;
+
+/// The Yes/No prompt (overlay 27, a near call from inside it, so the frame
+/// holds the overlay's own segment), and the script runner's call (overlay
+/// 8).
+constexpr std::array<caller, 1> curse_yes_no_caller{
+    {{.load_segment_at = curse.menu_overlay.load_segment_at,
+      .return_offset = 0x1231}}};
+constexpr std::array<caller, 1> curse_script_caller{
+    {{.load_segment_at = curse.script_runner_load_segment_at,
+      .return_offset = 0x1811}}};
+
+/// The callers that keep Left and Right on Curse: the adventuring bar, the
+/// combat command bar and its move loop (both move the fighter on an
+/// arrow), the target bar and the manual aim (an arrow at the target bar
+/// starts the manual aim), the character editor, and the two share
+/// prompts.
+constexpr std::array<caller, 8> curse_arrow_callers{{
+    {.load_segment_at = curse.adventure_overlay.load_segment_at,
+     .return_offset = 0x092C},
+    {.load_segment_at = curse.combat_overlay.load_segment_at,
+     .return_offset = 0x0947},
+    {.load_segment_at = curse.combat_overlay.load_segment_at,
+     .return_offset = 0x0C17},
+    {.load_segment_at = curse.aim_overlay.load_segment_at,
+     .return_offset = 0x31CC},
+    {.load_segment_at = curse.aim_overlay.load_segment_at,
+     .return_offset = 0x3721},
+    {.load_segment_at = curse.roster_overlay.load_segment_at,
+     .return_offset = 0x29AA},
+    {.load_segment_at = curse.post_combat_load_segment_at,
+     .return_offset = 0x0D14},
+    {.load_segment_at = curse.post_combat_load_segment_at,
+     .return_offset = 0x174B},
+}};
+
+/// Curse of the Azure Bonds (#555). **Its routine takes Enter itself**:
+/// with the bar drawn, a Return is handed back as the first letter of the
+/// highlighted group, so there is no Enter here to rewrite and none of the
+/// Enter facts is needed.
+constexpr bar_keys_facts curse_bar_keys{.profile = curse_of_the_azure_bonds,
+                                        .rewrites_enter = false,
+                                        .local_enter_allowed = 0,
+                                        .local_group_count = 0,
+                                        .enter_callers = {},
+                                        .yes_no_caller = curse_yes_no_caller,
+                                        .script_caller = curse_script_caller,
+                                        .runner_allow_enter = 0,
+                                        .pick_list_caller = {},
+                                        .list_callers_dropping_enter = {},
+                                        .picker_takes_enter = false,
+                                        .arrow_callers = curse_arrow_callers};
+
 // --- The keys, as the BIOS ring holds them: scan code high, character low --
 
 constexpr std::uint16_t key_left = 0x4B00;
@@ -684,10 +739,17 @@ constexpr std::array<seam_point, 1> bar_keys_point_table =
     bar_keys_points_of<pool_of_radiance_bar_keys>();
 static_assert(bar_keys_point_table.size() == bar_keys_point_count);
 
+constexpr std::array<seam_point, 1> curse_bar_keys_point_table =
+    bar_keys_points_of<curse_bar_keys>();
+
 }  // namespace
 
 std::span<const seam_point> bar_keys_points() noexcept {
   return bar_keys_point_table;
+}
+
+std::span<const seam_point> curse_bar_keys_points() noexcept {
+  return curse_bar_keys_point_table;
 }
 
 }  // namespace amberfolio::machine

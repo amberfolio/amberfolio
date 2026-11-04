@@ -297,6 +297,58 @@ constexpr list_arrows_facts pool_of_radiance_list_arrows{
     .roster_callers = pool_of_radiance_roster_callers,
     .selects_at_bars_that_are_not_raw = true};
 
+// --- Curse of the Azure Bonds ---------------------------------------------
+
+constexpr const program_profile& curse = curse_of_the_azure_bonds;
+
+/// Overlay 25, where Curse keeps its party-member picker: the stub's record
+/// is at image `0x0ED0`.
+constexpr seam_module curse_picker_overlay{
+    .file = "GAME.OVR",
+    .file_offset = 226981,
+    .length = 13331,
+    .digest =
+        "58601d3692c12e68081787f36ae1fccb5d24eb8488da8ce588a4318e03d2a6a6",
+    .load_segment_at = 0xEE0};
+
+/// Curse's callers whose raw keys go to the party cursor and whose Up and
+/// Down do nothing else, by the instruction after the call into the
+/// menu-bar routine (docs/seams.md §10).
+constexpr std::array<caller, 9> curse_roster_callers{{
+    {.load_segment_at = curse.camp_overlay.load_segment_at,
+     .return_offset = 0x24FD},  // the camp bar
+    {.load_segment_at = curse.camp_overlay.load_segment_at,
+     .return_offset = 0x152B},  // camp's Magic bar
+    {.load_segment_at = curse.camp_overlay.load_segment_at,
+     .return_offset = 0x1D83},  // camp's Alter bar
+    {.load_segment_at = curse.camp_overlay.load_segment_at,
+     .return_offset = 0x18BE},  // the party-order screen
+    {.load_segment_at = curse.post_combat_load_segment_at,
+     .return_offset = 0x0F87},  // the post-combat Take bar
+    {.load_segment_at = curse.post_combat_load_segment_at,
+     .return_offset = 0x1239},  // the post-combat treasure bar
+    {.load_segment_at = curse.shop_load_segment_at,
+     .return_offset = 0x07DF},  // the shop's bar
+    {.load_segment_at = curse.temple_load_segment_at,
+     .return_offset = 0x0E91},  // the temple's bar
+    {.load_segment_at = curse.script_runner_load_segment_at,
+     .return_offset = 0x1811},  // the script prompts
+}};
+
+/// Curse of the Azure Bonds (#555): the list's out-parameter at `BP-0x57`,
+/// as on Pool of Radiance; the picker in overlay 25, its out-parameter at
+/// `BP-0x2B`; nine callers. The bars that are not raw are not stepped here:
+/// `seam_party_select.h`'s facts (the roster drawer and its redraw) are
+/// Pool of Radiance's alone.
+constexpr list_arrows_facts curse_list_arrows{
+    .profile = curse_of_the_azure_bonds,
+    .list_flag_below_bp = 0x57,
+    .picker_module = curse_picker_overlay,
+    .picker_after_input = 0x2EE5,
+    .picker_flag_below_bp = 0x2B,
+    .roster_callers = curse_roster_callers,
+    .selects_at_bars_that_are_not_raw = false};
+
 // --- The handlers ----------------------------------------------------------
 
 /// The menu-bar routine has just returned AL, with its out-parameter at
@@ -456,10 +508,17 @@ constexpr std::array<seam_point, 3> list_arrows_point_table =
     list_arrows_points_of<pool_of_radiance_list_arrows>();
 static_assert(list_arrows_point_table.size() == list_arrows_point_count);
 
+constexpr std::array<seam_point, 3> curse_list_arrows_point_table =
+    list_arrows_points_of<curse_list_arrows>();
+
 }  // namespace
 
 std::span<const seam_point> list_arrows_points() noexcept {
   return list_arrows_point_table;
+}
+
+std::span<const seam_point> curse_list_arrows_points() noexcept {
+  return curse_list_arrows_point_table;
 }
 
 }  // namespace amberfolio::machine

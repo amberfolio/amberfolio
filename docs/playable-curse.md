@@ -19,8 +19,9 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
 ```
 
 No `--install`: a Steam copy is recognized and laid out at `\CURSE`, a
-GOG copy at the root (`docs/hosts.md` §2c). No seam is needed to play,
-and none but the debug cheats is available on this program. Sixty
+GOG copy at the root (`docs/hosts.md` §2c). No seam is needed to play;
+the debug cheats and `modern-controls` (five of its pieces, `docs/seams.md`
+§10) are available on this program. Sixty
 frames to the virtual second; `TICKS = FRAME * 19,887` at `--speed 386`
 is close enough for `--until`.
 
@@ -42,7 +43,8 @@ Rules:
 - Movement is the arrow keys: `Up` steps, `Left` and `Right` turn,
   `Down` turns round. **In a list, `Home` and `End` move the
   selection**, the party list and a menu's items alike; the arrows do
-  nothing there. A bar takes its command's first letter, and `Return`
+  nothing there (with `modern-controls` on, Up and Down do what Home and
+  End do, and Left and Right step a bar's highlight). A bar takes its command's first letter, and `Return`
   takes the highlighted one.
 - The `.txt` and `.scene.json` beside a still say `wrong_binary`: screen
   text and the scene have no facts for this program yet (#555).
@@ -324,6 +326,11 @@ lines, at `--speed 386` and `--wall none`:
 | `curse-carriage` | `curse-slots` | none | |
 | `curse-journey` | `curse-wild` | none | |
 | `curse-journey-kill` | `curse-wild` | `cheat-kill-all`, pulled | `contrast curse-journey` |
+| `curse-quiet-controls` | `curse-slots` | `modern-controls` | `identical curse-quiet` |
+| `curse-camp-keys` | `curse-slots` | none | |
+| `curse-camp-arrows` | `curse-slots` | `modern-controls` | `contrast curse-camp-keys` |
+| `curse-name-keys` | `curse-slots` | none | |
+| `curse-name-arrows` | `curse-slots` | `modern-controls` | `contrast curse-name-keys` |
 
 ```sh
 python3 scripts/sweep.py --game-disk games/curse-slots --game-disk games/curse-saved \

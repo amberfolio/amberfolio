@@ -52,16 +52,20 @@ TEST(SeamModernControls, IsOneDefinitionAndTheSixAreGone) {
   EXPECT_EQ(found, 1u);
 }
 
-TEST(SeamModernControls, IsASettingOnTheBaselineEditionAndNothingElse) {
+TEST(SeamModernControls, IsASettingOnTheBaselineEditionAndCurse) {
   const seam_definition& s = definition();
   EXPECT_FALSE(s.about.empty());
   EXPECT_FALSE(s.trigger) << "a setting: there is no key to ask";
   EXPECT_EQ(s.gate, document_kind::none);
   EXPECT_TRUE(s.group.empty()) << "nothing is its alternative";
   EXPECT_EQ(s.schema, seam_schema_version);
-  ASSERT_EQ(s.fingerprints.size(), 1u);
+  ASSERT_EQ(s.fingerprints.size(), 2u);
   EXPECT_EQ(s.fingerprints[0], known_editions().front().fingerprint)
-      << "every piece's addresses are facts about that one program";
+      << "every piece's addresses are facts about the programs it names";
+  // Curse of the Azure Bonds has its own points (#555), and the table's
+  // own points are the baseline's.
+  ASSERT_EQ(s.programs.size(), 1u);
+  EXPECT_EQ(s.programs[0].fingerprint, s.fingerprints[1]);
 }
 
 TEST(SeamModernControls, HasTheNinePiecesPointsInTheOrderTheyWereRegisteredIn) {

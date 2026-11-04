@@ -506,14 +506,67 @@ inline constexpr seam_module combat{
         "312497d5638d2a35c91d4b0878ff00b73e5b9220249e866378b83e4125e55110",
     .load_segment_at = 0x580};
 
+/// Overlay 14: a fight's aim, the target bar and the manual aim. The
+/// stub's record is at image `0x08D0`.
+inline constexpr seam_module aim{
+    .file = "GAME.OVR",
+    .file_offset = 78696,
+    .length = 18872,
+    .digest =
+        "0b4a75f00ede803ba4c79d199b57fe26cbc8fa7f5c50c956a367203387cce874",
+    .load_segment_at = 0x8E0};
+
+/// Overlay 15: the adventuring screen's loop and its command bar. The
+/// stub's record is at image `0x0990`.
+inline constexpr seam_module adventure{
+    .file = "GAME.OVR",
+    .file_offset = 98348,
+    .length = 3724,
+    .digest =
+        "680af9ef042b5c0080bbee04a98ae7ff92572b36f3fa0083654e9bbfcb52d22f",
+    .load_segment_at = 0x9A0};
+
+/// Overlay 16: the camp screen. The stub's record is at image `0x09D0`.
+inline constexpr seam_module camp{
+    .file = "GAME.OVR",
+    .file_offset = 102254,
+    .length = 9749,
+    .digest =
+        "8dfb1afafc265996e3978a03582804dac10cdbae075f2b1300c6e3ba6af8ef79",
+    .load_segment_at = 0x9E0};
+
+/// Overlay 18: the main menu's loop and the character editor. The stub's
+/// record is at image `0x0A70`.
+inline constexpr seam_module roster{
+    .file = "GAME.OVR",
+    .file_offset = 131047,
+    .length = 22202,
+    .digest =
+        "5cc199bf1e98c46dec6df1423f6037650de72e5334f1dedac4dae38c8d6a6373",
+    .load_segment_at = 0xA80};
+
+/// Overlay 27: the menu-bar routine, the pick-list routine and the Yes/No
+/// prompt. The stub's record is at image `0x1040`.
+inline constexpr seam_module menu{
+    .file = "GAME.OVR",
+    .file_offset = 245901,
+    .length = 4957,
+    .digest =
+        "2447cf5dd78b6ff16bf9ad6aecef8504dc934d2a39624d0e6350333842351d57",
+    .load_segment_at = 0x1050};
+
 }  // namespace curse_of_the_azure_bonds_modules
 
 /// Curse of the Azure Bonds, the program Steam and GOG sell (v1.3;
-/// edition.h), **in part** (#554). Only the members the debug cheats
-/// read are filled in, each checked against the program's own image and
-/// by a driven run (`docs/seams.md` §10): the data segment, the game
+/// edition.h), **in part** (#554, #555). Only the members its seams so
+/// far read are filled in, each checked against the program's own image
+/// and by a driven run (`docs/seams.md` §10): the data segment, the game
 /// mode byte and its values, the party's head, the combat overlay and
-/// the character record's offsets. Every other member is zero, which is
+/// the character record's offsets (the debug cheats); the menu overlay,
+/// the menu-bar routine's read call and its bar's copy, the pick-list's
+/// return, the bar highlight, the pushback slot, and the modules and
+/// words the routine's callers are named by (modern controls). Every
+/// other member is zero, which is
 /// not a fact about this program but the absence of one, and no seam
 /// available on this program reads it: a seam's `fingerprints` name this
 /// profile only once the facts it reads are here.
@@ -540,24 +593,24 @@ inline constexpr program_profile curse_of_the_azure_bonds{
     .titles_overlay = {},
     .interpreter_overlay = {},
     .combat_overlay = curse_of_the_azure_bonds_modules::combat,
-    .aim_overlay = {},
-    .adventure_overlay = {},
-    .camp_overlay = {},
-    .roster_overlay = {},
+    .aim_overlay = curse_of_the_azure_bonds_modules::aim,
+    .adventure_overlay = curse_of_the_azure_bonds_modules::adventure,
+    .camp_overlay = curse_of_the_azure_bonds_modules::camp,
+    .roster_overlay = curse_of_the_azure_bonds_modules::roster,
     .slots_overlay = {},
     .view_overlay = {},
-    .menu_overlay = {},
-    .temple_load_segment_at = {},
-    .post_combat_load_segment_at = {},
-    .shop_load_segment_at = {},
-    .script_runner_load_segment_at = {},
+    .menu_overlay = curse_of_the_azure_bonds_modules::menu,
+    .temple_load_segment_at = 0x430,         // overlay 5
+    .post_combat_load_segment_at = 0x460,    // overlay 6
+    .shop_load_segment_at = 0x490,           // overlay 7
+    .script_runner_load_segment_at = 0x4D0,  // overlay 8
     .rest_load_segment_at = {},
     .appraise_load_segment_at = {},
     .death_load_segment_at = {},
-    .menu_key_read_call = {},
-    .menu_local_bar = {},
-    .menu_bar_capacity = {},
-    .pick_list_bar_return = {},
+    .menu_key_read_call = 0x05F1,
+    .menu_local_bar = 0x53,
+    .menu_bar_capacity = 40,
+    .pick_list_bar_return = 0x10F3,
     .area_bar_call = {},
     .area_bar_return = {},
     .view_bar_call = {},
@@ -587,8 +640,8 @@ inline constexpr program_profile curse_of_the_azure_bonds{
     .data_view_bar = {},
     .data_current_member = {},
     .data_roster_head = 0x6524,
-    .data_bar_highlight = {},
-    .data_key_pushback = {},
+    .data_bar_highlight = 0x72AE,
+    .data_key_pushback = 0x8CBF,
     .data_font_pointer = {},
     .data_view_column_bias = {},
     .data_sound_busy = {},

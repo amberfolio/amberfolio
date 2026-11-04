@@ -1607,8 +1607,9 @@ summed over the pieces.
   party bar's keys after every other piece has passed on them. The point
   count with every seam on is sixty-eight, one face counted (`max_points` is
   ninety-six).
-- **One fingerprint, several modules.** Every piece keys on the baseline
-  edition (§5) and only it, so the definition does. The modules are the
+- **Two programs, several modules.** Every piece keys on the baseline
+  edition (§5), and five of them on Curse of the Azure Bonds too, with
+  points of their own (below), so the definition names both. The modules are the
   pieces': overlay 25 for five of them, overlay 16 for the menu cursor's loop
   call, overlay 19 for Modify's score, overlay 14 for the move mode's party
   bar, overlay 13 for the aim watch, the resident image for the rest, and
@@ -1644,6 +1645,108 @@ plain one at the first main menu whatever keys are pressed, and it has no
 but the faces). Each piece's pairs are in its section, and
 `tests/sessions/README.md` lists them all. Unit: `SeamModernControls.*` (the
 one definition) and each piece's suite.
+
+**On Curse of the Azure Bonds** (#555) the seam is available with five
+of its pieces: the list arrows, the bar keys, the edit keys, text entry
+and the aim watch, each the same mechanism with that program's facts in
+a row of its own (`list_arrows_facts`, `bar_keys_facts`,
+`edit_keys_facts`, `text_entry_facts`, `aim_watch_facts`) and its points
+in the definition's `programs`, twelve of them, in the baseline's order.
+The facts more than one piece reads are the profile's
+(`program_profile.h`).
+
+| fact | Pool of Radiance | Curse of the Azure Bonds |
+| --- | --- | --- |
+| the menu overlay: the menu-bar routine, the pick-list, the Yes/No prompt | overlay 25 (file offset 182479, 4682 bytes, word `0x3C60`) | overlay 27 (file offset 245901, 4957 bytes, digest `2447cf5d…1d57`, word `0x1050`) |
+| the routine; its read call | `0x03BD`; `0x0572` | `0x03D8`; `0x05F1`, a far call to the program's key read at image `0x6812` (after the key-pending call at `0x05E5`, to image `0x86EB`) |
+| the frame: return IP and CS, raw mode; Enter-allowed, group count, bar copy (`string[40]`) | `BP+2`, `+4`, `+0x0C`; `BP-0x8F`, `-0x8E`, `-0x53` | the same |
+| the bar highlight (one-based, every bar's) | DGROUP `0x6B2B` | DGROUP `0x72AE` |
+| the pushback slot (an extended key's second half) | DGROUP `0x8501` | DGROUP `0x8CBF` |
+| Enter at a drawn bar | handed back as `0x0D`, and many callers ask again | **handed back as the highlighted group's first letter**, by the routine itself |
+| the pick-list's return; its out-parameter | overlay 25 `0x0FE0`; `BP-0x57` | overlay 27 `0x10F3` (a near call from inside the overlay, `CS` pushed first); `BP-0x57` |
+| the party-member picker's return; its out-parameter | image `0x38AA` (resident); `BP-0x2B` | overlay 25 (file offset 226981, 13331 bytes, digest `58601d36…a6a6`, word `0x0EE0`) `0x2EE5`; `BP-0x2B` |
+| the party cursor | resident, through `0085:0052`: `G` back (head to tail), `O` forward (the tail stays), any other key to the head | overlay 20 `0x32CF`: the same rule |
+| the Yes/No prompt's call | overlay 25 `0x111E` | overlay 27 `0x1231` (near, from inside the overlay) |
+| the script runner's call | overlay 7 `0x16EB` (word `0x2C0`) | overlay 8 `0x1811` (word `0x4D0`) |
+| the line editor; its read's return; its one return | image `0x7A73`; `0x7AC0`; `0x7BF3` (`retf 8`) | image `0x53F6`; `0x5447`; `0x5584` (`retf 0Ah`) |
+| the aim overlay | overlay 13 (word `0x690`) | overlay 14 (file offset 78696, 18872 bytes, digest `0b4a75f0…e874`, word `0x08E0`) |
+| target to target: routine; meeting point; return; attack flag; bar string | `0x2AA0`; `0x2BB6`; `0x2C31`; `BP+8`; `BP-0x2A` | `0x3027`; `0x314C`; `0x31CC`; `BP+0x0A`; `BP-0x2A` |
+| manual: routine; the line's meeting point; Target's meeting point; return; attack flag; line byte | `0x2DFA`; `0x2F84`; `0x310A`; `0x3178`; `BP+0x10`; `BP-0x39` | `0x3395`; `0x3522`; `0x36B3`; `0x3721`; `BP+0x12`; `BP-0x39` |
+
+The modules' words are the stub records' (the record's file offset and
+length, then the word sixteen bytes in), each found once in the image.
+Every call site of the routine was read: 41, every one a far call through
+overlay 27's stub entry (`0104:002A`, image `0x106A`) except the
+pick-list's and the Yes/No prompt's, which are near calls from inside
+the overlay; each call's bytes were checked in the store copy's
+`GAME.OVR`.
+
+**The callers, by the instruction after their call.** The list arrows'
+allowlist, raw callers that hand a raw key to the party cursor and whose
+Up and Down do nothing else (each read from its return on: the out-flag
+test, then the compares):
+
+| caller | module (word) | return offset |
+| --- | --- | --- |
+| the camp bar, its Magic bar, its Alter bar, the party-order screen | overlay 16 (`0x9E0`) | `0x24FD`, `0x152B`, `0x1D83`, `0x18BE` |
+| the post-combat Take bar, the treasure bar | overlay 6 (`0x460`) | `0x0F87`, `0x1239` |
+| the shop's bar | overlay 7 (`0x490`) | `0x07DF` |
+| the temple's bar | overlay 5 (`0x430`) | `0x0E91` |
+| the script prompts | overlay 8 (`0x4D0`) | `0x1811` |
+
+The bar keys' callers that keep Left and Right:
+
+| caller | module (word) | return offset | what an arrow does there |
+| --- | --- | --- | --- |
+| the adventuring bar | overlay 15 (`0x9A0`) | `0x092C` | turns the party |
+| the combat command bar | overlay 9 (`0x580`) | `0x0947` | **starts a move in that direction**, which Pool of Radiance's bar does not: the bar keeps the arrows' scan codes and hands them to the move |
+| the combat move loop | overlay 9 | `0x0C17` | moves the fighter |
+| the target bar (`Aim:`) | overlay 14 (`0x8E0`) | `0x31CC` | **goes to the manual aim**, which Pool of Radiance's target bar (not raw there) does not |
+| the manual aim | overlay 14 | `0x3721` | moves the cursor |
+| the character editor (`Modify:`) | overlay 18 (`0xA80`) | `0x29AA` | lowers and raises the score |
+| the two share prompts, press Enter | overlay 6 | `0x0D14`, `0x174B` | any extended key ends them (judgement, as on Pool of Radiance) |
+
+- **Enter is the program's own.** Curse's routine, with the bar drawn,
+  hands a Return back as the first letter of the highlighted group
+  (`0x0D` only for a group with no letter), so the Enter table, the
+  script runner's allow-Enter byte, the pick-list's and the picker's
+  Enter have nothing to do there, and the bar keys do not read Enter.
+  Driven with the seam off: Return at the camp bar, `SAVE` lit, opens
+  `SAVE WHICH GAME`.
+- **Esc** answers No at the Yes/No prompt and at a script prompt whose
+  command letters are `Y` and `N`, as on Pool of Radiance.
+- **Not ported, and why.** The main menu's cursor: Curse's main menu is
+  a bar of thirteen single letters, with no table of commands and
+  enable bytes to hold a cursor in, so the piece needs a
+  design of its own. The heroes' numbers: their points are inside the
+  roster drawer, whose Curse facts nobody has measured. The selection
+  block: eleven points in the bar leaf, the pick-list's leaf, the roster
+  drawer and the blitter, none measured on Curse. The move mode: Curse's
+  party bar is one call, six commands with `Area` first, and the
+  overland is a journey menu, not a walk. And the list arrows at the bars
+  that are not raw (#469), whose step calls the roster drawer. So on
+  Curse the seam draws nothing a player did not ask for: with it on and
+  none of its keys pressed the run is the run with it off
+  (`curse-quiet-controls`).
+- **Driven** on the Steam copy, slot A, `--wall none`: at the camp bar
+  Down, Down select Mark and then Travis and Right, Right light `MAGIC`
+  with Travis still selected (seam off: the selection goes back to
+  Mathew at every arrow); Escape at `QUIT TO DOS` answers No (seam off:
+  the question stays); at creation Down lights `ELF` at `PICK RACE` and
+  Down, Up, Down step the class list; `T`, Right, `O`, Up, `R`, Down,
+  `K`, Left saves `TORK` (seam off `TMOHRPKK`); View's Trade opens the
+  picker, and Down, Down, Up select Mark, Travis, Mark; the walk from
+  the opening room to the tavern and Right and Left at the brawl's
+  command bar give the same stills on and off (35 of 35), the Right
+  starting Travis's move. The aim watch, read from the seam's words:
+  target mode with the range shown at the target bar, manual after `M`,
+  none after a key; text entry reading at `CHARACTER NAME:` and not
+  before or after.
+- **Fidelity**: `curse-quiet-controls` `identical curse-quiet` (58 of
+  58); `curse-camp-arrows` `contrast curse-camp-keys` (44 of 81, then
+  divergent from the first Down at the camp bar); `curse-name-arrows`
+  `contrast curse-name-keys` (31 of 118, then divergent from the Down at
+  the race list). Unit: `SeamModernControlsOnCurse.*`.
 
 #### The list arrows (#423, #435, #447, #469)
 
