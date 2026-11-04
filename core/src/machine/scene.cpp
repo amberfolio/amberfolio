@@ -18,15 +18,12 @@
 #include "amberfolio/machine/memory_map.h"
 #include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/seam.h"
+#include "amberfolio/sha256.h"
 #include "automap_faces.h"
 #include "seam_builtin.h"
 
 namespace amberfolio::machine {
 namespace {
-
-/// The program this file's facts are about (program_profile.h): the
-/// baseline edition, and only it.
-constexpr const program_profile& profile = pool_of_radiance;
 
 // ---------------------------------------------------------------------------
 // The facts
@@ -42,14 +39,10 @@ static_assert(scene_map_max == automap_map_cells);
 
 /// How far into the current area record this read reaches: the last byte
 /// of the word that says the wilderness is drawn in 3D.
-constexpr std::uint16_t record_reach = profile.area_shown_in_3d + 2;
-
-/// The overland terrain table: 36 rows at a stride of 44, three sixteen-
-/// column bands, one per wilderness area, at the per-view-kind column
-/// bias in the byte table after it.
-constexpr std::uint16_t data_terrain = 0x3648;
-constexpr std::uint16_t terrain_stride = 0x2C;
-constexpr int max_column_bias = terrain_stride - 1;
+[[nodiscard]] constexpr std::uint16_t record_reach(
+    const program_profile& profile) noexcept {
+  return static_cast<std::uint16_t>(profile.area_shown_in_3d + 2);
+}
 
 /// **What the travel view's move step does with a terrain number**
 /// (overlay 14 rel `0x0818`): a set it never steps onto, a set it steps
@@ -93,17 +86,15 @@ constexpr std::array<terrain_range, 2> river_terrain{
 // The setup writes these and the drawing reads them, which is each one's
 // second route; the round loop and the move step are the others named.
 
-/// The figures: a table of far pointers to their records, one-based, at a
-/// stride of four, and beside it a table of their squares at the same
-/// stride: column, row, the slot's own number, and its shape (zero: not on
-/// the grid). Slot 0's shape byte is the number of slots.
-constexpr std::uint16_t data_slot_records = 0x65B9;
-constexpr std::uint16_t data_slot_squares = 0x5F27;
+/// The figures (the row's `data_slot_records` and `data_slot_squares`): a
+/// table of far pointers to their records, one-based, at a stride of four,
+/// and beside it a table of their squares at the same stride: column, row,
+/// the slot's own number, and its shape (zero: not on the grid). Slot 0's
+/// shape byte is the number of slots.
 constexpr std::uint16_t slot_stride = 4;
 constexpr std::uint16_t square_column = 0;
 constexpr std::uint16_t square_row = 1;
 constexpr std::uint16_t square_shape = 3;
-constexpr std::uint16_t data_slot_count = data_slot_squares + square_shape;
 
 /// The four shapes: one square, the square and the one below it, the
 /// square and the one east of it, and two by two.
@@ -120,32 +111,26 @@ constexpr std::array<shape_size, 5> shapes{{{.width = 0, .height = 0},
 // In a fight the current member (the profile's) is whose turn it is: the
 // round loop writes it and the spell aim reads it.
 
-/// A figure's record: a Pascal name of up to fifteen letters, the status
-/// (the sheet's word), whether it is still in the fight, its side (0 the
-/// party's), whether the computer gives its orders, the armour class as
-/// the program keeps it (sixty less the AC the sheet prints), and the
-/// current hit points.
-constexpr std::uint16_t record_bytes = 0x11D;
+/// A figure's record: a Pascal name of up to fifteen letters at its start,
+/// and (the row's, beside the profile's status, held, side and hit
+/// points) whether the computer gives its orders and the armour class as
+/// the program keeps it, sixty less the AC the sheet prints.
 constexpr std::uint16_t record_name = 0x00;
-constexpr std::uint16_t record_computer = 0x10F;
-constexpr std::uint16_t record_ac = 0x111;
 constexpr int ac_base = 0x3C;
 
-/// The fallen: a count, and seven bytes each in the table before it — the
-/// record's far pointer, the column and row the body lies on, and the
-/// ground it covers. The program adds one where a party member falls.
-constexpr std::uint16_t data_body_count = 0x6715;
-constexpr std::uint16_t data_bodies = 0x66D6;
+/// The fallen (the row's `data_bodies` and `data_body_count`): a count, and
+/// seven bytes each in the table before it — the record's far pointer, the
+/// column and row the body lies on, and the ground it covers. The program
+/// adds one where a party member falls.
 constexpr std::uint16_t body_stride = 7;
 constexpr std::uint16_t body_column = 4;
 constexpr std::uint16_t body_row = 5;
 constexpr std::uint8_t bodies_max = 8;
 
-/// The fight's block: a far pointer to it; the window's top-left square at
-/// `+2` and `+3`; the ground, a byte a square, fifty to a row, from `+7`.
-/// The scroll keeps the window's top-left where the whole window is on the
-/// grid.
-constexpr std::uint16_t data_combat_block = 0x6716;
+/// The fight's block (the row's `data_combat_block`): a far pointer to it;
+/// the window's top-left square at `+2` and `+3`; the ground, a byte a
+/// square, fifty to a row, from `+7`. The scroll keeps the window's
+/// top-left where the whole window is on the grid.
 constexpr std::uint16_t block_window_x = 2;
 constexpr std::uint16_t block_window_y = 3;
 constexpr std::uint16_t block_ground = 7;
@@ -154,26 +139,94 @@ constexpr std::uint32_t block_bytes =
 constexpr int window_x_max = scene_combat_columns - scene_combat_side;
 constexpr int window_y_max = scene_combat_rows - scene_combat_side;
 
-/// What a ground number costs to step onto, the first byte of four per
-/// number: the move step refuses a square that costs more than the figure
-/// has left, and 0xFF is more than any figure ever has. Ground 0 is off
-/// the grid, where the move step asks whether to flee instead.
-constexpr std::uint16_t data_ground_cost = 0x2744;
+/// What a ground number costs to step onto (the row's `data_ground_cost`),
+/// the first byte of four per number: the move step refuses a square that
+/// costs more than the figure has left, and 0xFF is more than any figure
+/// ever has. Ground 0 is off the grid, where the move step asks whether to
+/// flee instead.
 constexpr std::uint16_t ground_cost_stride = 4;
 constexpr std::uint8_t cost_blocked = 0xFF;
 constexpr std::uint8_t ground_off_grid = 0;
 
-/// The aim bar's two frames while it waits for a key, from BP
-/// (seam_aim_watch.cpp has both routes). From target to target: the
-/// target's record, a far pointer, and the range it prints. Manual: the
-/// cursor's column and row, the range word, and the record the panel
-/// shows, a far pointer, zero for none.
-constexpr int target_record = 0x0C;
-constexpr int target_range = -0x30;
-constexpr int manual_column = -0x33;
-constexpr int manual_row = -0x34;
-constexpr int manual_range = -0x38;
-constexpr int manual_record = 0x14;
+/// This read's facts about one program (#555): the shared ones through its
+/// profile (program_profile.h) and the place tables (automap_faces.h), and
+/// the ones only this read has. One row per program it reads.
+struct scene_facts {
+  const program_profile& profile;
+  const map_format::place_tables& (*places)() noexcept;
+
+  /// The overland terrain table: 36 rows at a stride of 44, three sixteen-
+  /// column bands, one per wilderness area, at the per-view-kind column
+  /// bias in the profile's byte table. Zero on a program whose travel
+  /// view this read does not read.
+  std::uint16_t data_terrain;
+  std::uint16_t terrain_stride;
+
+  /// The tactical grid's tables, the fallen and the fight's block.
+  std::uint16_t data_slot_records;
+  std::uint16_t data_slot_squares;
+  std::uint16_t data_bodies;
+  std::uint16_t data_body_count;
+  std::uint16_t data_combat_block;
+  std::uint16_t data_ground_cost;
+
+  /// A record's length, and its two bytes this read has alone.
+  std::uint16_t record_bytes;
+  std::uint16_t record_computer;
+  std::uint16_t record_ac;
+
+  /// The aim bar's two frames while it waits for a key, from BP
+  /// (seam_aim_watch.cpp has both routes). From target to target: the
+  /// target's record, a far pointer, and the range it prints. Manual: the
+  /// cursor's column and row, the range word, and the record the panel
+  /// shows, a far pointer, zero for none.
+  int target_record;
+  int target_range;
+  int manual_column;
+  int manual_row;
+  int manual_range;
+  int manual_record;
+
+  [[nodiscard]] constexpr std::uint16_t data_slot_count() const noexcept {
+    return static_cast<std::uint16_t>(data_slot_squares + square_shape);
+  }
+  [[nodiscard]] constexpr int max_column_bias() const noexcept {
+    return terrain_stride - 1;
+  }
+};
+
+constexpr scene_facts pool_of_radiance_scene{
+    .profile = pool_of_radiance,
+    .places = &map_format::pool_of_radiance_places,
+    .data_terrain = 0x3648,
+    .terrain_stride = 0x2C,
+    .data_slot_records = 0x65B9,
+    .data_slot_squares = 0x5F27,
+    .data_bodies = 0x66D6,
+    .data_body_count = 0x6715,
+    .data_combat_block = 0x6716,
+    .data_ground_cost = 0x2744,
+    .record_bytes = 0x11D,
+    .record_computer = 0x10F,
+    .record_ac = 0x111,
+    .target_record = 0x0C,
+    .target_range = -0x30,
+    .manual_column = -0x33,
+    .manual_row = -0x34,
+    .manual_range = -0x38,
+    .manual_record = 0x14};
+
+/// The row for the program `digest` names, or null: a program this read
+/// has no facts about.
+[[nodiscard]] const scene_facts* scene_facts_for(
+    const sha256_digest& digest) noexcept {
+  for (const scene_facts* facts : {&pool_of_radiance_scene}) {
+    if (digest_is(digest, facts->profile.fingerprint)) {
+      return facts;
+    }
+  }
+  return nullptr;
+}
 
 // ---------------------------------------------------------------------------
 // Reading RAM
@@ -246,11 +299,11 @@ class memory {
 /// The zone name, by the map's identity. `geo` is the loaded geometry
 /// block, zero where there is none to read, and `where` the party's
 /// square on the grid, none on the overland (`zone_label`).
-void name_zone(scene& out, std::uint8_t geo,
+void name_zone(const scene_facts& f, scene& out, std::uint8_t geo,
                const map_format::zone_place& where) noexcept {
   map_format::zone_fallback fallback{};
-  const std::string_view label =
-      map_format::zone_label(out.disk, out.area, geo, where, fallback);
+  const std::string_view label = map_format::zone_label(
+      f.places(), out.disk, out.area, geo, where, fallback);
   std::size_t used = 0;
   for (const char ch : label) {
     if (ch != map_format::soft_break && used < out.zone.size()) {
@@ -290,13 +343,17 @@ void name_zone(scene& out, std::uint8_t geo,
 // The two screens
 // ---------------------------------------------------------------------------
 
-[[nodiscard]] bool read_explore(const memory& ram, const automap_state* kept,
-                                scene& out) {
-  if (ram.data(profile.data_view_kind) != profile.view_kind_grid) {
+[[nodiscard]] bool read_explore(const scene_facts& f, const memory& ram,
+                                const automap_state* kept, scene& out) {
+  const program_profile& profile = f.profile;
+  if (profile.data_view_kind != 0 &&
+      ram.data(profile.data_view_kind) != profile.view_kind_grid) {
+    // A program with no view kind byte has the grid as its only view in
+    // this mode.
     return false;
   }
   const std::uint32_t record =
-      ram.follow(profile.data_area_record, record_reach);
+      ram.follow(profile.data_area_record, record_reach(profile));
   const std::uint32_t map_at =
       ram.follow(profile.data_map_pointer, map_format::map_bytes);
   if (record == 0 || map_at == 0) {
@@ -318,15 +375,14 @@ void name_zone(scene& out, std::uint8_t geo,
 
   const map_format::grid grid = read_grid(ram, map_at);
   const map_format::zone_place where{.map = &grid, .x = out.x, .y = out.y};
-  name_zone(out, geo, where);
+  name_zone(f, out, geo, where);
   map_format::wall_set_blocks blocks{};
   for (unsigned slot = 0; slot < map_format::wall_set_slots; ++slot) {
     blocks[slot] = ram.data_word(static_cast<std::uint16_t>(
-        map_format::data_wall_set +
-        ((slot + 1U) * map_format::wall_set_stride)));
+        profile.data_wall_set + ((slot + 1U) * map_format::wall_set_stride)));
   }
   const map_format::door_evidence doors =
-      map_format::door_kinds(grid, out.disk, blocks);
+      map_format::door_kinds(f.places(), grid, out.disk, blocks);
 
   std::array<map_format::sight_cell, map_format::sight_cells_max> seen{};
   const std::size_t count =
@@ -342,7 +398,7 @@ void name_zone(scene& out, std::uint8_t geo,
     if (explored != nullptr) {
       // The panel's squares: only the lair the party is in.
       const map_format::place_squares here =
-          map_format::place_of(out.disk, out.area, geo, where);
+          map_format::place_of(f.places(), out.disk, out.area, geo, where);
       for (unsigned y = 0; y < automap_map_side; ++y) {
         for (unsigned x = 0; x < automap_map_side; ++x) {
           if (here[map_format::cell_of(x, y)] &&
@@ -356,14 +412,20 @@ void name_zone(scene& out, std::uint8_t geo,
   return true;
 }
 
-[[nodiscard]] bool read_travel(const memory& ram, scene& out) {
+[[nodiscard]] bool read_travel(const scene_facts& f, const memory& ram,
+                               scene& out) {
+  const program_profile& profile = f.profile;
+  if (f.data_terrain == 0 || profile.data_view_kind == 0) {
+    // Not a travel view this read has the facts for.
+    return false;
+  }
   const std::uint8_t kind = ram.data(profile.data_view_kind);
   if (kind < profile.view_kind_first_overland ||
       kind > profile.view_kind_last_overland) {
     return false;
   }
   const std::uint32_t record =
-      ram.follow(profile.data_area_record, record_reach);
+      ram.follow(profile.data_area_record, record_reach(profile));
   if (record == 0 || ram.word_at(record + profile.area_shown_in_3d) != 0) {
     // With that word set the program draws these areas in the interior
     // view, with the view kind still saying wilderness.
@@ -375,7 +437,7 @@ void name_zone(scene& out, std::uint8_t geo,
   const int bias = ram.data(profile.data_view_column_bias + kind);
   const std::uint8_t facing = ram.data(profile.data_party_facing);
   if (column >= automap_overland_columns || row >= automap_overland_rows ||
-      bias > max_column_bias || (facing & 1U) != 0 || facing > scene_west) {
+      bias > f.max_column_bias() || (facing & 1U) != 0 || facing > scene_west) {
     // The program clamps the position in its own move step, so one past
     // it means this record is not the one these offsets describe.
     return false;
@@ -387,7 +449,7 @@ void name_zone(scene& out, std::uint8_t geo,
   out.x = static_cast<std::uint8_t>(column);
   out.y = static_cast<std::uint8_t>(row);
   out.facing = facing;
-  name_zone(out, 0, {});
+  name_zone(f, out, 0, {});
 
   const explored_window origin = explored_window_top_left(
       bias, static_cast<int>(column), static_cast<int>(row));
@@ -396,8 +458,8 @@ void name_zone(scene& out, std::uint8_t geo,
   for (unsigned i = 0; i < scene_window_side; ++i) {
     for (unsigned j = 0; j < scene_window_side; ++j) {
       const auto offset = static_cast<std::uint16_t>(
-          data_terrain +
-          ((static_cast<unsigned>(origin.row) + i) * terrain_stride) +
+          f.data_terrain +
+          ((static_cast<unsigned>(origin.row) + i) * f.terrain_stride) +
           static_cast<unsigned>(origin.col) + j);
       const std::uint8_t terrain = ram.data(offset);
       out.window[(i * scene_window_side) + j] = {.terrain = terrain,
@@ -407,8 +469,9 @@ void name_zone(scene& out, std::uint8_t geo,
   return true;
 }
 
-void read_combatant(const memory& ram, std::uint32_t record,
-                    scene_combatant& out) noexcept {
+void read_combatant(const scene_facts& f, const memory& ram,
+                    std::uint32_t record, scene_combatant& out) noexcept {
+  const program_profile& profile = f.profile;
   const std::uint8_t length = std::min<std::uint8_t>(
       ram.at(record + record_name), static_cast<std::uint8_t>(scene_name_max));
   for (std::uint8_t i = 0; i < length; ++i) {
@@ -417,25 +480,25 @@ void read_combatant(const memory& ram, std::uint32_t record,
   out.name_length = length;
   out.side = ram.at(record + profile.record_side) == 0 ? scene_side::party
                                                        : scene_side::enemy;
-  out.player = ram.at(record + record_computer) == 0;
+  out.player = ram.at(record + f.record_computer) == 0;
   out.standing = ram.at(record + profile.record_held) != 0;
   const std::uint8_t status = ram.at(record + profile.record_status);
   out.status = status <= static_cast<std::uint8_t>(scene_status::gone)
                    ? static_cast<scene_status>(status)
                    : scene_status::okay;
   out.hp = ram.at(record + profile.record_hit_points);
-  out.ac = ac_base - static_cast<int>(ram.at(record + record_ac));
+  out.ac = ac_base - static_cast<int>(ram.at(record + f.record_ac));
 }
 
 /// Where a figure not on the grid lies: a fallen party member's body,
 /// which the screen draws where it fell.
-void place_body(const memory& ram, std::uint32_t record,
+void place_body(const scene_facts& f, const memory& ram, std::uint32_t record,
                 scene_combatant& out) noexcept {
-  const std::uint8_t bodies = std::min(ram.data(data_body_count), bodies_max);
+  const std::uint8_t bodies = std::min(ram.data(f.data_body_count), bodies_max);
   for (std::uint8_t i = 0; i < bodies; ++i) {
     const auto body =
-        static_cast<std::uint16_t>(data_bodies + (i * body_stride));
-    if (ram.far_at(ram.linear(body), record_bytes) == record) {
+        static_cast<std::uint16_t>(f.data_bodies + (i * body_stride));
+    if (ram.far_at(ram.linear(body), f.record_bytes) == record) {
       out.placed = true;
       out.x = ram.data(body + body_column);
       out.y = ram.data(body + body_row);
@@ -454,8 +517,9 @@ void place_body(const memory& ram, std::uint32_t record,
          who.y + who.height > at.window_y && who.y < at.window_y + side;
 }
 
-[[nodiscard]] scene_cell ground_at(const memory& ram, std::uint32_t block,
-                                   unsigned x, unsigned y) noexcept {
+[[nodiscard]] scene_cell ground_at(const scene_facts& f, const memory& ram,
+                                   std::uint32_t block, unsigned x,
+                                   unsigned y) noexcept {
   const std::uint8_t ground =
       ram.at(block + block_ground + (y * scene_combat_columns) + x);
   scene_cell cell{.terrain = ground};
@@ -464,7 +528,7 @@ void place_body(const memory& ram, std::uint32_t record,
     return cell;
   }
   const std::uint8_t cost = ram.data(static_cast<std::uint16_t>(
-      data_ground_cost + (ground * ground_cost_stride)));
+      f.data_ground_cost + (ground * ground_cost_stride)));
   if (cost == cost_blocked) {
     cell.move = scene_move::blocked;
   } else {
@@ -531,8 +595,8 @@ struct slot_seen {
 /// Where the aim bar is, out of the frame `at` names. Nothing is said
 /// unless the frame holds what its facts describe: a cursor on the grid,
 /// and from target to target, a target that is one of the figures.
-void read_aim(const memory& ram, const scene_aim_frame& at,
-              std::span<const slot_seen> slots,
+void read_aim(const scene_facts& f, const memory& ram,
+              const scene_aim_frame& at, std::span<const slot_seen> slots,
               std::span<const std::uint32_t> listed, scene& out) {
   const std::uint32_t base = std::uint32_t{at.stack_segment} * 16U;
   const auto in_frame = [&](int offset) {
@@ -550,7 +614,7 @@ void read_aim(const memory& ram, const scene_aim_frame& at,
   scene_aim aim{.mode = at.mode, .target = at.offered};
   if (at.mode == scene_aim_mode::target) {
     const std::uint32_t target =
-        ram.far_at(in_frame(target_record), record_bytes);
+        ram.far_at(in_frame(f.target_record), f.record_bytes);
     const slot_seen* seen = nullptr;
     for (const slot_seen& slot : slots) {
       if (target != 0 && slot.record == target && slot.on_grid) {
@@ -564,17 +628,18 @@ void read_aim(const memory& ram, const scene_aim_frame& at,
     aim.y = seen->y;
     aim.under = listed_as(target);
     if (at.range_shown) {
-      aim.range = ram.at(in_frame(target_range));
+      aim.range = ram.at(in_frame(f.target_range));
     }
   } else if (at.mode == scene_aim_mode::manual) {
-    aim.x = ram.at(in_frame(manual_column));
-    aim.y = ram.at(in_frame(manual_row));
+    aim.x = ram.at(in_frame(f.manual_column));
+    aim.y = ram.at(in_frame(f.manual_row));
     if (aim.x >= scene_combat_columns || aim.y >= scene_combat_rows) {
       return;
     }
-    aim.under = listed_as(ram.far_at(in_frame(manual_record), record_bytes));
+    aim.under =
+        listed_as(ram.far_at(in_frame(f.manual_record), f.record_bytes));
     if (at.range_shown) {
-      aim.range = ram.word_at(in_frame(manual_range));
+      aim.range = ram.word_at(in_frame(f.manual_range));
     }
   } else {
     return;
@@ -582,10 +647,11 @@ void read_aim(const memory& ram, const scene_aim_frame& at,
   out.aim = aim;
 }
 
-[[nodiscard]] bool read_combat(const memory& ram, const scene_aim_frame* aim,
-                               scene& out) {
-  const std::uint32_t block = ram.follow(data_combat_block, block_bytes);
-  const std::uint8_t slots = ram.data(data_slot_count);
+[[nodiscard]] bool read_combat(const scene_facts& f, const memory& ram,
+                               const scene_aim_frame* aim, scene& out) {
+  const program_profile& profile = f.profile;
+  const std::uint32_t block = ram.follow(f.data_combat_block, block_bytes);
+  const std::uint8_t slots = ram.data(f.data_slot_count());
   if (block == 0 || slots == 0 || slots > scene_combatants_max) {
     return false;
   }
@@ -609,7 +675,8 @@ void read_aim(const memory& ram, const scene_aim_frame& at,
       ram.follow(profile.data_map_pointer, map_format::map_bytes);
   map_format::grid grid{};
   map_format::zone_place where{};
-  if (ram.data(profile.data_view_kind) == profile.view_kind_grid &&
+  if ((profile.data_view_kind == 0 ||
+       ram.data(profile.data_view_kind) == profile.view_kind_grid) &&
       map_at != 0) {
     grid = read_grid(ram, map_at);
     where = {
@@ -618,27 +685,27 @@ void read_aim(const memory& ram, const scene_aim_frame& at,
         .y = static_cast<std::uint8_t>(ram.data(profile.data_party_y) & 0x0FU)};
   }
   name_zone(
-      out,
+      f, out,
       area_record == 0 ? 0 : ram.at(area_record + profile.area_geometry_block),
       where);
   out.window_x = window_x;
   out.window_y = window_y;
 
   const std::uint32_t actor =
-      ram.follow(profile.data_current_member, record_bytes);
+      ram.follow(profile.data_current_member, f.record_bytes);
   std::array<slot_seen, scene_combatants_max> seen{};
   std::array<std::uint32_t, scene_combatants_max> listed{};
   for (unsigned slot = 1; slot <= slots; ++slot) {
     const std::uint32_t record = ram.follow(
-        static_cast<std::uint16_t>(data_slot_records + (slot * slot_stride)),
-        record_bytes);
+        static_cast<std::uint16_t>(f.data_slot_records + (slot * slot_stride)),
+        f.record_bytes);
     if (record == 0) {
       continue;
     }
     scene_combatant who{};
-    read_combatant(ram, record, who);
+    read_combatant(f, ram, record, who);
     const auto squares =
-        static_cast<std::uint16_t>(data_slot_squares + (slot * slot_stride));
+        static_cast<std::uint16_t>(f.data_slot_squares + (slot * slot_stride));
     const std::uint8_t shape = ram.data(squares + square_shape);
     if (shape != 0 && shape < shapes.size()) {
       who.placed = true;
@@ -649,7 +716,7 @@ void read_aim(const memory& ram, const scene_aim_frame& at,
       seen[slot - 1] = {
           .record = record, .on_grid = true, .x = who.x, .y = who.y};
     } else if (who.side == scene_side::party) {
-      place_body(ram, record, who);
+      place_body(f, ram, record, who);
     }
     if (who.x >= scene_combat_columns || who.y >= scene_combat_rows) {
       who.placed = false;
@@ -677,14 +744,14 @@ void read_aim(const memory& ram, const scene_aim_frame& at,
   for (unsigned i = 0; i < scene_combat_side; ++i) {
     for (unsigned j = 0; j < scene_combat_side; ++j) {
       out.ground[(i * scene_combat_side) + j] =
-          ground_at(ram, block, static_cast<unsigned>(window_x) + j,
+          ground_at(f, ram, block, static_cast<unsigned>(window_x) + j,
                     static_cast<unsigned>(window_y) + i);
     }
   }
   measure_from_actor(out);
   out.aim_kept = aim != nullptr;
   if (aim != nullptr) {
-    read_aim(ram, *aim, std::span(seen).first(slots),
+    read_aim(f, ram, *aim, std::span(seen).first(slots),
              std::span(listed).first(out.combatant_count), out);
   }
   return true;
@@ -1100,27 +1167,32 @@ const char* scene_status_name(scene_status status) noexcept {
   return "unknown";
 }
 
-scene_trouble read_scene_in(std::span<const std::uint8_t> ram,
+scene_trouble read_scene_in(const program_profile& program,
+                            std::span<const std::uint8_t> ram,
                             std::uint32_t data_base, const automap_state* kept,
                             const scene_aim_frame* aim, scene& out) noexcept {
   out = {};
+  sha256_digest digest{};
+  const scene_facts* facts = parse_digest(program.fingerprint, digest)
+                                 ? scene_facts_for(digest)
+                                 : nullptr;
+  if (facts == nullptr) {
+    return scene_trouble::wrong_binary;
+  }
+  const scene_facts& f = *facts;
+  const program_profile& profile = f.profile;
   const memory memory_now(ram, data_base);
   if (memory_now.data(profile.data_in_transition) != 0) {
     return scene_trouble::elsewhere;
   }
   bool found = false;
-  switch (memory_now.data(profile.data_game_mode)) {
-    case profile.mode_adventure:
-      found = read_explore(memory_now, kept, out);
-      break;
-    case profile.mode_travel:
-      found = read_travel(memory_now, out);
-      break;
-    case profile.mode_combat:
-      found = read_combat(memory_now, aim, out);
-      break;
-    default:
-      break;
+  const std::uint8_t mode = memory_now.data(profile.data_game_mode);
+  if (mode == profile.mode_adventure) {
+    found = read_explore(f, memory_now, kept, out);
+  } else if (mode == profile.mode_travel) {
+    found = read_travel(f, memory_now, out);
+  } else if (mode == profile.mode_combat) {
+    found = read_combat(f, memory_now, aim, out);
   }
   if (!found) {
     out = {};
@@ -1135,9 +1207,11 @@ scene_trouble read_scene(const machine& box, scene& out) noexcept {
   if (!seams.have_program()) {
     return scene_trouble::no_program;
   }
-  if (!digest_is(seams.program(), profile.fingerprint)) {
+  const scene_facts* facts = scene_facts_for(seams.program());
+  if (facts == nullptr) {
     return scene_trouble::wrong_binary;
   }
+  const program_profile& profile = facts->profile;
   // The explored map is the automap's, and only while it is on is it
   // being kept: with it off, no cell is "explored" because nothing looked.
   const bool kept = seams.status("automap").state == seam_state::on;
@@ -1146,7 +1220,7 @@ scene_trouble read_scene(const machine& box, scene& out) noexcept {
   scene_aim_frame aim{};
   const bool aim_kept = aim_watch_now(box, aim);
   return read_scene_in(
-      box.memory().ram(), seams.image_base() + profile.dgroup_offset(),
+      profile, box.memory().ram(), seams.image_base() + profile.dgroup_offset(),
       kept ? &box.automap() : nullptr, aim_kept ? &aim : nullptr, out);
 }
 

@@ -225,6 +225,11 @@ struct program_profile {
   std::uint16_t data_party_y;
   std::uint16_t data_party_facing;
 
+  /// The wall-set descriptor: which WALLDEF block each of the three slots
+  /// holds, a word per slot at a stride of four from here, slot 1 at `+4`
+  /// (`automap_faces.h`).
+  std::uint16_t data_wall_set;
+
   /// The loaded map: a far pointer, offset then segment. A zero segment is
   /// "no map", which is the state every screen that is not the adventure
   /// screen leaves it in.
@@ -464,6 +469,7 @@ inline constexpr program_profile pool_of_radiance{
     .data_party_x = 0x6AAD,
     .data_party_y = 0x6AAE,
     .data_party_facing = 0x6AAF,
+    .data_wall_set = 0x6AAE,
     .data_map_pointer = 0x6A5C,
 
     .data_area_record = 0x49D2,
@@ -577,6 +583,7 @@ inline constexpr program_profile curse_of_the_azure_bonds{
     .data_party_x = {},
     .data_party_y = {},
     .data_party_facing = {},
+    .data_wall_set = {},
     .data_map_pointer = {},
     .data_area_record = {},
     .area_overland_column = {},
