@@ -21,8 +21,8 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
 No `--install`: a Steam copy is recognized and laid out at `\CURSE`, a
 GOG copy at the root (`docs/hosts.md` §2c). No seam is needed to play;
 those available on this program are the debug cheats, the code wheel,
-the text faces, the message pause, the journal and `modern-controls`
-(five of its pieces), each with its facts in `docs/seams.md` §10. The
+the text faces, the message pause, the journal, `modern-controls`
+(five of its pieces) and the automap, each with its facts in `docs/seams.md` §10. The
 legs below answer the challenge themselves; with `--seam code-wheel
 --code-wheel-answered` the boot goes from `P` straight to the party
 menu, and every frame after it comes earlier. Leg 3 with `--seam
@@ -132,6 +132,13 @@ cures for the selected member (`CURE BLINDNESS` to `STONE TO FLESH`);
 `PAY FOR CURE` (100 gold pieces), and `Y` casts it. Leg 3's brawl
 leaves Mathew on 39 of 49: after it the cure takes him to 40 and his
 platinum from 300 to 280 (`curse-heal`).
+
+**The automap.** With `--seam automap`, `Tab` at frame 4,000 (ahead of
+the `Left` there) opens the panel over the roster at the opening room,
+and the walk draws the street into it; every `PRESS RETURN`, the
+shopkeeper's question and the shop's bar take it away until the
+party's bar is back, and a second `Tab` puts the roster back
+(`docs/seams.md` §10). Recorded as `curse-town-map`.
 
 Walking west at `1,14`, a group of royal guards turns the party back:
 the way is closed until the royal carriage comes. Leg 7 is what brings
@@ -324,6 +331,8 @@ lines, at `--speed 386` and `--wall none`:
 | `curse-quiet-message-pause` | `curse-slots` | `message-pause` | `identical curse-quiet` |
 | `curse-quiet-controls` | `curse-slots` | `modern-controls` | `identical curse-quiet` |
 | `curse-town` | `curse-slots` | none | |
+| `curse-quiet-automap` | `curse-slots` | `automap`, Tab never pressed | `identical curse-quiet` |
+| `curse-town-map` | `curse-slots` | `automap`, Tab at frame 4,000 | `contrast curse-town` |
 | `curse-temple` | `curse-slots` | none | |
 | `curse-camp` | `curse-slots` | none | |
 | `curse-camp-wound` | `curse-slots` | `cheat-wound-party`, pulled | `contrast curse-camp` |

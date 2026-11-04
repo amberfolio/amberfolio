@@ -1481,8 +1481,7 @@ the program keeps no roster file, and the party menu's ADD lists every
 | `<NAME>.SWG` | saves | character | no | what that character carries |
 | `<NAME>.FX` | saves | character | no | the effects that character is under |
 
-Every row has been seen written (`docs/playable-curse.md`) but
-`AFMAP<S>.DAT`, because the automap is not ported to Curse yet:
+Every row has been seen written (`docs/playable-curse.md`):
 `<NAME>.GUY` and `<NAME>.FX` when a new character is kept, all three
 `<NAME>` files when REMOVE CHARACTER FROM PARTY takes off a member who
 carries something (63 bytes of `.SWG` for one battle axe), and
@@ -1492,7 +1491,13 @@ from slot A or B writes no `.SWG`. `AFSEEN<S>.DAT` is the journal's
 read log (#555): with `--seam journal --save-sidecars`, a save to slot C
 after the innkeeper's citation of entry 31 writes `AFSEENC.DAT` (one row,
 entry 31 unread), and loading C reads it back
-(`save-sidecars writes=0 reads=1 slot=C trouble=none`).
+(`save-sidecars writes=0 reads=1 slot=C trouble=none`). `AFMAP<S>.DAT`
+is the automap's exploration (#555): with `--seam automap
+--save-sidecars`, Tab at the opening room and a walk to the street,
+`E`, `S`, `C` write `AFMAPC.DAT` (one record, disk 2, area 1, seven
+squares: `save-sidecars writes=1 reads=0 slot=C trouble=none`), and
+loading C reads it back, the panel at `6,12 N` drawing the room the
+party stood in at the start.
 
 Three placeholders: `<S>` a slot letter, `<N>` a party-member index,
 `<NAME>` a DOS name the player chose and this build cannot enumerate.

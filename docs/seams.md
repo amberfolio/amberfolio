@@ -1391,6 +1391,47 @@ reader's give-back paints over it inside a batch, so the reader calls
 `automap_state::note_panel_painted_over()` and the map redraws at its
 next arrival with its open flag untouched (#332).
 
+**On Curse of the Azure Bonds** (#555) the screen is laid out the same
+way, the viewport left and the roster in the same rect, and the panel is
+the same panel. One `automap_facts` row per program
+(`seam_automap.cpp`), the points in the definition's `programs`:
+
+| fact | Pool of Radiance | Curse of the Azure Bonds |
+| --- | --- | --- |
+| the keyboard's two entries | image `0xA6FD`, `0xA70F` | `0x86EB`, `0x86FD`; pushback DGROUP `0x8CBF` |
+| the region clear, frame bottom, right, top, left above the far return | image `0x4047` | `0x17FD`, and a second with the same frame at `0x580E` that text boxes clear through; both clear both pages |
+| the full-screen clear | image `0x7D3B` | `0x56E2` (only the titles call it; every full-screen view clears through the region clear) |
+| the roster drawer | resident, `0x0BA:0x0767` | overlay 25 (file offset 226981, 13331 bytes, load word `0x0EE0`), `+0x0798`; called through its stub entry at `0x00ED:0x002A`, the paragraph its record begins at (§8.4, #526) |
+| roster drawn | its `retf`, image `0x148A` | its `retf 4`, overlay 25 `+0x092E` |
+| the menu-bar thunk | image `0x3C7A` | `0x106A` (overlay 27's stub, its third entry); the bar at the same place in the frame |
+| the party's bar | DGROUP `0x04B6` and `0x04DF`; calls returning to overlay 14 `0x09D5`, `0x0C45` | one: DGROUP `0x03D8`, the overhead view toggled inside the same loop; the call returning to overlay 15 `+0x092C` |
+| an area is up | view kind `1` | area id DGROUP `0x8B78` non-zero (the program is in mode 4 from its titles on), as the scene read says |
+| the raw mode's keypad table | DGROUP `0x288C` | `0x27D0`, the same translation, and `\` to `7` |
+| shape tiles; first slot, columns, rows | `0x6A58`; `0x0C8C`, `0x0C96`, `0x0CA0` | `0x721C`; `0x0ADA`, `0x0AE4`, `0x0AEE` |
+| tile banks, their first codes | `0x5E3A`, `0x2722` | `0x65D0`, `0x2682` (a fifth bank past `0xFF` that no wall row reaches) |
+| frame colour, ground colour | `0x6A60`, `0x6A63` | `0x7224`, `0x7227` (dark grey, set by the program on this adapter) |
+| places | measured | none (`no_places()`): every label is `AREA <n>`, and a door is a kind seen shut on the map |
+
+- **Not ported**: the overland. Curse's is a journey menu, not a grid,
+  so the poll records nothing there.
+- **Driven** on slot A (`docs/playable-curse.md` leg 2) with Tab at the
+  opening room: the panel at `7,13 N` shows a wood wall north and south,
+  stone east and a door leaf west, as the 3D view does; on the street
+  the floor is the view's dark grey, the shop's doorway at `3,12 W` a
+  way through. The `PRESS RETURN` of the innkeeper's two screens and of
+  both signs, the shopkeeper's `YES NO` and the shop's bar each take it
+  away with the
+  roster drawn by the program's drawer, and the party's bar brings it
+  back. Tab again on the street puts the roster back with the current
+  member white; End with the panel up is taken. The label is `AREA 1`.
+  With `--save-sidecars`, a save to slot C writes `AFMAPC.DAT` and
+  loading C reads it back (`docs/hosts.md` §6).
+- **Fidelity**: `curse-quiet-automap` `identical curse-quiet` (on, Tab
+  never pressed, every one of 58 checkpoints equal); `curse-town-map`
+  `contrast curse-town` (Tab at frame 4,000 ahead of the Left there; 40
+  of 90 identical). Tests: `SeamAutomapOnCurse.*`
+  (`tests/core/machine/seam_automap_curse_test.cpp`).
+
 ### The journal reader (#175, #221, #222, #232, #305, #328, #346)
 
 PLAN.md §5 item 2's in-game half; ingestion is #174 and
