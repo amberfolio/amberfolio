@@ -501,6 +501,17 @@ inline constexpr program_profile pool_of_radiance{
 /// program's own stub table.
 namespace curse_of_the_azure_bonds_modules {
 
+/// Overlay 3: the event-script interpreter, which carries a script's own
+/// protection command (`seam_code_wheel.cpp`). The stub's record is at
+/// image `0x03C0`.
+inline constexpr seam_module interpreter{
+    .file = "GAME.OVR",
+    .file_offset = 2313,
+    .length = 14858,
+    .digest =
+        "323a088764862961e792f70af6091e8d72dddd748c0f46a78a9469000a80888c",
+    .load_segment_at = 0x3D0};
+
 /// Overlay 9: tactical combat's round loop and its end check. The stub's
 /// record is at image `0x0570`: the module's file offset and length, and
 /// the load-segment word sixteen bytes in.
@@ -515,16 +526,12 @@ inline constexpr seam_module combat{
 }  // namespace curse_of_the_azure_bonds_modules
 
 /// Curse of the Azure Bonds, the program Steam and GOG sell (v1.3;
-/// edition.h), **in part** (#554, #555). Only the members the debug
-/// cheats and the host reads use are filled in, each checked against the
+/// edition.h), **in part** (#554, #555). Only the members the seams and
+/// reads ported to it use are filled in, each checked against the
 /// program's own image and by a driven run (`docs/seams.md` §10,
-/// `docs/hosts.md` §13): the data segment, the game mode byte and its
-/// values, the party's head and the current member, the area record and
-/// its fields, the loaded map, the party's square and facing, the wall
-/// sets, the disk and area numbers, the transition flag, the font, the
-/// combat overlay and the character record's offsets. Every other member
-/// is zero, which is not a fact about this program but the absence of
-/// one, and nothing available on this program reads it.
+/// `docs/hosts.md` §13). Every other member is zero, which is not a fact
+/// about this program but the absence of one, and nothing available on
+/// this program reads it.
 ///
 /// **No view kind.** The program has one view in the adventuring mode,
 /// the grid, and its mode 3 is the overland journey, a list of places
@@ -551,7 +558,7 @@ inline constexpr program_profile curse_of_the_azure_bonds{
     .command_bar_entry = {},
     .roster_drawn_return = {},
     .titles_overlay = {},
-    .interpreter_overlay = {},
+    .interpreter_overlay = curse_of_the_azure_bonds_modules::interpreter,
     .combat_overlay = curse_of_the_azure_bonds_modules::combat,
     .aim_overlay = {},
     .adventure_overlay = {},
