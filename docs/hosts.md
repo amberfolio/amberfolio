@@ -1481,11 +1481,14 @@ the program keeps no roster file, and the party menu's ADD lists every
 | `<NAME>.SWG` | saves | character | no | what that character carries |
 | `<NAME>.FX` | saves | character | no | the effects that character is under |
 
-The `.SWG` and `.GUY` rows are the program's own names (the overlay file
-spells them); no driven save has written one yet, because the shipped
-parties carry nothing and creating a character is not yet a leg
-(`docs/playable-curse.md`). No seam available on Curse writes a sidecar,
-so neither sidecar appears there yet.
+Every row but the sidecars has been seen written (`docs/playable-curse.md`):
+`<NAME>.GUY` and `<NAME>.FX` when a new character is kept, all three
+`<NAME>` files when REMOVE CHARACTER FROM PARTY takes off a member who
+carries something (63 bytes of `.SWG` for one battle axe), and
+`CHRDAT<S><N>.SWG` when a save is made by a party with a member who
+carries something. The shipped parties carry nothing, so a save straight
+from slot A or B writes no `.SWG`. No seam available on Curse writes a
+sidecar, so neither sidecar appears there yet.
 
 Three placeholders: `<S>` a slot letter, `<N>` a party-member index,
 `<NAME>` a DOS name the player chose and this build cannot enumerate.
