@@ -314,12 +314,6 @@ namespace {
 // The facts
 // ---------------------------------------------------------------------------
 
-/// The program this seam's facts are about (program_profile.h): the
-/// baseline edition, and only it. The seam is available on it and on no
-/// other binary.
-constexpr const program_profile& profile = pool_of_radiance;
-constexpr auto automap_binaries = fingerprints_of(std::array{&profile});
-
 // **The points** are all in the resident image, and all five are the
 // profile's: the keyboard's two entries, the box-region clear and the
 // screen clear, the command-bar thunk and the roster drawer's far return.
@@ -346,39 +340,89 @@ constexpr auto automap_binaries = fingerprints_of(std::array{&profile});
 // The game mode, the view kind, the transition flag, the current member,
 // the area record and its geometry block, the disk and area ids, the
 // party's cell and facing, the loaded map, the keyboard pushback slot and
-// the font are the profile's; these are the automap's own.
+// the font are the profile's; the rest are the automap's own, one row per
+// program (`automap_facts`, below).
 
-/// The **shape-tile table**: a far pointer to the buffer the wall sets are
-/// loaded into. Row `n - 1` of it, stride `shape_row_bytes`, is the list
-/// of 8x8 tile codes the 3D renderer blits for a wall face of kind `n`.
-/// That is where a wall's colour comes from — the very tiles the player
-/// is looking at.
-constexpr std::uint16_t data_shape_tiles = 0x6A58;
+/// Bytes in one row of the shape-tile table: the tile codes of every
+/// shape the renderer draws one kind of wall face as.
 constexpr std::uint16_t shape_row_bytes = 0x9C;
-
-/// The **shape geometry**: for each of ten tile-block shapes the renderer
-/// knows, where in a row its tiles start and how many columns and rows it
-/// covers. Three byte tables, indexed by shape.
-constexpr std::uint16_t data_shape_first_slot = 0x0C8C;
-constexpr std::uint16_t data_shape_columns = 0x0C96;
-constexpr std::uint16_t data_shape_rows = 0x0CA0;
+/// How many tile-block shapes the renderer knows.
 constexpr unsigned shape_count = 10;
 
-/// The **tile banks**: six far pointers to decoded tile sets, and the
-/// table of the first tile code each bank answers for. A tile code is
-/// mapped to a bank by range and then to a frame inside it by subtracting
-/// that bank's first code.
-constexpr std::uint16_t data_tile_banks = 0x5E3A;
-constexpr std::uint16_t data_bank_first_tile = 0x2722;
+/// What this seam knows about one program: the profile it reads, and the
+/// facts only the automap reads.
+struct automap_facts {
+  /// The program (program_profile.h), whose fingerprint the row is for.
+  const program_profile& profile;
 
-/// The area's frame colour and the colour of the ground band in the 3D
-/// view, both EGA palette indices the program computes for itself. The
-/// second is what the panel's floor is drawn in, so the map's ground is
-/// the colour of the ground the player is looking at — read from the
-/// program's own byte rather than sampled off the screen, which cannot be
-/// fooled by a portrait covering the viewport.
-constexpr std::uint16_t data_frame_colour = 0x6A60;
-constexpr std::uint16_t data_ground_colour = 0x6A63;
+  /// Its tables of places: door table, zone names and lairs
+  /// (`automap_faces.h`).
+  const map_format::place_tables& (*places)() noexcept;
+
+  /// The **shape-tile table**: a far pointer to the buffer the wall sets
+  /// are loaded into. Row `n - 1` of it, stride `shape_row_bytes`, is the
+  /// list of 8x8 tile codes the 3D renderer blits for a wall face of kind
+  /// `n`. That is where a wall's colour comes from — the very tiles the
+  /// player is looking at.
+  std::uint16_t data_shape_tiles;
+
+  /// The **shape geometry**: for each of the `shape_count` tile-block
+  /// shapes the renderer knows, where in a row its tiles start and how
+  /// many columns and rows it covers. Three byte tables, indexed by shape.
+  std::uint16_t data_shape_first_slot;
+  std::uint16_t data_shape_columns;
+  std::uint16_t data_shape_rows;
+
+  /// The **tile banks**: far pointers to decoded tile sets, and the table
+  /// of the first tile code each bank answers for. A tile code is mapped
+  /// to a bank by range and then to a frame inside it by subtracting that
+  /// bank's first code.
+  std::uint16_t data_tile_banks;
+  std::uint16_t data_bank_first_tile;
+
+  /// The area's frame colour and the colour of the ground band in the 3D
+  /// view, both EGA palette indices the program computes for itself. The
+  /// second is what the panel's floor is drawn in, so the map's ground is
+  /// the colour of the ground the player is looking at — read from the
+  /// program's own byte rather than sampled off the screen, which cannot
+  /// be fooled by a portrait covering the viewport.
+  std::uint16_t data_frame_colour;
+  std::uint16_t data_ground_colour;
+
+  /// Where the give-back calls the roster drawer: a paragraph from the
+  /// image base and an offset in it (`give_the_roster_back()`).
+  std::uint16_t roster_call_paragraph;
+  std::uint16_t roster_call_offset;
+
+  /// Who reads the menu-bar routine's frame and says whether the bar going
+  /// up is the party's own (`at_command_bar()`).
+  void (*note_bar)(machine& box, const seam_context& ctx, std::uint16_t ds);
+
+  /// Whether the overland is recorded from this seam's poll as well
+  /// (`observe_overland()`, M5-E5b).
+  bool records_overland;
+};
+
+/// Pool of Radiance: the baseline edition (program_profile.h). The
+/// roster drawer is resident, called at the paragraph it was linked at.
+constexpr automap_facts pool_of_radiance_automap{
+    .profile = pool_of_radiance,
+    .places = &map_format::pool_of_radiance_places,
+    .data_shape_tiles = 0x6A58,
+    .data_shape_first_slot = 0x0C8C,
+    .data_shape_columns = 0x0C96,
+    .data_shape_rows = 0x0CA0,
+    .data_tile_banks = 0x5E3A,
+    .data_bank_first_tile = 0x2722,
+    .data_frame_colour = 0x6A60,
+    .data_ground_colour = 0x6A63,
+    .roster_call_paragraph = pool_of_radiance.screen_paragraph,
+    .roster_call_offset = pool_of_radiance.roster_draw_offset,
+    .note_bar = &note_command_bar,
+    .records_overland = true};
+
+constexpr auto automap_binaries =
+    fingerprints_of(std::array{&pool_of_radiance});
 
 /// The 8x8 font the program draws every menu and message with, behind the
 /// profile's `data_font_pointer` (M5-E2b): sixty-four glyphs of eight
@@ -451,10 +495,11 @@ constexpr std::uint8_t colour_white = 15;
 /// Zero — which is never a data segment, because that is the interrupt
 /// vector table — when it is not, and every handler treats that as a
 /// decline.
-[[nodiscard]] std::uint16_t data_segment(cpu::processor& cpu,
+[[nodiscard]] std::uint16_t data_segment(const automap_facts& f,
+                                         cpu::processor& cpu,
                                          const seam_context& ctx) noexcept {
   const auto expected = static_cast<std::uint16_t>(
-      (ctx.image_base() + profile.dgroup_offset()) / 16U);
+      (ctx.image_base() + f.profile.dgroup_offset()) / 16U);
   const std::uint16_t ds = cpu.regs()[cpu::sreg::ds];
   return ds == expected ? ds : 0;
 }
@@ -551,19 +596,21 @@ struct far_pointer {
 /// of anything and not compared with anything outside this file: it is
 /// what tells a cached wall colour that the tiles it was worked out from
 /// have been swapped underneath it.
-[[nodiscard]] std::uint16_t tile_bank_generation(cpu::processor& cpu,
+[[nodiscard]] std::uint16_t tile_bank_generation(const automap_facts& f,
+                                                 cpu::processor& cpu,
                                                  std::uint16_t ds) {
   std::uint16_t generation = 0;
   for (std::size_t bank = 0; bank < bank_last_tile.size(); ++bank) {
     const std::uint16_t segment = cpu.read_word(
-        ds, at(data_tile_banks, static_cast<std::uint16_t>((bank * 4) + 2)));
+        ds, at(f.data_tile_banks, static_cast<std::uint16_t>((bank * 4) + 2)));
     generation = static_cast<std::uint16_t>((generation * 31U) + segment);
   }
   return generation;
 }
 
 /// Add every pixel of one tile to a histogram of palette indices.
-void histogram_tile(cpu::processor& cpu, std::uint16_t ds, std::uint16_t code,
+void histogram_tile(const automap_facts& f, cpu::processor& cpu,
+                    std::uint16_t ds, std::uint16_t code,
                     std::array<std::uint32_t, 16>& counts) {
   std::size_t bank = bank_last_tile.size();
   for (std::size_t i = 0; i < bank_last_tile.size(); ++i) {
@@ -579,12 +626,12 @@ void histogram_tile(cpu::processor& cpu, std::uint16_t ds, std::uint16_t code,
   }
 
   const far_pointer tiles = far_at(
-      cpu, ds, at(data_tile_banks, static_cast<std::uint16_t>(bank * 4)));
+      cpu, ds, at(f.data_tile_banks, static_cast<std::uint16_t>(bank * 4)));
   if (!followable(tiles, tile_first_frame)) {
     return;
   }
   const std::uint16_t first_code = cpu.read_word(
-      ds, at(data_bank_first_tile, static_cast<std::uint16_t>(bank * 2)));
+      ds, at(f.data_bank_first_tile, static_cast<std::uint16_t>(bank * 2)));
   if (code < first_code) {
     return;
   }
@@ -638,12 +685,12 @@ void histogram_tile(cpu::processor& cpu, std::uint16_t ds, std::uint16_t code,
 
 /// The colour of a wall face of kind `nibble`, or -1 when the program is
 /// not holding what this would need to work it out.
-[[nodiscard]] int texture_colour(cpu::processor& cpu, std::uint16_t ds,
-                                 std::uint8_t nibble) {
+[[nodiscard]] int texture_colour(const automap_facts& f, cpu::processor& cpu,
+                                 std::uint16_t ds, std::uint8_t nibble) {
   if (nibble < 1 || nibble > 15) {
     return -1;
   }
-  const far_pointer table = far_at(cpu, ds, data_shape_tiles);
+  const far_pointer table = far_at(cpu, ds, f.data_shape_tiles);
   const auto row_at = static_cast<std::uint32_t>(nibble - 1) * shape_row_bytes;
   if (!followable(table, row_at + shape_row_bytes)) {
     return -1;
@@ -656,9 +703,9 @@ void histogram_tile(cpu::processor& cpu, std::uint16_t ds, std::uint16_t code,
   for (unsigned shape = 0; shape < shape_count; ++shape) {
     const unsigned extent =
         static_cast<unsigned>(cpu.read_byte(
-            ds, at(data_shape_columns, static_cast<std::uint16_t>(shape)))) *
+            ds, at(f.data_shape_columns, static_cast<std::uint16_t>(shape)))) *
         cpu.read_byte(ds,
-                      at(data_shape_rows, static_cast<std::uint16_t>(shape)));
+                      at(f.data_shape_rows, static_cast<std::uint16_t>(shape)));
     if (extent > widest_extent) {
       widest_extent = extent;
       widest = shape;
@@ -668,7 +715,7 @@ void histogram_tile(cpu::processor& cpu, std::uint16_t ds, std::uint16_t code,
     return -1;
   }
   const std::uint8_t first_slot = cpu.read_byte(
-      ds, at(data_shape_first_slot, static_cast<std::uint16_t>(widest)));
+      ds, at(f.data_shape_first_slot, static_cast<std::uint16_t>(widest)));
 
   std::array<std::uint32_t, 16> counts{};
   const auto row = static_cast<std::uint16_t>(table.offset + row_at);
@@ -681,7 +728,7 @@ void histogram_tile(cpu::processor& cpu, std::uint16_t ds, std::uint16_t code,
     }
     const std::uint8_t code = cpu.read_byte(table.segment, at(row, slot));
     if (code != 0) {
-      histogram_tile(cpu, ds, code, counts);
+      histogram_tile(f, cpu, ds, code, counts);
     }
   }
 
@@ -746,12 +793,13 @@ void histogram_tile(cpu::processor& cpu, std::uint16_t ds, std::uint16_t code,
 
 /// The three wall-set slots' block numbers, read through the bus: what
 /// the door table is keyed on.
-[[nodiscard]] map_format::wall_set_blocks wall_set_of(cpu::processor& cpu,
+[[nodiscard]] map_format::wall_set_blocks wall_set_of(const automap_facts& f,
+                                                      cpu::processor& cpu,
                                                       std::uint16_t ds) {
   map_format::wall_set_blocks blocks{};
   for (unsigned slot = 0; slot < map_format::wall_set_slots; ++slot) {
     blocks[slot] =
-        cpu.read_word(ds, at(profile.data_wall_set,
+        cpu.read_word(ds, at(f.profile.data_wall_set,
                              static_cast<std::uint16_t>(
                                  (slot + 1U) * map_format::wall_set_stride)));
   }
@@ -882,9 +930,9 @@ constexpr int glyph_columns = 8;
 /// False when the far pointer is not one that can be followed, which
 /// covers the program's own "the font is not installed yet" and every way
 /// a pointer it has not set up can point somewhere a seam must not read.
-[[nodiscard]] bool read_font(cpu::processor& cpu, std::uint16_t ds,
-                             font_table& font) {
-  const far_pointer pointer = far_at(cpu, ds, profile.data_font_pointer);
+[[nodiscard]] bool read_font(const automap_facts& f, cpu::processor& cpu,
+                             std::uint16_t ds, font_table& font) {
+  const far_pointer pointer = far_at(cpu, ds, f.profile.data_font_pointer);
   if (!followable(pointer, font_bytes)) {
     return false;
   }
@@ -965,12 +1013,12 @@ constexpr std::uint8_t colour_label = 14;
 /// has marked yet, it takes what fits. That is the deliberate answer
 /// rather than an oversight: a new name never vanishes, it just breaks in
 /// an ugly place until somebody puts a marker in it.
-void draw_label(panel_pixels& panel, const sample& now, const map_grid& grid,
-                const font_table& font) noexcept {
+void draw_label(const automap_facts& f, panel_pixels& panel, const sample& now,
+                const map_grid& grid, const font_table& font) noexcept {
   zone_fallback fallback{};
   const std::string_view name =
-      zone_label(map_format::pool_of_radiance_places(), now.disk, now.area,
-                 now.geo, {.map = &grid, .x = now.x, .y = now.y}, fallback);
+      zone_label(f.places(), now.disk, now.area, now.geo,
+                 {.map = &grid, .x = now.x, .y = now.y}, fallback);
 
   constexpr auto columns = static_cast<std::size_t>(automap_text_columns);
   constexpr int band_x = static_cast<int>(automap_band_x);
@@ -1101,13 +1149,13 @@ void draw_label(panel_pixels& panel, const sample& now, const map_grid& grid,
 /// Only the faces the map actually uses are histogrammed — there are
 /// fifteen possible and a map uses a handful, and each one costs a walk
 /// over every pixel of a tile.
-void learn_appearance(machine& box, std::uint16_t ds, const sample& now,
-                      const map_grid& grid, std::uint16_t banks) {
+void learn_appearance(const automap_facts& f, machine& box, std::uint16_t ds,
+                      const sample& now, const map_grid& grid,
+                      std::uint16_t banks) {
   automap_state& state = box.automap();
   state.begin_appearance(now.area, now.geo, banks);
-  const map_format::door_evidence doors =
-      map_format::door_kinds(map_format::pool_of_radiance_places(), grid,
-                             now.disk, wall_set_of(box.processor(), ds));
+  const map_format::door_evidence doors = map_format::door_kinds(
+      f.places(), grid, now.disk, wall_set_of(f, box.processor(), ds));
   state.set_door_nibbles(doors.seen, doors.from_table);
 
   std::uint16_t wanted = 0;
@@ -1125,7 +1173,7 @@ void learn_appearance(machine& box, std::uint16_t ds, const sample& now,
     if (((wanted >> nibble) & 1U) == 0) {
       continue;
     }
-    const int colour = texture_colour(box.processor(), ds, nibble);
+    const int colour = texture_colour(f, box.processor(), ds, nibble);
     if (colour > 0) {
       state.set_wall_colour(nibble, static_cast<std::uint8_t>(colour));
     }
@@ -1135,8 +1183,9 @@ void learn_appearance(machine& box, std::uint16_t ds, const sample& now,
 /// The whole panel into its own buffer. `font` is null when the program
 /// has not installed its glyphs yet, which is the one thing that can
 /// leave the band empty.
-void render(automap_state& state, const automap_record& map,
-            const map_grid& grid, const sample& now, const font_table* font) {
+void render(const automap_facts& f, automap_state& state,
+            const automap_record& map, const map_grid& grid, const sample& now,
+            const font_table* font) {
   panel_pixels& panel = state.pixels();
   panel.fill(colour_black);
 
@@ -1150,7 +1199,7 @@ void render(automap_state& state, const automap_record& map,
   // construction (`automap.h`), so nothing below can reach it and nothing
   // here can reach the map.
   if (font != nullptr) {
-    draw_label(panel, now, grid, *font);
+    draw_label(f, panel, now, grid, *font);
   }
 
   const std::uint16_t doors = state.door_nibbles();
@@ -1160,9 +1209,9 @@ void render(automap_state& state, const automap_record& map,
   // Only the place the party is in: a wilderness lair shares its grid
   // with the area's other lairs, and what was explored of those is
   // somewhere else (`map_format::place_of`).
-  const map_format::place_squares here = map_format::place_of(
-      map_format::pool_of_radiance_places(), now.disk, now.area, now.geo,
-      {.map = &grid, .x = now.x, .y = now.y});
+  const map_format::place_squares here =
+      map_format::place_of(f.places(), now.disk, now.area, now.geo,
+                           {.map = &grid, .x = now.x, .y = now.y});
   const auto shown = [&](unsigned cx, unsigned cy) {
     return here[map_format::cell_of(cx, cy)] &&
            automap_state::seen(map, cx, cy);
@@ -1392,9 +1441,10 @@ enum class claimable : std::uint8_t {
 /// wants **right now** — which is the whole of the fidelity argument: a
 /// key the seam is not going to act on is left exactly where the program
 /// would have found it.
-[[nodiscard]] claimable claim_key(cpu::processor& cpu, std::uint16_t ds,
-                                  bool want_panel, bool want_cursor) {
-  if (cpu.read_byte(ds, profile.data_key_pushback) != 0) {
+[[nodiscard]] claimable claim_key(const automap_facts& f, cpu::processor& cpu,
+                                  std::uint16_t ds, bool want_panel,
+                                  bool want_cursor) {
+  if (cpu.read_byte(ds, f.profile.data_key_pushback) != 0) {
     // The second half of an extended key is waiting. The two halves have
     // to stay adjacent, so nothing is touched on this pass.
     return claimable::none;
@@ -1437,7 +1487,9 @@ enum class claimable : std::uint8_t {
 
 /// Whether the program is on the screen this panel is a map of, with a
 /// map loaded and nothing scripted in flight.
-[[nodiscard]] bool adventuring(cpu::processor& cpu, std::uint16_t ds) {
+[[nodiscard]] bool adventuring(const automap_facts& f, cpu::processor& cpu,
+                               std::uint16_t ds) {
+  const program_profile& profile = f.profile;
   return cpu.read_byte(ds, profile.data_game_mode) == profile.mode_adventure &&
          cpu.read_byte(ds, profile.data_view_kind) == profile.view_kind_grid &&
          cpu.read_byte(ds, profile.data_in_transition) == 0 &&
@@ -1447,8 +1499,9 @@ enum class claimable : std::uint8_t {
 /// Everything one pass needs off the data segment. The geometry block
 /// comes through the area record's far pointer, which is checked before
 /// it is followed: nothing lives in segment zero.
-[[nodiscard]] bool take_sample(cpu::processor& cpu, std::uint16_t ds,
-                               sample& out) {
+[[nodiscard]] bool take_sample(const automap_facts& f, cpu::processor& cpu,
+                               std::uint16_t ds, sample& out) {
+  const program_profile& profile = f.profile;
   const std::uint16_t record_offset =
       cpu.read_word(ds, profile.data_area_record);
   const std::uint16_t record_segment =
@@ -1464,8 +1517,8 @@ enum class claimable : std::uint8_t {
   out.x = cpu.read_byte(ds, profile.data_party_x);
   out.y = cpu.read_byte(ds, profile.data_party_y);
   out.facing = cpu.read_byte(ds, profile.data_party_facing);
-  out.floor_colour = cpu.read_byte(ds, data_ground_colour);
-  out.frame_colour = cpu.read_byte(ds, data_frame_colour);
+  out.floor_colour = cpu.read_byte(ds, f.data_ground_colour);
+  out.frame_colour = cpu.read_byte(ds, f.data_frame_colour);
   out.map_offset = cpu.read_word(ds, profile.data_map_pointer);
   out.map_segment = cpu.read_word(ds, at(profile.data_map_pointer, 2));
 
@@ -1533,7 +1586,9 @@ enum class claimable : std::uint8_t {
 /// *before* it is queued: when the batch finishes the engine offers this
 /// point again, and a handler that had not already recorded what it was
 /// doing would queue the same calls a second time.
-void give_the_roster_back(machine& box, seam_context& ctx, std::uint16_t ds) {
+void give_the_roster_back(const automap_facts& f, machine& box,
+                          seam_context& ctx, std::uint16_t ds) {
+  const program_profile& profile = f.profile;
   automap_state& state = box.automap();
   state.set_panel_on_screen(false);
   state.set_drawn_signature(0);
@@ -1558,8 +1613,8 @@ void give_the_roster_back(machine& box, seam_context& ctx, std::uint16_t ds) {
       cpu.read_word(ds, profile.data_current_member)};
   (void)(ctx.call_program(image, profile.clear_region_entry, clear) &&
          ctx.call_program(
-             static_cast<std::uint16_t>(image + profile.screen_paragraph),
-             profile.roster_draw_offset, current));
+             static_cast<std::uint16_t>(image + f.roster_call_paragraph),
+             f.roster_call_offset, current));
 }
 
 /// Take the panel off the screen because somebody other than the
@@ -1584,26 +1639,26 @@ void give_the_roster_back(machine& box, seam_context& ctx, std::uint16_t ds) {
 /// True when it acted, and then the handler is finished for this pass: a
 /// batch may be outstanding, and there is nothing to draw while the panel
 /// is coming down anyway.
-[[nodiscard]] bool yield_to_the_program(machine& box, seam_context& ctx,
-                                        std::uint16_t ds) {
+[[nodiscard]] bool yield_to_the_program(const automap_facts& f, machine& box,
+                                        seam_context& ctx, std::uint16_t ds) {
   const automap_state& state = box.automap();
   if (!state.panel_open() || !state.panel_on_screen()) {
     return false;
   }
-  give_the_roster_back(box, ctx, ds);
+  give_the_roster_back(f, box, ctx, ds);
   return true;
 }
 
 /// What the panel does with a Tab it has decided is its own. True when
 /// the roster is coming back through a batch, which is the caller's cue
 /// that it is finished for this pass.
-[[nodiscard]] bool toggle_panel(machine& box, seam_context& ctx,
-                                std::uint16_t ds) {
+[[nodiscard]] bool toggle_panel(const automap_facts& f, machine& box,
+                                seam_context& ctx, std::uint16_t ds) {
   automap_state& state = box.automap();
   const bool open = !state.panel_open();
   state.set_panel_open(open);
   if (!open && state.panel_on_screen()) {
-    give_the_roster_back(box, ctx, ds);
+    give_the_roster_back(f, box, ctx, ds);
     return true;
   }
   state.set_drawn_signature(0);
@@ -1623,9 +1678,10 @@ void give_the_roster_back(machine& box, seam_context& ctx, std::uint16_t ds) {
 
 /// The workhorse: the program is asking whether a key is waiting, which
 /// is where it is between commands.
+template <const automap_facts& F>
 void at_key_pending(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
-  const std::uint16_t ds = data_segment(cpu, ctx);
+  const std::uint16_t ds = data_segment(F, cpu, ctx);
   if (ds == 0) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
@@ -1642,13 +1698,13 @@ void at_key_pending(machine& box, seam_context& ctx) {
     // and a map that skipped that square would stay wrong for the rest of
     // the session. Only the presentation and the key yield, which is the
     // line the covered-cells rule draws too.
-    if (yield_to_the_program(box, ctx, ds)) {
+    if (yield_to_the_program(F, box, ctx, ds)) {
       return;
     }
   } else {
-    switch (claim_key(cpu, ds, true, cursor_keys_are_the_panels(state))) {
+    switch (claim_key(F, cpu, ds, true, cursor_keys_are_the_panels(state))) {
       case claimable::panel:
-        if (toggle_panel(box, ctx, ds)) {
+        if (toggle_panel(F, box, ctx, ds)) {
           // The roster is on its way back through a batch. Nothing else
           // this pass.
           return;
@@ -1671,13 +1727,15 @@ void at_key_pending(machine& box, seam_context& ctx) {
   // (`automap_overland.h`); this caller draws nothing with what it
   // returns, and on any screen but the travel view it costs three bytes
   // of the data segment and returns.
-  (void)observe_overland(box, ctx, ds);
+  if constexpr (F.records_overland) {
+    (void)observe_overland(box, ctx, ds);
+  }
 
-  if (!adventuring(cpu, ds)) {
+  if (!adventuring(F, cpu, ds)) {
     return;
   }
   sample now{};
-  if (!take_sample(cpu, ds, now)) {
+  if (!take_sample(F, cpu, ds, now)) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
@@ -1710,13 +1768,13 @@ void at_key_pending(machine& box, seam_context& ctx) {
   // It only ever moves when the party's cell does, which is already here,
   // and having it would mean deciding whether to draw before or after the
   // fog was brought up to date.
-  const std::uint16_t banks = tile_bank_generation(cpu, ds);
+  const std::uint16_t banks = tile_bank_generation(F, cpu, ds);
   std::uint32_t drawn = mix(where, now.floor_colour);
   drawn = mix(drawn, now.frame_colour);
   drawn = mix(drawn, banks);
   // And whether the glyphs are there, so a panel first drawn with an empty
   // band gets its label the moment the program installs its font.
-  drawn = mix(drawn, cpu.read_word(ds, at(profile.data_font_pointer, 2)));
+  drawn = mix(drawn, cpu.read_word(ds, at(F.profile.data_font_pointer, 2)));
   // And the face the label is lettered in (text_face.h), so a switch
   // re-letters it. Mixed only when there is one, so a panel with no face
   // on signs exactly as it always has.
@@ -1766,7 +1824,7 @@ void at_key_pending(machine& box, seam_context& ctx) {
   }
 
   if (want_appearance) {
-    learn_appearance(box, ds, now, grid, banks);
+    learn_appearance(F, box, ds, now, grid, banks);
   }
   if (want_reveal) {
     const std::uint32_t was = state.serial();
@@ -1792,11 +1850,11 @@ void at_key_pending(machine& box, seam_context& ctx) {
     return;
   }
   font_table font{};
-  const bool have_font = read_font(cpu, ds, font);
+  const bool have_font = read_font(F, cpu, ds, font);
   // In the face the rest of the screen is lettered in, when a font seam
   // is drawing one: the label is the program's text and has to match it.
   text_face::apply(face, font);
-  render(state, *map, grid, now, have_font ? &font : nullptr);
+  render(F, state, *map, grid, now, have_font ? &font : nullptr);
   blit(box, state);
   state.set_panel_on_screen(true);
   state.set_drawn_signature(drawn);
@@ -1816,25 +1874,26 @@ void at_key_pending(machine& box, seam_context& ctx) {
 /// `seam_key_read.h` is the whole of that argument. Every claim is
 /// answered and not just Tab's: the roster-cursor keys are taken off the
 /// ring by the same call, and a key taken is a key the read is short.
+template <const automap_facts& F>
 void at_key_read(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
-  const std::uint16_t ds = data_segment(cpu, ctx);
+  const std::uint16_t ds = data_segment(F, cpu, ctx);
   if (ds == 0) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
   automap_state& state = box.automap();
   if (!state.at_command_bar()) {
-    (void)yield_to_the_program(box, ctx, ds);
+    (void)yield_to_the_program(F, box, ctx, ds);
     return;
   }
   const claimable which =
-      claim_key(cpu, ds, true, cursor_keys_are_the_panels(state));
+      claim_key(F, cpu, ds, true, cursor_keys_are_the_panels(state));
   if (which == claimable::none) {
     return;
   }
   if (which == claimable::panel) {
-    (void)toggle_panel(box, ctx, ds);
+    (void)toggle_panel(F, box, ctx, ds);
   }
   static_cast<void>(ctx.inject_keystroke(key_ignored_scan, key_ignored_ascii));
 }
@@ -1847,9 +1906,10 @@ void at_key_read(machine& box, seam_context& ctx) {
 /// script's menu, a shop, the camp bar — hands it a copy built on the
 /// stack. So a far pointer into the data segment at one of two known
 /// offsets is the party's own command bar, and anything else is not.
+template <const automap_facts& F>
 void at_command_bar(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
-  const std::uint16_t ds = data_segment(cpu, ctx);
+  const std::uint16_t ds = data_segment(F, cpu, ctx);
   if (ds == 0) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
@@ -1858,7 +1918,7 @@ void at_command_bar(machine& box, seam_context& ctx) {
   // has the same point for the same reason: one reader, so the two seams
   // cannot come to different conclusions about whose screen this is
   // (`automap_overland.h`).
-  note_command_bar(box, ctx, ds);
+  F.note_bar(box, ctx, ds);
 }
 
 /// A box region is about to be cleared. If it meets the panel's cells,
@@ -1911,25 +1971,26 @@ void at_roster_drawn(machine& box, seam_context& ctx) {
 // The definition
 // ---------------------------------------------------------------------------
 
-constexpr std::array<seam_point, 6> automap_points{
+/// Pool of Radiance's: all six in the resident image, the profile's.
+constexpr std::array<seam_point, 6> pool_of_radiance_automap_points{
     {{.module = resident_image,
-      .offset = profile.key_pending_entry,
-      .run = &at_key_pending},
+      .offset = pool_of_radiance.key_pending_entry,
+      .run = &at_key_pending<pool_of_radiance_automap>},
      {.module = resident_image,
-      .offset = profile.key_read_entry,
-      .run = &at_key_read},
+      .offset = pool_of_radiance.key_read_entry,
+      .run = &at_key_read<pool_of_radiance_automap>},
      {.module = resident_image,
-      .offset = profile.clear_region_entry,
+      .offset = pool_of_radiance.clear_region_entry,
       .run = &at_clear_region},
      {.module = resident_image,
-      .offset = profile.clear_screen_entry,
+      .offset = pool_of_radiance.clear_screen_entry,
       .run = &at_clear_screen},
      {.module = resident_image,
-      .offset = profile.roster_drawn_return,
+      .offset = pool_of_radiance.roster_drawn_return,
       .run = &at_roster_drawn},
      {.module = resident_image,
-      .offset = profile.command_bar_entry,
-      .run = &at_command_bar}}};
+      .offset = pool_of_radiance.command_bar_entry,
+      .run = &at_command_bar<pool_of_radiance_automap>}}};
 
 constexpr seam_definition automap_definition{
     .id = "automap",
@@ -1937,7 +1998,7 @@ constexpr seam_definition automap_definition{
         "a map of where the party has been, on Tab, in the game's own "
         "screen",
     .fingerprints = automap_binaries,
-    .points = automap_points,
+    .points = pool_of_radiance_automap_points,
     .trigger = false,
     .gate = document_kind::none,
     .schema = seam_schema_version};
