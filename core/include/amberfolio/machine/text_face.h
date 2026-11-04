@@ -14,8 +14,8 @@
 // here was drawn for this project, on an eight-by-eight grid, from
 // nothing; none is transcribed from the program's font or from any other.
 //
-// **A letter sits in columns 1 to 7 and rows 0 to 6**, as the program's
-// own do: the column on its left and the row under it are paper, the gap
+// **A letter sits in columns 1 to 7 and rows 0 to 6**, as Pool of
+// Radiance's own do: the column on its left and the row under it are paper, the gap
 // between letters and between lines, save for the punctuation that hangs
 // below the line. A selection drawn inverted (seam_select_yellow.cpp)
 // keeps that column and row as its margin inside the cell (#483).
@@ -26,7 +26,8 @@
 // solid blocks at `[ \ ] ^ _ $ %` — and the program reaches them through
 // the same table as its text. Those, and the space, stay the program's:
 // `replaces()` is false for them, and a seam that consults a face draws
-// the program's own glyph there. Everything past glyph sixty-three is
+// the program's own glyph there. Curse of the Azure Bonds' font keeps
+// something other than lettering in the same nine slots (#555). Everything past glyph sixty-three is
 // pictures (the runes, the rope border) and no face goes near it.
 //
 //

@@ -311,6 +311,8 @@ lines, at `--speed 386` and `--wall none`:
 | `curse-boot` | `curse-slots` | none | |
 | `curse-quiet` | `curse-slots` | none | |
 | `curse-quiet-cheats` | `curse-slots` | the three cheats, none pulled | `identical curse-quiet` |
+| `curse-quiet-font-sans` | `curse-slots` | `font-sans` | `contrast curse-quiet` |
+| `curse-quiet-font-chisel` | `curse-slots` | `font-chisel` | `contrast curse-quiet` |
 | `curse-town` | `curse-slots` | none | |
 | `curse-temple` | `curse-slots` | none | |
 | `curse-camp` | `curse-slots` | none | |

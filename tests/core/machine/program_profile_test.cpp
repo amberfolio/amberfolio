@@ -63,8 +63,10 @@ TEST(ProgramProfile, TheBaselineAndCurseHaveOne) {
   EXPECT_NE(curse_of_the_azure_bonds.data_font_pointer, 0U);
   EXPECT_NE(curse_of_the_azure_bonds.data_map_pointer, 0U);
   EXPECT_TRUE(curse_of_the_azure_bonds.combat_overlay.has_load_segment());
+  EXPECT_NE(curse_of_the_azure_bonds.data_font_pointer, 0U);
   EXPECT_EQ(curse_of_the_azure_bonds.key_read_entry, 0U);
   EXPECT_EQ(curse_of_the_azure_bonds.data_view_kind, 0U);
+  EXPECT_EQ(curse_of_the_azure_bonds.data_key_pushback, 0U);
 }
 
 TEST(ProgramProfile, EverySeamIsAvailableOnlyOnProgramsWithAProfile) {
