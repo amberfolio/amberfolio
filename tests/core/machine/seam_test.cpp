@@ -2141,6 +2141,197 @@ TEST(SeamCodeWheel, AnAnsweredChallengeWithEverySeamOffChangesNothing) {
 
   EXPECT_EQ(plain_hash.whole, hash_state(answered.pc()).whole);
 }
+
+// --- The code-wheel handler on Curse of the Azure Bonds (#555) -------------
+//
+// The same contract on a second program with its own facts: one character
+// typed against one expected, in an overlay of its own, and three calls
+// into the challenge, two in the boot and one in the event-script
+// interpreter's overlay.
+
+namespace curse_wheel {
+constexpr std::string_view fingerprint =
+    "42fcefd6785679568b00bc1fb5b1d81ac2773416be4a35e0363920ddf6b78acd";
+/// The protection overlay's and the interpreter's load-segment words.
+constexpr std::uint16_t protection_load_word = 0x0400;
+constexpr std::uint16_t interpreter_load_word = 0x03D0;
+/// The compare, in the protection overlay, and the three calls.
+constexpr std::uint16_t compare = 0x03C4;
+constexpr std::uint16_t first_call = 0x01F1;
+constexpr std::uint16_t demo_call = 0x0344;
+constexpr std::uint16_t script_call = 0x3263;
+constexpr std::uint16_t stub_paragraph = 0x003F;
+/// Where a test puts the two overlays.
+constexpr std::uint16_t protection_segment = 0x5000;
+constexpr std::uint16_t interpreter_segment = 0x5800;
+}  // namespace curse_wheel
+
+struct curse_wheel_rig : rig {
+  explicit curse_wheel_rig(bool answered = false) {
+    sha256_digest digest;
+    EXPECT_TRUE(parse_digest(curse_wheel::fingerprint, digest));
+    pc().seams().loaded(digest, image_load_segment);
+    pc().seams().set_code_wheel_answered(answered);
+  }
+
+  void put_byte(std::uint16_t segment, std::uint16_t offset,
+                std::uint8_t value) const {
+    box->memory().ram()[cpu::physical_address(segment, offset)] = value;
+  }
+  void put_word(std::uint16_t segment, std::uint16_t offset,
+                std::uint16_t value) const {
+    put_byte(segment, offset, static_cast<std::uint8_t>(value));
+    put_byte(segment, static_cast<std::uint16_t>(offset + 1),
+             static_cast<std::uint8_t>(value >> 8U));
+  }
+
+  /// `bytes` at `segment:offset`, and the processor pointed at them.
+  void code_at(std::uint16_t segment, std::uint16_t offset,
+               std::initializer_list<std::uint8_t> bytes) const {
+    std::uint16_t at = offset;
+    for (const std::uint8_t byte : bytes) {
+      put_byte(segment, at, byte);
+      ++at;
+    }
+    box->processor().reset();
+    cpu::registers& r = regs();
+    r[cpu::sreg::cs] = segment;
+    r[cpu::sreg::ss] = image_load_segment;
+    r[cpu::sreg::ds] = image_load_segment;
+    r[cpu::reg16::sp] = 0x0400;
+    r.ip = offset;
+  }
+
+  /// The routine mid-compare: the overlay loaded where the manager says,
+  /// the typed character in AL and the expected one three below BP.
+  void mid_compare(std::uint8_t typed, std::uint8_t expected) const {
+    put_word(image_load_segment, curse_wheel::protection_load_word,
+             curse_wheel::protection_segment);
+    code_at(curse_wheel::protection_segment, curse_wheel::compare,
+            {0x3A, 0x46, 0xFD, 0xF4});
+    regs()[cpu::reg16::bp] = 0x0300;
+    put_byte(image_load_segment, 0x0300 - 3, expected);
+    regs().set(cpu::reg8::al, typed);
+  }
+
+  /// A far call into the stub at `segment:offset`, and a `MOV AX, 3333h ;
+  /// HLT` where the program would go on.
+  void far_call_at(std::uint16_t segment, std::uint16_t offset,
+                   std::uint16_t paragraph) const {
+    const auto target =
+        static_cast<std::uint16_t>(image_load_segment + paragraph);
+    code_at(segment, static_cast<std::uint16_t>(offset + 5),
+            {0xB8, 0x33, 0x33, 0xF4});
+    code_at(segment, offset,
+            {0x9A, 0x25, 0x00, static_cast<std::uint8_t>(target),
+             static_cast<std::uint8_t>(target >> 8U)});
+  }
+};
+
+TEST(SeamCodeWheelOnCurse, IsAvailableWithPointsOfItsOwn) {
+  const curse_wheel_rig r;
+  sha256_digest digest;
+  ASSERT_TRUE(parse_digest(curse_wheel::fingerprint, digest));
+  const std::span<const seam_point> mine = points_on(code_wheel(), digest);
+  ASSERT_EQ(mine.size(), 4U);
+  EXPECT_EQ(mine[0].offset, curse_wheel::compare);
+  EXPECT_EQ(mine[0].module.load_segment_at, curse_wheel::protection_load_word);
+  EXPECT_TRUE(mine[1].module.is_resident_image());
+  EXPECT_TRUE(mine[2].module.is_resident_image());
+  EXPECT_EQ(mine[3].module.load_segment_at, curse_wheel::interpreter_load_word);
+  EXPECT_EQ(r.pc().seams().enable("code-wheel"), seam_reason::none);
+}
+
+TEST(SeamCodeWheelOnCurse, TheRightCharacterIsLatchedAndTheHostIsToldOnce) {
+  const curse_wheel_rig r;
+  counting_host host;
+  r.pc().seams().set_host(&host);
+  ASSERT_EQ(r.pc().seams().enable("code-wheel"), seam_reason::none);
+
+  r.mid_compare('K', 'K');
+  r.pc().step();
+  EXPECT_TRUE(r.pc().seams().code_wheel_answered());
+  ASSERT_EQ(host.served.size(), 1U);
+  EXPECT_EQ(host.served.front().first, seam_host_service::code_wheel_answered);
+
+  r.mid_compare('K', 'K');
+  r.pc().step();
+  EXPECT_EQ(host.served.size(), 1U);
+}
+
+TEST(SeamCodeWheelOnCurse, AWrongCharacterLatchesNothing) {
+  const curse_wheel_rig r;
+  counting_host host;
+  r.pc().seams().set_host(&host);
+  ASSERT_EQ(r.pc().seams().enable("code-wheel"), seam_reason::none);
+
+  r.mid_compare('A', 'K');
+  r.pc().step();
+  EXPECT_FALSE(r.pc().seams().code_wheel_answered());
+  EXPECT_TRUE(host.served.empty());
+}
+
+TEST(SeamCodeWheelOnCurse, WatchingCannotMoveTheMachine) {
+  const curse_wheel_rig off;
+  off.mid_compare('A', 'K');
+  off.pc().step();
+  const cpu::registers off_regs = off.regs();
+  const state_hashes off_hash = hash_state(off.pc());
+
+  const curse_wheel_rig on;
+  ASSERT_EQ(on.pc().seams().enable("code-wheel"), seam_reason::none);
+  on.mid_compare('A', 'K');
+  on.pc().step();
+
+  EXPECT_EQ(off_regs, on.regs());
+  EXPECT_EQ(off_hash.whole, hash_state(on.pc()).whole);
+}
+
+TEST(SeamCodeWheelOnCurse, TheAnsweredBootCallsTheChallengeNeither) {
+  for (const std::uint16_t call :
+       {curse_wheel::first_call, curse_wheel::demo_call}) {
+    const curse_wheel_rig r(true);
+    ASSERT_EQ(r.pc().seams().enable("code-wheel"), seam_reason::none);
+    r.far_call_at(image_load_segment, call, curse_wheel::stub_paragraph);
+    r.pc().step();
+    EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x3333) << call;
+    EXPECT_EQ(r.regs().ip, static_cast<std::uint16_t>(call + 8)) << call;
+  }
+}
+
+TEST(SeamCodeWheelOnCurse, TheAnsweredScriptDoesNotAskEither) {
+  const curse_wheel_rig r(true);
+  ASSERT_EQ(r.pc().seams().enable("code-wheel"), seam_reason::none);
+  r.put_word(image_load_segment, curse_wheel::interpreter_load_word,
+             curse_wheel::interpreter_segment);
+  r.far_call_at(curse_wheel::interpreter_segment, curse_wheel::script_call,
+                curse_wheel::stub_paragraph);
+  r.pc().step();
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x3333);
+  EXPECT_EQ(r.regs()[cpu::sreg::cs], curse_wheel::interpreter_segment);
+  EXPECT_EQ(r.pc().seams().status("code-wheel").fired, 1U);
+}
+
+TEST(SeamCodeWheelOnCurse, TheUnansweredBootAsksAsItAlwaysDid) {
+  const curse_wheel_rig r;
+  ASSERT_EQ(r.pc().seams().enable("code-wheel"), seam_reason::none);
+  r.far_call_at(image_load_segment, curse_wheel::first_call,
+                curse_wheel::stub_paragraph);
+  r.pc().step();
+  EXPECT_EQ(r.regs()[cpu::sreg::cs],
+            static_cast<std::uint16_t>(image_load_segment +
+                                       curse_wheel::stub_paragraph));
+  EXPECT_EQ(r.regs().ip, 0x0025);
+}
+
+TEST(SeamCodeWheelOnCurse, PoolOfRadiancesStubIsDeclinedHere) {
+  const curse_wheel_rig r(true);
+  ASSERT_EQ(r.pc().seams().enable("code-wheel"), seam_reason::none);
+  r.far_call_at(image_load_segment, curse_wheel::first_call, stub_paragraph);
+  r.pc().step();
+  EXPECT_NE(r.regs()[cpu::reg16::ax], 0x3333);
+  EXPECT_EQ(r.pc().seams().status("code-wheel").declined, 1U);
+}
 }  // namespace
 }  // namespace amberfolio::machine
 

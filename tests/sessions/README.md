@@ -126,7 +126,7 @@ frame that carries an input is checkpointed whatever the cadence says.
 
 ### Curse of the Azure Bonds
 
-Nineteen sessions, `curse-*`, on the Steam copy at `--speed 386` and
+Twenty-one sessions, `curse-*`, on the Steam copy at `--speed 386` and
 `--wall none` (#554). Every one is `disk external`: `curse-load` is
 pinned to the disk `curse-save` wrote (the `curse-saved` snapshot), the
 two `curse-journey` sessions to a disk with the party saved in slot D
@@ -135,7 +135,12 @@ shipped slots A and B (`curse-slots`).
 `docs/playable-curse.md` has the legs and the table; the pairs are the
 cheats': `curse-quiet-cheats` `identical curse-quiet` (all three on,
 none pulled), and `curse-fight-cheat`, `curse-fight-kill`, `curse-camp-wound` and
-`curse-journey-kill` each a `contrast` with the run it differs from. The
+`curse-journey-kill` each a `contrast` with the run it differs from; and
+the code wheel's (#555): `curse-boot-wheel` `identical curse-boot` (on,
+a wrong letter typed, nothing latched) and `curse-boot-answered`
+`contrast curse-boot` (answered, 20 of 31 checkpoints identical, then
+divergent from tick 49,734,886, the first after `P`, where the challenge
+would begin). The
 other thirteen are the legs with no seam: a new character, a purchase, a
 cure at the temple, the game's own Fix, the royal carriage, a journey
 on the overland map, and the rest. Each verifies on the desktop host and on the wasm module
@@ -145,7 +150,7 @@ on the overland map, and the rest. Each verifies on the desktop host and on the 
 
 | Seam | On and exercised | On and never triggered |
 | --- | --- | --- |
-| `code-wheel` | every game session but the boot pair: the challenge is answered before the run and the seam steps over the boot's call to the check | `boot-wheel`, on and unanswered: it watches 144 times and triggers nothing |
+| `code-wheel` | every game session but the boot pair: the challenge is answered before the run and the seam steps over the boot's call to the check; on Curse `curse-boot-answered` | `boot-wheel`, on and unanswered: it watches 144 times and triggers nothing; on Curse `curse-boot-wheel` |
 | `encamp-fix` | `camp-fix` | `quiet-encamp` |
 | `roster-fix` (built in, always on) | `roster-add` | none can exist: there is no off. Every other session verifies with it on, `party` reaching it twice |
 | `timer-fix` (built in, always on) | `walk-quick`, at every sound after a skipped wait | none can exist: there is no off. Every session without quick steps verifies with it on: the driver's vector is the BIOS's at every install |

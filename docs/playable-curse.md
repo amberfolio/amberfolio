@@ -19,8 +19,10 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
 ```
 
 No `--install`: a Steam copy is recognized and laid out at `\CURSE`, a
-GOG copy at the root (`docs/hosts.md` §2c). No seam is needed to play,
-and none but the debug cheats is available on this program. Sixty
+GOG copy at the root (`docs/hosts.md` §2c). No seam is needed to play.
+The legs below answer the challenge themselves; with `--seam code-wheel
+--code-wheel-answered` the boot goes from `P` straight to the party
+menu, and every frame after it comes earlier (`docs/seams.md` §10). Sixty
 frames to the virtual second; `TICKS = FRAME * 19,887` at `--speed 386`
 is close enough for `--until`.
 
