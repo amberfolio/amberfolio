@@ -124,22 +124,26 @@
 namespace amberfolio::machine {
 namespace {
 
-/// The program this file's facts are about (program_profile.h): the
-/// baseline edition, and only it.
-constexpr const program_profile& profile = pool_of_radiance;
+// --- One program's facts ---------------------------------------------------
 
-// --- The editor ------------------------------------------------------------
+/// What this piece needs to know about one program: the instruction after
+/// its line editor's call into the program's key read, which stores AL, as
+/// an offset from the image segment. The pushback slot and the data segment
+/// are the profile's.
+struct edit_keys_facts {
+  const program_profile& profile;
+  std::uint32_t editor_after_read;
+};
 
-/// In the resident image: the instruction after the line editor's call into
-/// the program's key read, which stores AL. Offset from the image segment.
-/// The editor's entry is `0x7A73`; the call is the five bytes before this.
-constexpr std::uint32_t editor_after_read = 0x7AC0;
-
-// --- The data segment ------------------------------------------------------
+/// Pool of Radiance: the editor's entry is `0x7A73`; the call is the five
+/// bytes before this.
+constexpr edit_keys_facts pool_of_radiance_edit_keys{
+    .profile = pool_of_radiance, .editor_after_read = 0x7AC0};
 
 /// The editor has just been handed AL by the program's key read. If it is
 /// the zero that starts an extended key, and the read has kept the scan code
 /// for the next one, throw the scan code away.
+template <const edit_keys_facts& F>
 void drop_the_scan_code(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   cpu::registers& regs = cpu.regs();
@@ -148,21 +152,26 @@ void drop_the_scan_code(machine& box, seam_context& ctx) {
   }
   const std::uint16_t ds = regs[cpu::sreg::ds];
   if (ds != static_cast<std::uint16_t>((ctx.image_base() >> 4U) +
-                                       profile.dgroup_paragraphs)) {
+                                       F.profile.dgroup_paragraphs)) {
     // Not the data segment the facts put the slot in.
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
-  if (cpu.read_byte(ds, profile.data_key_pushback) == 0) {
+  if (cpu.read_byte(ds, F.profile.data_key_pushback) == 0) {
     return;
   }
-  cpu.write_byte(ds, profile.data_key_pushback, 0);
+  cpu.write_byte(ds, F.profile.data_key_pushback, 0);
 }
 
-constexpr std::array<seam_point, 1> edit_keys_point_table{
-    {{.module = resident_image,
-      .offset = editor_after_read,
-      .run = &drop_the_scan_code}}};
+template <const edit_keys_facts& F>
+constexpr std::array<seam_point, 1> edit_keys_points_of() {
+  return {{{.module = resident_image,
+            .offset = F.editor_after_read,
+            .run = &drop_the_scan_code<F>}}};
+}
+
+constexpr std::array<seam_point, 1> edit_keys_point_table =
+    edit_keys_points_of<pool_of_radiance_edit_keys>();
 static_assert(edit_keys_point_table.size() == edit_keys_point_count);
 
 }  // namespace

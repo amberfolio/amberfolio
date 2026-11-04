@@ -111,24 +111,35 @@
 namespace amberfolio::machine {
 namespace {
 
-/// The program this file's facts are about (program_profile.h): the
-/// baseline edition, and only it.
-constexpr const program_profile& profile = pool_of_radiance;
+/// One program's facts: in its aim overlay (the profile's), target to
+/// target's meeting point and its wait's return; manual's halving, meeting
+/// point and its wait's return. Then the frames, from BP: target to target's
+/// attack flag and bar string; manual's attack flag and line byte.
+struct aim_watch_facts {
+  const program_profile& profile;
+  std::uint32_t target_decided;
+  std::uint32_t target_returned;
+  std::uint32_t manual_line_ends;
+  std::uint32_t manual_decided;
+  std::uint32_t manual_returned;
+  int target_attack;
+  int target_bar;
+  int manual_attack;
+  int manual_line;
+};
 
-/// In the aim overlay (the profile's): target to target's meeting point and its wait's return;
-/// manual's halving, meeting point and its wait's return.
-constexpr std::uint32_t target_decided = 0x2BB6;
-constexpr std::uint32_t target_returned = 0x2C31;
-constexpr std::uint32_t manual_line_ends = 0x2F84;
-constexpr std::uint32_t manual_decided = 0x310A;
-constexpr std::uint32_t manual_returned = 0x3178;
-
-/// The frames, from BP: target to target's attack flag and bar string;
-/// manual's attack flag and line byte.
-constexpr int target_attack = 0x08;
-constexpr int target_bar = -0x2A;
-constexpr int manual_attack = 0x10;
-constexpr int manual_line = -0x39;
+/// Pool of Radiance: overlay 13.
+constexpr aim_watch_facts pool_of_radiance_aim_watch{
+    .profile = pool_of_radiance,
+    .target_decided = 0x2BB6,
+    .target_returned = 0x2C31,
+    .manual_line_ends = 0x2F84,
+    .manual_decided = 0x310A,
+    .manual_returned = 0x3178,
+    .target_attack = 0x08,
+    .target_bar = -0x2A,
+    .manual_attack = 0x10,
+    .manual_line = -0x39};
 
 struct frame {
   std::uint16_t segment;
@@ -153,30 +164,33 @@ void note(seam_context& ctx, scene_aim_mode mode, frame at,
   ctx.set_scratch(aim_mode_scratch, static_cast<std::uint16_t>(mode));
 }
 
+template <const aim_watch_facts& F>
 void target_bar_up(machine& box, seam_context& ctx) {
   const frame at = frame_now(box);
   std::uint16_t flags = 0;
-  if (byte_at(box, at, target_bar) != 0) {
+  if (byte_at(box, at, F.target_bar) != 0) {
     flags |= aim_offered;
   }
-  if (byte_at(box, at, target_attack) != 0) {
+  if (byte_at(box, at, F.target_attack) != 0) {
     flags |= aim_range_shown;
   }
   note(ctx, scene_aim_mode::target, at, flags);
 }
 
+template <const aim_watch_facts& F>
 void manual_line_noted(machine& box, seam_context& ctx) {
   const frame at = frame_now(box);
-  const bool shown = byte_at(box, at, manual_line) != 0 &&
-                     byte_at(box, at, manual_attack) != 0;
+  const bool shown = byte_at(box, at, F.manual_line) != 0 &&
+                     byte_at(box, at, F.manual_attack) != 0;
   ctx.set_scratch(aim_flags_scratch, shown ? aim_range_shown : 0);
 }
 
+template <const aim_watch_facts& F>
 void manual_bar_up(machine& box, seam_context& ctx) {
   const frame at = frame_now(box);
   auto flags = static_cast<std::uint16_t>(ctx.scratch(aim_flags_scratch) &
                                           aim_range_shown);
-  if (byte_at(box, at, manual_line) != 0) {
+  if (byte_at(box, at, F.manual_line) != 0) {
     flags |= aim_offered;
   }
   note(ctx, scene_aim_mode::manual, at, flags);
@@ -187,23 +201,29 @@ void bar_down(machine& /*box*/, seam_context& ctx) {
                   static_cast<std::uint16_t>(scene_aim_mode::none));
 }
 
-constexpr std::array<seam_point, 5> aim_watch_point_table{{
-    {.module = profile.aim_overlay,
-     .offset = target_decided,
-     .run = &target_bar_up},
-    {.module = profile.aim_overlay,
-     .offset = target_returned,
-     .run = &bar_down},
-    {.module = profile.aim_overlay,
-     .offset = manual_line_ends,
-     .run = &manual_line_noted},
-    {.module = profile.aim_overlay,
-     .offset = manual_decided,
-     .run = &manual_bar_up},
-    {.module = profile.aim_overlay,
-     .offset = manual_returned,
-     .run = &bar_down},
-}};
+template <const aim_watch_facts& F>
+constexpr std::array<seam_point, 5> aim_watch_points_of() {
+  return {{
+      {.module = F.profile.aim_overlay,
+       .offset = F.target_decided,
+       .run = &target_bar_up<F>},
+      {.module = F.profile.aim_overlay,
+       .offset = F.target_returned,
+       .run = &bar_down},
+      {.module = F.profile.aim_overlay,
+       .offset = F.manual_line_ends,
+       .run = &manual_line_noted<F>},
+      {.module = F.profile.aim_overlay,
+       .offset = F.manual_decided,
+       .run = &manual_bar_up<F>},
+      {.module = F.profile.aim_overlay,
+       .offset = F.manual_returned,
+       .run = &bar_down},
+  }};
+}
+
+constexpr std::array<seam_point, 5> aim_watch_point_table =
+    aim_watch_points_of<pool_of_radiance_aim_watch>();
 static_assert(aim_watch_point_table.size() == aim_watch_point_count);
 
 }  // namespace
