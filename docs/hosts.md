@@ -1481,14 +1481,18 @@ the program keeps no roster file, and the party menu's ADD lists every
 | `<NAME>.SWG` | saves | character | no | what that character carries |
 | `<NAME>.FX` | saves | character | no | the effects that character is under |
 
-Every row but the sidecars has been seen written (`docs/playable-curse.md`):
+Every row has been seen written (`docs/playable-curse.md`) but
+`AFMAP<S>.DAT`, because the automap is not ported to Curse yet:
 `<NAME>.GUY` and `<NAME>.FX` when a new character is kept, all three
 `<NAME>` files when REMOVE CHARACTER FROM PARTY takes off a member who
 carries something (63 bytes of `.SWG` for one battle axe), and
 `CHRDAT<S><N>.SWG` when a save is made by a party with a member who
 carries something. The shipped parties carry nothing, so a save straight
-from slot A or B writes no `.SWG`. No seam available on Curse writes a
-sidecar, so neither sidecar appears there yet.
+from slot A or B writes no `.SWG`. `AFSEEN<S>.DAT` is the journal's
+read log (#555): with `--seam journal --save-sidecars`, a save to slot C
+after the innkeeper's citation of entry 31 writes `AFSEENC.DAT` (one row,
+entry 31 unread), and loading C reads it back
+(`save-sidecars writes=0 reads=1 slot=C trouble=none`).
 
 Three placeholders: `<S>` a slot letter, `<N>` a party-member index,
 `<NAME>` a DOS name the player chose and this build cannot enumerate.

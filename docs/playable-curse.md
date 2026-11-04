@@ -102,7 +102,8 @@ runs at once: two screens that `Return` answers. Recorded as
 
 From the opening, `Return Return Left` (facing a wall north), then
 `Left Up` steps west into `6,13` and the innkeeper's event: two screens,
-the second citing journal entry 31. `Right Up` is the street at `6,12 N`
+the second citing journal entry 31, which `--seam journal` puts on the
+journal's log (`curse-cite`). `Right Up` is the street at `6,12 N`
 and a sign. `Left Up Up Up Return Up` walks west along the street to the
 weapon shop's sign at `3,12` and into the shop at `2,12`; `Y` takes the
 shopkeeper's offer and the bar is `BUY VIEW POOL APPRAISE EXIT`; `B`
@@ -329,6 +330,8 @@ lines, at `--speed 386` and `--wall none`:
 | `curse-carriage` | `curse-slots` | none | |
 | `curse-journey` | `curse-wild` | none | |
 | `curse-journey-kill` | `curse-wild` | `cheat-kill-all`, pulled | `contrast curse-journey` |
+| `curse-journey-journal` | `curse-wild` | `journal` | `identical curse-journey` |
+| `curse-cite` | `curse-slots` | `journal`, entry 31 cited | `identical curse-buy` |
 
 ```sh
 python3 scripts/sweep.py --game-disk games/curse-slots --game-disk games/curse-saved \

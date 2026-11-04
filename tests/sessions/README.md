@@ -126,7 +126,7 @@ frame that carries an input is checkpointed whatever the cadence says.
 
 ### Curse of the Azure Bonds
 
-Twenty-five sessions, `curse-*`, on the Steam copy at `--speed 386` and
+Twenty-seven sessions, `curse-*`, on the Steam copy at `--speed 386` and
 `--wall none` (#554, #555). Every one is `disk external`: `curse-load` is
 pinned to the disk `curse-save` wrote (the `curse-saved` snapshot), the
 two `curse-journey` sessions to a disk with the party saved in slot D
@@ -142,12 +142,15 @@ a wrong letter typed, nothing latched) and `curse-boot-answered`
 divergent from tick 49,734,886, the first after `P`, where the challenge
 would begin);
 the text faces': `curse-quiet-font-sans` and `curse-quiet-font-chisel`,
-each a `contrast curse-quiet` at its keys and ticks; and
+each a `contrast curse-quiet` at its keys and ticks;
 the message pause's, `curse-quiet-message-pause` `identical
 curse-quiet` (no message pause reached) and `curse-fight-pause`
 `contrast curse-fight` (82 of 195 identical, divergent from tick
 142,562,734, the pause that opens the brawl), each the baseline's keys
-re-hashed with the seam on, so at its ticks. The
+re-hashed with the seam on, so at its ticks; and
+the journal's: `curse-journey-journal` `identical curse-journey` (on,
+nothing cited) and `curse-cite` `identical curse-buy` (on, the innkeeper's entry
+31 cited and logged, which moves nothing the machine holds). The
 other fourteen are the legs with no seam: a new character, a purchase, a
 cure at the temple, the game's own Fix, the royal carriage, a journey
 on the overland map, and the rest. Each verifies on the desktop host and on the wasm module
@@ -162,7 +165,7 @@ on the overland map, and the rest. Each verifies on the desktop host and on the 
 | `roster-fix` (built in, always on) | `roster-add` | none can exist: there is no off. Every other session verifies with it on, `party` reaching it twice |
 | `timer-fix` (built in, always on) | `walk-quick`, at every sound after a skipped wait | none can exist: there is no off. Every session without quick steps verifies with it on: the driver's vector is the BIOS's at every install |
 | `automap` | `walk-map` | `quiet-automap` |
-| `journal` | `reader`, `notes`, `cite` | `quiet-journal` (a `contrast`) |
+| `journal` | `reader`, `notes`, `cite`; on Curse `curse-cite` (an `identical`: only the citation watch is ported) | `quiet-journal` (a `contrast`); on Curse `curse-journey-journal` (an `identical`) |
 | `explored` | `wild-trail` | `quiet-explored` |
 | the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party`; on Curse `curse-fight-cheat`, `curse-fight-kill`, `curse-camp-wound` | `quiet-cheats`; on Curse `curse-quiet-cheats` |
 | `modern-controls` | `list-down-arrows`, `camp-down-arrows`, `camp-pad-arrows`, `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys`, `bar-esc-keys`, `bar-script-keys`, `bar-portrait-keys`, `menu-down-cursor`, `move-walk-mode`, `door-pick-3`, `list-keys-yellow`, `name-arrows-edit` (each a `contrast`; `door-pick-3` has the seam on at both ends and differs by its keys) | none can exist: three of its pieces draw on sight, so `quiet-modern-controls`, `menu-letters-cursor` and `quiet-all-on-sight` are `contrast`s too (the pair is a `contrast`, as the faces' is) |

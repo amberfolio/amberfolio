@@ -270,6 +270,12 @@ struct journal_text_font {
   /// size and says so.
   std::uint32_t decoded{};
   journal_filter filter{journal_filter::flate};
+  /// Whether the font draws **ornaments rather than words** (#555): a
+  /// typesetter's dingbat set before each heading, which its map reads as
+  /// a letter. A run in such a font is dropped wherever it is, exactly as
+  /// a picture is: it is not the item's text. Its map is still named, so
+  /// a row that points at the wrong stream still fails to inflate.
+  bool ornament{false};
 };
 
 /// One page of a text edition: where its content stream is, and the

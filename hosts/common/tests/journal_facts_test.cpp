@@ -34,16 +34,19 @@
 namespace amberfolio::host {
 namespace {
 
-TEST(JournalTable, HasTheTwoEditionsSomebodySatDownWith) {
+TEST(JournalTable, HasTheThreeEditionsSomebodySatDownWith) {
   // It was empty until M5-E3b (#214), and the header said why at length:
   // these are facts about a document somebody has to sit down with. The
   // archive edition is first and the tests about scans below read it as
-  // `front()`; the Steam edition, typeset as text, is second (#398).
-  ASSERT_EQ(known_journals().size(), 2U)
+  // `front()`; the Steam edition, typeset as text, is second (#398); and
+  // Curse of the Azure Bonds' Steam edition, typeset as text, is third
+  // (#555).
+  ASSERT_EQ(known_journals().size(), 3U)
       << "an edition came or went; the rules below are what a row has to"
-         " satisfy, and #214 and #398 are where these came from";
+         " satisfy, and #214, #398 and #555 are where these came from";
   EXPECT_FALSE(known_journals().front().reads_own_text());
   EXPECT_TRUE(known_journals()[1].reads_own_text());
+  EXPECT_TRUE(known_journals()[2].reads_own_text());
   EXPECT_EQ(known_journals().front().entries.size(), 99U)
       << "the archive release's journal has fifty-eight entries,"
          " twenty-three tales and eighteen proclamations";
@@ -468,6 +471,68 @@ TEST(JournalTable, TheSteamEditionsPiecesAreInReadingOrder) {
       const bool later_column =
           after.page == before.page && after.box.left > before.box.left;
       EXPECT_TRUE(later_sheet || later_column)
+          << journal_kind_name(fact.kind) << ' ' << fact.number
+          << " has a piece that does not follow the one before it";
+    }
+  }
+}
+
+TEST(JournalTable, CursesEditionHasItsEntriesAndItsTalesWithoutAGap) {
+  // Curse's journal has two numbered sections, fifty-nine entries and
+  // sixty-two tavern tales, each a chain read off the printed headings
+  // (#555): a gap or a repeat is the one way that reading could have gone
+  // wrong quietly.
+  const journal_edition& curse = known_journals()[2];
+  EXPECT_EQ(curse.entries.size(), 121U);
+  for (const auto& [kind, last] : {std::pair{journal_kind::entry, 59U},
+                                   std::pair{journal_kind::tale, 62U}}) {
+    std::uint16_t expected = 1;
+    for (const journal_entry_fact& fact : curse.entries) {
+      if (fact.kind != kind) {
+        continue;
+      }
+      EXPECT_EQ(fact.number, expected)
+          << journal_kind_name(kind) << " rows are not in order";
+      ++expected;
+    }
+    EXPECT_EQ(expected, last + 1U)
+        << journal_kind_name(kind) << " does not run to the end";
+  }
+  std::size_t entries_with_art = 0;
+  std::size_t pictures = 0;
+  for (const journal_entry_fact& fact : curse.entries) {
+    EXPECT_FALSE(fact.text.empty());
+    EXPECT_TRUE(fact.fragments.empty()) << "a text edition has no scans";
+    if (!fact.art.empty()) {
+      EXPECT_EQ(fact.kind, journal_kind::entry) << "no tale has a picture";
+      ++entries_with_art;
+    }
+    pictures += fact.art.size();
+  }
+  EXPECT_EQ(entries_with_art, 9U);
+  EXPECT_EQ(pictures, 9U);
+}
+
+TEST(JournalTable, CursesEditionsPiecesAreInReadingOrder) {
+  // Down a column, then the next column, then the next sheet - and, in
+  // this edition, further down the same column, where three tales are set
+  // narrower beside a drawing and a tale is cut where its margin moves.
+  // Four columns to a sheet, whose margins are under 205, 400, 595 and
+  // 790 points.
+  const auto band = [](std::int32_t left) {
+    return left < 205 ? 0 : left < 400 ? 1 : left < 595 ? 2 : 3;
+  };
+  for (const journal_entry_fact& fact : known_journals()[2].entries) {
+    for (std::size_t i = 1; i < fact.text.size(); ++i) {
+      const journal_text_fragment& before = fact.text[i - 1];
+      const journal_text_fragment& after = fact.text[i];
+      const bool later_sheet = after.page > before.page;
+      const bool later_column = after.page == before.page &&
+                                band(after.box.left) > band(before.box.left);
+      const bool further_down = after.page == before.page &&
+                                band(after.box.left) == band(before.box.left) &&
+                                after.box.top <= before.box.bottom + 1;
+      EXPECT_TRUE(later_sheet || later_column || further_down)
           << journal_kind_name(fact.kind) << ' ' << fact.number
           << " has a piece that does not follow the one before it";
     }
