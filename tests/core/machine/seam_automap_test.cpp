@@ -2114,7 +2114,7 @@ TEST(AutomapFidelity, AResetMachineHasExploredNothing) {
   EXPECT_FALSE(r.map_state().panel_open());
 }
 
-TEST(AutomapDefinition, ItIsACommandAndNotAPullAndItNamesTheBaseline) {
+TEST(AutomapDefinition, ItIsACommandAndNotAPullAndItNamesBothPrograms) {
   const rig r;
   const seam_definition* automap = r.pc().seams().find("automap");
   ASSERT_NE(automap, nullptr);
@@ -2128,9 +2128,14 @@ TEST(AutomapDefinition, ItIsACommandAndNotAPullAndItNamesTheBaseline) {
                                          "comes from";
     EXPECT_EQ(point.module.file, resident_image.file);
   }
-  ASSERT_EQ(automap->fingerprints.size(), 1u);
+  // The baseline's points are the definition's own; Curse of the Azure
+  // Bonds' are its program row (seam_automap_curse_test.cpp).
+  ASSERT_EQ(automap->fingerprints.size(), 2u);
   EXPECT_EQ(automap->fingerprints.front(),
             known_editions().front().fingerprint);
+  ASSERT_EQ(automap->programs.size(), 1u);
+  EXPECT_EQ(automap->programs.front().fingerprint,
+            automap->fingerprints.back());
 }
 
 }  // namespace

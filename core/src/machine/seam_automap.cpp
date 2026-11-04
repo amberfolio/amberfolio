@@ -314,11 +314,13 @@ namespace {
 // The facts
 // ---------------------------------------------------------------------------
 
-// **The points** are all in the resident image, and all five are the
-// profile's: the keyboard's two entries, the box-region clear and the
-// screen clear, the command-bar thunk and the roster drawer's far return.
-// The keyboard, framing and roster routines are the program's own
-// substrate and are never overlaid. This seam calls two of them as well:
+// **The points**, on Pool of Radiance, are all in the resident image, and
+// all are the profile's: the keyboard's two entries, the box-region clear
+// and the screen clear, the command-bar thunk and the roster drawer's far
+// return. The keyboard, framing and roster routines are that program's
+// own substrate and are never overlaid. On Curse of the Azure Bonds the
+// roster drawer is overlaid and a second region clear stands beside the
+// first (`curse_automap`, below). This seam calls two of them as well:
 // the box-region clear, to clear the panel's own rect before the roster is
 // drawn back over it, and the roster drawer (see
 // `give_the_roster_back()`).
@@ -421,8 +423,88 @@ constexpr automap_facts pool_of_radiance_automap{
     .note_bar = &note_command_bar,
     .records_overland = true};
 
+/// Where the bar is in the menu-bar routine's frame at the thunk's entry:
+/// the far return on top, then eleven words of arguments, the bar's far
+/// pointer the fourth from the far end. The same on both programs.
+constexpr std::uint16_t bar_frame_menu_offset = 18;
+constexpr std::uint16_t bar_frame_menu_segment = 20;
+
+/// Whose bar is going up, on a program with **one** adventuring bar
+/// (Curse of the Azure Bonds): the reading `note_command_bar()` makes on
+/// Pool of Radiance, with the one bar the profile names and the one call
+/// that puts it up. The overhead view is toggled inside the same loop and
+/// keeps the same bar.
+///
+/// The bar is a far pointer into the data segment at that bar's offset,
+/// or the call is the adventuring loop's own, by the far return on top of
+/// the stack and the segment the overlay manager's word says the
+/// adventure overlay is at now.
+template <const program_profile& P>
+void note_one_bar(machine& box, const seam_context& ctx, std::uint16_t ds) {
+  cpu::processor& cpu = box.processor();
+  const cpu::registers& regs = cpu.regs();
+  const std::uint16_t ss = regs[cpu::sreg::ss];
+  const std::uint16_t sp = regs[cpu::reg16::sp];
+  const std::uint16_t segment = cpu.read_word(
+      ss, static_cast<std::uint16_t>(sp + bar_frame_menu_segment));
+  const std::uint16_t offset =
+      cpu.read_word(ss, static_cast<std::uint16_t>(sp + bar_frame_menu_offset));
+  const bool program_bar = segment == ds && offset == P.data_view_bar;
+
+  const std::uint16_t return_ip = cpu.read_word(ss, sp);
+  const std::uint16_t return_cs =
+      cpu.read_word(ss, static_cast<std::uint16_t>(sp + 2));
+  const std::uint16_t adventure = cpu.read_word(
+      static_cast<std::uint16_t>(ctx.image_base() >> 4U),
+      static_cast<std::uint16_t>(P.adventure_overlay.load_segment_at));
+  const bool party_call = adventure != 0 && return_cs == adventure &&
+                          return_ip == P.view_bar_return;
+
+  box.automap().set_at_command_bar(program_bar || party_call);
+}
+
+/// Curse of the Azure Bonds (#555). The renderer's tables are Pool of
+/// Radiance's, at their own offsets, and the ground is a byte the program
+/// sets to dark grey on this adapter. No place tables (`no_places()`):
+/// every map is `AREA <n>` and a door is a kind seen shut on the map. The
+/// roster drawer is overlaid (overlay 25), so the give-back calls its
+/// resident stub entry at the stub's own paragraph: the record is at image
+/// `0x0ED0` and the drawer is its third entry (docs/seams.md §8.4, #526).
+/// Its overland is a journey menu, recorded by nobody here.
+constexpr automap_facts curse_automap{
+    .profile = curse_of_the_azure_bonds,
+    .places = &map_format::no_places,
+    .data_shape_tiles = 0x721C,
+    .data_shape_first_slot = 0x0ADA,
+    .data_shape_columns = 0x0AE4,
+    .data_shape_rows = 0x0AEE,
+    .data_tile_banks = 0x65D0,
+    .data_bank_first_tile = 0x2682,
+    .data_frame_colour = 0x7224,
+    .data_ground_colour = 0x7227,
+    .roster_call_paragraph = 0x00ED,
+    .roster_call_offset = 0x002A,
+    .note_bar = &note_one_bar<curse_of_the_azure_bonds>,
+    .records_overland = false};
+
+/// Curse's overlay 25: the party summary drawer among others. Its point is
+/// the drawer's `retf 4`, `curse_roster_drawn_return` into the module.
+constexpr seam_module curse_summary_overlay{
+    .file = "GAME.OVR",
+    .file_offset = 226981,
+    .length = 13331,
+    .digest =
+        "58601d3692c12e68081787f36ae1fccb5d24eb8488da8ce588a4318e03d2a6a6",
+    .load_segment_at = 0x0EE0};
+constexpr std::uint16_t curse_roster_drawn_return = 0x092E;
+
+/// Curse's second region clear: the same four arguments in the same
+/// frame as the profile's, and a clear of the same rect on both pages.
+/// Text boxes clear through it.
+constexpr std::uint16_t curse_text_clear_entry = 0x580E;
+
 constexpr auto automap_binaries =
-    fingerprints_of(std::array{&pool_of_radiance});
+    fingerprints_of(std::array{&pool_of_radiance, &curse_of_the_azure_bonds});
 
 /// The 8x8 font the program draws every menu and message with, behind the
 /// profile's `data_font_pointer` (M5-E2b): sixty-four glyphs of eight
@@ -1490,9 +1572,20 @@ enum class claimable : std::uint8_t {
 [[nodiscard]] bool adventuring(const automap_facts& f, cpu::processor& cpu,
                                std::uint16_t ds) {
   const program_profile& profile = f.profile;
-  return cpu.read_byte(ds, profile.data_game_mode) == profile.mode_adventure &&
-         cpu.read_byte(ds, profile.data_view_kind) == profile.view_kind_grid &&
-         cpu.read_byte(ds, profile.data_in_transition) == 0 &&
+  if (cpu.read_byte(ds, profile.data_game_mode) != profile.mode_adventure) {
+    return false;
+  }
+  if (profile.data_view_kind != 0) {
+    if (cpu.read_byte(ds, profile.data_view_kind) != profile.view_kind_grid) {
+      return false;
+    }
+  } else if (cpu.read_byte(ds, profile.data_area_id) == 0) {
+    // A program with no view kind (Curse) is in this mode from its first
+    // instruction, titles and all; an area is up once its id is non-zero,
+    // which is the scene read's rule too (scene.cpp).
+    return false;
+  }
+  return cpu.read_byte(ds, profile.data_in_transition) == 0 &&
          cpu.read_word(ds, at(profile.data_map_pointer, 2)) != 0;
 }
 
@@ -1992,6 +2085,38 @@ constexpr std::array<seam_point, 6> pool_of_radiance_automap_points{
       .offset = pool_of_radiance.command_bar_entry,
       .run = &at_command_bar<pool_of_radiance_automap>}}};
 
+/// Curse's: the keyboard, the two region clears and the full-screen
+/// clear, and the menu-bar thunk in the resident image; the roster
+/// drawer's return in its overlay.
+constexpr std::array<seam_point, 7> curse_automap_points{
+    {{.module = resident_image,
+      .offset = curse_of_the_azure_bonds.key_pending_entry,
+      .run = &at_key_pending<curse_automap>},
+     {.module = resident_image,
+      .offset = curse_of_the_azure_bonds.key_read_entry,
+      .run = &at_key_read<curse_automap>},
+     {.module = resident_image,
+      .offset = curse_of_the_azure_bonds.clear_region_entry,
+      .run = &at_clear_region},
+     {.module = resident_image,
+      .offset = curse_text_clear_entry,
+      .run = &at_clear_region},
+     {.module = resident_image,
+      .offset = curse_of_the_azure_bonds.clear_screen_entry,
+      .run = &at_clear_screen},
+     {.module = curse_summary_overlay,
+      .offset = curse_roster_drawn_return,
+      .run = &at_roster_drawn},
+     {.module = resident_image,
+      .offset = curse_of_the_azure_bonds.command_bar_entry,
+      .run = &at_command_bar<curse_automap>}}};
+
+/// The points on every program but the baseline, whose points are the
+/// definition's own (seam.h, schema 9).
+constexpr std::array<seam_program_points, 1> automap_programs{
+    {{.fingerprint = curse_of_the_azure_bonds.fingerprint,
+      .points = curse_automap_points}}};
+
 constexpr seam_definition automap_definition{
     .id = "automap",
     .about =
@@ -1999,6 +2124,7 @@ constexpr seam_definition automap_definition{
         "screen",
     .fingerprints = automap_binaries,
     .points = pool_of_radiance_automap_points,
+    .programs = automap_programs,
     .trigger = false,
     .gate = document_kind::none,
     .schema = seam_schema_version};

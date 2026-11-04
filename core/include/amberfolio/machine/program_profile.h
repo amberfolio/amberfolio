@@ -587,6 +587,12 @@ inline constexpr seam_module menu{
 /// rather than a map walked square by square, so `data_view_kind` is zero
 /// and a read takes the grid as given.
 ///
+/// **One adventuring bar.** The overhead view is toggled inside the same
+/// loop as the 3D view and keeps its bar, so the 3D view's bar and its
+/// call's return are filled and the overhead view's are zero (M5-E2d,
+/// `seam_automap.cpp`). Its roster drawer is overlaid, so the profile's
+/// resident roster members are zero too and the automap names the stub.
+///
 /// The record is the 422-byte one the program also saves, so its offsets
 /// are the save file's: the same fields as Pool of Radiance's in the
 /// same order, further in.
@@ -598,13 +604,13 @@ inline constexpr program_profile curse_of_the_azure_bonds{
     .screen_paragraph = {},
     .roster_draw_offset = {},
     .screen_composer_offset = {},
-    .key_pending_entry = {},
+    .key_pending_entry = 0x86EB,
     .key_read_entry = 0x86FD,
-    .clear_region_entry = {},
-    .clear_screen_entry = {},
+    .clear_region_entry = 0x17FD,
+    .clear_screen_entry = 0x56E2,
     .draw_frame_entry = {},
     .draw_string_entry = {},
-    .command_bar_entry = {},
+    .command_bar_entry = 0x106A,
     .roster_drawn_return = {},
     .titles_overlay = {},
     .interpreter_overlay = curse_of_the_azure_bonds_modules::interpreter,
@@ -630,7 +636,7 @@ inline constexpr program_profile curse_of_the_azure_bonds{
     .area_bar_call = {},
     .area_bar_return = {},
     .view_bar_call = {},
-    .view_bar_return = {},
+    .view_bar_return = 0x092C,
     .data_game_mode = 0x4FD3,
     .mode_camp = 2,
     .mode_travel = 3,
@@ -654,7 +660,7 @@ inline constexpr program_profile curse_of_the_azure_bonds{
     .area_geometry_block = 0x18A,
     .area_shown_in_3d = 0x1CC,
     .data_area_bar = {},
-    .data_view_bar = {},
+    .data_view_bar = 0x03D8,
     .data_current_member = 0x6520,
     .data_roster_head = 0x6524,
     .data_bar_highlight = 0x72AE,

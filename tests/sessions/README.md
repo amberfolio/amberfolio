@@ -126,7 +126,7 @@ frame that carries an input is checkpointed whatever the cadence says.
 
 ### Curse of the Azure Bonds
 
-Thirty-two sessions, `curse-*`, on the Steam copy at `--speed 386` and
+Thirty-four sessions, `curse-*`, on the Steam copy at `--speed 386` and
 `--wall none` (#554, #555). Every one is `disk external`: `curse-load` is
 pinned to the disk `curse-save` wrote (the `curse-saved` snapshot), the
 two `curse-journey` sessions to a disk with the party saved in slot D
@@ -156,7 +156,10 @@ nothing cited) and `curse-cite` `identical curse-buy` (on, the innkeeper's entry
 on sight), `curse-camp-arrows` `contrast curse-camp-keys` (the arrows and
 Escape at the camp bar and its Yes/No question) and `curse-name-arrows`
 `contrast curse-name-keys` (the arrows at creation's lists and in the
-name). The
+name); and the automap's: `curse-quiet-automap` `identical curse-quiet`
+(on, Tab never pressed) and `curse-town-map` `contrast curse-town` (Tab
+at frame 4,000 ahead of the Left there, 40 of 90 identical, divergent
+from tick 79,563,886). The
 other sixteen are the legs with no seam: a new character, a purchase, a
 cure at the temple, the game's own Fix, the royal carriage, a journey
 on the overland map, and the rest. Each verifies on the desktop host and on the wasm module
@@ -170,7 +173,7 @@ on the overland map, and the rest. Each verifies on the desktop host and on the 
 | `encamp-fix` | `camp-fix` | `quiet-encamp` |
 | `roster-fix` (built in, always on) | `roster-add` | none can exist: there is no off. Every other session verifies with it on, `party` reaching it twice |
 | `timer-fix` (built in, always on) | `walk-quick`, at every sound after a skipped wait | none can exist: there is no off. Every session without quick steps verifies with it on: the driver's vector is the BIOS's at every install |
-| `automap` | `walk-map` | `quiet-automap` |
+| `automap` | `walk-map`; on Curse `curse-town-map` | `quiet-automap`; on Curse `curse-quiet-automap` |
 | `journal` | `reader`, `notes`, `cite`; on Curse `curse-cite` (an `identical`: only the citation watch is ported) | `quiet-journal` (a `contrast`); on Curse `curse-journey-journal` (an `identical`) |
 | `explored` | `wild-trail` | `quiet-explored` |
 | the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party`; on Curse `curse-fight-cheat`, `curse-fight-kill`, `curse-camp-wound` | `quiet-cheats`; on Curse `curse-quiet-cheats` |
