@@ -147,40 +147,77 @@
 namespace amberfolio::machine {
 namespace {
 
-/// The program this seam's facts are about (program_profile.h): the
-/// baseline edition, and only it. The seam is available on it and on no
-/// other binary.
-constexpr const program_profile& profile = pool_of_radiance;
-constexpr auto message_pause_binaries = fingerprints_of(std::array{&profile});
+/// This seam's facts about one program (#555): the shared ones through
+/// its profile (program_profile.h), and the ones only this seam reads.
+/// One row per program it is available on; every handler is
+/// instantiated on one row, so a handler never asks which program it is
+/// on (the cheats' pattern, seam_cheats.cpp).
+struct message_pause_facts {
+  const program_profile& profile;
 
-/// The pause's `push ax`, and the far return of its call to `Delay`, from
-/// the image segment.
-constexpr std::uint32_t push_offset = 0x7E5B;
-constexpr std::uint32_t pause_return_offset = 0x7E61;
+  /// The pause's `push ax`, and the far return of its call to `Delay`,
+  /// from the image segment.
+  std::uint32_t push_offset;
+  std::uint32_t pause_return_offset;
 
-/// `Delay`'s `dec dx`, from the image segment.
-constexpr std::uint32_t countdown_offset = 0xA6B7;
+  /// `Delay`'s `dec dx`, from the image segment.
+  std::uint32_t countdown_offset;
 
-/// The script opcode's call, in the interpreter overlay (the profile's):
-/// the offset the call returns to.
-constexpr std::uint16_t script_return_offset = 0x272B;
+  /// `Delay` itself: its paragraph, counted from the image segment, and
+  /// its offset there. One word, `retf 2`.
+  std::uint16_t delay_paragraphs;
+  std::uint16_t delay_offset;
 
-/// In the same overlay: the print opcode's two calls to the box printer,
-/// and the encounter menu's.
-constexpr std::uint32_t print_append_call = 0x0A69;
-constexpr std::uint32_t print_clear_call = 0x0A91;
-constexpr std::uint32_t encounter_print_call = 0x2176;
+  /// The script opcode's call, in the interpreter overlay (the
+  /// profile's): the offset the call returns to.
+  std::uint16_t script_return_offset;
 
-/// The line the print opcode prints, a Pascal string in the data segment.
-constexpr std::uint16_t data_print_line = 0x70C8;
+  /// In the same overlay: the print opcode's two calls to the box
+  /// printer, and the encounter menu's.
+  std::uint32_t print_append_call;
+  std::uint32_t print_clear_call;
+  std::uint32_t encounter_print_call;
+
+  /// The line the print opcode prints, a Pascal string in the data
+  /// segment.
+  std::uint16_t data_print_line;
+
+  /// The far pointer to the game-state block, and the approach's count in
+  /// it.
+  std::uint16_t data_state_block;
+  std::uint16_t state_approach_frames;
+
+  /// The death routine's calls, in the module whose load-segment word is
+  /// the profile's `death_load_segment_at`: the offsets the calls return
+  /// to.
+  std::array<std::uint16_t, 2> death_return_offsets;
+};
+
+/// Pool of Radiance.
+constexpr message_pause_facts pool_of_radiance_message_pause{
+    .profile = pool_of_radiance,
+    .push_offset = 0x7E5B,
+    .pause_return_offset = 0x7E61,
+    .countdown_offset = 0xA6B7,
+    .delay_paragraphs = 0xA40,
+    .delay_offset = 0x029C,
+    .script_return_offset = 0x272B,
+    .print_append_call = 0x0A69,
+    .print_clear_call = 0x0A91,
+    .encounter_print_call = 0x2176,
+    .data_print_line = 0x70C8,
+    .data_state_block = 0x49D6,
+    .state_approach_frames = 0x582,
+    .death_return_offsets = {
+        0x1018,  // in a fight
+        0x0E34,  // anywhere else
+    }};
+
+constexpr auto message_pause_binaries =
+    fingerprints_of(std::array{&pool_of_radiance});
 
 /// The encounter menu's call: the clear flag is the fourth word pushed.
 constexpr std::uint16_t call_clear_flag = 4;
-
-/// `Delay`, from the image segment. The runtime's `ReadKey` is the
-/// profile's `key_read_entry`.
-constexpr std::uint16_t delay_paragraphs = 0xA40;
-constexpr std::uint16_t delay_offset = 0x029C;
 
 /// How long one call of the wait before the menu is, in milliseconds.
 constexpr std::uint16_t wait_slice = 50;
@@ -188,18 +225,6 @@ constexpr std::uint16_t wait_slice = 50;
 /// The seam's own words.
 constexpr unsigned word_unread = 0;     // a line printed, not yet waited on
 constexpr unsigned word_remaining = 1;  // of the wait before the menu, ms
-
-/// The death routine's calls, in the module whose load-segment word is the
-/// profile's `death_load_segment_at`: the offsets the calls return to.
-constexpr std::array<std::uint16_t, 2> death_return_offsets{
-    0x1018,  // in a fight
-    0x0E34,  // anywhere else
-};
-
-/// The far pointer to the game-state block, and the approach's count in
-/// it.
-constexpr std::uint16_t data_state_block = 0x49D6;
-constexpr std::uint16_t state_approach_frames = 0x582;
 
 /// The pause's frame: BP at SP, the far return above it.
 constexpr std::uint16_t frame_return = 2;
@@ -210,9 +235,10 @@ constexpr std::uint16_t pause_maximum = 10000;
 constexpr std::uint16_t pause_step = 250;
 constexpr std::uint16_t pause_initial = 1500;
 
+template <const message_pause_facts& F>
 [[nodiscard]] std::uint16_t dgroup_of(const seam_context& ctx) {
   return static_cast<std::uint16_t>((ctx.image_base() >> 4U) +
-                                    profile.dgroup_paragraphs);
+                                    F.profile.dgroup_paragraphs);
 }
 
 [[nodiscard]] std::uint32_t linear(std::uint16_t segment,
@@ -222,41 +248,43 @@ constexpr std::uint16_t pause_initial = 1500;
 
 /// Whether the pause was called by the script opcode while an approach
 /// is still counting its frames.
+template <const message_pause_facts& F>
 [[nodiscard]] bool approach_beat(cpu::processor& cpu, const seam_context& ctx,
                                  std::uint16_t ds, std::uint16_t segment,
                                  std::uint16_t offset) {
   const auto image = static_cast<std::uint16_t>(ctx.image_base() >> 4U);
-  const std::uint16_t script = cpu.read_word(
-      image,
-      static_cast<std::uint16_t>(profile.interpreter_overlay.load_segment_at));
+  const std::uint16_t script =
+      cpu.read_word(image, static_cast<std::uint16_t>(
+                               F.profile.interpreter_overlay.load_segment_at));
   if (script == 0 ||
-      linear(segment, offset) != linear(script, script_return_offset)) {
+      linear(segment, offset) != linear(script, F.script_return_offset)) {
     return false;
   }
-  const std::uint16_t block_offset = cpu.read_word(ds, data_state_block);
+  const std::uint16_t block_offset = cpu.read_word(ds, F.data_state_block);
   const std::uint16_t block_segment =
-      cpu.read_word(ds, static_cast<std::uint16_t>(data_state_block + 2));
+      cpu.read_word(ds, static_cast<std::uint16_t>(F.data_state_block + 2));
   if (linear(block_segment, block_offset) >= 0xA0000U) {
     // Not a block in conventional memory: no answer, and no read of the
     // video window to find one (docs/seams.md §8.4).
     return false;
   }
   return cpu.read_word(block_segment,
-                       static_cast<std::uint16_t>(block_offset +
-                                                  state_approach_frames)) != 0;
+                       static_cast<std::uint16_t>(
+                           block_offset + F.state_approach_frames)) != 0;
 }
 
 /// Whether the pause was called by the death routine, whose pause is how
 /// long the death's sound is heard.
+template <const message_pause_facts& F>
 [[nodiscard]] bool death_sound(cpu::processor& cpu, const seam_context& ctx,
                                std::uint16_t segment, std::uint16_t offset) {
   const auto image = static_cast<std::uint16_t>(ctx.image_base() >> 4U);
   const std::uint16_t death =
-      cpu.read_word(image, profile.death_load_segment_at);
+      cpu.read_word(image, F.profile.death_load_segment_at);
   if (death == 0) {
     return false;
   }
-  for (const std::uint16_t site : death_return_offsets) {
+  for (const std::uint16_t site : F.death_return_offsets) {
     if (linear(segment, offset) == linear(death, site)) {
       return true;
     }
@@ -266,21 +294,23 @@ constexpr std::uint16_t pause_initial = 1500;
 
 /// Whether the pause called from `segment:offset` is not a message's, and
 /// keeps the game's length.
+template <const message_pause_facts& F>
 [[nodiscard]] bool keeps_its_length(cpu::processor& cpu,
                                     const seam_context& ctx, std::uint16_t ds,
                                     std::uint16_t segment,
                                     std::uint16_t offset) {
-  return death_sound(cpu, ctx, segment, offset) ||
-         approach_beat(cpu, ctx, ds, segment, offset);
+  return death_sound<F>(cpu, ctx, segment, offset) ||
+         approach_beat<F>(cpu, ctx, ds, segment, offset);
 }
 
+template <const message_pause_facts& F>
 void lengthen_the_pause(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   cpu::registers& regs = cpu.regs();
   const std::uint16_t ds = regs[cpu::sreg::ds];
   const std::uint16_t ss = regs[cpu::sreg::ss];
   const std::uint16_t bp = regs[cpu::reg16::bp];
-  if (ds != dgroup_of(ctx) || bp != regs[cpu::reg16::sp]) {
+  if (ds != dgroup_of<F>(ctx) || bp != regs[cpu::reg16::sp]) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
@@ -295,7 +325,7 @@ void lengthen_the_pause(machine& box, seam_context& ctx) {
       cpu.read_word(ss, static_cast<std::uint16_t>(bp + frame_return));
   const std::uint16_t return_segment =
       cpu.read_word(ss, static_cast<std::uint16_t>(bp + frame_return + 2));
-  if (keeps_its_length(cpu, ctx, ds, return_segment, return_offset)) {
+  if (keeps_its_length<F>(cpu, ctx, ds, return_segment, return_offset)) {
     return;
   }
   regs[cpu::reg16::ax] = wanted;
@@ -313,6 +343,7 @@ void take_key(cpu::processor& cpu) {
   cpu.write_word(bda::segment, bda::keyboard_buffer_head, next);
 }
 
+template <const message_pause_facts& F>
 void end_on_a_key(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   cpu::registers& regs = cpu.regs();
@@ -322,13 +353,13 @@ void end_on_a_key(machine& box, seam_context& ctx) {
   const std::uint16_t return_segment =
       cpu.read_word(ss, static_cast<std::uint16_t>(sp + 2));
   if (linear(return_segment, return_offset) !=
-      ctx.image_base() + pause_return_offset) {
+      ctx.image_base() + F.pause_return_offset) {
     // Some other wait: the typing, the music, a beat a routine times
     // itself.
     return;
   }
   const std::uint16_t ds = regs[cpu::sreg::ds];
-  if (ds != dgroup_of(ctx)) {
+  if (ds != dgroup_of<F>(ctx)) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
@@ -337,7 +368,7 @@ void end_on_a_key(machine& box, seam_context& ctx) {
       cpu.read_word(ss, static_cast<std::uint16_t>(bp + frame_return));
   const std::uint16_t caller_segment =
       cpu.read_word(ss, static_cast<std::uint16_t>(bp + frame_return + 2));
-  if (keeps_its_length(cpu, ctx, ds, caller_segment, caller_offset)) {
+  if (keeps_its_length<F>(cpu, ctx, ds, caller_segment, caller_offset)) {
     return;
   }
   if (cpu.read_word(bda::segment, bda::keyboard_buffer_head) ==
@@ -354,16 +385,17 @@ void end_on_a_key(machine& box, seam_context& ctx) {
          cpu.read_word(bda::segment, bda::keyboard_buffer_tail);
 }
 
+template <const message_pause_facts& F>
 void note_a_printed_line(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   const std::uint16_t ds = cpu.regs()[cpu::sreg::ds];
-  if (ds != dgroup_of(ctx)) {
+  if (ds != dgroup_of<F>(ctx)) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
-  const std::uint8_t length = cpu.read_byte(ds, data_print_line);
+  const std::uint8_t length = cpu.read_byte(ds, F.data_print_line);
   for (std::uint16_t at = 1; at <= length; ++at) {
-    if (cpu.read_byte(ds, static_cast<std::uint16_t>(data_print_line + at)) !=
+    if (cpu.read_byte(ds, static_cast<std::uint16_t>(F.data_print_line + at)) !=
         ' ') {
       ctx.set_scratch(word_unread, 1);
       return;
@@ -375,10 +407,11 @@ void note_a_key_read(machine& /*box*/, seam_context& ctx) {
   ctx.set_scratch(word_unread, 0);
 }
 
+template <const message_pause_facts& F>
 void wait_before_the_menu(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   cpu::registers& regs = cpu.regs();
-  if (regs[cpu::sreg::ds] != dgroup_of(ctx)) {
+  if (regs[cpu::sreg::ds] != dgroup_of<F>(ctx)) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
@@ -404,8 +437,8 @@ void wait_before_the_menu(machine& box, seam_context& ctx) {
   const std::uint16_t slice = remaining < wait_slice ? remaining : wait_slice;
   const std::array<std::uint16_t, 1> milliseconds{slice};
   const auto delay =
-      static_cast<std::uint16_t>((ctx.image_base() >> 4U) + delay_paragraphs);
-  if (!ctx.call_program(delay, delay_offset, milliseconds)) {
+      static_cast<std::uint16_t>((ctx.image_base() >> 4U) + F.delay_paragraphs);
+  if (!ctx.call_program(delay, F.delay_offset, milliseconds)) {
     ctx.set_scratch(word_remaining, 0);
     return;
   }
@@ -413,32 +446,32 @@ void wait_before_the_menu(machine& box, seam_context& ctx) {
                   static_cast<std::uint16_t>(remaining - slice));
 }
 
-constexpr std::array<seam_point, 6> message_pause_points{{
+constexpr std::array<seam_point, 6> pool_of_radiance_message_pause_points{{
     {.module = resident_image,
-     .offset = push_offset,
-     .run = &lengthen_the_pause},
+     .offset = pool_of_radiance_message_pause.push_offset,
+     .run = &lengthen_the_pause<pool_of_radiance_message_pause>},
     {.module = resident_image,
-     .offset = countdown_offset,
-     .run = &end_on_a_key},
+     .offset = pool_of_radiance_message_pause.countdown_offset,
+     .run = &end_on_a_key<pool_of_radiance_message_pause>},
     {.module = resident_image,
-     .offset = profile.key_read_entry,
+     .offset = pool_of_radiance.key_read_entry,
      .run = &note_a_key_read},
-    {.module = profile.interpreter_overlay,
-     .offset = print_append_call,
-     .run = &note_a_printed_line},
-    {.module = profile.interpreter_overlay,
-     .offset = print_clear_call,
-     .run = &note_a_printed_line},
-    {.module = profile.interpreter_overlay,
-     .offset = encounter_print_call,
-     .run = &wait_before_the_menu},
+    {.module = pool_of_radiance.interpreter_overlay,
+     .offset = pool_of_radiance_message_pause.print_append_call,
+     .run = &note_a_printed_line<pool_of_radiance_message_pause>},
+    {.module = pool_of_radiance.interpreter_overlay,
+     .offset = pool_of_radiance_message_pause.print_clear_call,
+     .run = &note_a_printed_line<pool_of_radiance_message_pause>},
+    {.module = pool_of_radiance.interpreter_overlay,
+     .offset = pool_of_radiance_message_pause.encounter_print_call,
+     .run = &wait_before_the_menu<pool_of_radiance_message_pause>},
 }};
 
 constexpr seam_definition message_pause_definition{
     .id = "message-pause",
     .about = "a message stays up long enough to read; any key moves it on",
     .fingerprints = message_pause_binaries,
-    .points = message_pause_points,
+    .points = pool_of_radiance_message_pause_points,
     .setting = {.name = "pause",
                 .unit = "ms",
                 .minimum = pause_minimum,
