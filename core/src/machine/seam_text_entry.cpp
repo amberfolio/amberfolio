@@ -78,10 +78,21 @@
 namespace amberfolio::machine {
 namespace {
 
-/// In the resident image, from the image segment: the line editor's first
-/// instruction, and its one return.
-constexpr std::uint32_t editor_entry = 0x7A73;
-constexpr std::uint32_t editor_return = 0x7BF3;
+/// One program's facts: in the resident image, from the image segment, the
+/// line editor's first instruction and its one return.
+struct text_entry_facts {
+  std::uint32_t editor_entry;
+  std::uint32_t editor_return;
+};
+
+/// Pool of Radiance.
+constexpr text_entry_facts pool_of_radiance_text_entry{.editor_entry = 0x7A73,
+                                                       .editor_return = 0x7BF3};
+
+/// Curse of the Azure Bonds (#555): `push bp` at image `0x53F6`, the one
+/// `retf 0Ah` at `0x5584`.
+constexpr text_entry_facts curse_text_entry{.editor_entry = 0x53F6,
+                                            .editor_return = 0x5584};
 
 void reading_begins(machine& /*box*/, seam_context& ctx) {
   ctx.set_scratch(text_entry_scratch, 1);
@@ -91,17 +102,31 @@ void reading_ends(machine& /*box*/, seam_context& ctx) {
   ctx.set_scratch(text_entry_scratch, 0);
 }
 
-constexpr std::array<seam_point, 2> text_entry_point_table{
-    {{.module = resident_image, .offset = editor_entry, .run = &reading_begins},
-     {.module = resident_image,
-      .offset = editor_return,
-      .run = &reading_ends}}};
+template <const text_entry_facts& F>
+constexpr std::array<seam_point, 2> text_entry_points_of() {
+  return {{{.module = resident_image,
+            .offset = F.editor_entry,
+            .run = &reading_begins},
+           {.module = resident_image,
+            .offset = F.editor_return,
+            .run = &reading_ends}}};
+}
+
+constexpr std::array<seam_point, 2> text_entry_point_table =
+    text_entry_points_of<pool_of_radiance_text_entry>();
 static_assert(text_entry_point_table.size() == text_entry_point_count);
+
+constexpr std::array<seam_point, 2> curse_text_entry_point_table =
+    text_entry_points_of<curse_text_entry>();
 
 }  // namespace
 
 std::span<const seam_point> text_entry_points() noexcept {
   return text_entry_point_table;
+}
+
+std::span<const seam_point> curse_text_entry_points() noexcept {
+  return curse_text_entry_point_table;
 }
 
 text_entry text_entry_now(const machine& box) noexcept {

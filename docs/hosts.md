@@ -2434,7 +2434,7 @@ A fight (game mode 5, the tactical grid):
   ground from `+7`, fifty bytes a row. A ground number's cost is the first
   of four bytes from `0x2744`: `0xFF` blocks, and ground 0 is off the
   grid.
-- **The aim bar's facts** are in `docs/seams.md` §10 ("Aim watch") and
+- **The aim bar's facts** are in `docs/modern-controls.md` ("Aim watch") and
   `core/src/machine/seam_aim_watch.cpp`: overlay 13's two key waits, the
   frame each keeps the cursor, the panel's record and the range in.
 - **Both hosts' `--dump`** write it beside each still as `.scene.json`.

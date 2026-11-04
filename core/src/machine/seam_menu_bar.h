@@ -34,9 +34,9 @@
 
 namespace amberfolio::machine::menu_bar {
 
-/// The program this file's facts are about (program_profile.h): the
-/// baseline edition, and only it.
-inline constexpr const program_profile& profile = pool_of_radiance;
+// The facts about the routine itself (the read point, the pushback slot,
+// the bar's copy) are each program's profile's (program_profile.h); the
+// frame's shape below is the same on every program this build knows.
 
 // --- The routine's frame ---------------------------------------------------
 
@@ -95,15 +95,17 @@ struct caller {
   return frame_called_from(cpu, ctx, cpu.regs()[cpu::reg16::bp], table);
 }
 
-/// The party-member picker's call into the routine, the one caller in the
-/// resident image: the instruction after it, as an offset from the image's
-/// start. The call is a five-byte far call through overlay 25's stub, made
-/// from the image's paragraph `0xBA`, so the frame holds that paragraph and
-/// `0x2D0A`; a caller here is named by the address the two make.
-constexpr std::uint32_t picker_return = 0x38AA;
+/// Pool of Radiance's party-member picker's call into the routine, the one
+/// caller in the resident image: the instruction after it, as an offset
+/// from the image's start. The call is a five-byte far call through overlay
+/// 25's stub, made from the image's paragraph `0xBA`, so the frame holds
+/// that paragraph and `0x2D0A`; a caller here is named by the address the
+/// two make. (Curse of the Azure Bonds' picker is in an overlay, and is a
+/// `caller` like any other.)
+constexpr std::uint32_t pool_of_radiance_picker_return = 0x38AA;
 
-/// Whether this call of the routine, whose frame is at SS:BP, came from the
-/// party-member picker.
+/// Whether this call of the routine, whose frame is at SS:BP, came from
+/// Pool of Radiance's party-member picker.
 [[nodiscard]] inline bool called_from_picker(cpu::processor& cpu,
                                              const seam_context& ctx) {
   const std::uint16_t ss = cpu.regs()[cpu::sreg::ss];
@@ -112,7 +114,8 @@ constexpr std::uint32_t picker_return = 0x38AA;
       cpu.read_word(ss, static_cast<std::uint16_t>(bp + frame_return_ip));
   const std::uint16_t cs =
       cpu.read_word(ss, static_cast<std::uint16_t>(bp + frame_return_cs));
-  return cpu::physical_address(cs, ip) == ctx.image_base() + picker_return;
+  return cpu::physical_address(cs, ip) ==
+         ctx.image_base() + pool_of_radiance_picker_return;
 }
 
 // --- The keystroke about to be read ----------------------------------------
@@ -129,10 +132,12 @@ struct pending_key {
 /// the ring is empty (the poll was answered from the pushback slot), not
 /// while the journal reader is open (it takes every key at the poll, so one
 /// that got past is the reader's), and not while the pushback slot is armed
-/// (the head of the ring is then not the key about to be read). A key that
-/// is not one of `wanted` costs two reads and nothing else.
+/// (the head of the ring is then not the key about to be read; the slot is
+/// `profile`'s). A key that is not one of `wanted` costs two reads and
+/// nothing else.
 [[nodiscard]] inline std::optional<pending_key> key_about_to_be_read(
-    machine& box, std::span<const std::uint16_t> wanted) {
+    machine& box, const program_profile& profile,
+    std::span<const std::uint16_t> wanted) {
   cpu::processor& cpu = box.processor();
   const std::uint16_t head =
       cpu.read_word(bda::segment, bda::keyboard_buffer_head);

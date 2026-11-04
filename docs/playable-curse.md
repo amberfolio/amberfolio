@@ -19,10 +19,14 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
 ```
 
 No `--install`: a Steam copy is recognized and laid out at `\CURSE`, a
-GOG copy at the root (`docs/hosts.md` §2c). No seam is needed to play.
-The legs below answer the challenge themselves; with `--seam code-wheel
+GOG copy at the root (`docs/hosts.md` §2c). No seam is needed to play;
+those available on this program are the debug cheats, the code wheel,
+the text faces, the message pause, the journal and `modern-controls`
+(five of its pieces), each with its facts in `docs/seams.md` §10. The
+legs below answer the challenge themselves; with `--seam code-wheel
 --code-wheel-answered` the boot goes from `P` straight to the party
-menu, and every frame after it comes earlier (`docs/seams.md` §10). Sixty
+menu, and every frame after it comes earlier. Leg 3 with `--seam
+message-pause` stands each combat line the setting. Sixty
 frames to the virtual second; `TICKS = FRAME * 19,887` at `--speed 386`
 is close enough for `--until`.
 
@@ -44,7 +48,8 @@ Rules:
 - Movement is the arrow keys: `Up` steps, `Left` and `Right` turn,
   `Down` turns round. **In a list, `Home` and `End` move the
   selection**, the party list and a menu's items alike; the arrows do
-  nothing there. A bar takes its command's first letter, and `Return`
+  nothing there (with `modern-controls` on, Up and Down do what Home and
+  End do, and Left and Right step a bar's highlight). A bar takes its command's first letter, and `Return`
   takes the highlighted one.
 - The `.txt` and `.scene.json` beside a still are the screen's text and
   the scene (`docs/hosts.md` §10, §13). Every map is `AREA <n>`: nobody
@@ -310,10 +315,14 @@ lines, at `--speed 386` and `--wall none`:
 | session | disk | seams | relation |
 | --- | --- | --- | --- |
 | `curse-boot` | `curse-slots` | none | |
+| `curse-boot-wheel` | `curse-slots` | `code-wheel`, a wrong letter typed | `identical curse-boot` |
+| `curse-boot-answered` | `curse-slots` | `code-wheel`, answered | `contrast curse-boot` |
 | `curse-quiet` | `curse-slots` | none | |
 | `curse-quiet-cheats` | `curse-slots` | the three cheats, none pulled | `identical curse-quiet` |
 | `curse-quiet-font-sans` | `curse-slots` | `font-sans` | `contrast curse-quiet` |
 | `curse-quiet-font-chisel` | `curse-slots` | `font-chisel` | `contrast curse-quiet` |
+| `curse-quiet-message-pause` | `curse-slots` | `message-pause` | `identical curse-quiet` |
+| `curse-quiet-controls` | `curse-slots` | `modern-controls` | `identical curse-quiet` |
 | `curse-town` | `curse-slots` | none | |
 | `curse-temple` | `curse-slots` | none | |
 | `curse-camp` | `curse-slots` | none | |
@@ -323,6 +332,7 @@ lines, at `--speed 386` and `--wall none`:
 | `curse-fight` | `curse-slots` | none | |
 | `curse-fight-cheat` | `curse-slots` | `cheat-invulnerable` | `contrast curse-fight` |
 | `curse-fight-kill` | `curse-slots` | `cheat-kill-all`, pulled | `contrast curse-fight` |
+| `curse-fight-pause` | `curse-slots` | `message-pause` | `contrast curse-fight` |
 | `curse-new-party` | `curse-slots` | none | |
 | `curse-buy` | `curse-slots` | none | |
 | `curse-heal` | `curse-slots` | none | |
@@ -332,6 +342,10 @@ lines, at `--speed 386` and `--wall none`:
 | `curse-journey-kill` | `curse-wild` | `cheat-kill-all`, pulled | `contrast curse-journey` |
 | `curse-journey-journal` | `curse-wild` | `journal` | `identical curse-journey` |
 | `curse-cite` | `curse-slots` | `journal`, entry 31 cited | `identical curse-buy` |
+| `curse-camp-keys` | `curse-slots` | none | |
+| `curse-camp-arrows` | `curse-slots` | `modern-controls` | `contrast curse-camp-keys` |
+| `curse-name-keys` | `curse-slots` | none | |
+| `curse-name-arrows` | `curse-slots` | `modern-controls` | `contrast curse-name-keys` |
 
 ```sh
 python3 scripts/sweep.py --game-disk games/curse-slots --game-disk games/curse-saved \

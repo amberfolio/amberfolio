@@ -44,8 +44,11 @@
 //     `text-entry`'s come next, at two addresses no other piece has, and
 //     `aim-watch`'s last, at five more.
 //   * **The binary is the one the six already named**, the baseline
-//     edition (edition.h), and only it. Every piece's addresses are facts
-//     about that program, and a seam is unavailable against any other.
+//     edition (edition.h), and Curse of the Azure Bonds for the five
+//     pieces ported to it (#555): the list arrows, the bar keys, the edit
+//     keys, text entry and the aim watch, with points of their own in the
+//     definition's `programs`. Every piece's addresses are facts about the
+//     program they name, and a seam is unavailable against any other.
 //   * **A piece no longer asks whether another is on.** `menu-cursor` took
 //     its colours from `select-yellow` and the journal reader asked about
 //     `bar-keys` and `select-yellow`; the first asked a question whose
@@ -72,11 +75,12 @@
 namespace amberfolio::machine {
 namespace {
 
-/// The program this seam's facts are about (program_profile.h): the
-/// baseline edition, and only it. The seam is available on it and on no
-/// other binary.
-constexpr const program_profile& profile = pool_of_radiance;
-constexpr auto modern_controls_binaries = fingerprints_of(std::array{&profile});
+/// The programs this seam's facts are about (program_profile.h): the
+/// baseline edition, every piece; and Curse of the Azure Bonds, the pieces
+/// ported to it (#555). The seam is available on these and on no other
+/// binary.
+constexpr auto modern_controls_binaries =
+    fingerprints_of(std::array{&pool_of_radiance, &curse_of_the_azure_bonds});
 
 constexpr std::size_t point_total =
     list_arrows_point_count + bar_keys_point_count + menu_cursor_point_count +
@@ -100,6 +104,23 @@ struct point_table {
   }
 };
 
+/// Curse's: the pieces ported to it, in the same order.
+struct curse_point_table {
+  std::array<seam_point, curse_modern_controls_point_count> point{};
+
+  curse_point_table() {
+    std::size_t next = 0;
+    for (const std::span<const seam_point> piece :
+         {curse_list_arrows_points(), curse_bar_keys_points(),
+          curse_edit_keys_points(), curse_text_entry_points(),
+          curse_aim_watch_points()}) {
+      for (const seam_point& each : piece) {
+        point[next++] = each;
+      }
+    }
+  }
+};
+
 }  // namespace
 
 const seam_definition& modern_controls_seam() noexcept {
@@ -107,6 +128,10 @@ const seam_definition& modern_controls_seam() noexcept {
   // constants of their own files and are not ordered against this one's
   // statics.
   static const point_table points;
+  static const curse_point_table curse_points;
+  static const std::array<seam_program_points, 1> programs{
+      {{.fingerprint = curse_of_the_azure_bonds.fingerprint,
+        .points = curse_points.point}}};
   static const seam_definition definition{
       .id = modern_controls_id,
       .about =
@@ -115,6 +140,7 @@ const seam_definition& modern_controls_seam() noexcept {
           "has a cursor, and a selection is a yellow block",
       .fingerprints = modern_controls_binaries,
       .points = points.point,
+      .programs = programs,
       .schema = seam_schema_version};
   return definition;
 }

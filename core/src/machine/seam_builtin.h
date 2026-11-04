@@ -85,6 +85,20 @@ inline constexpr std::size_t move_mode_point_count = 5;
 inline constexpr std::size_t text_entry_point_count = 2;
 inline constexpr std::size_t aim_watch_point_count = 5;
 
+/// Curse of the Azure Bonds' points (#555), for the pieces ported to it:
+/// the list arrows, the bar keys, the edit keys, text entry and the aim
+/// watch, in the order the baseline's are offered in. The main menu's
+/// cursor, the heroes' numbers, the selection block and the move mode are
+/// not ported (docs/seams.md §10), and have no points there.
+inline constexpr std::size_t curse_modern_controls_point_count =
+    list_arrows_point_count + bar_keys_point_count + edit_keys_point_count +
+    text_entry_point_count + aim_watch_point_count;
+[[nodiscard]] std::span<const seam_point> curse_list_arrows_points() noexcept;
+[[nodiscard]] std::span<const seam_point> curse_bar_keys_points() noexcept;
+[[nodiscard]] std::span<const seam_point> curse_edit_keys_points() noexcept;
+[[nodiscard]] std::span<const seam_point> curse_text_entry_points() noexcept;
+[[nodiscard]] std::span<const seam_point> curse_aim_watch_points() noexcept;
+
 /// The seam's own word `text-entry` notes the line editor in: one while the
 /// program is inside it. `move-mode` holds words 0 to 4.
 inline constexpr unsigned text_entry_scratch = 5;

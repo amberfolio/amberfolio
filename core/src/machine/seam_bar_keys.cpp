@@ -285,129 +285,218 @@
 namespace amberfolio::machine {
 namespace {
 
-/// The program this file's facts are about (program_profile.h): the
-/// baseline edition, and only it.
-constexpr const program_profile& profile = pool_of_radiance;
-
 // The module, the read point, the frame's return address and who called the
 // routine are shared with `list-arrows`, which has a point at the same
 // instruction (seam_menu_bar.h).
 
-// --- The routine's frame ---------------------------------------------------
-
-/// Below BP: the routine's parse of the bar. `enter_allowed` is a byte,
-/// then the group count, then, from the same base, a pair of bytes per
-/// group (its first position and its last), group one first. The bar is a
-/// Pascal string whose characters are numbered from one.
-constexpr std::uint16_t local_enter_allowed = 0x8F;
-constexpr std::uint16_t local_group_count = 0x8E;
-
-/// The table has room for twenty groups, and the bar copy is a
-/// `string[40]`.
-constexpr std::uint8_t max_groups = 20;
-
-// --- The callers that ignore Enter -----------------------------------------
-
 using menu_bar::caller;
 
-constexpr std::array<caller, 25> enter_callers{{
-    {.load_segment_at = profile.menu_overlay.load_segment_at,
+/// The table has room for twenty groups, and the bar copy is a
+/// `string[40]`: the routine's own bounds, the same on every program.
+constexpr std::uint8_t max_groups = 20;
+
+// --- One program's facts ---------------------------------------------------
+
+/// What this piece needs to know about one program. The module, the read
+/// point, the bar's copy and the highlight are the profile's.
+struct bar_keys_facts {
+  const program_profile& profile;
+
+  /// Whether Enter is this piece's to rewrite: on a program whose routine
+  /// hands a bare `0x0D` back to callers that ask again on it. The tables
+  /// and frame facts below that only Enter reads are empty on a program
+  /// whose routine takes Enter as the highlighted command itself.
+  bool rewrites_enter;
+
+  /// Below the routine's BP: its parse of the bar. `enter_allowed` is a
+  /// byte, then the group count, then, from the same base, a pair of bytes
+  /// per group (its first position and its last), group one first.
+  std::uint16_t local_enter_allowed;
+  std::uint16_t local_group_count;
+
+  /// The callers that ignore Enter.
+  std::span<const caller> enter_callers;
+  /// The Yes/No prompt, and the script runner's call into the routine.
+  std::span<const caller> yes_no_caller;
+  std::span<const caller> script_caller;
+  /// Above the script runner's BP: its allow-Enter argument, a word of
+  /// which the runner reads the low byte.
+  std::uint16_t runner_allow_enter;
+  /// The pick-list's call into the routine. The list sets the bar's
+  /// highlight to its first command each time it opens, so a highlight
+  /// anywhere else is one the player moved, and Enter takes that command;
+  /// on the first, Enter is the list's own and chooses the row.
+  std::span<const caller> pick_list_caller;
+  /// The list routine's callers that drop the `0x0D` the list hands back,
+  /// each named by the instruction after its call into the list routine:
+  /// there Enter takes the lit command on the first command too.
+  std::span<const caller> list_callers_dropping_enter;
+  /// Whether the party-member picker's Enter is taken (the picker is named
+  /// by `menu_bar::called_from_picker`, a fact of Pool of Radiance's).
+  bool picker_takes_enter;
+
+  /// The callers that keep Left and Right.
+  std::span<const caller> arrow_callers;
+};
+
+// --- Pool of Radiance ------------------------------------------------------
+
+constexpr const program_profile& por = pool_of_radiance;
+
+constexpr std::array<caller, 25> pool_of_radiance_enter_callers{{
+    {.load_segment_at = por.menu_overlay.load_segment_at,
      .return_offset = 0x111E},
-    {.load_segment_at = profile.adventure_overlay.load_segment_at,
+    {.load_segment_at = por.adventure_overlay.load_segment_at,
      .return_offset = 0x09D5},
-    {.load_segment_at = profile.adventure_overlay.load_segment_at,
+    {.load_segment_at = por.adventure_overlay.load_segment_at,
      .return_offset = 0x0C45},
-    {.load_segment_at = profile.camp_overlay.load_segment_at,
+    {.load_segment_at = por.camp_overlay.load_segment_at,
      .return_offset = 0x1F24},
-    {.load_segment_at = profile.camp_overlay.load_segment_at,
+    {.load_segment_at = por.camp_overlay.load_segment_at,
      .return_offset = 0x1447},
-    {.load_segment_at = profile.camp_overlay.load_segment_at,
+    {.load_segment_at = por.camp_overlay.load_segment_at,
      .return_offset = 0x1CA4},
-    {.load_segment_at = profile.camp_overlay.load_segment_at,
+    {.load_segment_at = por.camp_overlay.load_segment_at,
      .return_offset = 0x1DDF},
-    {.load_segment_at = profile.camp_overlay.load_segment_at,
+    {.load_segment_at = por.camp_overlay.load_segment_at,
      .return_offset = 0x1B91},
-    {.load_segment_at = profile.roster_overlay.load_segment_at,
+    {.load_segment_at = por.roster_overlay.load_segment_at,
      .return_offset = 0x3449},
-    {.load_segment_at = profile.roster_overlay.load_segment_at,
+    {.load_segment_at = por.roster_overlay.load_segment_at,
      .return_offset = 0x39FE},
-    {.load_segment_at = profile.shop_load_segment_at, .return_offset = 0x061F},
-    {.load_segment_at = profile.temple_load_segment_at,
-     .return_offset = 0x0DAA},
-    {.load_segment_at = profile.post_combat_load_segment_at,
+    {.load_segment_at = por.shop_load_segment_at, .return_offset = 0x061F},
+    {.load_segment_at = por.temple_load_segment_at, .return_offset = 0x0DAA},
+    {.load_segment_at = por.post_combat_load_segment_at,
      .return_offset = 0x1024},
-    {.load_segment_at = profile.post_combat_load_segment_at,
+    {.load_segment_at = por.post_combat_load_segment_at,
      .return_offset = 0x0D91},
-    {.load_segment_at = profile.combat_overlay.load_segment_at,
+    {.load_segment_at = por.combat_overlay.load_segment_at,
      .return_offset = 0x0819},
-    {.load_segment_at = profile.combat_overlay.load_segment_at,
+    {.load_segment_at = por.combat_overlay.load_segment_at,
      .return_offset = 0x0F70},
-    {.load_segment_at = profile.combat_overlay.load_segment_at,
+    {.load_segment_at = por.combat_overlay.load_segment_at,
      .return_offset = 0x120C},
-    {.load_segment_at = profile.view_overlay.load_segment_at,
+    {.load_segment_at = por.view_overlay.load_segment_at,
      .return_offset = 0x0C9C},
-    {.load_segment_at = profile.appraise_load_segment_at,
-     .return_offset = 0x1C47},
-    {.load_segment_at = profile.slots_overlay.load_segment_at,
+    {.load_segment_at = por.appraise_load_segment_at, .return_offset = 0x1C47},
+    {.load_segment_at = por.slots_overlay.load_segment_at,
      .return_offset = 0x16E2},
-    {.load_segment_at = profile.rest_load_segment_at, .return_offset = 0x076E},
-    {.load_segment_at = profile.adventure_overlay.load_segment_at,
+    {.load_segment_at = por.rest_load_segment_at, .return_offset = 0x076E},
+    {.load_segment_at = por.adventure_overlay.load_segment_at,
      .return_offset = 0x0EBF},
-    {.load_segment_at = profile.adventure_overlay.load_segment_at,
+    {.load_segment_at = por.adventure_overlay.load_segment_at,
      .return_offset = 0x0FFE},
-    {.load_segment_at = profile.aim_overlay.load_segment_at,
+    {.load_segment_at = por.aim_overlay.load_segment_at,
      .return_offset = 0x2C31},
-    {.load_segment_at = profile.slots_overlay.load_segment_at,
+    {.load_segment_at = por.slots_overlay.load_segment_at,
      .return_offset = 0x1DA1},
 }};
 
-/// The Yes/No prompt, and the script runner's call into the routine (the
-/// instruction after it, in overlay 7).
-constexpr std::array<caller, 1> yes_no_caller{
-    {{.load_segment_at = profile.menu_overlay.load_segment_at,
+/// The Yes/No prompt (overlay 25), and the script runner's call into the
+/// routine (the instruction after it, in overlay 7).
+constexpr std::array<caller, 1> pool_of_radiance_yes_no_caller{
+    {{.load_segment_at = por.menu_overlay.load_segment_at,
       .return_offset = 0x111E}}};
-constexpr std::array<caller, 1> script_caller{
-    {{.load_segment_at = profile.script_runner_load_segment_at,
+constexpr std::array<caller, 1> pool_of_radiance_script_caller{
+    {{.load_segment_at = por.script_runner_load_segment_at,
       .return_offset = 0x16EB}}};
 
-/// The pick-list's call into the routine (overlay 25). The list sets the
-/// bar's highlight to its first command each time it opens, so a highlight
-/// anywhere else is one the player moved, and Enter takes that command;
-/// on the first, Enter is the list's own and chooses the row.
-constexpr std::array<caller, 1> pick_list_caller{
-    {{.load_segment_at = profile.menu_overlay.load_segment_at,
+/// The pick-list's call into the routine (overlay 25).
+constexpr std::array<caller, 1> pool_of_radiance_pick_list_caller{
+    {{.load_segment_at = por.menu_overlay.load_segment_at,
       .return_offset = 0x0FE0}}};
 
-/// The list routine's callers that drop the `0x0D` the list hands back, each
-/// named by the instruction after its call into the list routine: there
-/// Enter takes the lit command on the first command too. One: the Items
-/// screen (overlay 19), whose compares are its command letters only.
-constexpr std::array<caller, 1> list_callers_dropping_enter{
-    {{.load_segment_at = profile.view_overlay.load_segment_at,
+/// One: the Items screen (overlay 19), whose compares are its command
+/// letters only.
+constexpr std::array<caller, 1> pool_of_radiance_list_callers_dropping_enter{
+    {{.load_segment_at = por.view_overlay.load_segment_at,
       .return_offset = 0x1294}}};
 
-/// Above the script runner's BP: its allow-Enter argument, a word of which
-/// the runner reads the low byte.
-constexpr std::uint16_t runner_allow_enter = 8;
-
-// --- The callers that keep Left and Right ---------------------------------
-
-constexpr std::array<caller, 7> arrow_callers{{
-    {.load_segment_at = profile.adventure_overlay.load_segment_at,
+constexpr std::array<caller, 7> pool_of_radiance_arrow_callers{{
+    {.load_segment_at = por.adventure_overlay.load_segment_at,
      .return_offset = 0x09D5},
-    {.load_segment_at = profile.adventure_overlay.load_segment_at,
+    {.load_segment_at = por.adventure_overlay.load_segment_at,
      .return_offset = 0x0C45},
-    {.load_segment_at = profile.combat_overlay.load_segment_at,
+    {.load_segment_at = por.combat_overlay.load_segment_at,
      .return_offset = 0x0AC8},
-    {.load_segment_at = profile.aim_overlay.load_segment_at,
+    {.load_segment_at = por.aim_overlay.load_segment_at,
      .return_offset = 0x3178},
-    {.load_segment_at = profile.roster_overlay.load_segment_at,
+    {.load_segment_at = por.roster_overlay.load_segment_at,
      .return_offset = 0x216E},
-    {.load_segment_at = profile.post_combat_load_segment_at,
+    {.load_segment_at = por.post_combat_load_segment_at,
      .return_offset = 0x0AF8},
-    {.load_segment_at = profile.post_combat_load_segment_at,
+    {.load_segment_at = por.post_combat_load_segment_at,
      .return_offset = 0x14C7},
 }};
+
+constexpr bar_keys_facts pool_of_radiance_bar_keys{
+    .profile = pool_of_radiance,
+    .rewrites_enter = true,
+    .local_enter_allowed = 0x8F,
+    .local_group_count = 0x8E,
+    .enter_callers = pool_of_radiance_enter_callers,
+    .yes_no_caller = pool_of_radiance_yes_no_caller,
+    .script_caller = pool_of_radiance_script_caller,
+    .runner_allow_enter = 8,
+    .pick_list_caller = pool_of_radiance_pick_list_caller,
+    .list_callers_dropping_enter = pool_of_radiance_list_callers_dropping_enter,
+    .picker_takes_enter = true,
+    .arrow_callers = pool_of_radiance_arrow_callers};
+
+// --- Curse of the Azure Bonds ---------------------------------------------
+
+constexpr const program_profile& curse = curse_of_the_azure_bonds;
+
+/// The Yes/No prompt (overlay 27, a near call from inside it, so the frame
+/// holds the overlay's own segment), and the script runner's call (overlay
+/// 8).
+constexpr std::array<caller, 1> curse_yes_no_caller{
+    {{.load_segment_at = curse.menu_overlay.load_segment_at,
+      .return_offset = 0x1231}}};
+constexpr std::array<caller, 1> curse_script_caller{
+    {{.load_segment_at = curse.script_runner_load_segment_at,
+      .return_offset = 0x1811}}};
+
+/// The callers that keep Left and Right on Curse: the adventuring bar, the
+/// combat command bar and its move loop (both move the fighter on an
+/// arrow), the target bar and the manual aim (an arrow at the target bar
+/// starts the manual aim), the character editor, and the two share
+/// prompts.
+constexpr std::array<caller, 8> curse_arrow_callers{{
+    {.load_segment_at = curse.adventure_overlay.load_segment_at,
+     .return_offset = 0x092C},
+    {.load_segment_at = curse.combat_overlay.load_segment_at,
+     .return_offset = 0x0947},
+    {.load_segment_at = curse.combat_overlay.load_segment_at,
+     .return_offset = 0x0C17},
+    {.load_segment_at = curse.aim_overlay.load_segment_at,
+     .return_offset = 0x31CC},
+    {.load_segment_at = curse.aim_overlay.load_segment_at,
+     .return_offset = 0x3721},
+    {.load_segment_at = curse.roster_overlay.load_segment_at,
+     .return_offset = 0x29AA},
+    {.load_segment_at = curse.post_combat_load_segment_at,
+     .return_offset = 0x0D14},
+    {.load_segment_at = curse.post_combat_load_segment_at,
+     .return_offset = 0x174B},
+}};
+
+/// Curse of the Azure Bonds (#555). **Its routine takes Enter itself**:
+/// with the bar drawn, a Return is handed back as the first letter of the
+/// highlighted group, so there is no Enter here to rewrite and none of the
+/// Enter facts is needed.
+constexpr bar_keys_facts curse_bar_keys{.profile = curse_of_the_azure_bonds,
+                                        .rewrites_enter = false,
+                                        .local_enter_allowed = 0,
+                                        .local_group_count = 0,
+                                        .enter_callers = {},
+                                        .yes_no_caller = curse_yes_no_caller,
+                                        .script_caller = curse_script_caller,
+                                        .runner_allow_enter = 0,
+                                        .pick_list_caller = {},
+                                        .list_callers_dropping_enter = {},
+                                        .picker_takes_enter = false,
+                                        .arrow_callers = curse_arrow_callers};
 
 // --- The keys, as the BIOS ring holds them: scan code high, character low --
 
@@ -433,6 +522,7 @@ constexpr std::uint16_t scan_enter = 0x1C00;
 /// when the frame cannot be the runner's, or the byte would not be in
 /// conventional RAM, and nothing is read in either case: the program's own
 /// Enter is the answer to a frame this seam cannot vouch for.
+template <const bar_keys_facts& F>
 [[nodiscard]] bool runner_takes_enter_itself(cpu::processor& cpu) {
   cpu::registers& regs = cpu.regs();
   const std::uint16_t ss = regs[cpu::sreg::ss];
@@ -442,7 +532,7 @@ constexpr std::uint16_t scan_enter = 0x1C00;
   // runner's own: refuse a BP that is not above ours, or an address that
   // would reach past the RAM the program owns.
   const std::uint32_t argument_at =
-      static_cast<std::uint32_t>(runner_bp) + runner_allow_enter;
+      static_cast<std::uint32_t>(runner_bp) + F.runner_allow_enter;
   if (runner_bp <= bp || argument_at > 0xFFFFU ||
       cpu::physical_address(ss, static_cast<std::uint16_t>(argument_at)) >=
           conventional_ram_size) {
@@ -476,14 +566,15 @@ constexpr std::uint16_t scan_enter = 0x1C00;
 
 /// Whether the bar the routine was handed has exactly `Y` and `N` for its
 /// command letters: the two answers of a Yes/No question.
+template <const bar_keys_facts& F>
 [[nodiscard]] bool bar_is_yes_no(cpu::processor& cpu) {
   cpu::registers& regs = cpu.regs();
   const std::uint16_t ss = regs[cpu::sreg::ss];
   const std::uint16_t bp = regs[cpu::reg16::bp];
-  const auto bar = static_cast<std::uint16_t>(bp - profile.menu_local_bar);
+  const auto bar = static_cast<std::uint16_t>(bp - F.profile.menu_local_bar);
 
   const std::uint8_t length = cpu.read_byte(ss, bar);
-  if (length == 0 || length > profile.menu_bar_capacity) {
+  if (length == 0 || length > F.profile.menu_bar_capacity) {
     return false;
   }
   bool yes = false;
@@ -509,6 +600,7 @@ constexpr std::uint16_t scan_enter = 0x1C00;
 /// posted under Enter's own scan code. Zero if there is nothing to answer,
 /// and declines when the frame is not the one these facts describe or the
 /// letter would not be the group's.
+template <const bar_keys_facts& F>
 [[nodiscard]] std::uint16_t letter_for_enter(cpu::processor& cpu,
                                              seam_context& ctx) {
   cpu::registers& regs = cpu.regs();
@@ -518,36 +610,38 @@ constexpr std::uint16_t scan_enter = 0x1C00;
     return static_cast<std::uint16_t>(bp - distance);
   };
 
-  if (cpu.read_byte(ss, below(local_enter_allowed)) == 0) {
+  if (cpu.read_byte(ss, below(F.local_enter_allowed)) == 0) {
     // The routine does not take Enter from a bar it does not draw.
     return 0;
   }
 
   const std::uint8_t group =
-      cpu.read_byte(regs[cpu::sreg::ds], profile.data_bar_highlight);
+      cpu.read_byte(regs[cpu::sreg::ds], F.profile.data_bar_highlight);
   if (group == 0) {
     // The index is one-based: no bar has been stepped or chosen from yet,
     // so no group is the highlighted one and Enter has no command to take.
     return 0;
   }
 
-  const std::uint8_t groups = cpu.read_byte(ss, below(local_group_count));
-  const std::uint8_t length = cpu.read_byte(ss, below(profile.menu_local_bar));
+  const std::uint8_t groups = cpu.read_byte(ss, below(F.local_group_count));
+  const std::uint8_t length =
+      cpu.read_byte(ss, below(F.profile.menu_local_bar));
   if (groups == 0 || groups > max_groups || length == 0 ||
-      length > profile.menu_bar_capacity || group > groups) {
+      length > F.profile.menu_bar_capacity || group > groups) {
     ctx.decline(seam_reason::point_not_recognized);
     return 0;
   }
 
   const std::uint8_t first = cpu.read_byte(
-      ss, static_cast<std::uint16_t>(below(local_enter_allowed) + 2U * group));
+      ss,
+      static_cast<std::uint16_t>(below(F.local_enter_allowed) + 2U * group));
   if (first == 0 || first > length) {
     ctx.decline(seam_reason::point_not_recognized);
     return 0;
   }
   const auto bar_at = [&](std::uint8_t position) {
     return cpu.read_byte(ss, static_cast<std::uint16_t>(
-                                 below(profile.menu_local_bar) + position));
+                                 below(F.profile.menu_local_bar) + position));
   };
   const std::uint8_t letter = bar_at(first);
   if (!is_command_letter(letter)) {
@@ -571,13 +665,17 @@ constexpr std::uint16_t scan_enter = 0x1C00;
 }
 
 /// The program is about to read the key at the head of the ring.
+template <const bar_keys_facts& F>
 void at_key_read(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
 
-  const std::array<std::uint16_t, 4> wanted{key_left, key_right, key_enter,
-                                            key_escape};
+  // Enter only where the program's routine does not take it itself.
+  constexpr std::array<std::uint16_t, 4> keys{key_left, key_right, key_escape,
+                                              key_enter};
+  const std::span<const std::uint16_t> wanted{
+      keys.data(), F.rewrites_enter ? keys.size() : keys.size() - 1};
   const std::optional<menu_bar::pending_key> pending =
-      menu_bar::key_about_to_be_read(box, wanted);
+      menu_bar::key_about_to_be_read(box, F.profile, wanted);
   if (!pending) {
     return;
   }
@@ -586,9 +684,9 @@ void at_key_read(machine& box, seam_context& ctx) {
 
   if (key == key_escape) {
     // No at a Yes/No question, and nowhere else.
-    if (menu_bar::called_from(cpu, ctx, yes_no_caller) ||
-        (menu_bar::called_from(cpu, ctx, script_caller) &&
-         bar_is_yes_no(cpu))) {
+    if (menu_bar::called_from(cpu, ctx, F.yes_no_caller) ||
+        (menu_bar::called_from(cpu, ctx, F.script_caller) &&
+         bar_is_yes_no<F>(cpu))) {
       cpu.write_word(bda::segment, head,
                      static_cast<std::uint16_t>(scan_enter | 'N'));
     }
@@ -596,48 +694,62 @@ void at_key_read(machine& box, seam_context& ctx) {
   }
 
   if (key == key_enter) {
-    const bool tabled = menu_bar::called_from(cpu, ctx, enter_callers);
+    const bool tabled = menu_bar::called_from(cpu, ctx, F.enter_callers);
     // A script prompt that does not take Enter itself is handed it as its
     // highlighted answer.
-    const bool script = menu_bar::called_from(cpu, ctx, script_caller) &&
-                        !runner_takes_enter_itself(cpu);
+    const bool script = menu_bar::called_from(cpu, ctx, F.script_caller) &&
+                        !runner_takes_enter_itself<F>(cpu);
     // A pick-list whose bar highlight the player moved off its first
     // command, or one whose own caller drops the row's Enter.
     const bool list_takes_command =
-        menu_bar::called_from(cpu, ctx, pick_list_caller) &&
-        (cpu.read_byte(cpu.regs()[cpu::sreg::ds], profile.data_bar_highlight) >
-             1 ||
-         list_called_from(cpu, ctx, list_callers_dropping_enter));
+        menu_bar::called_from(cpu, ctx, F.pick_list_caller) &&
+        (cpu.read_byte(cpu.regs()[cpu::sreg::ds],
+                       F.profile.data_bar_highlight) > 1 ||
+         list_called_from(cpu, ctx, F.list_callers_dropping_enter));
     // The party-member picker, whose `Select` is its own Enter and whose
     // `Exit` is lit as often as not when it opens.
-    const bool picker = menu_bar::called_from_picker(cpu, ctx);
+    const bool picker =
+        F.picker_takes_enter && menu_bar::called_from_picker(cpu, ctx);
     if (!tabled && !script && !list_takes_command && !picker) {
       return;
     }
-    const std::uint16_t answer = letter_for_enter(cpu, ctx);
+    const std::uint16_t answer = letter_for_enter<F>(cpu, ctx);
     if (answer != 0) {
       cpu.write_word(bda::segment, head, answer);
     }
     return;
   }
 
-  if (menu_bar::called_from(cpu, ctx, arrow_callers)) {
+  if (menu_bar::called_from(cpu, ctx, F.arrow_callers)) {
     // A caller that uses the arrows keeps them.
     return;
   }
   cpu.write_word(bda::segment, head, key == key_left ? key_comma : key_period);
 }
 
-constexpr std::array<seam_point, 1> bar_keys_point_table{
-    {{.module = profile.menu_overlay,
-      .offset = profile.menu_key_read_call,
-      .run = &at_key_read}}};
+/// A program's one point: the routine's read.
+template <const bar_keys_facts& F>
+constexpr std::array<seam_point, 1> bar_keys_points_of() {
+  return {{{.module = F.profile.menu_overlay,
+            .offset = F.profile.menu_key_read_call,
+            .run = &at_key_read<F>}}};
+}
+
+constexpr std::array<seam_point, 1> bar_keys_point_table =
+    bar_keys_points_of<pool_of_radiance_bar_keys>();
 static_assert(bar_keys_point_table.size() == bar_keys_point_count);
+
+constexpr std::array<seam_point, 1> curse_bar_keys_point_table =
+    bar_keys_points_of<curse_bar_keys>();
 
 }  // namespace
 
 std::span<const seam_point> bar_keys_points() noexcept {
   return bar_keys_point_table;
+}
+
+std::span<const seam_point> curse_bar_keys_points() noexcept {
+  return curse_bar_keys_point_table;
 }
 
 }  // namespace amberfolio::machine

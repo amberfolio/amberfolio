@@ -64,13 +64,14 @@ TEST(ProgramProfile, TheBaselineAndCurseHaveOne) {
   EXPECT_NE(curse_of_the_azure_bonds.data_map_pointer, 0U);
   EXPECT_TRUE(curse_of_the_azure_bonds.combat_overlay.has_load_segment());
   EXPECT_EQ(curse_of_the_azure_bonds.data_view_kind, 0U);
-  EXPECT_EQ(curse_of_the_azure_bonds.data_key_pushback, 0U);
   // The message pause's (#555): the runtime's key read, the interpreter
   // overlay and the death routine's load-segment word.
   EXPECT_NE(curse_of_the_azure_bonds.key_read_entry, 0U);
   EXPECT_TRUE(curse_of_the_azure_bonds.interpreter_overlay.has_load_segment());
   EXPECT_NE(curse_of_the_azure_bonds.death_load_segment_at, 0U);
   EXPECT_EQ(curse_of_the_azure_bonds.key_pending_entry, 0U);
+  // modern-controls' (#555): the pushback slot its keys are written to.
+  EXPECT_NE(curse_of_the_azure_bonds.data_key_pushback, 0U);
 }
 
 TEST(ProgramProfile, EverySeamIsAvailableOnlyOnProgramsWithAProfile) {

@@ -181,6 +181,7 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string_view>
 
 #include "amberfolio/cpu/processor.h"
@@ -196,34 +197,10 @@
 namespace amberfolio::machine {
 namespace {
 
-/// The program this file's facts are about (program_profile.h): the
-/// baseline edition, and only it.
-constexpr const program_profile& profile = pool_of_radiance;
-
-// --- The module the pick-list lives in -------------------------------------
-
-/// Overlay 25: the menu-bar routine, the vertical pick-list and the Yes/No
-/// prompt. The facts are the module's row in the overlay file's own table
-/// and the manager's record of the same two numbers in the resident image;
-/// the digest is of the bytes as read. The manager's word is found the way
-/// program_profile.h documents, and the module is the profile's, because
-/// `bar-keys` and other seams have points in it too.
-constexpr const seam_module& list_module = profile.menu_overlay;
-
-/// The out-parameter's address in that routine's frame, below BP.
-constexpr std::uint16_t list_flag_below_bp = 0x57;
-
-// --- The party-member picker -----------------------------------------------
-
-/// In the resident image: the instruction after the picker's call into
-/// the menu-bar routine, which stores the key. Offset from the image
-/// segment; `bar-keys` names the caller by it (seam_menu_bar.h).
-constexpr std::uint32_t picker_after_input = menu_bar::picker_return;
-
-/// The out-parameter's address in the picker's frame, below BP.
-constexpr std::uint16_t picker_flag_below_bp = 0x2B;
-
 // --- The keys --------------------------------------------------------------
+//
+// The mechanism's constants: the same on every program, because they are
+// the keyboard's and the routine's, not a place in a program.
 
 constexpr std::uint8_t scan_home = 0x47;
 constexpr std::uint8_t scan_up = 0x48;
@@ -246,6 +223,133 @@ constexpr std::uint16_t ring_pad_8 = 0x4838;
 constexpr std::uint16_t ring_pad_2 = 0x5032;
 constexpr std::uint16_t ring_pad_7 = 0x4737;
 constexpr std::uint16_t ring_pad_1 = 0x4F31;
+
+using menu_bar::caller;
+
+// --- One program's facts ---------------------------------------------------
+
+/// What this piece needs to know about one program: where its pick-list and
+/// its party-member picker come back from the menu-bar routine and keep the
+/// routine's out-parameter, and which of the routine's callers hand Home
+/// and End to the party cursor. The module the list lives in, the read
+/// point and the pushback slot are the profile's, because other pieces have
+/// points in the same places.
+struct list_arrows_facts {
+  const program_profile& profile;
+
+  /// The out-parameter's address in the pick-list's frame, below BP. The
+  /// list's point is the profile's `pick_list_bar_return`, in its menu
+  /// overlay.
+  std::uint16_t list_flag_below_bp;
+
+  /// The party-member picker: the module it is in, the instruction after
+  /// its call into the menu-bar routine (which stores the key), and the
+  /// out-parameter's address in its frame, below BP.
+  seam_module picker_module;
+  std::uint32_t picker_after_input;
+  std::uint16_t picker_flag_below_bp;
+
+  /// The callers whose Home and End step the selected party member and
+  /// whose Up and Down do nothing else (docs/seams.md §10 has each by two
+  /// routes).
+  std::span<const caller> roster_callers;
+
+  /// Whether Up and Down step the selection at the bars that are not raw
+  /// and show the party list (#469, `seam_party_select.h`, whose facts are
+  /// Pool of Radiance's).
+  bool selects_at_bars_that_are_not_raw;
+};
+
+// --- Pool of Radiance ------------------------------------------------------
+
+/// The callers, by the instruction after the call into the menu-bar
+/// routine; the words are the overlay manager's, from the profile.
+constexpr std::array<caller, 9> pool_of_radiance_roster_callers{{
+    {.load_segment_at = pool_of_radiance.camp_overlay.load_segment_at,
+     .return_offset = 0x1F24},  // the camp bar
+    {.load_segment_at = pool_of_radiance.camp_overlay.load_segment_at,
+     .return_offset = 0x1447},  // camp's Magic bar
+    {.load_segment_at = pool_of_radiance.camp_overlay.load_segment_at,
+     .return_offset = 0x1CA4},  // camp's Alter bar
+    {.load_segment_at = pool_of_radiance.camp_overlay.load_segment_at,
+     .return_offset = 0x17DA},  // the party-order screen
+    {.load_segment_at = pool_of_radiance.post_combat_load_segment_at,
+     .return_offset = 0x0D91},  // the post-combat Take bar
+    {.load_segment_at = pool_of_radiance.post_combat_load_segment_at,
+     .return_offset = 0x1024},  // the post-combat treasure bar
+    {.load_segment_at = pool_of_radiance.shop_load_segment_at,
+     .return_offset = 0x061F},  // the shop's bar
+    {.load_segment_at = pool_of_radiance.temple_load_segment_at,
+     .return_offset = 0x0DAA},  // the temple's bar
+    {.load_segment_at = pool_of_radiance.script_runner_load_segment_at,
+     .return_offset = 0x16EB},  // the script prompts
+}};
+
+/// Pool of Radiance: the list's out-parameter at `BP-0x57`; the picker in
+/// the resident image, its out-parameter at `BP-0x2B`; nine callers; and
+/// the four bars that are not raw.
+constexpr list_arrows_facts pool_of_radiance_list_arrows{
+    .profile = pool_of_radiance,
+    .list_flag_below_bp = 0x57,
+    .picker_module = resident_image,
+    .picker_after_input = menu_bar::pool_of_radiance_picker_return,
+    .picker_flag_below_bp = 0x2B,
+    .roster_callers = pool_of_radiance_roster_callers,
+    .selects_at_bars_that_are_not_raw = true};
+
+// --- Curse of the Azure Bonds ---------------------------------------------
+
+constexpr const program_profile& curse = curse_of_the_azure_bonds;
+
+/// Overlay 25, where Curse keeps its party-member picker: the stub's record
+/// is at image `0x0ED0`.
+constexpr seam_module curse_picker_overlay{
+    .file = "GAME.OVR",
+    .file_offset = 226981,
+    .length = 13331,
+    .digest =
+        "58601d3692c12e68081787f36ae1fccb5d24eb8488da8ce588a4318e03d2a6a6",
+    .load_segment_at = 0xEE0};
+
+/// Curse's callers whose raw keys go to the party cursor and whose Up and
+/// Down do nothing else, by the instruction after the call into the
+/// menu-bar routine (docs/seams.md §10).
+constexpr std::array<caller, 9> curse_roster_callers{{
+    {.load_segment_at = curse.camp_overlay.load_segment_at,
+     .return_offset = 0x24FD},  // the camp bar
+    {.load_segment_at = curse.camp_overlay.load_segment_at,
+     .return_offset = 0x152B},  // camp's Magic bar
+    {.load_segment_at = curse.camp_overlay.load_segment_at,
+     .return_offset = 0x1D83},  // camp's Alter bar
+    {.load_segment_at = curse.camp_overlay.load_segment_at,
+     .return_offset = 0x18BE},  // the party-order screen
+    {.load_segment_at = curse.post_combat_load_segment_at,
+     .return_offset = 0x0F87},  // the post-combat Take bar
+    {.load_segment_at = curse.post_combat_load_segment_at,
+     .return_offset = 0x1239},  // the post-combat treasure bar
+    {.load_segment_at = curse.shop_load_segment_at,
+     .return_offset = 0x07DF},  // the shop's bar
+    {.load_segment_at = curse.temple_load_segment_at,
+     .return_offset = 0x0E91},  // the temple's bar
+    {.load_segment_at = curse.script_runner_load_segment_at,
+     .return_offset = 0x1811},  // the script prompts
+}};
+
+/// Curse of the Azure Bonds (#555): the list's out-parameter at `BP-0x57`,
+/// as on Pool of Radiance; the picker in overlay 25, its out-parameter at
+/// `BP-0x2B`; nine callers. The bars that are not raw are not stepped here:
+/// `seam_party_select.h`'s facts (the roster drawer and its redraw) are
+/// Pool of Radiance's alone.
+constexpr list_arrows_facts curse_list_arrows{
+    .profile = curse_of_the_azure_bonds,
+    .list_flag_below_bp = 0x57,
+    .picker_module = curse_picker_overlay,
+    .picker_after_input = 0x2EE5,
+    .picker_flag_below_bp = 0x2B,
+    .roster_callers = curse_roster_callers,
+    .selects_at_bars_that_are_not_raw = false};
+
+// --- The handlers ----------------------------------------------------------
 
 /// The menu-bar routine has just returned AL, with its out-parameter at
 /// SS:BP-`flag_below_bp`. If the byte says the key is a raw one and the
@@ -275,48 +379,21 @@ void step_like_home_and_end(machine& box, seam_context& ctx,
   regs.set(cpu::reg8::al, key == scan_up ? scan_home : scan_end);
 }
 
+template <const list_arrows_facts& F>
 void step_the_list(machine& box, seam_context& ctx) {
-  step_like_home_and_end(box, ctx, list_flag_below_bp);
+  step_like_home_and_end(box, ctx, F.list_flag_below_bp);
 }
 
+template <const list_arrows_facts& F>
 void step_the_picker(machine& box, seam_context& ctx) {
-  step_like_home_and_end(box, ctx, picker_flag_below_bp);
+  step_like_home_and_end(box, ctx, F.picker_flag_below_bp);
 }
 
-// --- The command bars that step the party cursor ---------------------------
-
-using menu_bar::caller;
-
-/// The callers whose Home and End step the selected party member and whose
-/// Up and Down do nothing else (docs/seams.md §10 has each by two routes).
-/// Offsets are the instruction after the call into the menu-bar routine; the
-/// words are the overlay manager's, from seam_menu_bar.h.
-constexpr std::array<caller, 9> roster_callers{{
-    {.load_segment_at = profile.camp_overlay.load_segment_at,
-     .return_offset = 0x1F24},  // the camp bar
-    {.load_segment_at = profile.camp_overlay.load_segment_at,
-     .return_offset = 0x1447},  // camp's Magic bar
-    {.load_segment_at = profile.camp_overlay.load_segment_at,
-     .return_offset = 0x1CA4},  // camp's Alter bar
-    {.load_segment_at = profile.camp_overlay.load_segment_at,
-     .return_offset = 0x17DA},  // the party-order screen
-    {.load_segment_at = profile.post_combat_load_segment_at,
-     .return_offset = 0x0D91},  // the post-combat Take bar
-    {.load_segment_at = profile.post_combat_load_segment_at,
-     .return_offset = 0x1024},  // the post-combat treasure bar
-    {.load_segment_at = profile.shop_load_segment_at,
-     .return_offset = 0x061F},  // the shop's bar
-    {.load_segment_at = profile.temple_load_segment_at,
-     .return_offset = 0x0DAA},  // the temple's bar
-    {.load_segment_at = profile.script_runner_load_segment_at,
-     .return_offset = 0x16EB},  // the script prompts
-}};
-
-/// What each key the handler acts on becomes. The arrows become Home and End.
-/// The keypad's 8 and 2 with Num Lock on (a character, so not the arrows)
-/// become its 7 and 1, which the menu-bar routine's own table turns into
-/// `G` and `O`; the scan code is Home's and End's, so the keys are told
-/// apart from the number row's, whose scan codes are `0x02` to `0x0B`.
+/// What each key the handler acts on becomes. The arrows become Home and
+/// End. The keypad's 8 and 2 with Num Lock on (a character, so not the
+/// arrows) become its 7 and 1, which the menu-bar routine's own table turns
+/// into `G` and `O`; the scan code is Home's and End's, so the keys are
+/// told apart from the number row's, whose scan codes are `0x02` to `0x0B`.
 struct rewrite {
   std::uint16_t from;
   std::uint16_t to;
@@ -332,8 +409,8 @@ constexpr std::array<rewrite, 4> rewrites{
 /// routine throws every extended key away and there is no caller to hand a
 /// Home or an End to. The target is what the party cursor would have
 /// chosen (`step::back` for Up, `step::forward` for Down), and the step is
-/// the one `hero-keys` takes for a digit there (seam_party_select.h):
-/// the selection written, the program's own roster drawer called, the key
+/// the one `hero-keys` takes for a digit there (seam_party_select.h): the
+/// selection written, the program's own roster drawer called, the key
 /// answered with the one the program throws away.
 void select_at_a_bar_that_is_not_raw(machine& box, seam_context& ctx,
                                      const menu_bar::pending_key& pending) {
@@ -365,8 +442,8 @@ void select_at_a_bar_that_is_not_raw(machine& box, seam_context& ctx,
   }
 
   const unsigned current = party_select::member_index(
-      members,
-      party_select::read_pointer(cpu, ds, profile.data_current_member));
+      members, party_select::read_pointer(
+                   cpu, ds, pool_of_radiance.data_current_member));
   const unsigned target = party_select::stepped_index(
       members, current,
       pending.key == ring_up ? party_select::step::back
@@ -384,22 +461,25 @@ void select_at_a_bar_that_is_not_raw(machine& box, seam_context& ctx,
   }
 }
 
-/// The program is about to read the keystroke at the head of the ring. If it
-/// is an extended Up or Down, or the keypad's 8 or 2, and the caller is one
-/// that steps the party cursor on Home and End, make it Home or End (or the
-/// keypad's 7 or 1).
+/// The program is about to read the keystroke at the head of the ring. If
+/// it is an extended Up or Down, or the keypad's 8 or 2, and the caller is
+/// one that steps the party cursor on Home and End, make it Home or End (or
+/// the keypad's 7 or 1).
+template <const list_arrows_facts& F>
 void step_the_party(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
 
   const std::array<std::uint16_t, 4> wanted{ring_up, ring_down, ring_pad_8,
                                             ring_pad_2};
   const std::optional<menu_bar::pending_key> pending =
-      menu_bar::key_about_to_be_read(box, wanted);
+      menu_bar::key_about_to_be_read(box, F.profile, wanted);
   if (!pending) {
     return;
   }
-  if (!menu_bar::called_from(cpu, ctx, roster_callers)) {
-    select_at_a_bar_that_is_not_raw(box, ctx, *pending);
+  if (!menu_bar::called_from(cpu, ctx, F.roster_callers)) {
+    if constexpr (F.selects_at_bars_that_are_not_raw) {
+      select_at_a_bar_that_is_not_raw(box, ctx, *pending);
+    }
     return;
   }
   for (const rewrite& r : rewrites) {
@@ -410,22 +490,35 @@ void step_the_party(machine& box, seam_context& ctx) {
   }
 }
 
-constexpr std::array<seam_point, 3> list_arrows_point_table{
-    {{.module = list_module,
-      .offset = profile.pick_list_bar_return,
-      .run = &step_the_list},
-     {.module = resident_image,
-      .offset = picker_after_input,
-      .run = &step_the_picker},
-     {.module = list_module,
-      .offset = profile.menu_key_read_call,
-      .run = &step_the_party}}};
+/// A program's three points: the list's, the picker's and the read's.
+template <const list_arrows_facts& F>
+constexpr std::array<seam_point, 3> list_arrows_points_of() {
+  return {{{.module = F.profile.menu_overlay,
+            .offset = F.profile.pick_list_bar_return,
+            .run = &step_the_list<F>},
+           {.module = F.picker_module,
+            .offset = F.picker_after_input,
+            .run = &step_the_picker<F>},
+           {.module = F.profile.menu_overlay,
+            .offset = F.profile.menu_key_read_call,
+            .run = &step_the_party<F>}}};
+}
+
+constexpr std::array<seam_point, 3> list_arrows_point_table =
+    list_arrows_points_of<pool_of_radiance_list_arrows>();
 static_assert(list_arrows_point_table.size() == list_arrows_point_count);
+
+constexpr std::array<seam_point, 3> curse_list_arrows_point_table =
+    list_arrows_points_of<curse_list_arrows>();
 
 }  // namespace
 
 std::span<const seam_point> list_arrows_points() noexcept {
   return list_arrows_point_table;
+}
+
+std::span<const seam_point> curse_list_arrows_points() noexcept {
+  return curse_list_arrows_point_table;
 }
 
 }  // namespace amberfolio::machine
