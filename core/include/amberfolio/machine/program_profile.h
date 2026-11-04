@@ -550,7 +550,7 @@ inline constexpr program_profile curse_of_the_azure_bonds{
     .roster_draw_offset = {},
     .screen_composer_offset = {},
     .key_pending_entry = {},
-    .key_read_entry = {},
+    .key_read_entry = 0x86FD,
     .clear_region_entry = {},
     .clear_screen_entry = {},
     .draw_frame_entry = {},
@@ -573,7 +573,7 @@ inline constexpr program_profile curse_of_the_azure_bonds{
     .script_runner_load_segment_at = {},
     .rest_load_segment_at = {},
     .appraise_load_segment_at = {},
-    .death_load_segment_at = {},
+    .death_load_segment_at = 0x1220,  // overlay 33
     .menu_key_read_call = {},
     .menu_local_bar = {},
     .menu_bar_capacity = {},
