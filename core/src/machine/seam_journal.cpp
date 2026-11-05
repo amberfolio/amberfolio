@@ -356,19 +356,38 @@ struct journal_facts {
   /// the bar", which is the only case this seam has any business in:
   /// anything else is a movement key or a key the routine handled itself.
   std::uint16_t frame_out_flag;
+
+  /// **The frame the reader's screen is drawn in**, on a program that has
+  /// no frame drawer taking a box and a title: its one fixed outer frame,
+  /// as an offset from the image base, a routine that takes nothing,
+  /// clears the box's interior and draws the border around it. The title
+  /// is then one more line through the string drawer, centred on the
+  /// box's top row the way a titled frame centres it. Zero on a program
+  /// whose frame drawer is the profile's `draw_frame_entry`, which is
+  /// handed the box and the title and clears nothing.
+  std::uint16_t outer_frame_entry;
+
+  /// Whether the string drawer takes a **background colour** as well, a
+  /// word pushed between the colour and the string. A program whose
+  /// drawer takes one is handed black, the ground every line this reader
+  /// draws sits on.
+  bool string_takes_background;
 };
 
 /// Pool of Radiance, the baseline edition. Five of the resident points are
 /// the profile's, and the automap's points too, so those have been reached
 /// on a driven run of the real program since before this file existed;
 /// the sixth is the message box, and #232 is the run that reached it.
-constexpr journal_facts pool_of_radiance_journal{.profile = pool_of_radiance,
-                                                 .message_box_entry = 0x77F8,
-                                                 .box_frame_string_offset = 4,
-                                                 .box_frame_string_segment = 6,
-                                                 .box_frame_clear = 8,
-                                                 .box_clear_is_byte = false,
-                                                 .frame_out_flag = 0x04};
+constexpr journal_facts pool_of_radiance_journal{
+    .profile = pool_of_radiance,
+    .message_box_entry = 0x77F8,
+    .box_frame_string_offset = 4,
+    .box_frame_string_segment = 6,
+    .box_frame_clear = 8,
+    .box_clear_is_byte = false,
+    .frame_out_flag = 0x04,
+    .outer_frame_entry = 0,
+    .string_takes_background = false};
 
 /// Curse of the Azure Bonds (#555). Its narration goes through a message
 /// box of the same shape: the far pointer to a Pascal string at SP+4 and
@@ -380,18 +399,41 @@ constexpr journal_facts pool_of_radiance_journal{.profile = pool_of_radiance,
 /// clear, so a citation can arrive in two pieces exactly as it does on
 /// Pool of Radiance.
 ///
-/// **Only the citation watch is ported**: the reader's screen and its
-/// `Notes` command need facts this row does not have yet (the bar, the
-/// screen composer, the frame and string drawers, the keyboard), so on
-/// this program a citation goes on the log, and the log reaches the slot's
-/// sidecar when the program saves (`docs/seams.md` §10).
+/// **`Notes` and the reader** are the same mechanism with this program's
+/// facts. The party's bar is one call in the adventuring loop's module
+/// (the profile's), whose out-parameter is at `BP-4`. **There is no frame
+/// drawer that takes a box and a title**: the reader's box is the
+/// program's fixed outer frame at image `0x1330` (`0133:0000`, the routine
+/// every screen the composer draws begins with), which takes nothing,
+/// clears rows 1 to `0x16` and columns 1 to `0x26` — the reader's own box —
+/// and draws the border around them, and the title is a line through the
+/// string drawer. The string drawer takes a background colour between the
+/// colour and the string. The composer and the roster drawer are in an
+/// overlay, so the give-back calls the composer through its stub entry
+/// (the profile's paragraph and offset), and the roster's return is a
+/// point in that overlay.
 constexpr journal_facts curse_journal{.profile = curse_of_the_azure_bonds,
                                       .message_box_entry = 0x5178,
                                       .box_frame_string_offset = 4,
                                       .box_frame_string_segment = 6,
                                       .box_frame_clear = 8,
                                       .box_clear_is_byte = true,
-                                      .frame_out_flag = 0};
+                                      .frame_out_flag = 0x04,
+                                      .outer_frame_entry = 0x1330,
+                                      .string_takes_background = true};
+
+/// Curse's overlay 25, the party summary drawer and the screen composer
+/// among others, and the drawer's `retf 4` in it: the automap's point at
+/// the same place (`seam_automap.cpp`), where the roster is back on the
+/// screen.
+constexpr seam_module curse_summary_overlay{
+    .file = "GAME.OVR",
+    .file_offset = 226981,
+    .length = 13331,
+    .digest =
+        "58601d3692c12e68081787f36ae1fccb5d24eb8488da8ce588a4318e03d2a6a6",
+    .load_segment_at = 0x0EE0};
+constexpr std::uint16_t curse_roster_drawn_return = 0x092E;
 
 constexpr auto journal_binaries =
     fingerprints_of(std::array{&pool_of_radiance, &curse_of_the_azure_bonds});
@@ -1264,6 +1306,8 @@ class list_line {
     }
   }
 
+  [[nodiscard]] std::size_t size() const noexcept { return length_; }
+
   [[nodiscard]] std::span<const std::uint8_t> bytes() noexcept {
     text_[0] = static_cast<std::uint8_t>(length_);
     return {text_.data(), length_ + 1};
@@ -1722,9 +1766,55 @@ enum class claimable : std::uint8_t {
   if (!ctx.place_bytes(line.bytes(), segment, offset)) {
     return false;
   }
+  if (f.string_takes_background) {
+    const std::array<std::uint16_t, 6> where{column,       row,     colour,
+                                             colour_black, segment, offset};
+    return ctx.call_program(image, f.profile.draw_string_entry, where);
+  }
   const std::array<std::uint16_t, 5> where{column, row, colour, segment,
                                            offset};
   return ctx.call_program(image, f.profile.draw_string_entry, where);
+}
+
+/// The box the log and every page are drawn in, with `title` on its
+/// top row in `colour`: its interior cleared, its border drawn and its
+/// title on it. The first thing each screen's first pass does.
+///
+/// **Two calls on either program**, so the budget the passes are sized to
+/// is the same. Where the program has a frame drawer that takes a box and
+/// a title, the region clear first, because that drawer draws only its
+/// border and its title; where it has only its fixed outer frame, which
+/// clears the box itself and is the same box (`outer_frame_entry`), that
+/// frame and then the title through the string drawer, centred where a
+/// titled frame centres it: `(left + right - length) / 2`.
+[[nodiscard]] bool draw_the_frame(const journal_facts& f, seam_context& ctx,
+                                  std::uint16_t image, list_line& title,
+                                  std::uint16_t colour) {
+  if (f.outer_frame_entry != 0) {
+    const std::array<std::uint16_t, 0> nothing{};
+    if (!ctx.call_program(image, f.outer_frame_entry, nothing)) {
+      return false;
+    }
+    const std::size_t width =
+        std::min<std::size_t>(title.size(), list_frame_right - list_frame_left);
+    return draw_line(f, ctx, image, title, colour, list_frame_top,
+                     static_cast<std::uint16_t>(
+                         (list_frame_left + list_frame_right - width) / 2U));
+  }
+  const std::array<std::uint16_t, 4> clear{list_frame_left, list_frame_top,
+                                           list_frame_right, list_frame_bottom};
+  if (!ctx.call_program(image, f.profile.clear_region_entry, clear)) {
+    return false;
+  }
+  std::uint16_t title_segment = 0;
+  std::uint16_t title_offset = 0;
+  if (!ctx.place_bytes(title.bytes(), title_segment, title_offset)) {
+    return false;
+  }
+  const std::array<std::uint16_t, 8> frame{
+      list_frame_left,  list_frame_top, list_frame_right, list_frame_bottom,
+      list_frame_style, colour,         title_segment,    title_offset};
+  return ctx.call_program(image, f.profile.draw_frame_entry, frame);
 }
 
 /// The reader's own command bar (M5-E4f, #317).
@@ -1962,23 +2052,9 @@ constexpr auto bar_selected_key_colour =
     // Clearing and letting the program's own frame drawer put the
     // border and the title back leaves nothing of what was there, which
     // is the shape M5-E1e's residue (#298) taught.
-    const std::array<std::uint16_t, 4> clear{
-        list_frame_left, list_frame_top, list_frame_right, list_frame_bottom};
-    if (!ctx.call_program(image, f.profile.clear_region_entry, clear)) {
-      return false;
-    }
     list_line title;
     title.add("ADVENTURER'S JOURNAL");
-    std::uint16_t title_segment = 0;
-    std::uint16_t title_offset = 0;
-    if (!ctx.place_bytes(title.bytes(), title_segment, title_offset)) {
-      return false;
-    }
-    const std::array<std::uint16_t, 8> frame{
-        list_frame_left,   list_frame_top,   list_frame_right,
-        list_frame_bottom, list_frame_style, list_title_colour,
-        title_segment,     title_offset};
-    if (!ctx.call_program(image, f.profile.draw_frame_entry, frame)) {
+    if (!draw_the_frame(f, ctx, image, title, list_title_colour)) {
       return false;
     }
     if (rows.empty()) {
@@ -2156,22 +2232,8 @@ struct page_footer_bar {
   state.set_page_count(static_cast<std::uint16_t>(total));
 
   if (done == 0) {
-    const std::array<std::uint16_t, 4> clear{
-        list_frame_left, list_frame_top, list_frame_right, list_frame_bottom};
-    if (!ctx.call_program(image, f.profile.clear_region_entry, clear)) {
-      return false;
-    }
     list_line title = page_title(state);
-    std::uint16_t title_segment = 0;
-    std::uint16_t title_offset = 0;
-    if (!ctx.place_bytes(title.bytes(), title_segment, title_offset)) {
-      return false;
-    }
-    const std::array<std::uint16_t, 8> frame{
-        list_frame_left,   list_frame_top,   list_frame_right,
-        list_frame_bottom, list_frame_style, page_title_colour,
-        title_segment,     title_offset};
-    if (!ctx.call_program(image, f.profile.draw_frame_entry, frame)) {
+    if (!draw_the_frame(f, ctx, image, title, page_title_colour)) {
       return false;
     }
     if (picture) {
@@ -3186,11 +3248,35 @@ constexpr std::array<seam_point, 10> journal_points{
       .offset = pool_of_radiance.view_bar_return,
       .run = &at_view_bar_after<pool_of_radiance_journal>}}};
 
-/// On Curse, the message box alone, in the resident image.
-constexpr std::array<seam_point, 1> curse_journal_points{
+/// On Curse, the same eight in the baseline's order but with one bar call
+/// and its return, where Pool of Radiance has two of each: the overhead
+/// view is toggled inside the same loop and keeps the bar. The roster's
+/// return is in the overlay the drawer is in.
+constexpr std::array<seam_point, 8> curse_journal_points{
     {{.module = resident_image,
+      .offset = curse_of_the_azure_bonds.key_pending_entry,
+      .run = &at_key_pending<curse_journal>},
+     {.module = resident_image,
+      .offset = curse_of_the_azure_bonds.key_read_entry,
+      .run = &at_key_read<curse_journal>},
+     {.module = resident_image,
       .offset = curse_journal.message_box_entry,
-      .run = &at_message_box<curse_journal>}}};
+      .run = &at_message_box<curse_journal>},
+     {.module = resident_image,
+      .offset = curse_of_the_azure_bonds.clear_region_entry,
+      .run = &at_clear_region},
+     {.module = resident_image,
+      .offset = curse_of_the_azure_bonds.clear_screen_entry,
+      .run = &at_clear_screen},
+     {.module = curse_summary_overlay,
+      .offset = curse_roster_drawn_return,
+      .run = &at_roster_drawn},
+     {.module = curse_of_the_azure_bonds.adventure_overlay,
+      .offset = curse_of_the_azure_bonds.view_bar_call,
+      .run = &at_view_bar_before<curse_journal>},
+     {.module = curse_of_the_azure_bonds.adventure_overlay,
+      .offset = curse_of_the_azure_bonds.view_bar_return,
+      .run = &at_view_bar_after<curse_journal>}}};
 
 /// The points on every program but the baseline, whose points are the
 /// definition's own (seam.h, schema 9).

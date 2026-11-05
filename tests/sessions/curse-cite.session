@@ -4,14 +4,18 @@
 # innkeeper's event at 6,13 names journal entry 31, the watch puts it on
 # the log, and the save to slot C at the end is where the log reaches
 # the slot's sidecar (AFSEENC.DAT, with --save-sidecars). The watch
-# writes nothing the machine holds, so every checkpoint is curse-buy's.
+# writes nothing the machine holds; Notes on the party's bar does, from
+# the bar's first draw (tick 78,927,534), so the pair agrees for 39 of
+# 133 checkpoints and is a contrast. The purchase and the save are the
+# same: no key here is N.
 #
 # Recorded on the Steam copy with its shipped slots A and B (games/curse-slots), at --speed 386 and --wall none.
 
 about the program's own citation of journal entry 31 at the innkeeper's
-about event, logged by the watch and moving nothing: the machine curse-buy is
+about event, logged by the watch, over curse-buy's keys: the machine differs
+about from curse-buy by Notes on the party's bar
 disk external
-identical curse-buy
+contrast curse-buy
 
 dir SAVE
 file 8X8D1.DAX 3769 e8d4c99cd6285e1533e9f60968948401622e62a07174d491129f3e60314a842e
