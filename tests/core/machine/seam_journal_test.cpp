@@ -4604,13 +4604,14 @@ TEST(JournalReaderOnCurse, EveryLineIsHandedABlackBackground) {
   r.open_the_log();
   r.until_it_settles();
   ASSERT_TRUE(r.reader().on_screen());
-  const unsigned calls = r.curse_word(curse::string_calls);
-  ASSERT_EQ(calls, 4u) << "the title, the log's one row, the bar, its initial";
+  const unsigned strings = r.curse_word(curse::string_calls);
+  ASSERT_EQ(strings, 4u)
+      << "the title, the log's one row, the bar, its initial";
   EXPECT_EQ(r.nth_string(1).row, screen_first_row);
   EXPECT_EQ(r.nth_string(1).column, 1u);
   EXPECT_EQ(r.nth_string(2).row, screen_footer_row);
   EXPECT_EQ(r.nth_string(2).column, 0u);
-  for (unsigned nth = 0; nth < calls; ++nth) {
+  for (unsigned nth = 0; nth < strings; ++nth) {
     EXPECT_EQ(r.nth_string(nth).background, 0u) << "call " << nth;
   }
 }
