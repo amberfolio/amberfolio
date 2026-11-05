@@ -158,6 +158,10 @@ struct program_profile {
   seam_module view_overlay;
   /// The menu-bar routine and the pick-list routine.
   seam_module menu_overlay;
+  /// The party summary: the roster drawer, the hit points' draw and the
+  /// party-member picker. The resident image on a program that keeps
+  /// them there.
+  seam_module summary_overlay;
 
   /// The load-segment words of modules no seam has a point in, which a
   /// seam names only as the module a call came from (`seam_menu_bar.h`).
@@ -432,6 +436,7 @@ inline constexpr program_profile pool_of_radiance{
     .slots_overlay = pool_of_radiance_modules::slots,
     .view_overlay = pool_of_radiance_modules::view,
     .menu_overlay = pool_of_radiance_modules::menu,
+    .summary_overlay = resident_image,
 
     .temple_load_segment_at = 0x230,         // overlay 4
     .post_combat_load_segment_at = 0x260,    // overlay 5
@@ -622,6 +627,7 @@ inline constexpr program_profile curse_of_the_azure_bonds{
     .slots_overlay = {},
     .view_overlay = {},
     .menu_overlay = curse_of_the_azure_bonds_modules::menu,
+    .summary_overlay = {},
     .temple_load_segment_at = 0x430,         // overlay 5
     .post_combat_load_segment_at = 0x460,    // overlay 6
     .shop_load_segment_at = 0x490,           // overlay 7

@@ -254,10 +254,10 @@ struct list_arrows_facts {
   /// routes).
   std::span<const caller> roster_callers;
 
-  /// Whether Up and Down step the selection at the bars that are not raw
-  /// and show the party list (#469, `seam_party_select.h`, whose facts are
-  /// Pool of Radiance's).
-  bool selects_at_bars_that_are_not_raw;
+  /// Where Up and Down step the selection at the bars that are not raw and
+  /// show the party list (#469, `seam_party_select.h`); null where they do
+  /// not.
+  const party_select::facts* bars_that_are_not_raw;
 };
 
 // --- Pool of Radiance ------------------------------------------------------
@@ -295,7 +295,7 @@ constexpr list_arrows_facts pool_of_radiance_list_arrows{
     .picker_after_input = menu_bar::pool_of_radiance_picker_return,
     .picker_flag_below_bp = 0x2B,
     .roster_callers = pool_of_radiance_roster_callers,
-    .selects_at_bars_that_are_not_raw = true};
+    .bars_that_are_not_raw = &party_select::pool_of_radiance_facts};
 
 // --- Curse of the Azure Bonds ---------------------------------------------
 
@@ -347,7 +347,7 @@ constexpr list_arrows_facts curse_list_arrows{
     .picker_after_input = 0x2EE5,
     .picker_flag_below_bp = 0x2B,
     .roster_callers = curse_roster_callers,
-    .selects_at_bars_that_are_not_raw = false};
+    .bars_that_are_not_raw = nullptr};
 
 // --- The handlers ----------------------------------------------------------
 
@@ -412,13 +412,14 @@ constexpr std::array<rewrite, 4> rewrites{
 /// the one `hero-keys` takes for a digit there (seam_party_select.h): the
 /// selection written, the program's own roster drawer called, the key
 /// answered with the one the program throws away.
-void select_at_a_bar_that_is_not_raw(machine& box, seam_context& ctx,
+void select_at_a_bar_that_is_not_raw(const party_select::facts& f, machine& box,
+                                     seam_context& ctx,
                                      const menu_bar::pending_key& pending) {
   if (pending.key != ring_up && pending.key != ring_down) {
     return;
   }
   cpu::processor& cpu = box.processor();
-  switch (party_select::at_a_party_bar(cpu, ctx, 0)) {
+  switch (party_select::at_a_party_bar(f, cpu, ctx, 0)) {
     case party_select::where::not_here:
       return;
     case party_select::where::frame_unknown:
@@ -428,11 +429,12 @@ void select_at_a_bar_that_is_not_raw(machine& box, seam_context& ctx,
       break;
   }
   const std::uint16_t ds = cpu.regs()[cpu::sreg::ds];
-  if (!party_select::is_the_data_segment(ctx, ds)) {
+  if (!party_select::is_the_data_segment(f.profile, ctx, ds)) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
-  const party_select::party members = party_select::read_party(cpu, ds);
+  const party_select::party members =
+      party_select::read_party(f.profile, cpu, ds);
   if (!members.readable) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
@@ -442,8 +444,8 @@ void select_at_a_bar_that_is_not_raw(machine& box, seam_context& ctx,
   }
 
   const unsigned current = party_select::member_index(
-      members, party_select::read_pointer(
-                   cpu, ds, pool_of_radiance.data_current_member));
+      members,
+      party_select::read_pointer(cpu, ds, f.profile.data_current_member));
   const unsigned target = party_select::stepped_index(
       members, current,
       pending.key == ring_up ? party_select::step::back
@@ -455,8 +457,8 @@ void select_at_a_bar_that_is_not_raw(machine& box, seam_context& ctx,
     party_select::answer_with_the_ignored_key(cpu, pending.at);
     return;
   }
-  if (!party_select::select_and_redraw(box, ctx, ds, members.member[target],
-                                       pending.at)) {
+  if (!party_select::select_and_redraw(f.profile, box, ctx, ds,
+                                       members.member[target], pending.at)) {
     ctx.decline(seam_reason::point_not_recognized);
   }
 }
@@ -477,8 +479,9 @@ void step_the_party(machine& box, seam_context& ctx) {
     return;
   }
   if (!menu_bar::called_from(cpu, ctx, F.roster_callers)) {
-    if constexpr (F.selects_at_bars_that_are_not_raw) {
-      select_at_a_bar_that_is_not_raw(box, ctx, *pending);
+    if constexpr (F.bars_that_are_not_raw != nullptr) {
+      select_at_a_bar_that_is_not_raw(*F.bars_that_are_not_raw, box, ctx,
+                                      *pending);
     }
     return;
   }

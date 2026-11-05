@@ -245,7 +245,7 @@ enum class handed : std::uint8_t { program, menu, walking };
 [[nodiscard]] std::uint16_t data_segment(cpu::processor& cpu,
                                          const seam_context& ctx) noexcept {
   const std::uint16_t ds = cpu.regs()[cpu::sreg::ds];
-  return party_select::is_the_data_segment(ctx, ds) ? ds : 0;
+  return party_select::is_the_data_segment(profile, ctx, ds) ? ds : 0;
 }
 
 [[nodiscard]] std::uint16_t at(std::uint16_t base, unsigned by) noexcept {

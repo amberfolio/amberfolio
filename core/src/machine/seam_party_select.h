@@ -16,8 +16,9 @@
 // seams read the target out of.
 //
 // **The step.** `select_and_redraw()` queues one call of the roster drawer
-// (resident, paragraph `0xBA`, offset `0x0767`, one far pointer: the
-// selected member, segment first) and writes DGROUP `0x5D92`/`0x5D94`. The
+// (the profile's `screen_paragraph` and `roster_draw_offset`, one far
+// pointer: the selected member, segment first) and writes the profile's
+// `data_current_member`. The
 // pointer is a place the program would have put the selection itself; the
 // drawing is the program's own, so `hero-keys`' numbers and the faces reach
 // it as they reach every other redraw. **The key is answered first**, with
@@ -47,14 +48,24 @@
 
 namespace amberfolio::machine::party_select {
 
-/// The program this file's facts are about (program_profile.h): the
-/// baseline edition, and only it.
-inline constexpr const program_profile& profile = pool_of_radiance;
+// --- One program's facts -----------------------------------------------------
+
+/// What the step needs to know about one program: its profile (the party
+/// list, the selected-member pointer, the data segment, the roster drawer)
+/// and the callers of the menu-bar routine with raw mode off whose screen
+/// shows the party list.
+struct facts {
+  const program_profile& profile;
+  std::span<const menu_bar::caller> callers;
+};
 
 // --- The data segment ------------------------------------------------------
 
 /// How far into a record this reads: the next pointer's last byte.
-constexpr std::uint16_t record_reach = 0x0108;
+[[nodiscard]] constexpr std::uint16_t record_reach(
+    const program_profile& profile) noexcept {
+  return static_cast<std::uint16_t>(profile.record_next + 4U);
+}
 
 /// A party is six characters and two non-player ones.
 constexpr unsigned max_party = 8;
@@ -68,15 +79,19 @@ struct far_pointer {
   [[nodiscard]] constexpr bool operator==(const far_pointer&) const = default;
 };
 
-[[nodiscard]] inline bool is_record(far_pointer at) noexcept {
+/// Whether `at` can be one of `profile`'s records: one whose next pointer
+/// lies in conventional memory.
+[[nodiscard]] inline bool is_record(const program_profile& profile,
+                                    far_pointer at) noexcept {
   if ((at.offset | at.segment) == 0) {
     return false;
   }
   // A far pointer that has not been set up yet points anywhere, and a read
   // above conventional memory is a read of the video window, where it
   // loads the adapter's latches (docs/seams.md §8.4).
-  return at.offset <= 0x10000U - record_reach &&
-         cpu::physical_address(at.segment, at.offset) + record_reach <=
+  const std::uint16_t reach = record_reach(profile);
+  return at.offset <= 0x10000U - reach &&
+         cpu::physical_address(at.segment, at.offset) + reach <=
              conventional_ram_size;
 }
 
@@ -103,11 +118,12 @@ struct party {
   bool readable{true};
 };
 
-[[nodiscard]] inline party read_party(cpu::processor& cpu, std::uint16_t ds) {
+[[nodiscard]] inline party read_party(const program_profile& profile,
+                                      cpu::processor& cpu, std::uint16_t ds) {
   party out;
   far_pointer at = read_pointer(cpu, ds, profile.data_roster_head);
   while ((at.offset | at.segment) != 0) {
-    if (out.size == max_party || !is_record(at)) {
+    if (out.size == max_party || !is_record(profile, at)) {
       out.readable = false;
       return out;
     }
@@ -120,7 +136,8 @@ struct party {
 }
 
 /// Whether DS is the data segment the facts put the party in.
-[[nodiscard]] inline bool is_the_data_segment(const seam_context& ctx,
+[[nodiscard]] inline bool is_the_data_segment(const program_profile& profile,
+                                              const seam_context& ctx,
                                               std::uint16_t ds) noexcept {
   return ds == static_cast<std::uint16_t>((ctx.image_base() >> 4U) +
                                           profile.dgroup_paragraphs);
@@ -160,20 +177,24 @@ enum class step : std::uint8_t { back, forward };
 
 // --- The callers that are not raw ------------------------------------------
 
-/// The callers of the menu-bar routine with **raw mode off** whose screen
-/// shows the party list while the bar is up (docs/seams.md §10 has each by
-/// two routes). The routine throws Home, End and the arrows away for them,
-/// and none of their bars has a digit for a command letter.
-constexpr std::array<menu_bar::caller, 4> callers{{
-    {.load_segment_at = profile.adventure_overlay.load_segment_at,
+/// Pool of Radiance's callers of the menu-bar routine with **raw mode off**
+/// whose screen shows the party list while the bar is up (docs/seams.md §10
+/// has each by two routes). The routine throws Home, End and the arrows away
+/// for them, and none of their bars has a digit for a command letter.
+inline constexpr std::array<menu_bar::caller, 4> pool_of_radiance_callers{{
+    {.load_segment_at = pool_of_radiance.adventure_overlay.load_segment_at,
      .return_offset = 0x0EBF},  // a locked door's bar
-    {.load_segment_at = profile.adventure_overlay.load_segment_at,
+    {.load_segment_at = pool_of_radiance.adventure_overlay.load_segment_at,
      .return_offset = 0x0FFE},  // a stuck door's bar
-    {.load_segment_at = profile.camp_overlay.load_segment_at,
+    {.load_segment_at = pool_of_radiance.camp_overlay.load_segment_at,
      .return_offset = 0x1DDF},  // camp's Portraits and Monsters bar
-    {.load_segment_at = profile.slots_overlay.load_segment_at,
+    {.load_segment_at = pool_of_radiance.slots_overlay.load_segment_at,
      .return_offset = 0x1DA1},  // the save slot bar, from camp
 }};
+
+/// Pool of Radiance: the baseline edition (program_profile.h).
+inline constexpr facts pool_of_radiance_facts{
+    .profile = pool_of_radiance, .callers = pool_of_radiance_callers};
 
 /// Above BP in the menu-bar routine's frame: the raw-mode argument, pushed
 /// as a whole word, tested as a byte.
@@ -192,10 +213,10 @@ constexpr std::uint8_t bar_longest = 0x28;
 /// the frame these facts describe: false, and the caller says so.
 enum class where : std::uint8_t { not_here, here, frame_unknown };
 
-[[nodiscard]] inline where at_a_party_bar(cpu::processor& cpu,
+[[nodiscard]] inline where at_a_party_bar(const facts& f, cpu::processor& cpu,
                                           const seam_context& ctx,
                                           std::uint8_t digit) {
-  if (!menu_bar::called_from(cpu, ctx, callers)) {
+  if (!menu_bar::called_from(cpu, ctx, f.callers)) {
     return where::not_here;
   }
   cpu::registers& regs = cpu.regs();
@@ -239,7 +260,8 @@ inline void answer_with_the_ignored_key(cpu::processor& cpu, std::uint16_t at) {
 /// answer comes first and whatever happens to the queue, so the key is
 /// never left for the program to take as its own; false, and the
 /// selection untouched, if the batch could not be queued.
-inline bool select_and_redraw(machine& box, seam_context& ctx, std::uint16_t ds,
+inline bool select_and_redraw(const program_profile& profile, machine& box,
+                              seam_context& ctx, std::uint16_t ds,
                               far_pointer target, std::uint16_t key_at) {
   cpu::processor& cpu = box.processor();
   answer_with_the_ignored_key(cpu, key_at);
