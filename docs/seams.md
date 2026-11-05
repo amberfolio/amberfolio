@@ -1588,14 +1588,13 @@ blocking read (#266); the batch ordering for pictures (#328); the
 give-back inside a batch (#332); the composer under a vendor's bar
 (M5-E2d); the one keystroke a read is answered with (#325).
 
-**On Curse of the Azure Bonds** (#555) the citation watch is the same
-mechanism with that program's facts, one `journal_facts` row per program
-(`seam_journal.cpp`) and its one point in the definition's `programs`.
-**Only the watch is ported**: `Notes` and the reader need the bar, the
-screen composer, the frame and string drawers and the keyboard from
-Curse's profile, none of which is in this row yet, so on Curse a citation
-goes on the log and nothing opens it. The log reaches the slot's sidecar
-when the program saves (`docs/journal.md` §6a).
+**On Curse of the Azure Bonds** (#555) the seam is the same mechanism
+with that program's facts, one `journal_facts` row per program
+(`seam_journal.cpp`) and its eight points in the definition's
+`programs`: the citation watch, `Notes` on the party's bar and the reader.
+The log reaches the slot's sidecar when the program saves
+(`docs/journal.md` §6a). The facts more than one file reads are the
+profile's (`program_profile.h`).
 
 | fact | Pool of Radiance | Curse of the Azure Bonds |
 | --- | --- | --- |
@@ -1603,21 +1602,58 @@ when the program saves (`docs/journal.md` §6a).
 | its frame: string offset, segment, the clear flag | SP+4, SP+6, SP+8 | SP+4, SP+6, SP+8 |
 | the flag is read as | a word | **a byte**: the routine compares the byte, and the script's print command pushes it as `mov al, n` and `push ax`, AH left over |
 | a number the script prints | the same box, flag clear | the same box, flag clear |
-| the points | ten (the reader's nine and the watch) | one (the watch) |
+| the party's bar | two, DGROUP `0x04B6` and `0x04DF` (33 and 27 characters) | one, DGROUP `0x03D8` (33 characters); the overhead view is toggled inside the same loop and keeps it |
+| its call and return; the out-parameter | overlay 14 (word `0x730`): `0x09D0`/`0x09D5` and `0x0C40`/`0x0C45`; `BP-4` | overlay 15 (word `0x9A0`): `0x0927`/`0x092C`, a far call through the menu overlay's stub entry; `BP-4` |
+| the highlight | DGROUP `0x6B2B` | DGROUP `0x72AE` |
+| the frame | a frame drawer that takes the box, a style, a colour and the title, image `0x41F8`, after the region clear | **none that takes a title**: the fixed outer frame, image `0x1330` (`0133:0000`), which takes nothing, clears rows 1 to `0x16` and columns 1 to `0x26` (the reader's box) and draws the border around them; the title is a string-drawer line on row 1 at `(1 + 0x26 - length) / 2`, where a titled frame centres it |
+| the string drawer and what it is pushed | image `0x76B6`: column, row, colour, the string | image `0x5029` (`04CE:0349`): column, row, colour, **a background colour**, the string; the reader hands it black. Both colours are read as bytes |
+| the screen composer | resident, `0BA:27D9` | overlay 25 (file offset 226981, 13331 bytes, word `0x0EE0`) `+0x2A29`, called through its stub entry at the stub's own paragraph, `00ED:00CF` (§8.4, #526); in the adventuring mode it draws the outer frame and the viewport box, the view, the roster and the status line |
+| the roster drawn | its `retf`, image `0x148A` | its `retf 4`, overlay 25 `+0x092E` (the automap's point) |
+| the keyboard; the pushback slot | image `0xA6FD`, `0xA70F`; DGROUP `0x8501` | `0x86EB`, `0x86FD`; DGROUP `0x8CBF` |
+| the clears | `0x4047`, `0x7D3B` | `0x17FD`, `0x56E2` |
+| the points | ten | eight: the same in the same order, with one bar call and its return |
 
-Driven on the Steam copy, slot A (`docs/playable-curse.md` leg 2): the
-innkeeper's second screen at 6,13 names journal entry 31, and the watch
-puts it on the log (`host-service journal-seen calls=1`) and moves
-nothing: with the seam on, `curse-buy`'s 133 checkpoints replay
-unchanged. Its save to slot C with `--save-sidecars` writes
-`\SAVE\AFSEENC.DAT`, one row, entry 31 unread; loading C from that disk
-reads it back (`save-sidecars writes=0 reads=1 slot=C`). Sessions:
-`curse-journey-journal` `identical curse-journey` (on, the box reached
-288 times and nothing cited; the pair is `identical` here because there
-is no `Notes` splice to contrast on) and `curse-cite` `identical
-curse-buy` (on, entry 31 cited). Every run from slot A passes the
-innkeeper, so no `curse-quiet` twin is a run with nothing cited. Tests:
-`JournalOnCurse.*`.
+Each routine was read twice, from its own code and from its callers in
+the store copy's `GAME.OVR`: the string drawer's frame (the string at
+`BP+6`, the background at `BP+0x0A`, the colour, row and column above
+it) and 180 far calls to `04CE:0349`; the outer frame and 15 far calls
+to `0133:0000`, the composer's among them; 29 far calls to `00ED:00CF`,
+whose stub entry names offset `0x2A29` of overlay 25, where the
+composer begins. The menu-bar routine upper-cases the key
+it reads and matches it against the bar's capitals, so `Notes`, one
+capital, is a seventh command and `N` selects nothing on the program's
+own bar.
+
+- **Driven** on the Steam copy, slot A, after the innkeeper (frame
+  5,350): the bar reads `AREA CAST VIEW ENCAMP SEARCH LOOK NOTES`; `N`
+  opens the log over the outer frame, `ADVENTURER'S JOURNAL` centred on
+  its top row and `* ENTRY 31  01-01  00:01` on its first; `Return` opens
+  the entry, `NEXT EXIT 1/3`; `N` and `N` walk to page 2 and onto the
+  picture (`PREV EXIT 3/3`), drawn whole in the box; `E` is the log again
+  and `E` closes it: the screen the program composes is pixel for pixel
+  the one before `N`, the bar back, and a `Right` turns the party.
+  `--watch 72AE` reads `01` from the bar's first draw to the end. With
+  `modern-controls` on, Left and Right step the reader's bar and Return
+  takes the lit word. **The lit word is yellow letters, not a block**:
+  the selection block is not ported to Curse yet (`docs/modern-controls.md`),
+  so nothing turns the mark into one.
+- **Fidelity**: on and `Notes` never chosen, the run is the seam-off run
+  until the party's bar is first drawn, as on Pool of Radiance (§7):
+  `curse-quiet-journal` `contrast curse-quiet` (39 of 58 identical,
+  divergent from tick 78,927,534, the bar after the opening event).
+  `curse-notes` `contrast curse-notes-keys` (the reader opened, read and
+  closed; the seam-off half presses the same keys; 39 of 78, from the
+  same tick), over `tests/visual/curse-reader-store.txt`, entry 31 in
+  this project's own words with a synthetic picture. `curse-cite`
+  `contrast curse-buy` (on, entry 31 cited, the purchase and the save
+  the same; 39 of 133, from the same tick).
+  `curse-journey-journal` `identical curse-journey` (on, the box reached
+  288 times, nothing cited; the overland is a journey menu and the
+  party's bar is never drawn). Every run from slot A passes the
+  innkeeper, so no `curse-quiet` twin is a run with nothing cited. Its
+  save to slot C with `--save-sidecars` writes `\SAVE\AFSEENC.DAT`, one
+  row, entry 31 unread, and loading C reads it back. Tests:
+  `JournalOnCurse.*`, `JournalReaderOnCurse.*`.
 
 ### The explored overlay (#179, M5-E5a to M5-E5g)
 

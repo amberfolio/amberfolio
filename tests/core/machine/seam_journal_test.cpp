@@ -4226,6 +4226,40 @@ namespace curse {
 constexpr std::uint16_t dgroup_paragraphs = 0xABE;
 constexpr std::uint16_t message_box = 0x5178;
 constexpr std::uint16_t box_frame_clear = 8;
+
+/// The reader's facts on this program, restated (docs/seams.md §8.1): the
+/// keyboard's two entries, the party's one bar and its call and return in
+/// the adventuring loop's module, the loop's out-parameter, the roster's
+/// return in its overlay, the game mode and the pushback slot, the
+/// highlight, the outer frame, the string drawer, the region clear, and
+/// the composer's stub entry.
+constexpr std::uint16_t key_pending = 0x86EB;
+constexpr std::uint16_t key_read = 0x86FD;
+constexpr std::uint16_t bar = 0x03D8;
+constexpr std::uint16_t bar_call = 0x0927;
+constexpr std::uint16_t bar_return = 0x092C;
+constexpr std::uint16_t out_flag_below_bp = 4;
+constexpr std::uint16_t adventure_load_segment_at = 0x9A0;
+constexpr std::uint32_t adventure_file_offset = 98348;
+constexpr std::uint32_t summary_file_offset = 226981;
+constexpr std::uint16_t roster_drawn = 0x092E;
+constexpr std::uint16_t data_game_mode = 0x4FD3;
+constexpr std::uint16_t data_key_pushback = 0x8CBF;
+constexpr std::uint16_t data_bar_highlight = 0x72AE;
+constexpr std::uint16_t outer_frame = 0x1330;
+constexpr std::uint16_t draw_string = 0x5029;
+constexpr std::uint16_t draw_string_cleans = 0x0C;
+constexpr std::uint16_t clear_region = 0x17FD;
+constexpr std::uint16_t composer_stub = 0x0ED0 + 0x00CF;
+
+/// Where the stand-ins below keep what they were handed, in the data
+/// segment: how many times each was entered, and for every string four
+/// words: column, row, colour, background.
+constexpr std::uint16_t frame_calls = 0x7000;
+constexpr std::uint16_t clear_calls = 0x7002;
+constexpr std::uint16_t composer_calls = 0x7004;
+constexpr std::uint16_t string_calls = 0x7006;
+constexpr std::uint16_t string_trace = 0x7800;
 }  // namespace curse
 
 [[nodiscard]] sha256_digest curse_digest() {
@@ -4278,16 +4312,25 @@ struct curse_rig : rig {
   }
 };
 
-TEST(JournalOnCurse, IsAvailableWithTheMessageBoxAlone) {
+TEST(JournalOnCurse, IsAvailableWithTheReadersPointsAndTheWatch) {
   const curse_rig r;
   const seam_definition* journal = r.pc().seams().find("journal");
   ASSERT_NE(journal, nullptr);
   const std::span<const seam_point> mine = points_on(*journal, curse_digest());
-  ASSERT_EQ(mine.size(), 1u)
-      << "the citation watch, and none of the reader's points yet";
+  ASSERT_EQ(mine.size(), 8u)
+      << "the keyboard's two, the watch, the two clears, the roster's "
+         "return, and the one bar's call and return";
   EXPECT_NE(mine.data(), journal->points.data());
-  EXPECT_EQ(mine.front().offset, curse::message_box);
-  EXPECT_EQ(mine.front().module.file, resident_image.file);
+  EXPECT_EQ(mine[0].offset, curse::key_pending);
+  EXPECT_EQ(mine[1].offset, curse::key_read);
+  EXPECT_EQ(mine[2].offset, curse::message_box);
+  EXPECT_EQ(mine[2].module.file, resident_image.file);
+  EXPECT_EQ(mine[5].module.file_offset, curse::summary_file_offset);
+  EXPECT_EQ(mine[5].offset, curse::roster_drawn);
+  EXPECT_EQ(mine[6].module.file_offset, curse::adventure_file_offset);
+  EXPECT_EQ(mine[6].offset, curse::bar_call);
+  EXPECT_EQ(mine[7].module.file_offset, curse::adventure_file_offset);
+  EXPECT_EQ(mine[7].offset, curse::bar_return);
 }
 
 TEST(JournalOnCurse, ACitationInTwoPiecesGoesOnTheLog) {
@@ -4348,6 +4391,258 @@ TEST(JournalOnCurse, ADataSegmentThatIsNotTheProgramsIsDeclined) {
   EXPECT_TRUE(r.reader().seen().empty());
   r.curse_draws("READ JOURNAL ENTRY 31", 0x0001);
   EXPECT_EQ(r.reader().seen().size(), 1u);
+}
+
+// ---------------------------------------------------------------------------
+// The reader on Curse of the Azure Bonds (#555)
+// ---------------------------------------------------------------------------
+//
+// `Notes` on the party's one bar and the reader's screen, with that
+// program's facts: one bar call, no frame drawer that takes a title (the
+// fixed outer frame and a title line instead), a string drawer that takes
+// a background colour, and the composer behind an overlay stub.
+
+/// The program's drawing routines on Curse, as the least each can be:
+/// the outer frame and the region clear count, the composer's stub
+/// counts, and the string drawer keeps every call's column, row, colour
+/// and background, from its own frame (the far return, then the string,
+/// the background, the colour, the row and the column).
+struct curse_reader_rig : curse_rig {
+  static constexpr std::uint16_t adventure_segment = 0x6000;
+
+  curse_reader_rig() {
+    attach_video();
+    const std::uint16_t ds = curse_dgroup();
+    put_byte(ds, curse::data_game_mode, mode_adventure);
+    put_byte(ds, curse::data_key_pushback, 0);
+    counting_routine(curse::outer_frame, curse::frame_calls, 0);
+    counting_routine(curse::clear_region, curse::clear_calls, 0x08);
+    counting_routine(curse::composer_stub, curse::composer_calls, 0);
+    string_stand_in();
+    for (const std::uint16_t at :
+         {curse::frame_calls, curse::clear_calls, curse::composer_calls,
+          curse::string_calls}) {
+      put_word(ds, at, 0);
+    }
+    put_curse_bar(area_words);
+  }
+
+  void string_stand_in() const {
+    std::uint16_t put = curse::draw_string;
+    emit_at(put, {0x55, 0x89, 0xE5});  // push bp; mov bp, sp
+    emit_at(put, {0x8B, 0x1E});        // mov bx, [string_calls]
+    emit_word_at(put, curse::string_calls);
+    emit_at(put, {0xD1, 0xE3, 0xD1, 0xE3, 0xD1, 0xE3});  // eight a call
+    constexpr std::array<std::uint8_t, 4> from{0x10, 0x0E, 0x0C, 0x0A};
+    for (std::size_t nth = 0; nth < from.size(); ++nth) {
+      emit_at(put, {0x8B, 0x46, from[nth], 0x89, 0x87});  // mov ax, [bp+from]
+      emit_word_at(
+          put, static_cast<std::uint16_t>(curse::string_trace + (nth * 2U)));
+    }
+    emit_at(put, {0xFF, 0x06});
+    emit_word_at(put, curse::string_calls);
+    emit_at(put, {0x5D, 0xCA});
+    emit_word_at(put, curse::draw_string_cleans);
+  }
+
+  [[nodiscard]] unsigned curse_word(std::uint16_t offset) const {
+    return word_at(curse_dgroup(), offset);
+  }
+
+  struct string_call {
+    unsigned column;
+    unsigned row;
+    unsigned colour;
+    unsigned background;
+    [[nodiscard]] bool operator==(const string_call&) const = default;
+  };
+  [[nodiscard]] string_call nth_string(unsigned nth) const {
+    const auto at =
+        static_cast<std::uint16_t>(curse::string_trace + (nth * 8U));
+    return {.column = curse_word(at),
+            .row = curse_word(static_cast<std::uint16_t>(at + 2)),
+            .colour = curse_word(static_cast<std::uint16_t>(at + 4)),
+            .background = curse_word(static_cast<std::uint16_t>(at + 6))};
+  }
+
+  /// Stand in the adventuring loop's module, where the overlay manager
+  /// says it is, with the loop's frame and AL as the routine left it.
+  void stand_in_curse_adventure(std::uint16_t offset,
+                                std::uint8_t al = 0) const {
+    put_word(image_load_segment, curse::adventure_load_segment_at,
+             adventure_segment);
+    box->memory().ram()[cpu::physical_address(adventure_segment, offset)] =
+        0xF4;
+    box->processor().reset();
+    cpu::registers& r = box->processor().regs();
+    r[cpu::sreg::cs] = adventure_segment;
+    r.ip = offset;
+    r[cpu::sreg::ds] = curse_dgroup();
+    r[cpu::sreg::ss] = curse_dgroup();
+    r[cpu::reg16::sp] = 0x0700;
+    r[cpu::reg16::bp] = 0x0600;
+    r.set(cpu::reg8::al, al);
+  }
+
+  void bar_out() const {
+    stand_in_curse_adventure(curse::bar_call);
+    box->step();
+  }
+
+  void bar_back(std::uint8_t letter, std::uint8_t out_flag = 0) const {
+    stand_in_curse_adventure(curse::bar_return, letter);
+    put_byte(curse_dgroup(),
+             static_cast<std::uint16_t>(0x0600 - curse::out_flag_below_bp),
+             out_flag);
+    box->step();
+  }
+
+  [[nodiscard]] std::string curse_bar() const {
+    const std::uint8_t length = byte_at(curse_dgroup(), curse::bar);
+    std::string out;
+    for (unsigned i = 1; i <= length; ++i) {
+      out.push_back(static_cast<char>(
+          byte_at(curse_dgroup(), static_cast<std::uint16_t>(curse::bar + i))));
+    }
+    return out;
+  }
+
+  void put_curse_bar(std::string_view text) const {
+    put_byte(curse_dgroup(), curse::bar,
+             static_cast<std::uint8_t>(text.size()));
+    for (std::size_t i = 0; i < text.size(); ++i) {
+      put_byte(curse_dgroup(), static_cast<std::uint16_t>(curse::bar + 1 + i),
+               static_cast<std::uint8_t>(text[i]));
+    }
+  }
+
+  /// The program asks whether a key is waiting, and whatever that queued
+  /// runs.
+  void curse_poll() const {
+    box->memory()
+        .ram()[cpu::physical_address(image_load_segment, curse::key_pending)] =
+        0xF4;
+    box->processor().reset();
+    cpu::registers& r = box->processor().regs();
+    r[cpu::sreg::cs] = image_load_segment;
+    r.ip = curse::key_pending;
+    r[cpu::sreg::ds] = curse_dgroup();
+    r[cpu::sreg::ss] = curse_dgroup();
+    r[cpu::reg16::sp] = 0x0400;
+    box->step();
+    run_the_calls();
+  }
+
+  /// `Notes` chosen off the bar, and the routine back in its key loop.
+  void open_the_log() const {
+    bar_out();
+    bar_back('N');
+    bar_out();
+  }
+
+  void until_it_settles() const {
+    for (unsigned pass = 0; pass < 8 && !reader().on_screen(); ++pass) {
+      curse_poll();
+    }
+  }
+};
+
+TEST(JournalReaderOnCurse, NotesGoesOnTheOneBarAndComesOffAgain) {
+  const curse_reader_rig r;
+  r.bar_out();
+  EXPECT_EQ(r.curse_bar(), std::string{area_words} + " Notes");
+  r.bar_back('A');
+  EXPECT_EQ(r.curse_bar(), area_words)
+      << "outside the call that drew it the program's string is its own";
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed);
+}
+
+TEST(JournalReaderOnCurse, ChoosingItOpensTheLogAndPutsTheHighlightBack) {
+  const curse_reader_rig r;
+  r.put_byte(curse_reader_rig::curse_dgroup(), curse::data_bar_highlight, 2);
+  r.bar_out();
+  // The routine sets the highlight to the group it matched: `Notes`, the
+  // seventh, which the program's own bar does not have.
+  r.put_byte(curse_reader_rig::curse_dgroup(), curse::data_bar_highlight, 7);
+  r.bar_back('N');
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::listing);
+  EXPECT_EQ(
+      r.byte_at(curse_reader_rig::curse_dgroup(), curse::data_bar_highlight), 2)
+      << "what the routine was entered with";
+}
+
+TEST(JournalReaderOnCurse, AKeyTheRoutineHandledItselfIsNotTheCommand) {
+  // The loop's out-parameter at BP-4 says the routine answered a key it
+  // translated itself: an `N` in AL there is nobody's `Notes`.
+  const curse_reader_rig r;
+  r.bar_out();
+  r.bar_back('N', 1);
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed);
+}
+
+TEST(JournalReaderOnCurse, TheBoxIsTheOuterFrameAndATitleLine) {
+  const curse_reader_rig r;
+  r.open_the_log();
+  r.curse_poll();
+  EXPECT_EQ(r.curse_word(curse::frame_calls), 1u)
+      << "the program's fixed outer frame, which clears the box itself";
+  EXPECT_EQ(r.curse_word(curse::clear_calls), 0u)
+      << "so no region clear before it";
+  ASSERT_GE(r.curse_word(curse::string_calls), 1u);
+  // `ADVENTURER'S JOURNAL`, twenty characters, centred the way a titled
+  // frame centres a title: (1 + 0x26 - 20) / 2.
+  EXPECT_EQ(r.nth_string(0),
+            (curse_reader_rig::string_call{.column = 9,
+                                           .row = screen_top,
+                                           .colour = bar_key_colour,
+                                           .background = 0}));
+}
+
+TEST(JournalReaderOnCurse, EveryLineIsHandedABlackBackground) {
+  const curse_reader_rig r;
+  r.reader().note_seen(Entry(31), 1, 1, 0, 1);
+  r.open_the_log();
+  r.until_it_settles();
+  ASSERT_TRUE(r.reader().on_screen());
+  const unsigned strings = r.curse_word(curse::string_calls);
+  ASSERT_EQ(strings, 4u)
+      << "the title, the log's one row, the bar, its initial";
+  EXPECT_EQ(r.nth_string(1).row, screen_first_row);
+  EXPECT_EQ(r.nth_string(1).column, 1u);
+  EXPECT_EQ(r.nth_string(2).row, screen_footer_row);
+  EXPECT_EQ(r.nth_string(2).column, 0u);
+  for (unsigned nth = 0; nth < strings; ++nth) {
+    EXPECT_EQ(r.nth_string(nth).background, 0u) << "call " << nth;
+  }
+}
+
+TEST(JournalReaderOnCurse, ClosingIsTheComposersStubAndASpace) {
+  const curse_reader_rig r;
+  r.open_the_log();
+  r.until_it_settles();
+  ASSERT_TRUE(r.reader().on_screen());
+  r.type(key_escape);
+  r.curse_poll();
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed);
+  EXPECT_EQ(r.curse_word(curse::composer_calls), 1u)
+      << "called through its stub entry, at the stub's own paragraph";
+  ASSERT_EQ(r.keys_waiting(), 1u);
+  EXPECT_EQ(r.word_at(bda::segment,
+                      r.word_at(bda::segment, bda::keyboard_buffer_head)),
+            key_space);
+}
+
+TEST(JournalReaderOnCurse, NeverOpenedItDrawsNothing) {
+  // On and `Notes` never chosen, the bar is the program's own again the
+  // moment the routine returns, and nothing is drawn.
+  const curse_reader_rig r;
+  r.bar_out();
+  r.bar_back('A');
+  r.curse_poll();
+  EXPECT_EQ(r.curse_bar(), area_words);
+  EXPECT_EQ(r.curse_word(curse::frame_calls), 0u);
+  EXPECT_EQ(r.curse_word(curse::string_calls), 0u);
+  EXPECT_EQ(r.curse_word(curse::composer_calls), 0u);
 }
 
 }  // namespace
