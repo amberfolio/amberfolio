@@ -130,6 +130,13 @@
 // What it is not yet, at the point of definition (docs/seams.md §8.5)
 // -------------------------------------------------------------------
 //
+// **On Curse of the Azure Bonds** (#555) the piece is the same: the main
+// menu hands `G` and `O` to the party cursor, and the roster drawer is the
+// same routine with the same frame, overlaid (the profile's
+// `summary_overlay`), so its four points are in a module the program
+// moves. Its blitter takes a paper colour after the colour, which the
+// number is drawn on black. `docs/modern-controls.md` has both rows.
+//
 // The party-order screen is not a caller: with a member picked up, Home
 // and End move the member instead of the selection, and the seam cannot
 // tell which state it is in. Left out, too, are the combat screens and the
@@ -161,9 +168,81 @@
 namespace amberfolio::machine {
 namespace {
 
-/// The program this file's facts are about (program_profile.h): the
-/// baseline edition, and only it.
-constexpr const program_profile& profile = pool_of_radiance;
+// --- One program's facts ---------------------------------------------------
+
+/// What this piece needs to know about one program, apart from its profile
+/// (the party list, the pushback slot, the menu overlay's read call, the
+/// modules): who the one caller is, and where in the roster drawer the
+/// numbers are drawn, with the two routines they are drawn and cut with.
+struct hero_keys_facts {
+  const program_profile& profile;
+
+  /// The main menu's call into the menu-bar routine: the instruction after
+  /// it, in the profile's `roster_overlay`. The title screen's and every
+  /// other screen the same loop serves are this one caller.
+  std::uint16_t main_menu_return;
+
+  /// In the roster drawer, in the profile's `summary_overlay`: the
+  /// instruction after the call that clears a member's row (the name is
+  /// drawn next, down one of two paths); where the two paths meet, before
+  /// the armour class; the push of the armour class's column, with the
+  /// column (`0x20` to `0x22`) in AX; and the instruction after the
+  /// heading's `AC  HP` has been copied into the drawer's frame.
+  std::uint32_t row_cleared;
+  std::uint32_t name_drawn;
+  std::uint32_t ac_column_pushed;
+  std::uint32_t heading_copied;
+
+  /// The routines the seam asks the program to run, as the paragraph they
+  /// were linked at (a routine reaches its own literals through CS, so it
+  /// works only there: docs/seams.md §8.4) and the offset in it. Both are
+  /// far, and clean their own arguments.
+  ///
+  /// The glyph blitter takes, pushed first to last: column, row, colour,
+  /// the paper's colour where `glyph_takes_paper` (black, zero), a count of
+  /// one, the character, and a one that folds the character to upper case.
+  /// The clear takes four, left, top, right and bottom, the order the
+  /// roster drawer pushes them in.
+  std::uint16_t glyph_paragraph;
+  std::uint16_t glyph_offset;
+  bool glyph_takes_paper;
+  std::uint16_t clear_paragraph;
+  std::uint16_t clear_offset;
+};
+
+/// Pool of Radiance: the baseline edition (program_profile.h). The roster
+/// drawer is resident, at image `0x1307` (paragraph `0xBA`, offset
+/// `0x0767`): the drawer's own `0x086F` is `0x140F` here, its `0x07BA`
+/// `0x135A`.
+constexpr hero_keys_facts pool_of_radiance_hero_keys{
+    .profile = pool_of_radiance,
+    .main_menu_return = 0x02FD,
+    .row_cleared = 0x138F,
+    .name_drawn = 0x13CB,
+    .ac_column_pushed = 0x140F,
+    .heading_copied = 0x135A,
+    .glyph_paragraph = 0x709,
+    .glyph_offset = 0x01DF,
+    .glyph_takes_paper = false,
+    .clear_paragraph = 0x3F1,
+    .clear_offset = 0x0137};
+
+/// Curse of the Azure Bonds (#555). The roster drawer is overlay 25's
+/// (the profile's `summary_overlay`, at `0x0798`), the same routine as Pool
+/// of Radiance's; its glyph blitter (paragraph `0x4CE`, `0x01DF`) takes the
+/// paper's colour after the colour, and its region clear is the profile's
+/// (image `0x17FD`, paragraph `0x133`, offset `0x04CD`).
+constexpr hero_keys_facts curse_hero_keys{.profile = curse_of_the_azure_bonds,
+                                          .main_menu_return = 0x0393,
+                                          .row_cleared = 0x0830,
+                                          .name_drawn = 0x086F,
+                                          .ac_column_pushed = 0x08B3,
+                                          .heading_copied = 0x07FB,
+                                          .glyph_paragraph = 0x4CE,
+                                          .glyph_offset = 0x01DF,
+                                          .glyph_takes_paper = true,
+                                          .clear_paragraph = 0x133,
+                                          .clear_offset = 0x04CD};
 
 // --- The menu-bar routine, in the menu overlay (the profile's) -----------
 
@@ -182,25 +261,6 @@ using party_select::party;
 using party_select::read_party;
 using party_select::read_pointer;
 using party_select::write_pointer;
-
-// --- The callers that hand Home and End to the party cursor ----------------
-
-/// A caller of the menu-bar routine, named by the word the program keeps its
-/// module's load segment in and the offset of the instruction after its
-/// call.
-struct hero_caller {
-  std::uint32_t load_segment_at;
-  std::uint16_t return_offset;
-};
-
-/// The one caller: the main menu, the title screen's and every other. At
-/// every other bar with a party list, Up and Down select (`list-arrows`,
-/// and on the party's own bar `move-mode`), so the number row is the
-/// program's keypad layout again there (#479).
-constexpr std::array<hero_caller, 1> hero_callers{{
-    {.load_segment_at = profile.roster_overlay.load_segment_at,
-     .return_offset = 0x02FD},
-}};
 
 // --- The keys, as the BIOS ring holds them: scan code high, character low --
 
@@ -235,9 +295,12 @@ constexpr std::uint8_t number_row_scan_of_one = 0x02;
                        static_cast<std::uint16_t>(at));
 }
 
-/// Whether this call of the menu-bar routine came from a caller in the
-/// table.
-[[nodiscard]] bool called_from_a_hero_caller(cpu::processor& cpu,
+/// Whether this call of the menu-bar routine came from the main menu. At
+/// every other bar with a party list, Up and Down select (`list-arrows`,
+/// and on the party's own bar `move-mode`), so the number row is the
+/// program's keypad layout again there (#479).
+[[nodiscard]] bool called_from_the_main_menu(const hero_keys_facts& f,
+                                             cpu::processor& cpu,
                                              const seam_context& ctx) {
   cpu::registers& regs = cpu.regs();
   const std::uint16_t ss = regs[cpu::sreg::ss];
@@ -246,20 +309,20 @@ constexpr std::uint8_t number_row_scan_of_one = 0x02;
       cpu.read_word(ss, static_cast<std::uint16_t>(bp + frame_return_ip));
   const std::uint16_t cs =
       cpu.read_word(ss, static_cast<std::uint16_t>(bp + frame_return_cs));
-
-  return std::ranges::any_of(hero_callers, [&](const hero_caller& caller) {
-    if (ip != caller.return_offset) {
-      return false;
-    }
-    const std::uint16_t segment = loaded_at(cpu, ctx, caller.load_segment_at);
-    return segment != 0 && segment == cs;
-  });
+  if (ip != f.main_menu_return) {
+    return false;
+  }
+  const std::uint16_t segment =
+      loaded_at(cpu, ctx, f.profile.roster_overlay.load_segment_at);
+  return segment != 0 && segment == cs;
 }
 
 // --- Keys ------------------------------------------------------------------
 
 /// The program is about to read the key at the head of the ring.
+template <const hero_keys_facts& F>
 void at_key_read(machine& box, seam_context& ctx) {
+  constexpr const program_profile& profile = F.profile;
   cpu::processor& cpu = box.processor();
   cpu::registers& regs = cpu.regs();
 
@@ -284,16 +347,16 @@ void at_key_read(machine& box, seam_context& ctx) {
     // The head of the ring is not the key about to be read.
     return;
   }
-  if (!called_from_a_hero_caller(cpu, ctx)) {
+  if (!called_from_the_main_menu(F, cpu, ctx)) {
     return;
   }
-  if (!party_select::is_the_data_segment(ctx, ds)) {
+  if (!party_select::is_the_data_segment(profile, ctx, ds)) {
     // Not the data segment the facts put the party in.
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
 
-  const party members = read_party(cpu, ds);
+  const party members = read_party(profile, cpu, ds);
   if (!members.readable) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
@@ -316,6 +379,10 @@ void at_key_read(machine& box, seam_context& ctx) {
 }
 
 // --- The roster drawer ------------------------------------------------------
+//
+// The drawer's frame is the same on both programs this build knows (the
+// drawers are one routine, built twice): the constants below are its
+// shape, and the addresses in it are each program's row's.
 
 /// The roster drawer's frame: below BP, the column its names start at (a
 /// byte), the row it is on (a byte) and the far pointer to the record being
@@ -342,38 +409,9 @@ constexpr unsigned last_name_column = 0x20;
 constexpr std::uint8_t first_cut_column = 0x21;
 constexpr std::uint8_t last_row_column = 0x26;
 
-/// The routines the seam asks the program to run, as the paragraph they
-/// were linked at (a routine reaches its own literals through CS, so it
-/// works only there: docs/seams.md §8.4) and the offset in it. Both are
-/// far, and clean their own arguments.
-///
-/// The glyph blitter takes six words, pushed first to last: column, row,
-/// colour, a count of one, the character, and a one that folds the
-/// character to upper case. The clear takes four, left, top, right and
-/// bottom, the order the roster drawer pushes them in.
-constexpr std::uint16_t glyph_paragraph = 0x709;
-constexpr std::uint16_t glyph_offset = 0x01DF;
-constexpr std::uint16_t clear_paragraph = 0x3F1;
-constexpr std::uint16_t clear_offset = 0x0137;
-
 /// White, in the program's palette: the colour the program draws the
 /// selected member's name in.
 constexpr std::uint16_t colour_white = 0x000F;
-
-/// In the roster drawer, the instruction after the call that clears a
-/// member's row: the name is drawn next, down one of two paths.
-constexpr std::uint32_t row_cleared = 0x138F;
-/// In the roster drawer, where the two paths meet, before the armour class
-/// is drawn.
-constexpr std::uint32_t name_drawn = 0x13CB;
-
-/// In the roster drawer (image offsets: the drawer's own `0x086F` is `0x140F`
-/// here, its `0x07BA` is `0x135A`), the push of the armour class column, with
-/// the column (`0x20` to `0x22`) in AX.
-constexpr std::uint32_t ac_column_pushed = 0x140F;
-/// In the roster drawer, after the heading's `AC  HP` has been copied into
-/// the drawer's frame and before it is drawn.
-constexpr std::uint32_t heading_copied = 0x135A;
 
 /// The heading's copy in the drawer's frame: below BP, a length-prefixed
 /// string. The heading is drawn on row two.
@@ -404,7 +442,8 @@ struct roster_frame {
 }
 
 /// The drawer's frame, or false if it is not one these facts describe.
-[[nodiscard]] bool read_roster_frame(cpu::processor& cpu, roster_frame& frame) {
+[[nodiscard]] bool read_roster_frame(const program_profile& profile,
+                                     cpu::processor& cpu, roster_frame& frame) {
   cpu::registers& regs = cpu.regs();
   frame.ss = regs[cpu::sreg::ss];
   frame.bp = regs[cpu::reg16::bp];
@@ -412,7 +451,7 @@ struct roster_frame {
   frame.row = cpu.read_byte(frame.ss, below(frame, local_row));
   frame.member = read_pointer(cpu, frame.ss, below(frame, local_member));
   return frame.row >= first_row && frame.row < first_row + max_party &&
-         is_record(frame.member);
+         is_record(profile, frame.member);
 }
 
 /// Whether `column` is the one the drawer starts the main menu's names at:
@@ -455,10 +494,11 @@ void call_and_return_here(machine& box, seam_context& ctx,
 }
 
 /// The roster drawer has cleared a member's row, and the name is next.
+template <const hero_keys_facts& F>
 void at_row_cleared(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   roster_frame frame;
-  if (!read_roster_frame(cpu, frame)) {
+  if (!read_roster_frame(F.profile, cpu, frame)) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
@@ -481,21 +521,24 @@ void at_row_cleared(machine& box, seam_context& ctx) {
                  static_cast<std::uint8_t>(frame.column + name_shift));
 
   const unsigned hero = frame.row - first_row + 1U;
-  const std::array<std::uint16_t, 6> glyph{
-      frame.column,
-      frame.row,
-      colour_white,
-      1,
-      static_cast<std::uint16_t>('0' + hero),
-      1};
-  call_and_return_here(box, ctx, glyph, glyph_paragraph, glyph_offset);
+  const auto character = static_cast<std::uint16_t>('0' + hero);
+  if constexpr (F.glyph_takes_paper) {
+    const std::array<std::uint16_t, 7> glyph{
+        frame.column, frame.row, colour_white, 0, 1, character, 1};
+    call_and_return_here(box, ctx, glyph, F.glyph_paragraph, F.glyph_offset);
+  } else {
+    const std::array<std::uint16_t, 6> glyph{
+        frame.column, frame.row, colour_white, 1, character, 1};
+    call_and_return_here(box, ctx, glyph, F.glyph_paragraph, F.glyph_offset);
+  }
 }
 
 /// The name is drawn, and the armour class is next.
+template <const hero_keys_facts& F>
 void at_name_drawn(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   roster_frame frame;
-  if (!read_roster_frame(cpu, frame)) {
+  if (!read_roster_frame(F.profile, cpu, frame)) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
@@ -530,17 +573,18 @@ void at_name_drawn(machine& box, seam_context& ctx) {
         first_cut_column, frame.row,
         static_cast<std::uint16_t>(std::min<unsigned>(end, last_row_column)),
         frame.row};
-    call_and_return_here(box, ctx, clear, clear_paragraph, clear_offset);
+    call_and_return_here(box, ctx, clear, F.clear_paragraph, F.clear_offset);
     return;
   }
   put_column(frame.column - name_shift);
 }
 
 /// The drawer is about to push the armour class value's column.
+template <const hero_keys_facts& F>
 void at_ac_column(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   roster_frame frame;
-  if (!read_roster_frame(cpu, frame)) {
+  if (!read_roster_frame(F.profile, cpu, frame)) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
@@ -603,32 +647,45 @@ void at_heading_copied(machine& box, seam_context& ctx) {
 
 // --- The definition --------------------------------------------------------
 
-constexpr std::array<seam_point, 5> hero_keys_point_table{
-    {{.module = profile.menu_overlay,
-      .offset = profile.menu_key_read_call,
-      .run = &at_key_read},
-     {.module = resident_image,
-      .offset = row_cleared,
-      .run = &at_row_cleared,
-      .inside_calls = true},
-     {.module = resident_image,
-      .offset = name_drawn,
-      .run = &at_name_drawn,
-      .inside_calls = true},
-     {.module = resident_image,
-      .offset = ac_column_pushed,
-      .run = &at_ac_column,
-      .inside_calls = true},
-     {.module = resident_image,
-      .offset = heading_copied,
-      .run = &at_heading_copied,
-      .inside_calls = true}}};
+/// A program's five points: the key read, and the four in the roster drawer.
+template <const hero_keys_facts& F>
+constexpr std::array<seam_point, 5> hero_keys_points_of() {
+  return {{{.module = F.profile.menu_overlay,
+            .offset = F.profile.menu_key_read_call,
+            .run = &at_key_read<F>},
+           {.module = F.profile.summary_overlay,
+            .offset = F.row_cleared,
+            .run = &at_row_cleared<F>,
+            .inside_calls = true},
+           {.module = F.profile.summary_overlay,
+            .offset = F.name_drawn,
+            .run = &at_name_drawn<F>,
+            .inside_calls = true},
+           {.module = F.profile.summary_overlay,
+            .offset = F.ac_column_pushed,
+            .run = &at_ac_column<F>,
+            .inside_calls = true},
+           {.module = F.profile.summary_overlay,
+            .offset = F.heading_copied,
+            .run = &at_heading_copied,
+            .inside_calls = true}}};
+}
+
+constexpr std::array<seam_point, 5> hero_keys_point_table =
+    hero_keys_points_of<pool_of_radiance_hero_keys>();
 static_assert(hero_keys_point_table.size() == hero_keys_point_count);
+
+constexpr std::array<seam_point, 5> curse_hero_keys_point_table =
+    hero_keys_points_of<curse_hero_keys>();
 
 }  // namespace
 
 std::span<const seam_point> hero_keys_points() noexcept {
   return hero_keys_point_table;
+}
+
+std::span<const seam_point> curse_hero_keys_points() noexcept {
+  return curse_hero_keys_point_table;
 }
 
 }  // namespace amberfolio::machine

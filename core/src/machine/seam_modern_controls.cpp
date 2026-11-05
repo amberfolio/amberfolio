@@ -44,11 +44,11 @@
 //     `text-entry`'s come next, at two addresses no other piece has, and
 //     `aim-watch`'s last, at five more.
 //   * **The binary is the one the six already named**, the baseline
-//     edition (edition.h), and Curse of the Azure Bonds for the five
-//     pieces ported to it (#555): the list arrows, the bar keys, the edit
-//     keys, text entry and the aim watch, with points of their own in the
-//     definition's `programs`. Every piece's addresses are facts about the
-//     program they name, and a seam is unavailable against any other.
+//     edition (edition.h), and Curse of the Azure Bonds for the seven
+//     pieces ported to it (#555): all but the main menu's cursor and the
+//     move mode, with points of their own in the definition's `programs`.
+//     Every piece's addresses are facts about the program they name, and a
+//     seam is unavailable against any other.
 //   * **A piece no longer asks whether another is on.** `menu-cursor` took
 //     its colours from `select-yellow` and the journal reader asked about
 //     `bar-keys` and `select-yellow`; the first asked a question whose
@@ -112,7 +112,8 @@ struct curse_point_table {
     std::size_t next = 0;
     for (const std::span<const seam_point> piece :
          {curse_list_arrows_points(), curse_bar_keys_points(),
-          curse_edit_keys_points(), curse_text_entry_points(),
+          curse_hero_keys_points(), curse_edit_keys_points(),
+          curse_select_yellow_points(), curse_text_entry_points(),
           curse_aim_watch_points()}) {
       for (const seam_point& each : piece) {
         point[next++] = each;

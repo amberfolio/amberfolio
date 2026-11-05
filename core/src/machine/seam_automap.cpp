@@ -467,10 +467,10 @@ void note_one_bar(machine& box, const seam_context& ctx, std::uint16_t ds) {
 /// Radiance's, at their own offsets, and the ground is a byte the program
 /// sets to dark grey on this adapter. No place tables (`no_places()`):
 /// every map is `AREA <n>` and a door is a kind seen shut on the map. The
-/// roster drawer is overlaid (overlay 25), so the give-back calls its
-/// resident stub entry at the stub's own paragraph: the record is at image
-/// `0x0ED0` and the drawer is its third entry (docs/seams.md §8.4, #526).
-/// Its overland is a journey menu, recorded by nobody here.
+/// roster drawer is overlaid (the profile's `summary_overlay`), so the
+/// give-back calls its resident stub entry at the stub's own paragraph, the
+/// profile's `screen_paragraph` and `roster_draw_offset` (docs/seams.md
+/// §8.4, #526). Its overland is a journey menu, recorded by nobody here.
 constexpr automap_facts curse_automap{
     .profile = curse_of_the_azure_bonds,
     .places = &map_format::no_places,
@@ -482,20 +482,12 @@ constexpr automap_facts curse_automap{
     .data_bank_first_tile = 0x2682,
     .data_frame_colour = 0x7224,
     .data_ground_colour = 0x7227,
-    .roster_call_paragraph = 0x00ED,
-    .roster_call_offset = 0x002A,
+    .roster_call_paragraph = curse_of_the_azure_bonds.screen_paragraph,
+    .roster_call_offset = curse_of_the_azure_bonds.roster_draw_offset,
     .note_bar = &note_one_bar<curse_of_the_azure_bonds>,
     .records_overland = false};
 
-/// Curse's overlay 25: the party summary drawer among others. Its point is
-/// the drawer's `retf 4`, `curse_roster_drawn_return` into the module.
-constexpr seam_module curse_summary_overlay{
-    .file = "GAME.OVR",
-    .file_offset = 226981,
-    .length = 13331,
-    .digest =
-        "58601d3692c12e68081787f36ae1fccb5d24eb8488da8ce588a4318e03d2a6a6",
-    .load_segment_at = 0x0EE0};
+/// Curse's roster drawer's `retf 4`, in the profile's `summary_overlay`.
 constexpr std::uint16_t curse_roster_drawn_return = 0x092E;
 
 /// Curse's second region clear: the same four arguments in the same
@@ -2104,7 +2096,7 @@ constexpr std::array<seam_point, 7> curse_automap_points{
      {.module = resident_image,
       .offset = curse_of_the_azure_bonds.clear_screen_entry,
       .run = &at_clear_screen},
-     {.module = curse_summary_overlay,
+     {.module = curse_of_the_azure_bonds.summary_overlay,
       .offset = curse_roster_drawn_return,
       .run = &at_roster_drawn},
      {.module = resident_image,

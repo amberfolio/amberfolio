@@ -158,12 +158,15 @@ of 78, from the same tick), `curse-cite` `contrast curse-buy` (on, the
 innkeeper's entry 31 cited and logged; 39 of 133, from the same tick)
 and `curse-journey-journal` `identical curse-journey` (on, nothing
 cited, the party's bar never drawn); and
-`modern-controls`' (#555): `curse-quiet-controls` `identical curse-quiet`
-(on, none of its keys pressed: on this program none of its pieces draws
-on sight), `curse-camp-arrows` `contrast curse-camp-keys` (the arrows and
-Escape at the camp bar and its Yes/No question) and `curse-name-arrows`
-`contrast curse-name-keys` (the arrows at creation's lists and in the
-name); the automap's: `curse-quiet-automap` `identical curse-quiet`
+`modern-controls`' (#555): `curse-quiet-controls` `contrast curse-quiet`
+(on, none of its keys pressed: 25 of 58 identical, divergent from tick
+48,382,638, the title's bar, the first highlight drawn, which is a
+yellow block; the main menu's list numbered and the selected member a
+block after it), `curse-camp-arrows` `contrast curse-camp-keys` (the
+arrows and Escape at the camp bar and its Yes/No question; 25 of 81,
+from the same tick) and `curse-name-arrows` `contrast curse-name-keys`
+(the arrows at creation's lists and in the name; 25 of 118, from the
+same tick), each the baseline's keys at its ticks with the seam on; the automap's: `curse-quiet-automap` `identical curse-quiet`
 (on, Tab never pressed) and `curse-town-map` `contrast curse-town` (Tab
 at frame 4,000 ahead of the Left there, 40 of 90 identical, divergent
 from tick 79,563,886); and the explored overlay's: `curse-quiet-explored`
@@ -189,7 +192,7 @@ on the overland map, and the rest. Each verifies on the desktop host and on the 
 | `journal` | `reader`, `notes`, `cite`; on Curse `curse-notes`, `curse-cite` | `quiet-journal` (a `contrast`); on Curse `curse-quiet-journal` (a `contrast`) and `curse-journey-journal` (an `identical`: the party's bar is never drawn) |
 | `explored` | `wild-trail`; on Curse `curse-journey-explored` | `quiet-explored`; on Curse `curse-quiet-explored` |
 | the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party`; on Curse `curse-fight-cheat`, `curse-fight-kill`, `curse-camp-wound` | `quiet-cheats`; on Curse `curse-quiet-cheats` |
-| `modern-controls` | `list-down-arrows`, `camp-down-arrows`, `camp-pad-arrows`, `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys`, `bar-esc-keys`, `bar-script-keys`, `bar-portrait-keys`, `menu-down-cursor`, `move-walk-mode`, `door-pick-3`, `list-keys-yellow`, `name-arrows-edit` (each a `contrast`; `door-pick-3` has the seam on at both ends and differs by its keys); on Curse `curse-camp-arrows`, `curse-name-arrows` | none can exist: three of its pieces draw on sight, so `quiet-modern-controls`, `menu-letters-cursor` and `quiet-all-on-sight` are `contrast`s too (the pair is a `contrast`, as the faces' is). On Curse, where those three are not ported, `curse-quiet-controls` |
+| `modern-controls` | `list-down-arrows`, `camp-down-arrows`, `camp-pad-arrows`, `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys`, `bar-esc-keys`, `bar-script-keys`, `bar-portrait-keys`, `menu-down-cursor`, `move-walk-mode`, `door-pick-3`, `list-keys-yellow`, `name-arrows-edit` (each a `contrast`; `door-pick-3` has the seam on at both ends and differs by its keys); on Curse `curse-camp-arrows`, `curse-name-arrows` | none can exist: three of its pieces draw on sight, so `quiet-modern-controls`, `menu-letters-cursor` and `quiet-all-on-sight` are `contrast`s too (the pair is a `contrast`, as the faces' is). On Curse two of them draw on sight, the hero keys and the selection block, so `curse-quiet-controls` is a `contrast curse-quiet` |
 | `quick-steps` | `walk-quick` | `menu-letters-quick`. Not in `quiet-all`: `quiet`'s movement keys click |
 | `message-pause` | `fight-pause`; on Curse `curse-fight-pause` | `quiet-message-pause`, and `quiet-all`; on Curse `curse-quiet-message-pause` |
 | `fanfare` | `quiet-fanfare` (a `contrast`) | none can exist: every boot runs the titles, where it starts. Not in `quiet-all` |

@@ -552,9 +552,12 @@ struct seam_point {
   /// program's**, and may not start a batch of its own: `call_program`
   /// and `place_bytes` answer false inside one, because the batch that
   /// is running owns the stack frame they would build on. Only for an
-  /// address point in a module that stays put, on a seam that is not a
-  /// trigger, which is all the one user needs: anywhere else the field is
-  /// not honoured, and the unit suite checks `all_seams()` for it.
+  /// address point on a seam that is not a trigger: anywhere else the
+  /// field is not honoured, and the unit suite checks `all_seams()` for
+  /// it. A point in a module the program moves (`load_segment_at`) is
+  /// found inside a batch as it is outside one, through the program's
+  /// word at the step: Curse of the Azure Bonds' roster drawer is
+  /// overlaid, and is drawn back through a batch (#555).
   bool inside_calls{false};
 
   /// This point has **no address**: it is offered at the first step

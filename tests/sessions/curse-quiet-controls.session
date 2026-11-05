@@ -1,13 +1,15 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
 # modern-controls on over curse-quiet's keys: nothing it acts on is
-# pressed, and on this program nothing it draws is on the screen.
+# pressed, but what it draws on sight is on the screen from the title's
+# bar on: every highlight a yellow block, the roster's selected member
+# one, and the main menu's party list numbered.
 #
 # Recorded on the Steam copy with its shipped slots A and B (games/curse-slots), at --speed 386 and --wall none.
 
-about modern-controls on, untriggered: the machine curse-quiet is
+about modern-controls on, none of its keys pressed: highlights as blocks, the main menu's list numbered
 disk external
-identical curse-quiet
+contrast curse-quiet
 
 dir SAVE
 file 8X8D1.DAX 3769 e8d4c99cd6285e1533e9f60968948401622e62a07174d491129f3e60314a842e
