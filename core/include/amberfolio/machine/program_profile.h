@@ -557,6 +557,16 @@ inline constexpr seam_module camp{
         "8dfb1afafc265996e3978a03582804dac10cdbae075f2b1300c6e3ba6af8ef79",
     .load_segment_at = 0x9E0};
 
+/// Overlay 17: the saved-game slots and the roster's character list. The
+/// stub's record is at image `0x0A10`.
+inline constexpr seam_module slots{
+    .file = "GAME.OVR",
+    .file_offset = 112433,
+    .length = 17552,
+    .digest =
+        "4b261fffad834f3e75c1512f81f7ed197b8bcb44d23d22bc60395697bd120704",
+    .load_segment_at = 0xA20};
+
 /// Overlay 18: the main menu's loop and the character editor. The stub's
 /// record is at image `0x0A70`.
 inline constexpr seam_module roster{
@@ -566,6 +576,28 @@ inline constexpr seam_module roster{
     .digest =
         "5cc199bf1e98c46dec6df1423f6037650de72e5334f1dedac4dae38c8d6a6373",
     .load_segment_at = 0xA80};
+
+/// Overlay 20: the character view and its sheet. The stub's record is at
+/// image `0x0AF0`.
+inline constexpr seam_module view{
+    .file = "GAME.OVR",
+    .file_offset = 159837,
+    .length = 14697,
+    .digest =
+        "b1c2646b030ba73eb1752fcc2b8d00635ac437f24048d447b63fc10f49b6d739",
+    .load_segment_at = 0xB00};
+
+/// Overlay 25: the party summary, the roster drawer, the hit points' draw
+/// and the party-member picker among others. The stub's record is at image
+/// `0x0ED0`, and its entries follow it in paragraph `0xED`: the roster
+/// drawer's is the third, at offset `0x2A`.
+inline constexpr seam_module summary{
+    .file = "GAME.OVR",
+    .file_offset = 226981,
+    .length = 13331,
+    .digest =
+        "58601d3692c12e68081787f36ae1fccb5d24eb8488da8ce588a4318e03d2a6a6",
+    .load_segment_at = 0xEE0};
 
 /// Overlay 27: the menu-bar routine, the pick-list routine and the Yes/No
 /// prompt. The stub's record is at image `0x1040`.
@@ -595,8 +627,12 @@ inline constexpr seam_module menu{
 /// **One adventuring bar.** The overhead view is toggled inside the same
 /// loop as the 3D view and keeps its bar, so the 3D view's bar and its
 /// call's return are filled and the overhead view's are zero (M5-E2d,
-/// `seam_automap.cpp`). Its roster drawer is overlaid, so the profile's
-/// resident roster members are zero too and the automap names the stub.
+/// `seam_automap.cpp`).
+///
+/// **The roster drawer is overlaid** (`summary_overlay`), so the paragraph
+/// and offset it is called at are its stub entry's in the resident image,
+/// the overlay manager's to resolve; the drawer's own return is in the
+/// module and not a resident offset.
 ///
 /// The record is the 422-byte one the program also saves, so its offsets
 /// are the save file's: the same fields as Pool of Radiance's in the
@@ -606,8 +642,8 @@ inline constexpr program_profile curse_of_the_azure_bonds{
     .fingerprint =
         "42fcefd6785679568b00bc1fb5b1d81ac2773416be4a35e0363920ddf6b78acd",
     .dgroup_paragraphs = 0xABE,
-    .screen_paragraph = {},
-    .roster_draw_offset = {},
+    .screen_paragraph = 0x00ED,
+    .roster_draw_offset = 0x002A,
     .screen_composer_offset = {},
     .key_pending_entry = 0x86EB,
     .key_read_entry = 0x86FD,
@@ -624,10 +660,10 @@ inline constexpr program_profile curse_of_the_azure_bonds{
     .adventure_overlay = curse_of_the_azure_bonds_modules::adventure,
     .camp_overlay = curse_of_the_azure_bonds_modules::camp,
     .roster_overlay = curse_of_the_azure_bonds_modules::roster,
-    .slots_overlay = {},
-    .view_overlay = {},
+    .slots_overlay = curse_of_the_azure_bonds_modules::slots,
+    .view_overlay = curse_of_the_azure_bonds_modules::view,
     .menu_overlay = curse_of_the_azure_bonds_modules::menu,
-    .summary_overlay = {},
+    .summary_overlay = curse_of_the_azure_bonds_modules::summary,
     .temple_load_segment_at = 0x430,         // overlay 5
     .post_combat_load_segment_at = 0x460,    // overlay 6
     .shop_load_segment_at = 0x490,           // overlay 7

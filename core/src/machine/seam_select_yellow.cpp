@@ -127,6 +127,15 @@
 // What it is not yet, at the point of definition (docs/seams.md §8.5)
 // -------------------------------------------------------------------
 //
+// **On Curse of the Azure Bonds** (#555) the blitter takes the paper's
+// colour as well as the ink's, writes one page, and masks the two with the
+// glyph's row in AH from a path it calls near; and the program draws its
+// own highlight, the bar's group and the list's row, as black ink on
+// `color_hi`'s paper. The points there take the colour off the paper and
+// hand the decided one to the ink, and the one row write inverts the mask,
+// so a selection is the same yellow block (`highlight_on_paper`,
+// `row_write_depth`, docs/modern-controls.md).
+//
 // The selection already on the screen at a switch keeps its colour until
 // the program draws it again, as a face does. The icon editor's cell cursor
 // (a box drawn on a grid of pixels, in a colour that has to show against
@@ -279,6 +288,40 @@ constexpr select_yellow_facts pool_of_radiance_select_yellow{
     .string = {.colour = 4, .paper = 0, .row = 6, .column = 8},
     .data_page_segments = {0x4A16, 0x4A18},
     .fixed_page_segment = 0};
+
+/// Curse of the Azure Bonds (#555). The bar leaf and the pick-list are
+/// overlay 27's, the roster drawer and the hit points' draw overlay 25's,
+/// Modify's score overlay 20's. Its blitter (paragraph `0x4CE`, `0x01DF`)
+/// takes the paper's colour after the colour, copies the glyph and calls a
+/// path per adapter, near, with a frame: the EGA path draws one page, the
+/// fixed `0xA000`, masking the paper and the ink with the row in AH. The
+/// program draws its own highlight, the bar's group and the list's row, as
+/// paper in the highlight's colour.
+constexpr select_yellow_facts curse_select_yellow{
+    .profile = curse_of_the_azure_bonds,
+    .bar_group_call = 0x0285,
+    .bar_letter_call = 0x02DF,
+    .bar_rest_call = 0x031D,
+    .list_row_call = 0x0AFC,
+    .highlight_on_paper = true,
+    .roster_selected_call = 0x0853,
+    .hit_points_chosen = 0x09E6,
+    .hit_points_string_call = 0x0A08,
+    .score_chosen = 0x09C5,
+    .score_string_call = 0x0A2A,
+    .percentage_string_call = 0x0AF8,
+    .row_writes = {0x5A93, 0},
+    .row_write_count = 1,
+    .row_register = cpu::reg8::ah,
+    .row_write_depth = 1,
+    .cell_drawn = 0x4F98,
+    .rectangle_filled = 0x4E4B,
+    .picture_drawn = 0x3542,
+    .string_glyph_return = 0x509B,
+    .glyph = {.colour = 8, .paper = 6, .row = 0x0A, .column = 0x0C},
+    .string = {.colour = 6, .paper = 4, .row = 8, .column = 0x0A},
+    .data_page_segments = {},
+    .fixed_page_segment = 0xA000};
 
 // --- The calls a store follows back to --------------------------------------
 
@@ -1354,10 +1397,19 @@ constexpr auto select_yellow_point_table =
     select_yellow_points_of<pool_of_radiance_select_yellow>();
 static_assert(select_yellow_point_table.size() == select_yellow_point_count);
 
+constexpr auto curse_select_yellow_point_table =
+    select_yellow_points_of<curse_select_yellow>();
+static_assert(curse_select_yellow_point_table.size() ==
+              curse_select_yellow_point_count);
+
 }  // namespace
 
 std::span<const seam_point> select_yellow_points() noexcept {
   return select_yellow_point_table;
+}
+
+std::span<const seam_point> curse_select_yellow_points() noexcept {
+  return curse_select_yellow_point_table;
 }
 
 }  // namespace amberfolio::machine

@@ -21,7 +21,7 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
 No `--install`: a Steam copy is recognized and laid out at `\CURSE`, a
 GOG copy at the root (`docs/hosts.md` §2c). No seam is needed to play;
 those available on this program are the debug cheats, the code wheel,
-the text faces, the message pause, the journal, `modern-controls` (five
+the text faces, the message pause, the journal, `modern-controls` (seven
 of its pieces) and the automap, each with its facts in `docs/seams.md`
 §10, and the explored overlay (`docs/explored-overlay.md`). The
 legs below answer the challenge themselves; with `--seam code-wheel
@@ -337,7 +337,7 @@ lines, at `--speed 386` and `--wall none`:
 | `curse-quiet-font-sans` | `curse-slots` | `font-sans` | `contrast curse-quiet` |
 | `curse-quiet-font-chisel` | `curse-slots` | `font-chisel` | `contrast curse-quiet` |
 | `curse-quiet-message-pause` | `curse-slots` | `message-pause` | `identical curse-quiet` |
-| `curse-quiet-controls` | `curse-slots` | `modern-controls` | `identical curse-quiet` |
+| `curse-quiet-controls` | `curse-slots` | `modern-controls` | `contrast curse-quiet` |
 | `curse-town` | `curse-slots` | none | |
 | `curse-quiet-automap` | `curse-slots` | `automap`, Tab never pressed | `identical curse-quiet` |
 | `curse-town-map` | `curse-slots` | `automap`, Tab at frame 4,000 | `contrast curse-town` |

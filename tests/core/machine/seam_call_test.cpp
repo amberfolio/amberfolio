@@ -228,6 +228,31 @@ constexpr seam_definition outside_seam{.id = "test-outside",
                                        .fingerprints = claimed_binaries,
                                        .points = outside_points};
 
+/// The same `inc`, in a module the program moves: the point is an offset
+/// into it, and where it is now is the word the program keeps in its image
+/// at `moved_word` (#555, where Curse of the Azure Bonds' roster drawer is
+/// overlaid and drawn back through a batch).
+constexpr std::uint32_t moved_word = 0x0100;
+constexpr seam_module moved_module{.file = "TEST.OVR",
+                                   .file_offset = 0,
+                                   .length = 1,
+                                   .load_segment_at = moved_word};
+
+unsigned anchored_runs = 0;
+
+void run_anchored(machine& /*box*/, seam_context& /*ctx*/) { ++anchored_runs; }
+
+constexpr std::array<seam_point, 1> anchored_points{
+    {{.module = moved_module,
+      .offset = routine_offset + 26U,
+      .run = &run_anchored,
+      .inside_calls = true}}};
+constexpr seam_definition anchored_seam{
+    .id = "test-anchored-inside",
+    .about = "runs inside other calls, in a module that moves",
+    .fingerprints = claimed_binaries,
+    .points = anchored_points};
+
 struct rig {
   rig() : box(std::make_unique<machine>(memory_layout::pc, &log)) {
     handler_runs = 0;
@@ -240,12 +265,14 @@ struct rig {
     stood_aside_at = 0;
     inside_runs = 0;
     outside_runs = 0;
+    anchored_runs = 0;
     inside_call_refused = false;
     inside_place_refused = false;
     EXPECT_TRUE(box->seams().add(call_seam));
     EXPECT_TRUE(box->seams().add(quiet_seam));
     EXPECT_TRUE(box->seams().add(inside_seam));
     EXPECT_TRUE(box->seams().add(outside_seam));
+    EXPECT_TRUE(box->seams().add(anchored_seam));
     box->seams().loaded(claimed_digest(), image_load_segment);
 
     // The routine, and the one that never returns, in their own segment.
@@ -551,6 +578,39 @@ TEST(SeamCallProgram, OffersAnInsideCallsPointWhileABatchRuns) {
   EXPECT_EQ(inside_runs, 2u) << "once per call the batch made";
   EXPECT_EQ(outside_runs, 0u)
       << "an ordinary point's facts do not describe a seam's call";
+}
+
+/// An `inside_calls` point in a module the program moves is found inside
+/// a batch where the program's word says the module is, and nowhere while
+/// the word says it is not loaded.
+TEST(SeamCallProgram, FindsAnInsideCallsPointInAModuleTheProgramMoves) {
+  const rig r;
+  queue_how_many = 2;
+  ASSERT_EQ(r.box->seams().enable("test-call"), seam_reason::none);
+  ASSERT_EQ(r.box->seams().enable("test-anchored-inside"), seam_reason::none);
+  r.put_byte(image_load_segment, moved_word,
+             static_cast<std::uint8_t>(routine_segment));
+  r.put_byte(image_load_segment, moved_word + 1,
+             static_cast<std::uint8_t>(routine_segment >> 8U));
+  r.stand_on_the_point();
+
+  static_cast<void>(r.run(400));
+
+  EXPECT_EQ(r.word_at(data_segment, call_count), 2u);
+  EXPECT_EQ(anchored_runs, 2u) << "once per call the batch made";
+}
+
+TEST(SeamCallProgram, LeavesAnInsideCallsPointInAModuleThatIsNotLoaded) {
+  const rig r;
+  queue_how_many = 2;
+  ASSERT_EQ(r.box->seams().enable("test-call"), seam_reason::none);
+  ASSERT_EQ(r.box->seams().enable("test-anchored-inside"), seam_reason::none);
+  r.stand_on_the_point();
+
+  static_cast<void>(r.run(400));
+
+  EXPECT_EQ(r.word_at(data_segment, call_count), 2u);
+  EXPECT_EQ(anchored_runs, 0u) << "the word says the module is out";
 }
 
 TEST(SeamCallProgram, RefusesABatchFromInsideABatch) {

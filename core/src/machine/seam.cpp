@@ -847,11 +847,9 @@ void seam_engine::arm_all(const overlay_tracker* overlays) {
             .owner = i,
             .at_every_step = point.at_every_step && !point.at_moment,
             // Honoured only where seam.h says it is: an
-            // address point in a module that stays put,
-            // on a seam no latch gates.
+            // address point, on a seam no latch gates.
             .inside_calls = point.inside_calls && !point.at_every_step &&
-                            !point.at_moment && anchor == no_load_segment &&
-                            !s.seam->trigger,
+                            !point.at_moment && !s.seam->trigger,
             .at_moment = point.at_moment};
         ++armed_;
       }
@@ -1055,13 +1053,28 @@ void seam_engine::offer_inside_calls(machine& box, std::uint32_t at) {
   // registers; a context made here refuses to start a batch.
   for (std::size_t i = 0; i < armed_; ++i) {
     const armed_point& point = points_[i];
-    if (!point.inside_calls || point.run == nullptr || point.at != at) {
+    if (!point.inside_calls || point.run == nullptr) {
+      continue;
+    }
+    std::uint32_t base = point.module_base;
+    if (point.anchor != no_load_segment) {
+      // A module the program can move, read where the program says it
+      // is now, as `dispatch` does: a batch can be what loads it (a call
+      // through its stub), and the word says so as soon as it has.
+      const std::uint16_t segment = word_at(point.anchor);
+      if (segment == 0) {
+        continue;
+      }
+      base = static_cast<std::uint32_t>(segment) * 16U;
+      if (base + point.offset != at) {
+        continue;
+      }
+    } else if (point.at != at) {
       continue;
     }
     slot& owner = slots_[point.owner];
     ++owner.reached;
-    seam_context ctx(box, *this, owner.seam->id, at, point.module_base,
-                     image_base(), true);
+    seam_context ctx(box, *this, owner.seam->id, at, base, image_base(), true);
     point.run(box, ctx);
     if (!ctx.declined_) {
       ++owner.fired;

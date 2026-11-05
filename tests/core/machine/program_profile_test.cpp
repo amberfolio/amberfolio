@@ -71,7 +71,14 @@ TEST(ProgramProfile, TheBaselineAndCurseHaveOne) {
   EXPECT_NE(curse_of_the_azure_bonds.death_load_segment_at, 0U);
   // modern-controls' (#555): the pushback slot its keys are written to.
   EXPECT_NE(curse_of_the_azure_bonds.data_key_pushback, 0U);
-  EXPECT_EQ(curse_of_the_azure_bonds.roster_draw_offset, 0U);
+  // And the roster drawer's (#555): overlaid, called at its stub entry,
+  // with the character sheet and the save slots named as modules.
+  EXPECT_TRUE(curse_of_the_azure_bonds.summary_overlay.has_load_segment());
+  EXPECT_TRUE(pool_of_radiance.summary_overlay.is_resident_image());
+  EXPECT_NE(curse_of_the_azure_bonds.screen_paragraph, 0U);
+  EXPECT_NE(curse_of_the_azure_bonds.roster_draw_offset, 0U);
+  EXPECT_TRUE(curse_of_the_azure_bonds.view_overlay.has_load_segment());
+  EXPECT_TRUE(curse_of_the_azure_bonds.slots_overlay.has_load_segment());
   // The automap's (#555): the keyboard poll, the region and screen clears,
   // the menu-bar thunk, and the one adventuring bar and its call's return;
   // the overhead view's bar is the same one, so its members stay zero.

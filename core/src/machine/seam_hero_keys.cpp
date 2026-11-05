@@ -130,6 +130,13 @@
 // What it is not yet, at the point of definition (docs/seams.md §8.5)
 // -------------------------------------------------------------------
 //
+// **On Curse of the Azure Bonds** (#555) the piece is the same: the main
+// menu hands `G` and `O` to the party cursor, and the roster drawer is the
+// same routine with the same frame, overlaid (the profile's
+// `summary_overlay`), so its four points are in a module the program
+// moves. Its blitter takes a paper colour after the colour, which the
+// number is drawn on black. `docs/modern-controls.md` has both rows.
+//
 // The party-order screen is not a caller: with a member picked up, Home
 // and End move the member instead of the selection, and the seam cannot
 // tell which state it is in. Left out, too, are the combat screens and the
@@ -219,6 +226,23 @@ constexpr hero_keys_facts pool_of_radiance_hero_keys{
     .glyph_takes_paper = false,
     .clear_paragraph = 0x3F1,
     .clear_offset = 0x0137};
+
+/// Curse of the Azure Bonds (#555). The roster drawer is overlay 25's
+/// (the profile's `summary_overlay`, at `0x0798`), the same routine as Pool
+/// of Radiance's; its glyph blitter (paragraph `0x4CE`, `0x01DF`) takes the
+/// paper's colour after the colour, and its region clear is the profile's
+/// (image `0x17FD`, paragraph `0x133`, offset `0x04CD`).
+constexpr hero_keys_facts curse_hero_keys{.profile = curse_of_the_azure_bonds,
+                                          .main_menu_return = 0x0393,
+                                          .row_cleared = 0x0830,
+                                          .name_drawn = 0x086F,
+                                          .ac_column_pushed = 0x08B3,
+                                          .heading_copied = 0x07FB,
+                                          .glyph_paragraph = 0x4CE,
+                                          .glyph_offset = 0x01DF,
+                                          .glyph_takes_paper = true,
+                                          .clear_paragraph = 0x133,
+                                          .clear_offset = 0x04CD};
 
 // --- The menu-bar routine, in the menu overlay (the profile's) -----------
 
@@ -651,10 +675,17 @@ constexpr std::array<seam_point, 5> hero_keys_point_table =
     hero_keys_points_of<pool_of_radiance_hero_keys>();
 static_assert(hero_keys_point_table.size() == hero_keys_point_count);
 
+constexpr std::array<seam_point, 5> curse_hero_keys_point_table =
+    hero_keys_points_of<curse_hero_keys>();
+
 }  // namespace
 
 std::span<const seam_point> hero_keys_points() noexcept {
   return hero_keys_point_table;
+}
+
+std::span<const seam_point> curse_hero_keys_points() noexcept {
+  return curse_hero_keys_point_table;
 }
 
 }  // namespace amberfolio::machine
