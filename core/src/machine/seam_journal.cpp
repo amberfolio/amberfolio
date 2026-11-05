@@ -399,20 +399,41 @@ constexpr journal_facts pool_of_radiance_journal{
 /// clear, so a citation can arrive in two pieces exactly as it does on
 /// Pool of Radiance.
 ///
-/// **Only the citation watch is ported**: the reader's screen and its
-/// `Notes` command need facts this row does not have yet (the bar, the
-/// screen composer, the frame and string drawers, the keyboard), so on
-/// this program a citation goes on the log, and the log reaches the slot's
-/// sidecar when the program saves (`docs/seams.md` §10).
+/// **`Notes` and the reader** are the same mechanism with this program's
+/// facts. The party's bar is one call in the adventuring loop's module
+/// (the profile's), whose out-parameter is at `BP-4`. **There is no frame
+/// drawer that takes a box and a title**: the reader's box is the
+/// program's fixed outer frame at image `0x1330` (`0133:0000`, the routine
+/// every screen the composer draws begins with), which takes nothing,
+/// clears rows 1 to `0x16` and columns 1 to `0x26` — the reader's own box —
+/// and draws the border around them, and the title is a line through the
+/// string drawer. The string drawer takes a background colour between the
+/// colour and the string. The composer and the roster drawer are in an
+/// overlay, so the give-back calls the composer through its stub entry
+/// (the profile's paragraph and offset), and the roster's return is a
+/// point in that overlay.
 constexpr journal_facts curse_journal{.profile = curse_of_the_azure_bonds,
                                       .message_box_entry = 0x5178,
                                       .box_frame_string_offset = 4,
                                       .box_frame_string_segment = 6,
                                       .box_frame_clear = 8,
                                       .box_clear_is_byte = true,
-                                      .frame_out_flag = 0,
-                                      .outer_frame_entry = 0,
-                                      .string_takes_background = false};
+                                      .frame_out_flag = 0x04,
+                                      .outer_frame_entry = 0x1330,
+                                      .string_takes_background = true};
+
+/// Curse's overlay 25, the party summary drawer and the screen composer
+/// among others, and the drawer's `retf 4` in it: the automap's point at
+/// the same place (`seam_automap.cpp`), where the roster is back on the
+/// screen.
+constexpr seam_module curse_summary_overlay{
+    .file = "GAME.OVR",
+    .file_offset = 226981,
+    .length = 13331,
+    .digest =
+        "58601d3692c12e68081787f36ae1fccb5d24eb8488da8ce588a4318e03d2a6a6",
+    .load_segment_at = 0x0EE0};
+constexpr std::uint16_t curse_roster_drawn_return = 0x092E;
 
 constexpr auto journal_binaries =
     fingerprints_of(std::array{&pool_of_radiance, &curse_of_the_azure_bonds});
@@ -3227,11 +3248,35 @@ constexpr std::array<seam_point, 10> journal_points{
       .offset = pool_of_radiance.view_bar_return,
       .run = &at_view_bar_after<pool_of_radiance_journal>}}};
 
-/// On Curse, the message box alone, in the resident image.
-constexpr std::array<seam_point, 1> curse_journal_points{
+/// On Curse, the same eight in the baseline's order but with one bar call
+/// and its return, where Pool of Radiance has two of each: the overhead
+/// view is toggled inside the same loop and keeps the bar. The roster's
+/// return is in the overlay the drawer is in.
+constexpr std::array<seam_point, 8> curse_journal_points{
     {{.module = resident_image,
+      .offset = curse_of_the_azure_bonds.key_pending_entry,
+      .run = &at_key_pending<curse_journal>},
+     {.module = resident_image,
+      .offset = curse_of_the_azure_bonds.key_read_entry,
+      .run = &at_key_read<curse_journal>},
+     {.module = resident_image,
       .offset = curse_journal.message_box_entry,
-      .run = &at_message_box<curse_journal>}}};
+      .run = &at_message_box<curse_journal>},
+     {.module = resident_image,
+      .offset = curse_of_the_azure_bonds.clear_region_entry,
+      .run = &at_clear_region},
+     {.module = resident_image,
+      .offset = curse_of_the_azure_bonds.clear_screen_entry,
+      .run = &at_clear_screen},
+     {.module = curse_summary_overlay,
+      .offset = curse_roster_drawn_return,
+      .run = &at_roster_drawn},
+     {.module = curse_of_the_azure_bonds.adventure_overlay,
+      .offset = curse_of_the_azure_bonds.view_bar_call,
+      .run = &at_view_bar_before<curse_journal>},
+     {.module = curse_of_the_azure_bonds.adventure_overlay,
+      .offset = curse_of_the_azure_bonds.view_bar_return,
+      .run = &at_view_bar_after<curse_journal>}}};
 
 /// The points on every program but the baseline, whose points are the
 /// definition's own (seam.h, schema 9).

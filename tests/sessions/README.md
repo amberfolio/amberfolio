@@ -126,7 +126,7 @@ frame that carries an input is checkpointed whatever the cadence says.
 
 ### Curse of the Azure Bonds
 
-Thirty-six sessions, `curse-*`, on the Steam copy at `--speed 386` and
+Thirty-nine sessions, `curse-*`, on the Steam copy at `--speed 386` and
 `--wall none` (#554, #555). Every one is `disk external`: `curse-load` is
 pinned to the disk `curse-save` wrote (the `curse-saved` snapshot), the
 four `curse-journey` sessions to a disk with the party saved in slot D
@@ -148,9 +148,16 @@ curse-quiet` (no message pause reached) and `curse-fight-pause`
 `contrast curse-fight` (82 of 195 identical, divergent from tick
 142,562,734, the pause that opens the brawl), each the baseline's keys
 re-hashed with the seam on, so at its ticks;
-the journal's: `curse-journey-journal` `identical curse-journey` (on,
-nothing cited) and `curse-cite` `identical curse-buy` (on, the innkeeper's entry
-31 cited and logged, which moves nothing the machine holds); and
+the journal's: `curse-quiet-journal` `contrast curse-quiet` (on, `Notes`
+never chosen: 39 of 58 identical, divergent from tick 78,927,534, where
+the party's bar is first drawn with `Notes` on it, as Pool of Radiance's
+`quiet-journal` is a `contrast`), `curse-notes` `contrast
+curse-notes-keys` (`Notes`, entry 31 opened off the log, its two pages
+and its picture, and out, over `tests/visual/curse-reader-store.txt`; 39
+of 78, from the same tick), `curse-cite` `contrast curse-buy` (on, the
+innkeeper's entry 31 cited and logged; 39 of 133, from the same tick)
+and `curse-journey-journal` `identical curse-journey` (on, nothing
+cited, the party's bar never drawn); and
 `modern-controls`' (#555): `curse-quiet-controls` `identical curse-quiet`
 (on, none of its keys pressed: on this program none of its pieces draws
 on sight), `curse-camp-arrows` `contrast curse-camp-keys` (the arrows and
@@ -165,7 +172,7 @@ checkpoints) and `curse-journey-explored` `contrast curse-journey-kill`
 (32 of 94 identical, divergent from tick 66,200,494, the first after the
 overland's picture is drawn under the fog; only `devices` and `display`
 ever differ, never `cpu` or `ram`). The
-other sixteen are the legs with no seam: a new character, a purchase, a
+other seventeen are the legs with no seam: a new character, a purchase, a
 cure at the temple, the game's own Fix, the royal carriage, a journey
 on the overland map, and the rest. Each verifies on the desktop host and on the wasm module
 (`drive.mjs --install '\CURSE' --replay`).
@@ -179,7 +186,7 @@ on the overland map, and the rest. Each verifies on the desktop host and on the 
 | `roster-fix` (built in, always on) | `roster-add` | none can exist: there is no off. Every other session verifies with it on, `party` reaching it twice |
 | `timer-fix` (built in, always on) | `walk-quick`, at every sound after a skipped wait | none can exist: there is no off. Every session without quick steps verifies with it on: the driver's vector is the BIOS's at every install |
 | `automap` | `walk-map`; on Curse `curse-town-map` | `quiet-automap`; on Curse `curse-quiet-automap` |
-| `journal` | `reader`, `notes`, `cite`; on Curse `curse-cite` (an `identical`: only the citation watch is ported) | `quiet-journal` (a `contrast`); on Curse `curse-journey-journal` (an `identical`) |
+| `journal` | `reader`, `notes`, `cite`; on Curse `curse-notes`, `curse-cite` | `quiet-journal` (a `contrast`); on Curse `curse-quiet-journal` (a `contrast`) and `curse-journey-journal` (an `identical`: the party's bar is never drawn) |
 | `explored` | `wild-trail`; on Curse `curse-journey-explored` | `quiet-explored`; on Curse `curse-quiet-explored` |
 | the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party`; on Curse `curse-fight-cheat`, `curse-fight-kill`, `curse-camp-wound` | `quiet-cheats`; on Curse `curse-quiet-cheats` |
 | `modern-controls` | `list-down-arrows`, `camp-down-arrows`, `camp-pad-arrows`, `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys`, `bar-esc-keys`, `bar-script-keys`, `bar-portrait-keys`, `menu-down-cursor`, `move-walk-mode`, `door-pick-3`, `list-keys-yellow`, `name-arrows-edit` (each a `contrast`; `door-pick-3` has the seam on at both ends and differs by its keys); on Curse `curse-camp-arrows`, `curse-name-arrows` | none can exist: three of its pieces draw on sight, so `quiet-modern-controls`, `menu-letters-cursor` and `quiet-all-on-sight` are `contrast`s too (the pair is a `contrast`, as the faces' is). On Curse, where those three are not ported, `curse-quiet-controls` |

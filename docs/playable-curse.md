@@ -134,6 +134,16 @@ cures for the selected member (`CURE BLINDNESS` to `STONE TO FLESH`);
 leaves Mathew on 39 of 49: after it the cure takes him to 40 and his
 platinum from 300 to 280 (`curse-heal`).
 
+**The journal's reader.** With `--seam journal` the party's bar carries
+`NOTES` from its first draw. After the innkeeper (`curse-quiet`'s keys),
+`N@5350` opens the log over the program's outer frame, entry 31 on it;
+`Return@5500` opens the entry, `N@5800` and `N@6100` turn to its second
+page and its picture, `E@6400` is the log again and `E@6700` closes it,
+the screen composed again and the bar back (`Right@7000` turns the
+party). Over `tests/visual/curse-reader-store.txt` (`--journal-store`),
+recorded as `curse-notes`; the same keys with no seam are
+`curse-notes-keys`, where `Return` takes `AREA` and `E` encamps.
+
 **The automap.** With `--seam automap`, `Tab` at frame 4,000 (ahead of
 the `Left` there) opens the panel over the roster at the opening room,
 and the walk draws the street into it; every `PRESS RETURN`, the
@@ -338,6 +348,9 @@ lines, at `--speed 386` and `--wall none`:
 | `curse-quiet-font-chisel` | `curse-slots` | `font-chisel` | `contrast curse-quiet` |
 | `curse-quiet-message-pause` | `curse-slots` | `message-pause` | `identical curse-quiet` |
 | `curse-quiet-controls` | `curse-slots` | `modern-controls` | `identical curse-quiet` |
+| `curse-quiet-journal` | `curse-slots` | `journal`, `Notes` never chosen | `contrast curse-quiet` |
+| `curse-notes-keys` | `curse-slots` | none | |
+| `curse-notes` | `curse-slots` | `journal`, entry 31 opened and read | `contrast curse-notes-keys` |
 | `curse-town` | `curse-slots` | none | |
 | `curse-quiet-automap` | `curse-slots` | `automap`, Tab never pressed | `identical curse-quiet` |
 | `curse-town-map` | `curse-slots` | `automap`, Tab at frame 4,000 | `contrast curse-town` |
@@ -359,7 +372,7 @@ lines, at `--speed 386` and `--wall none`:
 | `curse-journey-kill` | `curse-wild` | `cheat-kill-all`, pulled | `contrast curse-journey` |
 | `curse-journey-journal` | `curse-wild` | `journal` | `identical curse-journey` |
 | `curse-journey-explored` | `curse-wild` | `explored`, `cheat-kill-all` pulled | `contrast curse-journey-kill` |
-| `curse-cite` | `curse-slots` | `journal`, entry 31 cited | `identical curse-buy` |
+| `curse-cite` | `curse-slots` | `journal`, entry 31 cited | `contrast curse-buy` |
 | `curse-camp-keys` | `curse-slots` | none | |
 | `curse-camp-arrows` | `curse-slots` | `modern-controls` | `contrast curse-camp-keys` |
 | `curse-name-keys` | `curse-slots` | none | |

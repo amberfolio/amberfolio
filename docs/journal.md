@@ -645,8 +645,9 @@ inflation is libdeflate's business (`cmake/AmberfolioLibdeflate.cmake`).
 `entries=121 extracted=121 recognized=121`, `pictures=9/9`, store
 `sha256=f4cea20cd3b573d303b718fd79569872b8caa00cffa9325e6141282a038b3159`;
 every item begins with its own heading and the longest is about three
-kilobytes. Not done: an entry opened in the game, because the reader is
-not ported to Curse yet (`docs/seams.md` §10).
+kilobytes. Not done: an entry of the real store opened in the game; the
+reader on Curse has been driven over a store of this project's own words
+(`curse-notes`, `docs/seams.md` §10).
 
 **By hand, the Steam edition** (§3a): every item through the desktop host
 and through the module under node with the page's own `journal.mjs`, one

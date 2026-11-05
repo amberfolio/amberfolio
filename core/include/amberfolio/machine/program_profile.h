@@ -588,10 +588,20 @@ inline constexpr seam_module menu{
 /// and a read takes the grid as given.
 ///
 /// **One adventuring bar.** The overhead view is toggled inside the same
-/// loop as the 3D view and keeps its bar, so the 3D view's bar and its
-/// call's return are filled and the overhead view's are zero (M5-E2d,
-/// `seam_automap.cpp`). Its roster drawer is overlaid, so the profile's
+/// loop as the 3D view and keeps its bar, so the 3D view's bar, its call
+/// and the call's return are filled and the overhead view's are zero
+/// (M5-E2d, `seam_automap.cpp`, `seam_journal.cpp`). Its roster drawer is overlaid, so the profile's
 /// resident roster members are zero too and the automap names the stub.
+///
+/// **The screen composer is overlaid** with the roster drawer (overlay 25,
+/// the stub's record at image `0x0ED0`), so `screen_paragraph` is that
+/// stub's paragraph and the composer's offset is its stub entry there,
+/// the way the automap calls the roster drawer (docs/seams.md §8.4,
+/// #526). **No frame drawer takes a box and a title**, so
+/// `draw_frame_entry` is zero; the program has one fixed outer frame
+/// (`seam_journal.cpp`). Its **string drawer** takes the profile's
+/// column, row and colour and then a background colour, a word pushed
+/// between the colour and the string, which Pool of Radiance's does not.
 ///
 /// The record is the 422-byte one the program also saves, so its offsets
 /// are the save file's: the same fields as Pool of Radiance's in the
@@ -601,15 +611,15 @@ inline constexpr program_profile curse_of_the_azure_bonds{
     .fingerprint =
         "42fcefd6785679568b00bc1fb5b1d81ac2773416be4a35e0363920ddf6b78acd",
     .dgroup_paragraphs = 0xABE,
-    .screen_paragraph = {},
+    .screen_paragraph = 0x00ED,
     .roster_draw_offset = {},
-    .screen_composer_offset = {},
+    .screen_composer_offset = 0x00CF,
     .key_pending_entry = 0x86EB,
     .key_read_entry = 0x86FD,
     .clear_region_entry = 0x17FD,
     .clear_screen_entry = 0x56E2,
     .draw_frame_entry = {},
-    .draw_string_entry = {},
+    .draw_string_entry = 0x5029,
     .command_bar_entry = 0x106A,
     .roster_drawn_return = {},
     .titles_overlay = {},
@@ -635,7 +645,7 @@ inline constexpr program_profile curse_of_the_azure_bonds{
     .pick_list_bar_return = 0x10F3,
     .area_bar_call = {},
     .area_bar_return = {},
-    .view_bar_call = {},
+    .view_bar_call = 0x0927,
     .view_bar_return = 0x092C,
     .data_game_mode = 0x4FD3,
     .mode_camp = 2,
