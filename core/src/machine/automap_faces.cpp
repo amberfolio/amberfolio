@@ -196,6 +196,36 @@ constexpr std::array<zone_name, 29> zone_names{
      {.disk = 8, .area = 27, .name = "WILDER|NESS"},
      {.disk = 8, .area = 29, .name = "KUTO'S WELL"}}};
 
+/// Curse of the Azure Bonds' maps (#555), by (disk, area) as above. The
+/// names are the area names of a public walkthrough's index
+/// (gamebanshee.com's, docs/seams.md §10 has the pages), nominative facts
+/// as the wilderness lairs' names are, and each is matched to its area by
+/// the walkthrough's own numbered places against what that area's script
+/// does there, and by which areas its exits lead to. Two areas share
+/// Tilverton's grid, the town and the guild east of it, and two the pit's;
+/// the Temple of Bane and the court are scripts over Zhentil Keep's grid.
+/// The three grids a search beside a town reaches are each shared by more
+/// than one town's search, so they have no row and are `AREA <n>`.
+constexpr std::array<zone_name, 18> curse_zone_names{
+    {{.disk = 2, .area = 1, .name = "TILVER|TON"},
+     {.disk = 2, .area = 2, .name = "THIEVES' GUILD"},
+     {.disk = 2, .area = 3, .name = "TILVER|TON SEWERS"},
+     {.disk = 2, .area = 4, .name = "FIRE KNIVES HIDEOUT"},
+     {.disk = 3, .area = 16, .name = "YULASH"},
+     {.disk = 3, .area = 17, .name = "PIT OF MOANDER"},
+     {.disk = 3, .area = 18, .name = "PIT OF MOANDER"},
+     {.disk = 4, .area = 32, .name = "ZHENTIL KEEP"},
+     {.disk = 4, .area = 33, .name = "TEMPLE OF BANE"},
+     {.disk = 4, .area = 34, .name = "BEHOLDER CAVE"},
+     {.disk = 4, .area = 35, .name = "ZHENTIL KEEP"},
+     {.disk = 4, .area = 37, .name = "OXAM'S TOWER"},
+     {.disk = 5, .area = 49, .name = "HAP"},
+     {.disk = 5, .area = 50, .name = "DRACO|LICH CAVE"},
+     {.disk = 5, .area = 51, .name = "WIZARD'S TOWER"},
+     {.disk = 6, .area = 64, .name = "BURIAL GLEN"},
+     {.disk = 6, .area = 66, .name = "RUINS OF MYTH DRANNOR"},
+     {.disk = 6, .area = 67, .name = "GRAND RUINED TEMPLE"}}};
+
 /// A sub-map that is a district of its own, by the geometry block its
 /// parent's script loads. Looked up before `zone_names`.
 ///
@@ -336,7 +366,10 @@ constexpr place_tables pool_of_radiance_tables{.doors = door_table,
                                                .sub_maps = sub_map_names,
                                                .lairs = lair_grids};
 constexpr place_tables curse_of_the_azure_bonds_tables{
-    .doors = curse_door_table, .zones = {}, .sub_maps = {}, .lairs = {}};
+    .doors = curse_door_table,
+    .zones = curse_zone_names,
+    .sub_maps = {},
+    .lairs = {}};
 
 lair_found find_lair(const place_tables& places, std::uint8_t disk,
                      std::uint8_t area, std::uint8_t geo,

@@ -55,9 +55,9 @@ Rules:
   takes its command's first letter, and `Return` takes the highlighted
   one.
 - The `.txt` and `.scene.json` beside a still are the screen's text and
-  the scene (`docs/hosts.md` §10, §13). Every map is `AREA <n>`: the
-  program holds no place name a seam can read (`docs/seams.md` §10, the
-  automap).
+  the scene (`docs/hosts.md` §10, §13). Each area is named
+  as a public walkthrough names it, and a grid it does not name is
+  `AREA <n>` (`docs/seams.md` §10, the automap).
 
 ---
 

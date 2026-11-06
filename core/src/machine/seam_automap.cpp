@@ -474,8 +474,8 @@ void note_one_bar(machine& box, const seam_context& ctx, std::uint16_t ds) {
 /// Curse of the Azure Bonds (#555). The renderer's tables are Pool of
 /// Radiance's, at their own offsets, and the ground is a byte the program
 /// sets to dark grey on this adapter. Its place tables are a door table
-/// and nothing else (`curse_of_the_azure_bonds_places()`): every map is
-/// `AREA <n>`. A door on the party's own square is drawn over its mark
+/// and the maps' names (`curse_of_the_azure_bonds_places()`). A door on
+/// the party's own square is drawn over its mark
 /// (`render()`). The roster drawer is overlaid (the profile's `summary_overlay`), so the
 /// give-back calls its resident stub entry at the stub's own paragraph, the
 /// profile's `screen_paragraph` and `roster_draw_offset` (docs/seams.md

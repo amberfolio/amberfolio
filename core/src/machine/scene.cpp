@@ -223,7 +223,7 @@ constexpr scene_facts pool_of_radiance_scene{
 /// its side byte as in Pool of Radiance. The aim bar's routines are in
 /// overlay 14 and keep their locals where Pool of Radiance's do, their
 /// arguments two bytes further up. No travel view: the overland journey is
-/// a list of places. Its place tables are a door table and nothing else.
+/// a list of places. Its place tables are a door table and the maps' names.
 constexpr scene_facts curse_scene{
     .profile = curse_of_the_azure_bonds,
     .places = &map_format::curse_of_the_azure_bonds_places,

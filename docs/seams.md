@@ -1421,7 +1421,7 @@ the same panel. One `automap_facts` row per program
 | shape tiles; first slot, columns, rows | `0x6A58`; `0x0C8C`, `0x0C96`, `0x0CA0` | `0x721C`; `0x0ADA`, `0x0AE4`, `0x0AEE` |
 | tile banks, their first codes | `0x5E3A`, `0x2722` | `0x65D0`, `0x2682` (a fifth bank past `0xFF` that no wall row reaches) |
 | frame colour, ground colour | `0x6A60`, `0x6A63` | `0x7224`, `0x7227` (dark grey, set by the program on this adapter) |
-| places | measured | a door table and nothing else (`curse_of_the_azure_bonds_places()`): every label is `AREA <n>` |
+| places | measured | a door table and the maps' names (`curse_of_the_azure_bonds_places()`); no sub-maps, no lairs |
 | door graphics (disk, WALLDEF block, rows) | 19 rows | 17 rows: disk 2 blocks 1 (`0x10`), 2 (`0x02`), 3 (`0x01`), 4 (`0x10`); disk 3 blocks 3 (`0x01`), 5 (`0x14`), 6 (`0x10`), 7 (`0x12`); disk 4 blocks 3 (`0x01`), 8 (`0x18`), 9 (`0x10`), 10 (`0x10`), 11 (`0x14`); disk 5 blocks 8 (`0x18`), 12 (`0x18`); disk 6 blocks 3 (`0x01`), 13 (`0x10`) |
 | a door on the party's square | under the mark | over the mark, under its white (`doors_over_party`) |
 
@@ -1446,14 +1446,41 @@ the same panel. One `automap_facts` row per program
 - **The green arch** is the entrance mark (`automap_marker::entrance`):
   the square the party first stood on after its map changed under it.
   Neither a load nor a save makes one.
-- **Names**: there is none a seam can read. The program's data holds no
-  place name, a name is never in memory while the party is in a town,
-  and the save has none; the names are script text (the overland
-  script's table of the places a journey stops at, and each area's own
-  narration), coded six bits a character in the scripts' blocks. Reading
-  one would be a script block read off the disk and decoded, plus a
-  table of which area is which place that the overland's table does not
-  give, and most of the grids are not one of its places.
+- **Names**: a table keyed (disk, area), as Pool of Radiance's, with
+  `AREA <n>` for a grid that has no row. The names are the area names of
+  GameBanshee's Curse of the Azure Bonds walkthrough
+  (`https://www.gamebanshee.com/curseoftheazurebonds/walkthrough.php`,
+  one page per area at `.../walkthrough/<name>.php`), nominative facts
+  as the wilderness lairs' are. Each area is matched by its page's
+  numbered places against what that area's script does there, and by
+  which areas its exits lead to:
+
+  | label | disk, area (grid) | the page's places it was matched by | page |
+  | --- | --- | --- | --- |
+  | `TILVER\|TON` | 2, 1 (1) | the inn, the weapon shop, the Temple of Gond, the sage, the carriage at the gate | `tilverton.php` |
+  | `THIEVES' GUILD` | 2, 2 (1, the same grid) | the guild east of the town on Tilverton's page: guildmaster, guest book, kennel, treasure and monkey rooms, the passage to the sewers | `tilverton.php` |
+  | `TILVER\|TON SEWERS` | 2, 3 (3) | the otyughs, the cloth, the secret training hall, the passages to the guild and the hideout | `tilvertonsewers.php` |
+  | `FIRE KNIVES HIDEOUT` | 2, 4 (4) | the blade barrier, the torture chamber, the office, the hospital, the armory | `firekniveshideout.php` |
+  | `YULASH` | 3, 16 (16) | the destroyed checkpoint, the Zhentrim battle, the one-way entrance to the pit | `yulash.php` |
+  | `PIT OF MOANDER` | 3, 17 (17) and 3, 18 | the collapsing way in; the dead Zhentrim, the vegepygmies, Alias, Mogion | `pitofmoander.php` |
+  | `ZHENTIL KEEP` | 4, 32 (32) and 4, 35 | the inn and magic shop; the courthouse and the arena | `zhentilkeep.php` |
+  | `TEMPLE OF BANE` | 4, 33 (Zhentil Keep's grid) | the temple's places on Zhentil Keep's page, entered from area 32 | `zhentilkeep.php` |
+  | `BEHOLDER CAVE` | 4, 34 (33) | Dexam, the otyughs, the minotaurs and priests, the manticores | `beholdercave.php` |
+  | `OXAM'S TOWER` | 4, 37 (37) | the medusas, the gas spore, the dark elf lord, the conference | `oxamstower.php` |
+  | `HAP` | 5, 49 (50) | the inn, the general store, the barn with the efreeti | `hap.php` |
+  | `DRACO\|LICH CAVE` | 5, 50 (50, the same grid) | the cave on Hap's page between the town and the tower, its dracolich | `hap.php` |
+  | `WIZARD'S TOWER` | 5, 51 (51) | Dracandros, the roof | `wizardstower.php` |
+  | `BURIAL GLEN` | 6, 64 (64) | the elfish spirit, the red web, the thri-kreen; its exit east to area 66 | `burialglen.php` |
+  | `RUINS OF MYTH DRANNOR` | 6, 66 (66) | Tirsheya, the rakshasas; its exits to areas 64 and 67 | `ruinsofmythdrannor.php` |
+  | `GRAND RUINED TEMPLE` | 6, 67 (67) | Tyranthraxus, the chapel | `grandruinedtemple.php` |
+
+  **Left at `AREA <n>`**: the three grids a search beside a town
+  reaches (the wilderness page's search sites), because each is several
+  pages' place: disk 3 area 21 is Voonlar's war-blasted section and
+  Phlan's ruins, disk 5 area 53 the caverns beside Shadowdale,
+  Ashabenford and Essembra, and disk 6 area 69 the ruins beside Hillsfar
+  and Teshwave. Disk 5 area 48 is a step between areas with no grid of
+  its own.
 - **Not ported**: the overland. Curse's is a journey menu, not a grid,
   so the poll records nothing there.
 - **Driven** on slot A (`docs/playable-curse.md` leg 2) with Tab at the
@@ -1465,7 +1492,8 @@ the same panel. One `automap_facts` row per program
   away with the
   roster drawn by the program's drawer, and the party's bar brings it
   back. Tab again on the street puts the roster back with the current
-  member white; End with the panel up is taken. The label is `AREA 1`.
+  member white; End with the panel up is taken. The label is
+  `TILVERTON`, set as `TILVER-` over `TON`.
   With `--save-sidecars`, a save to slot C writes `AFMAPC.DAT` and
   loading C reads it back (`docs/hosts.md` §6).
 - **Driven** from a slot A saved in play at `5,7 N` in Tilverton: the
