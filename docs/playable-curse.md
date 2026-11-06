@@ -55,8 +55,9 @@ Rules:
   takes its command's first letter, and `Return` takes the highlighted
   one.
 - The `.txt` and `.scene.json` beside a still are the screen's text and
-  the scene (`docs/hosts.md` §10, §13). Every map is `AREA <n>`: nobody
-  has named Curse's places.
+  the scene (`docs/hosts.md` §10, §13). Every map is `AREA <n>`: the
+  program holds no place name a seam can read (`docs/seams.md` §10, the
+  automap).
 
 ---
 
@@ -159,7 +160,10 @@ the `Left` there) opens the panel over the roster at the opening room,
 and the walk draws the street into it; every `PRESS RETURN`, the
 shopkeeper's question and the shop's bar take it away until the
 party's bar is back, and a second `Tab` puts the roster back
-(`docs/seams.md` §10). Recorded as `curse-town-map`.
+(`docs/seams.md` §10). Recorded as `curse-town-map`. The same `Tab` on
+`curse-temple`'s keys marks the temple's arched door at `4,7 W` as a
+door, and at the altar the program's roster replaces the panel whole
+under the temple's bar. Recorded as `curse-temple-map`.
 
 **The move mode.** With `modern-controls` on, the party's bar is
 `MOVE CAST VIEW ENCAMP SEARCH LOOK` with `MOVE` lit, and the arrows step
@@ -376,6 +380,7 @@ lines, at `--speed 386` and `--wall none`:
 | `curse-town` | `curse-slots` | none | |
 | `curse-quiet-automap` | `curse-slots` | `automap`, Tab never pressed | `identical curse-quiet` |
 | `curse-town-map` | `curse-slots` | `automap`, Tab at frame 4,000 | `contrast curse-town` |
+| `curse-temple-map` | `curse-slots` | `automap`, Tab at frame 4,000 | `contrast curse-temple` |
 | `curse-temple` | `curse-slots` | none | |
 | `curse-camp` | `curse-slots` | none | |
 | `curse-camp-wound` | `curse-slots` | `cheat-wound-party`, pulled | `contrast curse-camp` |

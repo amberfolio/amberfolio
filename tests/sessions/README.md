@@ -126,7 +126,7 @@ frame that carries an input is checkpointed whatever the cadence says.
 
 ### Curse of the Azure Bonds
 
-Forty-three sessions, `curse-*`, on the Steam copy at `--speed 386` and
+Forty-four sessions, `curse-*`, on the Steam copy at `--speed 386` and
 `--wall none` (#554, #555). Every one is `disk external`: `curse-load` is
 pinned to the disk `curse-save` wrote (the `curse-saved` snapshot), the
 four `curse-journey` sessions to a disk with the party saved in slot D
@@ -178,9 +178,12 @@ tick); and the move mode's, `curse-move-walk-mode` `contrast
 curse-move-walk` (`Move`, a turn, Escape back to the menu, a walk into
 the innkeeper, Down to Mark and View off the bar; 19 of 70, from the
 same tick); the automap's: `curse-quiet-automap` `identical curse-quiet`
-(on, Tab never pressed) and `curse-town-map` `contrast curse-town` (Tab
+(on, Tab never pressed), `curse-town-map` `contrast curse-town` (Tab
 at frame 4,000 ahead of the Left there, 40 of 90 identical, divergent
-from tick 79,563,886); and the explored overlay's: `curse-quiet-explored`
+from tick 79,563,886) and `curse-temple-map` `contrast curse-temple`
+(the same Tab: the temple's arched door a door, and the roster the
+program draws at the altar given back whole; 40 of 107, from the same
+tick); and the explored overlay's: `curse-quiet-explored`
 `identical curse-quiet` (on, the overland never shown: all 58
 checkpoints) and `curse-journey-explored` `contrast curse-journey-kill`
 (32 of 94 identical, divergent from tick 66,200,494, the first after the
@@ -199,7 +202,7 @@ on the overland map, and the rest. Each verifies on the desktop host and on the 
 | `encamp-fix` | `camp-fix` | `quiet-encamp` |
 | `roster-fix` (built in, always on) | `roster-add` | none can exist: there is no off. Every other session verifies with it on, `party` reaching it twice |
 | `timer-fix` (built in, always on) | `walk-quick`, at every sound after a skipped wait | none can exist: there is no off. Every session without quick steps verifies with it on: the driver's vector is the BIOS's at every install |
-| `automap` | `walk-map`; on Curse `curse-town-map` | `quiet-automap`; on Curse `curse-quiet-automap` |
+| `automap` | `walk-map`; on Curse `curse-town-map`, `curse-temple-map` | `quiet-automap`; on Curse `curse-quiet-automap` |
 | `journal` | `reader`, `notes`, `cite`; on Curse `curse-notes`, `curse-cite` | `quiet-journal` (a `contrast`); on Curse `curse-quiet-journal` (a `contrast`) and `curse-journey-journal` (an `identical`: the party's bar is never drawn) |
 | `explored` | `wild-trail`; on Curse `curse-journey-explored` | `quiet-explored`; on Curse `curse-quiet-explored` |
 | the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party`; on Curse `curse-fight-cheat`, `curse-fight-kill`, `curse-camp-wound` | `quiet-cheats`; on Curse `curse-quiet-cheats` |
