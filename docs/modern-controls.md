@@ -24,7 +24,7 @@ to pull.
 | menu cursor | `seam_menu_cursor.cpp` | a cursor on the main menu | 2 |
 | hero keys | `seam_hero_keys.cpp` | at the main menu, the number row's 1 to 8 select a member and the party list shows each number | 5 |
 | edit keys | `seam_edit_keys.cpp` | an extended key types nothing at a text prompt | 1 |
-| selection block | `seam_select_yellow.cpp` | every selection a yellow block, a key letter a white one, with a margin all round | 11 |
+| selection block | `seam_select_yellow.cpp` | every selection a block, yellow (white on Curse of the Azure Bonds), a key letter a white one, with a margin all round | 11 |
 | move mode | `seam_move_mode.cpp` | on the party's own bar walking is a mode: `Move` starts it, `Exit` ends it, and in between Left and Right step the bar; `Area` is gone | 5 |
 | text entry | `seam_text_entry.cpp` | nothing on the screen: a host can ask whether the program is reading a line of text | 2 |
 | aim watch | `seam_aim_watch.cpp` | nothing on the screen: a host's scene says where the combat aim cursor is, who is under it and the range | 5 |
@@ -50,7 +50,7 @@ summed over the pieces.
   count with every seam on is sixty-eight, one face counted (`max_points` is
   ninety-six).
 - **Two programs, several modules.** Every piece keys on the baseline
-  edition (`docs/seams.md` §5), and seven of them on Curse of the Azure Bonds too, with
+  edition (`docs/seams.md` §5), and eight of them on Curse of the Azure Bonds too, with
   points of their own (below), so the definition names both. The modules are the
   pieces': overlay 25 for five of them, overlay 16 for the menu cursor's loop
   call, overlay 19 for Modify's score, overlay 14 for the move mode's party
@@ -58,7 +58,8 @@ summed over the pieces.
   each point names its own.
 - **A piece cannot ask another.** The menu cursor took its colours from the
   selection colour; with the two one seam the answer is always yes and the
-  cursor's row is always a yellow block with a white key. The journal's reader asks
+  cursor's row is always a block in the selection's colour with a white
+  key. The journal's reader asks
   `modern_controls_on(box)` (`seam_builtin.h`) for its bars' keys and
   highlight and for its cursor row (`docs/seams.md` §10 on the journal).
 - **Off is the plain machine, on is all eight.** There is no setting between,
@@ -88,21 +89,23 @@ but the faces). Each piece's pairs are in its section, and
 `tests/sessions/README.md` lists them all. Unit: `SeamModernControls.*` (the
 one definition) and each piece's suite.
 
-**On Curse of the Azure Bonds** (#555) the seam is available with seven
-of its pieces: the list arrows, the bar keys, the hero keys, the edit
-keys, the selection block, text entry and the aim watch, each the same
-mechanism with that program's facts in a row of its own
-(`list_arrows_facts`, `bar_keys_facts`, `hero_keys_facts`,
-`edit_keys_facts`, `select_yellow_facts`, `text_entry_facts`,
-`aim_watch_facts`, and `party_select::facts` for the bars that are not
-raw) and its points in the definition's `programs`, twenty-eight of
-them, in the baseline's order. The facts more than one piece reads are
-the profile's (`program_profile.h`): among them the party summary's
-module (`summary_overlay`: the roster drawer, the hit points' draw and
-the picker, resident on Pool of Radiance and overlay 25 here), the
-roster drawer's stub entry (`screen_paragraph`, `roster_draw_offset`),
-the character sheet's module (`view_overlay`) and the save slots'
-(`slots_overlay`).
+**On Curse of the Azure Bonds** (#555) the seam is available with eight
+of its pieces: the list arrows, the bar keys, the menu cursor, the hero
+keys, the edit keys, the selection block, text entry and the aim watch,
+each the same mechanism with that program's facts in a row of its own
+(`list_arrows_facts`, `bar_keys_facts`, `menu_cursor_facts`,
+`hero_keys_facts`, `edit_keys_facts`, `select_yellow_facts`,
+`text_entry_facts`, `aim_watch_facts`, and `party_select::facts` for the
+bars that are not raw) and its points in the definition's `programs`,
+thirty of them, in the baseline's order. The facts more than one piece
+reads are the profile's (`program_profile.h`): among them the party
+summary's module (`summary_overlay`: the roster drawer, the hit points'
+draw and the picker, resident on Pool of Radiance and overlay 25 here),
+the roster drawer's stub entry (`screen_paragraph`, `roster_draw_offset`),
+the character sheet's module (`view_overlay`), the save slots'
+(`slots_overlay`) and the colour of a selection (`selection_colour`:
+white here, the program's own highlight, where the baseline's is
+yellow).
 
 | fact | Pool of Radiance | Curse of the Azure Bonds |
 | --- | --- | --- |
@@ -125,7 +128,7 @@ the character sheet's module (`view_overlay`) and the save slots'
 | the roster drawer; called at | image `0x1307`; `0x0BA:0x0767` | overlay 25 `0x0798`; its stub entry `0x00ED:0x002A` |
 | the drawer's frame: column, row, member; the heading's copy | `BP-5`, `BP-6`, `BP-4`; `BP-0x0E` | the same |
 | the drawer's points: the row cleared; the name paths meet; the armour class's column pushed; the heading copied | image `0x138F`; `0x13CB`; `0x140F`; `0x135A` | overlay 25 `0x0830`; `0x086F`; `0x08B3`; `0x07FB` |
-| the main menu's call into the routine (the one caller a digit selects at) | overlay 16 (word `0x790`) `0x02FD` | overlay 18 (word `0x0A80`) `0x0393`: raw, `G` and `O` to the party cursor (overlay 20 `0x32CF`) and then the drawer |
+| the main menu's call into the routine (the one caller a digit selects at and the menu cursor moves at) | overlay 16 (word `0x790`) `0x02FD` | overlay 18 (word `0x0A80`) `0x0393`: raw, `G` and `O` to the party cursor (overlay 20 `0x32CF`) and then the drawer |
 | the glyph blitter: entry; its call, first pushed to last | paragraph `0x709` `0x01DF`; column, row, colour, count, character, fold (`retf 0Ch`) | paragraph `0x4CE` `0x01DF` (image `0x4EBF`); column, row, colour, **paper**, count, character, fold (`retf 0Eh`) |
 | the string routine: entry; its call's colour, paper, row, column from the top; its call into the blitter, the instruction after | `0x0626` in the blitter's paragraph; `+4`, none, `+6`, `+8`; image `0x7724` | image `0x5029`; `+6`, `+4`, `+8`, `+0x0A`; image `0x509B` |
 | the region clear the cut is made with | paragraph `0x3F1` `0x0137` | the profile's, image `0x17FD` (paragraph `0x133` `0x04CD`), the same four words |
@@ -211,28 +214,38 @@ and out, whose caller does not say which screen is behind them.
   and `O` to the party cursor and draws the roster again.
 - **The selection block.** Curse already draws its own highlight as a
   block, in the bar's bright (white), and the pick-list's row the same
-  way. The seam draws every selection as on Pool of Radiance, a yellow
-  block with the key letter a white one: at the group's call it takes the
+  way. The seam draws every selection as on Pool of Radiance, a block
+  with the key letter a white one, **in Curse's own white and not the
+  baseline's yellow** (the profile's `selection_colour`, the colour table
+  in the selection block's section): at the group's call it takes the
   program's colour off the paper, decides the character's colour as
   there, and hands it to the ink with black paper, and the row write
   inverts the mask for a selection's glyph, so a block is the paper in
   the colour and the letter in black, as the baseline's inverted store
-  makes it. Everything outside the lit word is drawn unselected, the
-  pick-list's `Exit` too, which the program would have drawn as a white
-  block. The margin is the baseline's (`selection_margin.h`), on the one
-  page. A string a seam draws in a batch with `selection_mark` is a
-  block the same way: the string routine's colour word, at `BP+0x0C` of
-  its frame, carries the mark.
+  makes it. A bar's lit word is the white block the program draws, key
+  and rest alike, with the margin round it; the roster's selected member,
+  Modify's score, the menu cursor's row and the journal's selections are
+  white blocks too. Everything outside the lit word is drawn unselected,
+  the pick-list's `Exit` too, which the program would have drawn as a
+  white block. The margin is the baseline's (`selection_margin.h`), on
+  the one page, and reads in white as in yellow: it parts the block's
+  letters from its edge, and the block from the frame and the row above
+  it. A string a seam draws in a batch with `selection_mark` is a block
+  the same way: the string routine's colour word, at `BP+0x0C` of its
+  frame, carries the mark.
 - **Inside a batch.** The roster drawer is overlaid, so its points are
   in a module the program moves; the engine offers an `inside_calls`
   point there as anywhere, found through the program's word at the step
   (`docs/seams.md` §3), so the roster the automap gives back, and the one
   a step at a bar that is not raw draws, carries the numbers and the
   block too.
-- **Not ported, and why.** The main menu's cursor: Curse's main menu is
-  a bar of thirteen single letters, with no table of commands and
-  enable bytes to hold a cursor in, so the piece needs a
-  design of its own. The move mode: Curse's party bar is one call, six
+- **The menu cursor** is Pool of Radiance's design on the same loop: the
+  main menu's commands are records with an enable byte each, which the
+  loop's redraw writes, and the cursor lives in Drop's or Load's while it
+  is drawn (the facts are in the menu cursor's section). The bar of
+  thirteen letters the loop hands the routine is only its key table, with
+  no colour, as on Pool of Radiance.
+- **Not ported, and why.** The move mode: Curse's party bar is one call, six
   commands with `Area` first, and the overland is a journey menu, not a
   walk. And Modify's name field, which Curse's editor has and Pool of
   Radiance's does not: its highlight is a line of its own with a cursor
@@ -240,16 +253,22 @@ and out, whose caller does not say which screen is behind them.
 - **Driven, the pieces this port added**, on the Steam copy, slot A,
   `--wall none`, stills read: the main menu's party list numbered 1 to 6
   in white, the names two columns right, the armour class and its
-  heading one right, `HP` where it was, Mathew a yellow block; `3` at the
+  heading one right, `HP` where it was, Mathew a white block; `3` at the
   main menu selects Travis, and the camp's list beside the viewport is
   the program's own but for Travis's block; the camp bar's `SAVE` a
-  block, `S` white and `AVE` yellow, its margin painted above over the
-  frame's black and right, the other words white and green; at the save
+  white block, its margin painted above over the frame's black and
+  right, the other words white and green; at the save
   slot bar from camp, Down, Down, Up, Up select Mark, Travis, Mark,
   Mathew, the roster drawn again each time with the block, the bar
-  still up; creation's `PICK RACE` row a yellow block that Down moves
+  still up; creation's `PICK RACE` row a block that Down moves
   to `ELF`, and the list's bar `SELECT EXIT` with `SELECT` lit; Modify's
-  strength `18(00)` and, after six Ends, its hit points a yellow block.
+  strength `18(00)` and, after six Ends, its hit points a block. The
+  main menu with no party: `CREATE NEW CHARACTER` a white block from the
+  first frame, Down, Down, Down, Down move it to `ADD`, `LOAD`, `EXIT`
+  and round to `CREATE`, Up, Up to `EXIT` and `LOAD`, and Return there
+  asks `LOAD WHICH GAME`; with slot A's party, nine rows, Down eight
+  times walks every row and a ninth wraps, and Return on `BEGIN
+  ADVENTURING` begins.
   With the seam off the bar's and the list's highlight are the program's
   white block, the selected member is white letters, and the list is not
   numbered.
@@ -267,14 +286,17 @@ and out, whose caller does not say which screen is behind them.
   target mode with the range shown at the target bar, manual after `M`,
   none after a key; text entry reading at `CHARACTER NAME:` and not
   before or after.
-- **Fidelity**: two of the pieces draw on sight on Curse too, the
-  numbers and the block, so there is no `identical` for the seam here
-  either: `curse-quiet-controls` `contrast curse-quiet` (25 of 58, then
-  divergent from tick 48,382,638, the title's bar, the first highlight
-  drawn); `curse-camp-arrows` `contrast curse-camp-keys` (25 of 81) and
-  `curse-name-arrows` `contrast curse-name-keys` (25 of 118), from the
+- **Fidelity**: three of the pieces draw on sight on Curse too, the
+  menu's cursor, the numbers and the block, so there is no `identical`
+  for the seam here either: `curse-quiet-controls` `contrast curse-quiet`
+  (19 of 58, then divergent from tick 48,382,638, the title's bar, the
+  first highlight drawn, where the block's margin is the difference);
+  `curse-camp-arrows` `contrast curse-camp-keys` (19 of 81),
+  `curse-name-arrows` `contrast curse-name-keys` (19 of 118) and
+  `curse-menu-cursor` `contrast curse-menu-keys` (19 of 49), from the
   same tick. Each is its baseline's keys at their ticks, recorded again
   with the seam on. Unit: `SeamModernControlsOnCurse.*`,
+  `JournalReaderOnCurse.TheLogsCursorRowIsAWhiteBlockUnderModernControls`,
   `SeamCallProgram.FindsAnInsideCallsPointInAModuleTheProgramMoves`.
 
 ## The list arrows (#423, #435, #447, #469)
@@ -1096,6 +1118,46 @@ string routine. A setting, no key, nothing to pull.
   (the `bar-keys` piece), a held key (the hosts drop OS key repeats,
   `hosts.md`).
 
+**On Curse of the Azure Bonds** (#555) the menu is the same loop over
+the same kind of records, so the cursor is the same design with Curse's
+facts (`menu_cursor_facts`): it lives in Drop's or Load's enable byte
+while it is drawn, the loop's redraw puts the byte back, and nothing is
+kept in the seam or in `scratch()`. Its row is a white block, key and
+rest, the program's own highlight colour (the selection block's colour
+table).
+
+| fact | Pool of Radiance | Curse of the Azure Bonds |
+| --- | --- | --- |
+| the loop's module | overlay 16 (file offset 104831, word `0x0790`) | overlay 18 (file offset 131047, 22202 bytes, digest `5cc199bf…6373`, word `0x0A80`), the profile's `roster_overlay` |
+| the loop's call into the menu-bar routine; the instruction after it | `0x02F8`; `0x02FD` | `0x038E`, a far call through overlay 27's stub entry (`0104:002A`); `0x0393` |
+| the call's words from the top | the out-parameter's offset and segment (SS), animation 0, raw 1, both colours 0, the prompt colour `0x0D`, the bar's far pointer | the same nine words; the prompt's far pointer is pushed before them |
+| the bar the loop hands the routine | DGROUP `0x05F0` | DGROUP `0x052A`, thirteen letters, no colour |
+| the command records | eleven at DGROUP `0x0619`, forty-two bytes each, the enable byte at `+0x29` | twelve at DGROUP `0x0553`, the same stride and enable byte; Human Change Classes is the fifth |
+| what the loop writes | Drop, Modify, View, Remove, Save, Begin on and Load off with a member, the reverse with none; Train where the place trains | the same, and Human Change Classes where the place trains and the selected member is a human who may change class; Create, Add and Exit never written |
+| the two bytes the cursor lives in | Drop (`0x066C`) and Load (`0x0768`), the second and eighth records | Drop (`0x05A6`) and Load (`0x06CC`), the second and ninth records |
+| what reads an enable byte | the loop's draw and dispatch, each against zero | the same (the draw at `0x02CF`, the dispatch from `0x045B`), each against zero |
+| the rows | from text row `0x0C`, the key in `0x0F` at column 2, the rest in `0x0A` from column 3 | the same |
+| the string drawer the cursor draws with | image `0x076B6`: column, row, colour, the string | image `0x5029` (paragraph `0x4CE`, `0x0349`): column, row, colour, **paper** (black), the string |
+| Enter at the loop's bar | dropped: the bar has no colour | the same: the routine takes Enter only from a bar with a colour |
+| what an arrow does there | handed back raw; `G` and `O` go to the party cursor, any other is dropped, no redraw | the same; a `G` or `O` that changes whether the selected member may change class, where the place trains, redraws the whole menu |
+| who reaches the loop | the start, and a training hall's script | the start, and the script opcode that re-enters it: a training hall, and the end of the game |
+| the cursor's row | the key a white block, the rest a yellow one | a white block end to end |
+
+The records and the bytes were read twice: in the data segment of the
+unpacked image (twelve Pascal strings forty-two bytes apart, the enable
+bytes of Create, Add, Load and Exit set and the rest clear, as a program
+that has not yet run its menu leaves them) and in the loop's own
+instructions in the store copy's `GAME.OVR` (the compare of the record's
+enable byte at `0x02CF`, the two calls into the string drawer, the bar's
+offset pushed at `0x0375` and the far call at `0x038E`). Driven, Steam
+copy, `--wall none`: with no party `CREATE NEW CHARACTER` a white block
+from the first frame, Down, Down, Down, Down to `ADD`, `LOAD`, `EXIT` and
+round to `CREATE`, Up from it to `EXIT`, and Return on `LOAD SAVED GAME`
+asks `LOAD WHICH GAME: A B`; with slot A's party, nine rows, every one
+reached and both ends wrapped, and Return on `BEGIN ADVENTURING` begins.
+**Not driven**: the menu at a training hall, which nothing from the
+shipped slots reaches; it is the same call, so the same point.
+
 **State**: none of the seam's own; the cursor is held in the enable byte of
 Drop or Load while it is drawn (above). **Host services**: none. **Keys**:
 Up, Down and Return at the main menu.
@@ -1260,6 +1322,29 @@ outside the block's cells.
 | the roster drawer | image `0x1307`; its frame has the column and row bytes at `BP-5` and `BP-6` and the member's far pointer at `BP-4`; the call's own words repeat all three |
 | Modify's two draws | the first argument at `BP+6` is non-zero for a highlighted draw; the colour is a local, at `BP-0x2B` for a score (overlay 19) and `BP-1` for hit points. Modify is the only caller that passes it |
 
+**The selection's colour, per program** (the profile's `selection_colour`).
+On Curse of the Azure Bonds the block is the program's own highlight
+colour, white, and not the baseline's yellow (#555): the program draws
+its bars' and lists' highlights as white blocks already, so a lit word
+there is drawn as the program draws it, with the margin round it.
+
+| where | Pool of Radiance | Curse of the Azure Bonds |
+| --- | --- | --- |
+| a bar's lit word | yellow, the key letter white | white, key and rest (the bar's bright is the selection's colour, so the key is white too) |
+| a one-command notice | yellow from its first letter | white from its first letter |
+| a pick-list's row | yellow | white, on the ink, where the program put it on the paper |
+| the roster's selected member | white made yellow | white, left as the program draws it, and made a block |
+| Modify's selected score and hit points | light magenta made yellow | light magenta made white |
+| the main menu's cursor row | the key white, the rest yellow | white end to end |
+| the journal's log row and its bar's lit command | yellow, the bar's key white | white |
+| the margin | painted in yellow, over black | painted in white, over black |
+| what a store takes for a selection's colour | yellow, from the calls named above | white, from the same calls |
+
+On Curse the hero keys' numbers, white on black, sit two columns left of
+a selected member's white block: the number is a white glyph on black
+and the name a white block with the letters black, so the two read as a
+key and a selection, as the yellow did, by shape rather than colour.
+
 - **The lit word is a word, and a group is not** (#453). The program's
   highlight is its *group*: from a command letter to two characters before
   the next. On a bar whose keys are not the first letters of its words it
@@ -1423,14 +1508,14 @@ outside the block's cells.
   (`screen_text.h`). Chosen from mock-ups of the block grown over anything
   and over black only, which looked the same: the frame's chain under a bar
   has 16 non-black pixels in its bottom row.
-- **Who else asks.** The `menu-cursor` piece draws a row of its own in this
-  yellow, with a white key. The journal's Notes list draws a cursor row of
+- **Who else asks.** The `menu-cursor` piece draws a row of its own in the
+  selection's colour, with a white key. The journal's Notes list draws a cursor row of
   its own and its reader's bars a highlight, both in the program's bright
   without this seam; each asks `modern_controls_on(box)` (`seam_builtin.h`),
-  which is `status("modern-controls").state == on`, and draws yellow where it
-  is on. The engine already lets a seam ask this (`text_face::drawing()` does
+  which is `status("modern-controls").state == on`, and draws the
+  selection's colour (`selection_colour`) where it is on. The engine already lets a seam ask this (`text_face::drawing()` does
   for the faces); nothing was added to it, and neither keeps the answer. The
-  reader's bars take the highlighted command in yellow, its key letter white,
+  reader's bars take the highlighted command in that colour, its key letter white,
   and no yellow on a bar of one word (#471, `docs/seams.md` §10 on the journal). All three
   draw through the string routine in a batch, which the stores cannot tell
   from a seam's other text by colour, so each sets `selection_mark` in a

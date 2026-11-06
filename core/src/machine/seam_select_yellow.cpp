@@ -133,8 +133,12 @@
 // own highlight, the bar's group and the list's row, as black ink on
 // `color_hi`'s paper. The points there take the colour off the paper and
 // hand the decided one to the ink, and the one row write inverts the mask,
-// so a selection is the same yellow block (`highlight_on_paper`,
-// `row_write_depth`, docs/modern-controls.md).
+// so a selection is the same block (`highlight_on_paper`, `row_write_depth`,
+// docs/modern-controls.md). Its colour is the program's own highlight's,
+// white, not the baseline's yellow (the profile's `selection_colour`): a
+// bar's lit word is the white block the program draws, and the roster's
+// selected member, Modify's score and the seams' own selections are white
+// blocks beside it. Every "yellow" below is the selection's colour there.
 //
 // The selection already on the screen at a switch keeps its colour until
 // the program draws it again, as a face does. The icon editor's cell cursor
@@ -537,19 +541,22 @@ struct stack {
 }
 
 /// What a character is drawn in. `in_word` is whether it is in the
-/// highlighted word; `swapped` whether the bar is one of the swapped pairs.
+/// highlighted word; `swapped` whether the bar is one of the swapped pairs;
+/// `selection` the program's selection colour (program_profile.h).
 [[nodiscard]] constexpr std::uint8_t bar_colour(
     std::uint8_t character, bool in_word, std::uint8_t color_lo,
-    std::uint8_t color_hi) noexcept {
+    std::uint8_t color_hi, std::uint8_t selection) noexcept {
   const bool swapped = is_swapped(color_lo, color_hi);
   const std::uint8_t bright = swapped ? colour_white : color_hi;
   const std::uint8_t dim = swapped ? colour_green : color_lo;
   if (!is_command_letter(character)) {
-    return in_word ? colour_yellow : dim;
+    return in_word ? selection : dim;
   }
-  // The key stays the bar's bright, unless that is yellow already and the
-  // rest of the word is about to be, which would lose it.
-  return in_word && bright == colour_yellow ? colour_white : bright;
+  // The key stays the bar's bright, unless that is the selection's colour
+  // already and the rest of the word is about to be, which would lose it on
+  // the baseline. On Curse the bright and the selection are both white, and
+  // the word is one white block, as the program draws its own.
+  return in_word && bright == selection ? colour_white : bright;
 }
 
 /// What a character of a bar with one command letter is drawn in: what the
@@ -740,13 +747,14 @@ void at_bar(machine& box, seam_context& ctx, bool expect_bright,
                                           !call.trailing_blank
                                     : call.in_word;
   // A notice's capital is where its sentence starts, not a key set apart
-  // from other keys, so a lit notice is one yellow block.
+  // from other keys, so a lit notice is one block in the selection's colour.
   const std::uint8_t colour =
       call.one_command && !lit
           ? unselected_bar_colour(call.colour, call.color_lo, call.color_hi)
       : call.one_command && call.sentence
-          ? colour_yellow
-          : bar_colour(call.character, lit, call.color_lo, call.color_hi);
+          ? F.profile.selection_colour
+          : bar_colour(call.character, lit, call.color_lo, call.color_hi,
+                       F.profile.selection_colour);
   if (on_paper) {
     // The colour goes on the ink and the paper is black, as for every other
     // character: the stores make a selection a block (points 8 and 9).
@@ -776,6 +784,7 @@ void at_bar_rest(machine& box, seam_context& ctx) {
 
 template <const select_yellow_facts& F>
 void at_list_row(machine& box, seam_context& ctx) {
+  constexpr std::uint8_t selection = F.profile.selection_colour;
   const stack s = stack_of(box);
   std::uint8_t colour = s.top_byte(F.string.colour);
   std::uint8_t black = paper_of(s, F.string.paper);
@@ -800,9 +809,9 @@ void at_list_row(machine& box, seam_context& ctx) {
     // The colour goes on the ink and the paper is black, as for every other
     // string: the stores make the row a block (points 8 and 9).
     s.set_top_byte(F.string.paper, 0);
-    s.set_top_byte(F.string.colour, colour == 0 ? colour : colour_yellow);
-  } else if (colour != 0 && colour != colour_yellow) {
-    s.set_top_byte(F.string.colour, colour_yellow);
+    s.set_top_byte(F.string.colour, colour == 0 ? colour : selection);
+  } else if (colour != 0 && colour != selection) {
+    s.set_top_byte(F.string.colour, selection);
   }
 }
 
@@ -823,8 +832,11 @@ void at_selected_member(machine& box, seam_context& ctx) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
-  if (s.top_byte(F.string.colour) == colour_white) {
-    s.set_top_byte(F.string.colour, colour_yellow);
+  // White is the program's, and on a program whose selection is white it is
+  // left as it is: the store makes it a block (points 8 and 9).
+  if (s.top_byte(F.string.colour) == colour_white &&
+      F.profile.selection_colour != colour_white) {
+    s.set_top_byte(F.string.colour, F.profile.selection_colour);
   }
 }
 
@@ -834,7 +846,7 @@ void at_selected_member(machine& box, seam_context& ctx) {
 /// "highlighted", green when it did not. Anything else is not the routine
 /// these facts describe.
 void choose_score_colour(machine& box, seam_context& ctx, std::uint16_t local,
-                         bool may_be_yellow) {
+                         bool may_be_yellow, std::uint8_t selection) {
   const stack s = stack_of(box);
   const bool highlighted = s.byte_above_bp(score_highlighted) != 0;
   const std::uint8_t colour = s.byte_below_bp(local);
@@ -843,8 +855,7 @@ void choose_score_colour(machine& box, seam_context& ctx, std::uint16_t local,
       ctx.decline(seam_reason::point_not_recognized);
       return;
     }
-    s.cpu.write_byte(s.ss, static_cast<std::uint16_t>(s.bp - local),
-                     colour_yellow);
+    s.cpu.write_byte(s.ss, static_cast<std::uint16_t>(s.bp - local), selection);
     return;
   }
   if (colour != colour_green && !(may_be_yellow && colour == colour_yellow)) {
@@ -852,13 +863,17 @@ void choose_score_colour(machine& box, seam_context& ctx, std::uint16_t local,
   }
 }
 
+template <const select_yellow_facts& F>
 void at_ability_score(machine& box, seam_context& ctx) {
-  choose_score_colour(box, ctx, sheet_local_colour, false);
+  choose_score_colour(box, ctx, sheet_local_colour, false,
+                      F.profile.selection_colour);
 }
 
+template <const select_yellow_facts& F>
 void at_hit_points(machine& box, seam_context& ctx) {
   // A hit-point value is yellow when the character is hurt.
-  choose_score_colour(box, ctx, hit_points_local_colour, true);
+  choose_score_colour(box, ctx, hit_points_local_colour, true,
+                      F.profile.selection_colour);
 }
 
 // --- Points 8 and 9: the blitter's stores ------------------------------------
@@ -933,8 +948,9 @@ template <const select_yellow_facts& F>
                                       service::call_return_offset)) {
     return (colour & selection_mark) == selection_mark;
   }
-  // The program's, in the yellow the points above gave it.
-  if ((colour & 0xFFU) != colour_yellow) {
+  // The program's, in the selection's colour the points above gave it (or,
+  // where that is white, the program's own: the selected member).
+  if ((colour & 0xFFU) != F.profile.selection_colour) {
     return false;
   }
   const std::uint32_t summary =
@@ -1358,10 +1374,10 @@ constexpr auto select_yellow_points_of() {
         .inside_calls = true},
        {.module = F.profile.view_overlay,
         .offset = F.score_chosen,
-        .run = &at_ability_score},
+        .run = &at_ability_score<F>},
        {.module = F.profile.summary_overlay,
         .offset = F.hit_points_chosen,
-        .run = &at_hit_points},
+        .run = &at_hit_points<F>},
        {.module = F.profile.menu_overlay,
         .offset = F.bar_letter_call,
         .run = &at_bar_letter<F>},

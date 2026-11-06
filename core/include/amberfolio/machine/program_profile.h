@@ -185,6 +185,13 @@ struct program_profile {
   /// In the pick-list routine: the instruction after its call into the
   /// menu-bar routine.
   std::uint16_t pick_list_bar_return;
+  /// The colour `modern-controls` draws a selection's block in: every lit
+  /// word, list row, selected member and cursor row, its own and a seam's
+  /// (#453, #483). Yellow on the baseline, whose own highlight is letters in
+  /// the bar's bright, the colour of every key letter; on a program that
+  /// draws its highlight as a block itself, that block's colour, white
+  /// (#555).
+  std::uint8_t selection_colour;
 
   // --- In the adventure overlay ----------------------------------------------
 
@@ -450,6 +457,7 @@ inline constexpr program_profile pool_of_radiance{
     .menu_local_bar = 0x53,
     .menu_bar_capacity = 40,
     .pick_list_bar_return = 0x0FE0,
+    .selection_colour = 0x0E,
 
     .area_bar_call = 0x09D0,
     .area_bar_return = 0x09D5,
@@ -685,6 +693,7 @@ inline constexpr program_profile curse_of_the_azure_bonds{
     .menu_local_bar = 0x53,
     .menu_bar_capacity = 40,
     .pick_list_bar_return = 0x10F3,
+    .selection_colour = 0x0F,
     .area_bar_call = {},
     .area_bar_return = {},
     .view_bar_call = 0x0927,

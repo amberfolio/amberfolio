@@ -44,7 +44,7 @@ class machine;
 /// The controls, six pieces in one seam (seam_modern_controls.cpp, #473):
 /// the up and down arrows in the pick-lists, Left, Right, Return and Esc at
 /// a command bar, a cursor on the main menu, the number row's heroes, a
-/// selection as a yellow block, and the line editor's extended keys. Each piece
+/// selection as a block, and the line editor's extended keys. Each piece
 /// keeps its logic and its facts in a source of its own and hands the
 /// registration the points it owns.
 [[nodiscard]] const seam_definition& modern_controls_seam() noexcept;
@@ -86,19 +86,21 @@ inline constexpr std::size_t text_entry_point_count = 2;
 inline constexpr std::size_t aim_watch_point_count = 5;
 
 /// Curse of the Azure Bonds' points (#555), for the pieces ported to it:
-/// the list arrows, the bar keys, the hero keys, the edit keys, the
-/// selection block, text entry and the aim watch, in the order the
-/// baseline's are offered in. The main menu's cursor and the move mode are
-/// not ported (docs/modern-controls.md), and have no points there. The
-/// selection block has one row write where the baseline has two: Curse's
-/// blitter draws one page.
+/// the list arrows, the bar keys, the menu cursor, the hero keys, the edit
+/// keys, the selection block, text entry and the aim watch, in the order
+/// the baseline's are offered in. The move mode is not ported
+/// (docs/modern-controls.md), and has no points there. The selection block
+/// has one row write where the baseline has two: Curse's blitter draws one
+/// page.
 inline constexpr std::size_t curse_select_yellow_point_count = 11;
 inline constexpr std::size_t curse_modern_controls_point_count =
-    list_arrows_point_count + bar_keys_point_count + hero_keys_point_count +
-    edit_keys_point_count + curse_select_yellow_point_count +
-    text_entry_point_count + aim_watch_point_count;
+    list_arrows_point_count + bar_keys_point_count + menu_cursor_point_count +
+    hero_keys_point_count + edit_keys_point_count +
+    curse_select_yellow_point_count + text_entry_point_count +
+    aim_watch_point_count;
 [[nodiscard]] std::span<const seam_point> curse_list_arrows_points() noexcept;
 [[nodiscard]] std::span<const seam_point> curse_bar_keys_points() noexcept;
+[[nodiscard]] std::span<const seam_point> curse_menu_cursor_points() noexcept;
 [[nodiscard]] std::span<const seam_point> curse_hero_keys_points() noexcept;
 [[nodiscard]] std::span<const seam_point> curse_edit_keys_points() noexcept;
 [[nodiscard]] std::span<const seam_point> curse_select_yellow_points() noexcept;
@@ -140,8 +142,9 @@ inline constexpr std::uint16_t aim_range_shown = 2;
 /// (seam_edit_keys.cpp, #455).
 [[nodiscard]] std::span<const seam_point> edit_keys_points() noexcept;
 
-/// Every selection the player can move as a yellow block, a command's key
-/// letter as a white one (seam_select_yellow.cpp, #453, #483).
+/// Every selection the player can move as a block in the program's
+/// selection colour (yellow on the baseline, white on Curse), a command's
+/// key letter as a white one (seam_select_yellow.cpp, #453, #483).
 [[nodiscard]] std::span<const seam_point> select_yellow_points() noexcept;
 
 /// The mark a seam sets in the high half of the colour word it hands the

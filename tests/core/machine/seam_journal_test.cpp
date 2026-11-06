@@ -4616,6 +4616,21 @@ TEST(JournalReaderOnCurse, EveryLineIsHandedABlackBackground) {
   }
 }
 
+TEST(JournalReaderOnCurse, TheLogsCursorRowIsAWhiteBlockUnderModernControls) {
+  // Curse's selection is its own highlight's white, not the baseline's
+  // yellow (#555): the cursor row is white, marked a selection.
+  const curse_reader_rig r;
+  ASSERT_EQ(r.box->seams().enable("modern-controls"), seam_reason::none);
+  r.reader().note_seen(Entry(31), 1, 1, 0, 1);
+  r.open_the_log();
+  r.until_it_settles();
+  ASSERT_TRUE(r.reader().on_screen());
+  ASSERT_GE(r.curse_word(curse::string_calls), 2u);
+  EXPECT_EQ(r.nth_string(1).row, screen_first_row);
+  EXPECT_EQ(r.nth_string(1).colour, 0x800Fu);
+  EXPECT_EQ(r.nth_string(1).background, 0u);
+}
+
 TEST(JournalReaderOnCurse, ClosingIsTheComposersStubAndASpace) {
   const curse_reader_rig r;
   r.open_the_log();

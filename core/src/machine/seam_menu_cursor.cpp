@@ -64,7 +64,8 @@
 //     them, wrapping at both ends. Disabled commands are not drawn and are
 //     skipped. The cursor is drawn by the program's own string routine: the
 //     first letter of the command it moved to as a white block and the
-//     rest of the row as a yellow one, the look `select-yellow` gives every
+//     rest of the row as a block in the selection's colour (yellow here),
+//     the look `select-yellow` gives every
 //     selection: the colours are the call's, and `selection_mark` in each
 //     colour word is what has `select-yellow` invert the glyphs (docs/seams.md
 //     §10). The word it left is put back in the two colours
@@ -132,13 +133,24 @@
 // What it is not yet, at the point of definition (docs/seams.md §8.5)
 // -------------------------------------------------------------------
 //
+// **On Curse of the Azure Bonds** (#555) the loop is the same loop, in
+// overlay 18: twelve records from DGROUP `0x0553` with Human Change Classes
+// fifth, the same enable bytes at `+0x29` written the same way (Drop on and
+// Load, now the ninth record, off with a party member, the reverse without;
+// Create, Add and Exit never written), the same packed rows from `0x0C` in
+// the same colours, and the same call into the menu-bar routine with no
+// colour and raw mode set, at `0x038E` (return `0x0393`), with the bar at
+// `0x052A` and the prompt's far pointer pushed before it. Its string drawer
+// takes a paper colour, handed black. So the cursor lives where it lives on
+// Pool of Radiance, in the enable byte of Drop or Load, and the script
+// opcode that re-enters the menu (a training hall, and the end of the game)
+// reaches the same call. The cursor's row is a white block, the colour of
+// the program's own highlight (the profile's `selection_colour`).
+//
 // Nothing outstanding. The keypad's 8 and 2 are not taken (the routine
 // turns them into the movement letters itself, and the party's cursor is
 // the program's there), and nothing here is done for a screen other than
 // the main menu: the pick-lists' Up and Down are `list-arrows`.
-//
-// The row is a yellow block with a white key. The cursor's state is the
-// enable byte, as before.
 
 #include <array>
 #include <cstddef>
@@ -160,48 +172,93 @@
 namespace amberfolio::machine {
 namespace {
 
-/// The program this file's facts are about (program_profile.h): the
-/// baseline edition, and only it.
-constexpr const program_profile& profile = pool_of_radiance;
+// --- One program's facts ---------------------------------------------------
 
-// --- The party-setup loop, in the roster overlay (the profile's) --------
+/// What this piece needs to know about one program, apart from its profile
+/// (the menu overlay's read call, the roster overlay, the bar's local copy,
+/// the pushback slot, the string drawer, the selection's colour): the loop's
+/// call, the command records and the bar the loop passes.
+struct menu_cursor_facts {
+  const program_profile& profile;
 
-/// In the loop: the far call into the menu-bar routine, after the menu is
-/// drawn and the arguments are pushed.
-constexpr std::uint32_t loop_call = 0x02F8;
+  /// In the profile's `roster_overlay`: the loop's far call into the
+  /// menu-bar routine, after the menu is drawn and the arguments are pushed,
+  /// and the instruction after it, the return address the routine's frame
+  /// holds.
+  std::uint32_t loop_call;
+  std::uint16_t loop_return;
+
+  /// The command records in the data segment: where the first is, and how
+  /// many. Each is forty-two bytes, a Pascal string and, at `+0x29`, the
+  /// enable byte.
+  std::uint16_t data_records;
+  std::uint8_t record_count;
+
+  /// The two records whose enable byte the menu's redraw rewrites on every
+  /// run and of which exactly one is on: Drop, on with a party member, and
+  /// Load, on without.
+  std::uint8_t record_with_member;
+  std::uint8_t record_without_member;
+
+  /// The bar the loop hands the routine, in the data segment.
+  std::uint16_t data_bar;
+
+  /// Whether the string drawer takes the paper's colour, a word pushed
+  /// between the colour and the string (black here).
+  bool string_takes_paper;
+};
+
+/// Pool of Radiance: the baseline edition (program_profile.h). The loop is
+/// overlay 16's, eleven records from DGROUP `0x0619`, the bar at `0x05F0`.
+constexpr menu_cursor_facts pool_of_radiance_menu_cursor{
+    .profile = pool_of_radiance,
+    .loop_call = 0x02F8,
+    .loop_return = 0x02FD,
+    .data_records = 0x0619,
+    .record_count = 11,
+    .record_with_member = 1,
+    .record_without_member = 7,
+    .data_bar = 0x05F0,
+    .string_takes_paper = false};
+
+/// Curse of the Azure Bonds (#555). The loop is overlay 18's (the profile's
+/// `roster_overlay`), twelve records from DGROUP `0x0553` (Human Change
+/// Classes is the fifth), the bar at `0x052A`; Load is the ninth record.
+/// The string drawer takes the paper.
+constexpr menu_cursor_facts curse_menu_cursor{
+    .profile = curse_of_the_azure_bonds,
+    .loop_call = 0x038E,
+    .loop_return = 0x0393,
+    .data_records = 0x0553,
+    .record_count = 12,
+    .record_with_member = 1,
+    .record_without_member = 8,
+    .data_bar = 0x052A,
+    .string_takes_paper = true};
+
+/// The most records a program here has.
+constexpr std::uint8_t max_records = 12;
+static_assert(pool_of_radiance_menu_cursor.record_count <= max_records &&
+              curse_menu_cursor.record_count <= max_records);
 
 // --- The routine's frame ---------------------------------------------------
 
 constexpr std::uint16_t frame_return_ip = 2;
 constexpr std::uint16_t frame_return_cs = 4;
 
-// --- The main menu's call --------------------------------------------------
-
-/// The offset of the instruction after the loop's call into the menu-bar
-/// routine.
-constexpr std::uint16_t loop_return_offset = 0x02FD;
-
 // --- The data segment ------------------------------------------------------
 
-/// The command records: eleven, forty-two bytes each. A Pascal string
-/// (length, then the characters) and, at `+0x29`, the enable byte.
-constexpr std::uint16_t data_records = 0x0619;
+/// A command record: forty-two bytes, a Pascal string (length, then the
+/// characters) and, at `+0x29`, the enable byte.
 constexpr std::uint16_t record_stride = 0x2A;
-constexpr std::uint8_t record_count = 11;
 constexpr std::uint16_t record_enable = 0x29;
 constexpr std::uint8_t max_record_text = 0x28;
-
-/// The records of the two commands whose enable byte the menu's redraw
-/// rewrites on every run and of which exactly one is on: the second (Drop,
-/// on with a party member) and the eighth (Load, on without).
-constexpr std::uint8_t record_with_member = 1;
-constexpr std::uint8_t record_without_member = 7;
 
 /// The loop's call into the menu-bar routine, from the top of the stack:
 /// the offset and the segment of the out-parameter, the animation flag,
 /// the raw-mode flag, both bar colours, the prompt colour, and the bar's
-/// far pointer (offset, then segment). The bar is the one at DGROUP
-/// `0x05F0`.
+/// far pointer (offset, then segment). The same on both programs; Curse's
+/// routine takes the prompt's far pointer below them.
 constexpr std::uint16_t call_out_segment = 2;
 constexpr std::uint16_t call_anim = 4;
 constexpr std::uint16_t call_raw = 6;
@@ -210,7 +267,6 @@ constexpr std::uint16_t call_colour_lo = 10;
 constexpr std::uint16_t call_prompt_colour = 12;
 constexpr std::uint16_t call_bar_offset = 14;
 constexpr std::uint16_t call_bar_segment = 16;
-constexpr std::uint16_t data_bar = 0x05F0;
 constexpr std::uint16_t prompt_colour = 0x0D;
 
 /// What the cursor's byte holds with the cursor on row `r`: `cursor_base +
@@ -225,11 +281,12 @@ constexpr std::uint16_t first_row = 0x0C;
 constexpr std::uint16_t letter_column = 2;
 constexpr std::uint16_t rest_column = 3;
 
-/// The menu's colours: the first letter (white), the rest of the word
-/// (green), and the yellow the rest of the cursor's word is drawn in.
+/// The menu's colours: the first letter (white) and the rest of the word
+/// (green), on black. The cursor's word is drawn in the profile's selection
+/// colour.
 constexpr std::uint16_t colour_letter = 0x0F;
 constexpr std::uint16_t colour_rest = 0x0A;
-constexpr std::uint16_t colour_selected = 0x0E;
+constexpr std::uint16_t colour_paper = 0x00;
 
 // --- The keys, as the BIOS ring holds them: scan code high, character low --
 
@@ -260,7 +317,8 @@ constexpr std::uint16_t scan_enter = 0x1C00;
 }
 
 /// Whether this call of the menu-bar routine is the party-setup loop's.
-[[nodiscard]] bool called_from_the_main_menu(cpu::processor& cpu,
+[[nodiscard]] bool called_from_the_main_menu(const menu_cursor_facts& f,
+                                             cpu::processor& cpu,
                                              const seam_context& ctx) {
   cpu::registers& regs = cpu.regs();
   const std::uint16_t ss = regs[cpu::sreg::ss];
@@ -269,11 +327,11 @@ constexpr std::uint16_t scan_enter = 0x1C00;
       cpu.read_word(ss, static_cast<std::uint16_t>(bp + frame_return_ip));
   const std::uint16_t cs =
       cpu.read_word(ss, static_cast<std::uint16_t>(bp + frame_return_cs));
-  if (ip != loop_return_offset) {
+  if (ip != f.loop_return) {
     return false;
   }
   const std::uint16_t segment =
-      loaded_at(cpu, ctx, profile.roster_overlay.load_segment_at);
+      loaded_at(cpu, ctx, f.profile.roster_overlay.load_segment_at);
   return segment != 0 && segment == cs;
 }
 
@@ -282,7 +340,7 @@ constexpr std::uint16_t scan_enter = 0x1C00;
 /// What the menu shows: the records whose enable byte is not zero, in the
 /// order the menu draws them, and where the cursor is among them.
 struct menu_reading {
-  std::array<std::uint8_t, record_count> record{};
+  std::array<std::uint8_t, max_records> record{};
   std::uint8_t shown{0};
 
   /// The enable byte the cursor lives in, as an offset in the data segment,
@@ -291,26 +349,28 @@ struct menu_reading {
   std::uint8_t cursor_value{0};
 };
 
-[[nodiscard]] constexpr std::uint16_t record_at(std::uint8_t record) noexcept {
-  return static_cast<std::uint16_t>(data_records + (record * record_stride));
+[[nodiscard]] constexpr std::uint16_t record_at(const menu_cursor_facts& f,
+                                                std::uint8_t record) noexcept {
+  return static_cast<std::uint16_t>(f.data_records + (record * record_stride));
 }
 
-[[nodiscard]] constexpr std::uint16_t enable_at(std::uint8_t record) noexcept {
-  return static_cast<std::uint16_t>(record_at(record) + record_enable);
+[[nodiscard]] constexpr std::uint16_t enable_at(const menu_cursor_facts& f,
+                                                std::uint8_t record) noexcept {
+  return static_cast<std::uint16_t>(record_at(f, record) + record_enable);
 }
 
 /// Read the menu. False when it is not a menu these facts describe: neither
 /// or both of the two enable bytes the cursor could live in are on.
-[[nodiscard]] bool read_menu(cpu::processor& cpu, std::uint16_t ds,
-                             menu_reading& out) {
+[[nodiscard]] bool read_menu(const menu_cursor_facts& f, cpu::processor& cpu,
+                             std::uint16_t ds, menu_reading& out) {
   out = {};
-  for (std::uint8_t r = 0; r < record_count; ++r) {
-    if (cpu.read_byte(ds, enable_at(r)) != 0) {
+  for (std::uint8_t r = 0; r < f.record_count; ++r) {
+    if (cpu.read_byte(ds, enable_at(f, r)) != 0) {
       out.record[out.shown++] = r;
     }
   }
-  const std::uint16_t with_member = enable_at(record_with_member);
-  const std::uint16_t without_member = enable_at(record_without_member);
+  const std::uint16_t with_member = enable_at(f, f.record_with_member);
+  const std::uint16_t without_member = enable_at(f, f.record_without_member);
   const std::uint8_t drop = cpu.read_byte(ds, with_member);
   const std::uint8_t load = cpu.read_byte(ds, without_member);
   if ((drop != 0) == (load != 0)) {
@@ -331,9 +391,10 @@ struct menu_reading {
 }
 
 /// The record's Pascal string: its length, clamped to what a record holds.
-[[nodiscard]] std::uint8_t text_length(cpu::processor& cpu, std::uint16_t ds,
+[[nodiscard]] std::uint8_t text_length(const menu_cursor_facts& f,
+                                       cpu::processor& cpu, std::uint16_t ds,
                                        std::uint8_t record) {
-  const std::uint8_t length = cpu.read_byte(ds, record_at(record));
+  const std::uint8_t length = cpu.read_byte(ds, record_at(f, record));
   return length > max_record_text ? max_record_text : length;
 }
 
@@ -343,7 +404,8 @@ struct menu_reading {
 /// cursor is on, posted under Return's own scan code. Zero if there is
 /// nothing to answer. Declines when the letter is not one the routine's bar
 /// holds, which no menu these facts describe produces.
-[[nodiscard]] std::uint16_t letter_for_return(cpu::processor& cpu,
+[[nodiscard]] std::uint16_t letter_for_return(const menu_cursor_facts& f,
+                                              cpu::processor& cpu,
                                               seam_context& ctx,
                                               const menu_reading& menu,
                                               std::uint8_t row) {
@@ -353,12 +415,12 @@ struct menu_reading {
   const std::uint16_t bp = regs[cpu::reg16::bp];
 
   const std::uint8_t record = menu.record[row];
-  if (text_length(cpu, ds, record) == 0) {
+  if (text_length(f, cpu, ds, record) == 0) {
     ctx.decline(seam_reason::point_not_recognized);
     return 0;
   }
   const std::uint8_t letter = upper(
-      cpu.read_byte(ds, static_cast<std::uint16_t>(record_at(record) + 1U)));
+      cpu.read_byte(ds, static_cast<std::uint16_t>(record_at(f, record) + 1U)));
   if (!is_command_letter(letter)) {
     ctx.decline(seam_reason::point_not_recognized);
     return 0;
@@ -367,15 +429,15 @@ struct menu_reading {
   // The routine takes a letter that is in the bar it was handed, and reads
   // the bar from a copy in its own frame: look where it looks.
   const std::uint8_t length = cpu.read_byte(
-      ss, static_cast<std::uint16_t>(bp - profile.menu_local_bar));
-  if (length == 0 || length > profile.menu_bar_capacity) {
+      ss, static_cast<std::uint16_t>(bp - f.profile.menu_local_bar));
+  if (length == 0 || length > f.profile.menu_bar_capacity) {
     ctx.decline(seam_reason::point_not_recognized);
     return 0;
   }
   for (std::uint8_t position = 1; position <= length; ++position) {
     const std::uint8_t c = cpu.read_byte(
         ss,
-        static_cast<std::uint16_t>((bp - profile.menu_local_bar) + position));
+        static_cast<std::uint16_t>((bp - f.profile.menu_local_bar) + position));
     if (c == letter) {
       return static_cast<std::uint16_t>(scan_enter | letter);
     }
@@ -387,41 +449,48 @@ struct menu_reading {
 // --- Up and Down -----------------------------------------------------------
 
 /// One call to the program's own string drawer.
-[[nodiscard]] bool draw(seam_context& ctx, std::uint16_t image,
-                        std::uint16_t row, std::uint16_t column,
-                        std::uint16_t colour, std::uint16_t segment,
-                        std::uint16_t offset) {
+[[nodiscard]] bool draw(const menu_cursor_facts& f, seam_context& ctx,
+                        std::uint16_t image, std::uint16_t row,
+                        std::uint16_t column, std::uint16_t colour,
+                        std::uint16_t segment, std::uint16_t offset) {
+  if (f.string_takes_paper) {
+    const std::array<std::uint16_t, 6> where{column,       row,     colour,
+                                             colour_paper, segment, offset};
+    return ctx.call_program(image, f.profile.draw_string_entry, where);
+  }
   const std::array<std::uint16_t, 5> where{column, row, colour, segment,
                                            offset};
-  return ctx.call_program(image, profile.draw_string_entry, where);
+  return ctx.call_program(image, f.profile.draw_string_entry, where);
 }
 
 /// Draw the word `row` stands for the way the menu draws it: the first
 /// letter white and the rest green; or, for the cursor's row, as a
 /// selection (`selection_mark`, #483): the letter a white block and the
-/// rest a yellow one.
-[[nodiscard]] bool draw_word(seam_context& ctx, cpu::processor& cpu,
-                             std::uint16_t image, std::uint16_t ds,
-                             const menu_reading& menu, std::uint8_t row,
-                             bool selected) {
+/// rest a block in the selection's colour, yellow on the baseline and
+/// white on Curse.
+[[nodiscard]] bool draw_word(const menu_cursor_facts& f, seam_context& ctx,
+                             cpu::processor& cpu, std::uint16_t image,
+                             std::uint16_t ds, const menu_reading& menu,
+                             std::uint8_t row, bool selected) {
   const std::uint16_t mark = selected ? selection_mark : 0;
   const auto letter = static_cast<std::uint16_t>(colour_letter | mark);
   const auto rest = static_cast<std::uint16_t>(
-      (selected ? colour_selected : colour_rest) | mark);
+      (selected ? f.profile.selection_colour : colour_rest) | mark);
   const std::uint8_t record = menu.record[row];
-  const std::uint8_t length = text_length(cpu, ds, record);
+  const std::uint8_t length = text_length(f, cpu, ds, record);
   if (length == 0) {
     return true;
   }
   const auto screen_row = static_cast<std::uint16_t>(first_row + row);
 
   std::array<std::uint8_t, 2> head{
-      1, cpu.read_byte(ds, static_cast<std::uint16_t>(record_at(record) + 1U))};
+      1,
+      cpu.read_byte(ds, static_cast<std::uint16_t>(record_at(f, record) + 1U))};
   std::array<std::uint8_t, max_record_text> tail{};
   tail[0] = static_cast<std::uint8_t>(length - 1U);
   for (std::uint8_t i = 1; i < length; ++i) {
     tail[i] = cpu.read_byte(
-        ds, static_cast<std::uint16_t>(record_at(record) + 1U + i));
+        ds, static_cast<std::uint16_t>(record_at(f, record) + 1U + i));
   }
 
   std::uint16_t head_segment = 0;
@@ -436,11 +505,11 @@ struct menu_reading {
                        tail_segment, tail_offset)) {
     return false;
   }
-  if (!draw(ctx, image, screen_row, letter_column, letter, head_segment,
+  if (!draw(f, ctx, image, screen_row, letter_column, letter, head_segment,
             head_offset)) {
     return false;
   }
-  return length == 1 || draw(ctx, image, screen_row, rest_column, rest,
+  return length == 1 || draw(f, ctx, image, screen_row, rest_column, rest,
                              tail_segment, tail_offset);
 }
 
@@ -459,6 +528,7 @@ constexpr auto key_placeholder =
   return key == key_up || key == key_down || key == key_enter;
 }
 
+template <const menu_cursor_facts& F>
 void at_key_read(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   cpu::registers& regs = cpu.regs();
@@ -487,11 +557,11 @@ void at_key_read(machine& box, seam_context& ctx) {
     return;
   }
   const std::uint16_t ds = regs[cpu::sreg::ds];
-  if (cpu.read_byte(ds, profile.data_key_pushback) != 0) {
+  if (cpu.read_byte(ds, F.profile.data_key_pushback) != 0) {
     // The head of the ring is not the key about to be read.
     return;
   }
-  if (!called_from_the_main_menu(cpu, ctx)) {
+  if (!called_from_the_main_menu(F, cpu, ctx)) {
     return;
   }
   if (skips_placeholder) {
@@ -501,7 +571,7 @@ void at_key_read(machine& box, seam_context& ctx) {
   }
 
   menu_reading menu;
-  if (!read_menu(cpu, ds, menu) || menu.shown == 0) {
+  if (!read_menu(F, cpu, ds, menu) || menu.shown == 0) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
@@ -512,7 +582,7 @@ void at_key_read(machine& box, seam_context& ctx) {
       // No cursor is drawn: the program drops a Return here.
       return;
     }
-    const std::uint16_t answer = letter_for_return(cpu, ctx, menu, lit);
+    const std::uint16_t answer = letter_for_return(F, cpu, ctx, menu, lit);
     if (answer != 0) {
       cpu.write_word(bda::segment, head, answer);
     }
@@ -530,9 +600,9 @@ void at_key_read(machine& box, seam_context& ctx) {
   // before the one it leaves is put back.
   const auto image = static_cast<std::uint16_t>(ctx.image_base() >> 4U);
   const bool was_drawn = lit != menu.shown;
-  if (!draw_word(ctx, cpu, image, ds, menu, to, true) ||
+  if (!draw_word(F, ctx, cpu, image, ds, menu, to, true) ||
       (was_drawn && lit != to &&
-       !draw_word(ctx, cpu, image, ds, menu, lit, false))) {
+       !draw_word(F, ctx, cpu, image, ds, menu, lit, false))) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
@@ -551,6 +621,7 @@ void at_key_read(machine& box, seam_context& ctx) {
 /// just been drawn, or has been all along; the cursor is on the screen
 /// when the enable byte it lives in says so, and when it is not the first
 /// command is lit.
+template <const menu_cursor_facts& F>
 void at_menu_drawn(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   cpu::registers& regs = cpu.regs();
@@ -569,19 +640,19 @@ void at_menu_drawn(machine& box, seam_context& ctx) {
   // mode set, in the data segment the facts name.
   const bool is_the_call =
       ds == static_cast<std::uint16_t>((ctx.image_base() >> 4U) +
-                                       profile.dgroup_paragraphs) &&
+                                       F.profile.dgroup_paragraphs) &&
       top(call_out_segment) == ss && top_byte(call_anim) == 0 &&
       top_byte(call_raw) == 1 && top_byte(call_colour_hi) == 0 &&
       top_byte(call_colour_lo) == 0 &&
       top_byte(call_prompt_colour) == prompt_colour &&
-      top(call_bar_offset) == data_bar && top(call_bar_segment) == ds;
+      top(call_bar_offset) == F.data_bar && top(call_bar_segment) == ds;
   if (!is_the_call) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
 
   menu_reading menu;
-  if (!read_menu(cpu, ds, menu) || menu.shown == 0) {
+  if (!read_menu(F, cpu, ds, menu) || menu.shown == 0) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
@@ -591,26 +662,41 @@ void at_menu_drawn(machine& box, seam_context& ctx) {
     return;
   }
   const auto image = static_cast<std::uint16_t>(ctx.image_base() >> 4U);
-  if (!draw_word(ctx, cpu, image, ds, menu, 0, true)) {
+  if (!draw_word(F, ctx, cpu, image, ds, menu, 0, true)) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
   cpu.write_byte(ds, menu.cursor_byte, cursor_base);
 }
 
-constexpr std::array<seam_point, 2> menu_cursor_point_table{
-    {{.module = profile.menu_overlay,
-      .offset = profile.menu_key_read_call,
-      .run = &at_key_read},
-     {.module = profile.roster_overlay,
-      .offset = loop_call,
-      .run = &at_menu_drawn}}};
+/// A program's two points: the key read inside the menu-bar routine, and
+/// the loop's call into it.
+template <const menu_cursor_facts& F>
+constexpr std::array<seam_point, 2> menu_cursor_points_of() {
+  return {{{.module = F.profile.menu_overlay,
+            .offset = F.profile.menu_key_read_call,
+            .run = &at_key_read<F>},
+           {.module = F.profile.roster_overlay,
+            .offset = F.loop_call,
+            .run = &at_menu_drawn<F>}}};
+}
+
+constexpr auto menu_cursor_point_table =
+    menu_cursor_points_of<pool_of_radiance_menu_cursor>();
 static_assert(menu_cursor_point_table.size() == menu_cursor_point_count);
+
+constexpr auto curse_menu_cursor_point_table =
+    menu_cursor_points_of<curse_menu_cursor>();
+static_assert(curse_menu_cursor_point_table.size() == menu_cursor_point_count);
 
 }  // namespace
 
 std::span<const seam_point> menu_cursor_points() noexcept {
   return menu_cursor_point_table;
+}
+
+std::span<const seam_point> curse_menu_cursor_points() noexcept {
+  return curse_menu_cursor_point_table;
 }
 
 }  // namespace amberfolio::machine
