@@ -79,7 +79,8 @@ constexpr std::array bar_rows{
     key_row{"Esc at Yes/No", "answer No to the question", "modern-controls"},
     key_row{"F", "on the camp bar: Fix, rest as long as the party needs",
             "encamp-fix"},
-    key_row{"the selection", "yellow: a bar's lit word, a list row, a member",
+    key_row{"the selection",
+            "a block, yellow (white in Curse): lit word, row, member",
             "modern-controls"},
 };
 
@@ -92,7 +93,8 @@ constexpr std::array menu_rows{
     key_row{"1-8 on the number row",
             "select that party member; the list shows each number",
             "modern-controls"},
-    key_row{"the cursor row", "yellow, with the command's first letter white",
+    key_row{"the cursor row",
+            "a block like every selection, its first letter white",
             "modern-controls"},
 };
 

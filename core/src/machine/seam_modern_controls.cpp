@@ -19,7 +19,9 @@
 //   * `edit-keys` (seam_edit_keys.cpp): an extended key never types a letter
 //     in the line editor.
 //   * `select-yellow` (seam_select_yellow.cpp): a selection the player can
-//     move is a yellow block, and a command's key letter a white one.
+//     move is a block, yellow on the baseline and white on Curse, the colour
+//     of that program's own highlight, and a command's key letter a white
+//     one.
 //   * `move-mode` (seam_move_mode.cpp): on the party's own bar, walking is
 //     a mode that `Move` starts and `Exit` ends, so Left and Right step the
 //     bar; `Area` is gone, the automap being the overhead view (#479).
@@ -45,8 +47,8 @@
 //     `aim-watch`'s last, at five more.
 //   * **The binary is the one the six already named**, the baseline
 //     edition (edition.h), and Curse of the Azure Bonds for the eight
-//     pieces ported to it (#555): all but the main menu's cursor, with
-//     points of their own in the definition's `programs`.
+//     pieces ported to it (#555): all of them, with points of their own
+//     in the definition's `programs`.
 //     Every piece's addresses are facts about the program they name, and a
 //     seam is unavailable against any other.
 //   * **A piece no longer asks whether another is on.** `menu-cursor` took
@@ -112,9 +114,10 @@ struct curse_point_table {
     std::size_t next = 0;
     for (const std::span<const seam_point> piece :
          {curse_list_arrows_points(), curse_bar_keys_points(),
-          curse_hero_keys_points(), curse_edit_keys_points(),
-          curse_select_yellow_points(), curse_move_mode_points(),
-          curse_text_entry_points(), curse_aim_watch_points()}) {
+          curse_menu_cursor_points(), curse_hero_keys_points(),
+          curse_edit_keys_points(), curse_select_yellow_points(),
+          curse_move_mode_points(), curse_text_entry_points(),
+          curse_aim_watch_points()}) {
       for (const seam_point& each : piece) {
         point[next++] = each;
       }
@@ -138,7 +141,8 @@ const seam_definition& modern_controls_seam() noexcept {
       .about =
           "arrows, Enter and Esc work at the game's lists, bars and menus, "
           "walking is a mode the party's bar starts and ends, the main menu "
-          "has a cursor, and a selection is a yellow block",
+          "has a cursor, and a selection is a block (yellow; white on Curse "
+          "of the Azure Bonds, its own highlight)",
       .fingerprints = modern_controls_binaries,
       .points = points.point,
       .programs = programs,
