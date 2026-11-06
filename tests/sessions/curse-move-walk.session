@@ -1,17 +1,19 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
 # The baseline for curse-move-walk-mode: slot A loaded, the opening event
-# answered, and at the adventuring bar Return, Left, Escape, Return, Left,
-# Up, the innkeeper's two screens answered, then Down, Right, Right,
-# Return and Escape. Return takes AREA and toggles the overhead view, the
-# Escapes do nothing, the two Lefts turn the party west and the Up walks
-# into the innkeeper at 6,13; Down, Right and Right turn it.
+# answered, and at the adventuring bar Return, Left, Escape, Return, then
+# a walk west into the innkeeper at 6,13, north past the street's sign at
+# 6,12, west to column 4, north past the temple's sign at 4,7 to 4,3 and
+# east to the sign at 5,3, each sign's continue prompt answered with
+# Return; then Escape, Down, Right, Right, Return and Escape. Return at the
+# bar takes AREA and toggles the overhead view, the Escapes do nothing,
+# and Down, Right and Right turn the party.
 #
 # Recorded on the Steam copy with its shipped slots A and B (games/curse-slots), at --speed 386 and --wall none.
 
-about slot A, and Return, Left, Escape, Return, Left, Up at the adventuring
-about bar, the innkeeper answered, Down, Right, Right, Return, Escape: the
-about party walks to 6,13 and turns
+about slot A, and Return, Left, Escape, Return at the adventuring bar, a walk
+about through the innkeeper and three signs' continue prompts to 5,3, then
+about Escape, Down, Right, Right, Return, Escape: the party ends at 5,3 E
 disk external
 
 dir SAVE

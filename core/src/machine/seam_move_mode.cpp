@@ -121,11 +121,18 @@
 //   * walking mode: Esc becomes `E`, and every letter but `E` is thrown away.
 //     Return is `bar-keys`' (the lit command, which is `Exit`'s `E`).
 //
-// **Any other caller of the menu-bar routine ends walking**, and lights
-// `Move` for the party's next bar, but for the two door bars (overlay 14,
-// returns `0x0EBF` and `0x0FFE`), which a walk runs into and goes on from. That is the whole of "the party arrives in
-// menu mode": a fight, camp, a shop, a script's question, View and the load
-// screen all ask through the same routine.
+// **Any other caller of the menu-bar routine that asks for a choice ends
+// walking**, and lights `Move` for the party's next bar. That is the whole
+// of "the party arrives in menu mode": a fight, camp, a shop, a script's
+// question, View and the load screen all ask through the same routine. Two
+// kinds of bar are part of the walk instead, and leave both words alone:
+// the two door bars (overlay 14, returns `0x0EBF` and `0x0FFE`), which a
+// walk runs into and goes on from, and **a notice**, a bar the routine has
+// parsed into one group (its count at `BP-0x8E`), such as the prompt a
+// script raises to wait for Return before it goes on. One command is no
+// choice; the pick-list's bar is the exception (overlay 25 `0x0FE0`),
+// because its rows are. The program's other waits for a key (a script's
+// pause, `message-pause`'s) do not go through the routine at all.
 //
 // **A party in the overhead view** when the city bar comes up (the piece
 // switched on while it was there) is put back in the 3D view: the byte is
@@ -158,8 +165,11 @@
 // and the roster is drawn again. The menu-bar routine throws away a letter
 // the bar does not hold, takes Return as the lit group's letter, and in raw
 // mode turns the digits into the keypad's letters (`8` is `H`) as the
+// baseline's does, and keeps its group count at `BP-0x8E` as the
 // baseline's does. The two door bars, in the same module, return at
-// `0x0CD7` and `0x0E16`.
+// `0x0CD7` and `0x0E16`; the pick-list's call, from inside the menu
+// overlay, at `0x10F3`. A script's continue prompt is its menu command
+// with one item, which the routine parses into one group.
 //
 // The overland is not this loop: it is a journey menu, a bar of the
 // script's, so it is "another caller" here, and the party's next bar in a
@@ -217,6 +227,12 @@ struct move_mode_facts {
   /// The door bars, locked and stuck, in the same module: a walk meets
   /// them, and answering one does not end it.
   std::span<const caller> door_callers;
+  /// The pick-list's call into the routine: a list is a choice whatever
+  /// its bar holds.
+  std::span<const caller> list_callers;
+  /// Below the routine's BP: the number of groups it parsed the bar into.
+  /// A bar of one group is a notice, not a choice (`is_a_notice()`).
+  std::uint16_t local_group_count;
   /// Below the loop's BP: its out-parameter (zero is a letter off the bar),
   /// and where the copy is made, right after the empty prompt's length
   /// byte, with room for a whole bar before the loop's own bytes.
@@ -254,11 +270,17 @@ constexpr std::array<caller, 2> pool_of_radiance_door_callers{{
      .return_offset = 0x0FFE},
 }};
 
+constexpr std::array<caller, 1> pool_of_radiance_list_callers{
+    {{.load_segment_at = por.menu_overlay.load_segment_at,
+      .return_offset = por.pick_list_bar_return}}};
+
 constexpr move_mode_facts pool_of_radiance_move_mode{
     .profile = pool_of_radiance,
     .bars = pool_of_radiance_bars,
     .party_callers = pool_of_radiance_party_callers,
     .door_callers = pool_of_radiance_door_callers,
+    .list_callers = pool_of_radiance_list_callers,
+    .local_group_count = 0x8E,
     .frame_out_flag = 0x04,
     .frame_copy = 0x32,
     .data_overhead_view = 0x6AAC};
@@ -288,10 +310,17 @@ constexpr std::array<caller, 2> curse_door_callers{{
 /// Curse of the Azure Bonds (#555). The loop's frame is the baseline's
 /// where this piece reads and writes it; the overhead view's byte is the
 /// one `A` toggles.
+/// The pick-list's call is a near call from inside the menu overlay.
+constexpr std::array<caller, 1> curse_list_callers{
+    {{.load_segment_at = curse.menu_overlay.load_segment_at,
+      .return_offset = curse.pick_list_bar_return}}};
+
 constexpr move_mode_facts curse_move_mode{.profile = curse_of_the_azure_bonds,
                                           .bars = curse_bars,
                                           .party_callers = curse_party_callers,
                                           .door_callers = curse_door_callers,
+                                          .list_callers = curse_list_callers,
+                                          .local_group_count = 0x8E,
                                           .frame_out_flag = 0x04,
                                           .frame_copy = 0x32,
                                           .data_overhead_view = 0x7228};
@@ -637,13 +666,28 @@ void at_bar_after(machine& box, seam_context& ctx) {
   return std::nullopt;
 }
 
+/// Whether the bar the routine is running is a notice: one command, such
+/// as the prompt a script raises to wait for Return before it goes on,
+/// which offers nothing to choose. A pick-list's bar is not one, however few
+/// commands it has: the rows are the choice.
+template <const move_mode_facts& F>
+[[nodiscard]] bool is_a_notice(cpu::processor& cpu, const seam_context& ctx) {
+  const cpu::registers& regs = cpu.regs();
+  const std::uint8_t groups = cpu.read_byte(
+      regs[cpu::sreg::ss],
+      static_cast<std::uint16_t>(regs[cpu::reg16::bp] - F.local_group_count));
+  return groups == 1 && !menu_bar::called_from(cpu, ctx, F.list_callers);
+}
+
 template <const move_mode_facts& F>
 void at_key_read(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   if (!menu_bar::called_from(cpu, ctx, F.party_callers)) {
-    // Another screen's bar: the walk is over, and the party's next bar
-    // lights `Move`. A door's is part of the walk.
-    if (!menu_bar::called_from(cpu, ctx, F.door_callers)) {
+    // Another screen's bar: a choice ends the walk, and the party's next
+    // bar lights `Move`. A door's bar is part of the walk, and so is a
+    // notice that only waits for a key.
+    if (!menu_bar::called_from(cpu, ctx, F.door_callers) &&
+        !is_a_notice<F>(cpu, ctx)) {
       ctx.set_scratch(scratch_walking, 0);
       ctx.set_scratch(scratch_arrived, 0);
     }

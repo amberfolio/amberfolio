@@ -175,9 +175,9 @@ slot A, and Up, Up, Down, Down, Down walk the party's nine rows round
 both ends, where the seam-off run drops the arrows and the Return and
 its `A` asks where to add a character from; 19 of 49, from the same
 tick); and the move mode's, `curse-move-walk-mode` `contrast
-curse-move-walk` (`Move`, a turn, Escape back to the menu, a walk into
-the innkeeper, Down to Mark and View off the bar; 19 of 70, from the
-same tick); the automap's: `curse-quiet-automap` `identical curse-quiet`
+curse-move-walk` (`Move`, a turn, Escape back to the menu, a walk to
+5,3 that goes on through five continue prompts, Down to Mark and View
+off the bar; 19 of 115, from the same tick); the automap's: `curse-quiet-automap` `identical curse-quiet`
 (on, Tab never pressed) and `curse-town-map` `contrast curse-town` (Tab
 at frame 4,000 ahead of the Left there, 40 of 90 identical, divergent
 from tick 79,563,886); and the explored overlay's: `curse-quiet-explored`

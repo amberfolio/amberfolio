@@ -3,17 +3,19 @@
 # curse-move-walk's keys at the same ticks with modern-controls on (#555,
 # the move mode): the party arrives at its bar in menu mode with Move lit,
 # Return starts walking and the bar is Exit alone, the Left turns the
-# party, Escape is Exit and Move is lit again; Return walks again, the
-# Left and the Up walk into the innkeeper at 6,13, whose screens end the
-# walk; back at the bar Move is lit, Down selects Mark, the two Rights
-# step the highlight to View, Return opens it for Mark and Escape leaves.
+# party, Escape is Exit and Move is lit again; Return walks again, and
+# the walk goes on through the innkeeper's two continue prompts and the
+# three signs' (6,12, 4,7, 5,3), the bar Exit after each. Escape at 5,3
+# ends it with Move lit, Down selects Mark, the two Rights step the
+# highlight to View, Return opens it for Mark and Escape leaves.
 # The two agree until the title's bar is drawn, and differ to the end.
 #
 # Recorded on the Steam copy with its shipped slots A and B (games/curse-slots), at --speed 386 and --wall none.
 
 about modern-controls on, slot A loaded: Return on Move, a turn on the walking
-about bar, Escape back to the menu, a walk to 6,13, Down to Mark, two Rights to
-about View and Return takes it. Contrast curse-move-walk
+about bar, Escape back to the menu, Return and a walk to 5,3 that goes on
+about through five continue prompts, Escape, Down to Mark, two Rights to View
+about and Return takes it. Contrast curse-move-walk
 disk external
 contrast curse-move-walk
 

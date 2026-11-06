@@ -432,7 +432,8 @@ and the number row walk and turn as the game has them do. **Enter, Esc or
 `E` stop walking** and light `Move` again. A fight, camp, a shop, a
 script's question, View or any other screen with a bar of its own also
 brings you back to the bar with `Move` lit; the steps you take, what
-happens on a square and a locked door's question do not.
+happens on a square, a locked door's question and a message that only
+waits for Enter (a sign, a line of story) do not.
 
 **What it changes.** `Area`, the game's overhead view, is gone: the
 automap (Tab) is the overhead view, and with the automap off there is
