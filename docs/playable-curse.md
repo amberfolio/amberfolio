@@ -21,7 +21,7 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
 No `--install`: a Steam copy is recognized and laid out at `\CURSE`, a
 GOG copy at the root (`docs/hosts.md` §2c). No seam is needed to play;
 those available on this program are the debug cheats, the code wheel,
-the text faces, the message pause, the journal, `modern-controls` (eight
+the text faces, the message pause, the journal, `modern-controls` (nine
 of its pieces) and the automap, each with its facts in `docs/seams.md`
 §10, and the explored overlay (`docs/explored-overlay.md`). The
 legs below answer the challenge themselves; with `--seam code-wheel
@@ -160,6 +160,18 @@ and the walk draws the street into it; every `PRESS RETURN`, the
 shopkeeper's question and the shop's bar take it away until the
 party's bar is back, and a second `Tab` puts the roster back
 (`docs/seams.md` §10). Recorded as `curse-town-map`.
+
+**The move mode.** With `modern-controls` on, the party's bar is
+`MOVE CAST VIEW ENCAMP SEARCH LOOK` with `MOVE` lit, and the arrows step
+it and the party list instead of walking: `Return` on `MOVE` makes the
+bar `EXIT` alone, and the arrows walk until `Return`, `Escape` or `E`,
+or a screen of the game's own, brings the menu back. So a walk with the
+seam on needs a `Return` before it. From the opening, `Return Left
+Escape Return Left Up Return Return Down Right Right Return Escape`
+takes `MOVE`, turns, goes back to the menu, walks into the innkeeper,
+selects Mark and opens View for him (`curse-move-walk-mode`); with the
+seam off the same keys toggle the overhead view, walk into the
+innkeeper and turn (`curse-move-walk`).
 
 Walking west at `1,14`, a group of royal guards turns the party back:
 the way is closed until the royal carriage comes. Leg 7 is what brings
@@ -389,6 +401,8 @@ lines, at `--speed 386` and `--wall none`:
 | `curse-name-arrows` | `curse-slots` | `modern-controls` | `contrast curse-name-keys` |
 | `curse-menu-keys` | `curse-slots` | none | |
 | `curse-menu-cursor` | `curse-slots` | `modern-controls`, the main menu's cursor moved and taken | `contrast curse-menu-keys` |
+| `curse-move-walk` | `curse-slots` | none | |
+| `curse-move-walk-mode` | `curse-slots` | `modern-controls`, the move mode | `contrast curse-move-walk` |
 
 ```sh
 python3 scripts/sweep.py --game-disk games/curse-slots --game-disk games/curse-saved \

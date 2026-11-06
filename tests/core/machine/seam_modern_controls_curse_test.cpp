@@ -122,6 +122,8 @@ constexpr std::uint16_t camp_bar = 0x24FD;
 constexpr std::uint16_t script_prompts = 0x1811;
 constexpr std::uint16_t yes_no = 0x1231;
 constexpr std::uint16_t adventure_bar = 0x092C;
+/// The party bar's call itself: the move mode's point before it.
+constexpr std::uint16_t party_bar_call = 0x0927;
 constexpr std::uint16_t combat_bar = 0x0947;
 constexpr std::uint16_t target_bar = 0x31CC;
 
@@ -307,8 +309,8 @@ TEST(SeamModernControlsOnCurse, IsAvailableWithThePortedPiecesPoints) {
   const std::span<const seam_point> mine =
       points_on(definition(), curse_digest());
   // list arrows 3, bar keys 1, menu cursor 2, hero keys 5, edit keys 1, the
-  // selection block 11, text entry 2, aim watch 5.
-  ASSERT_EQ(mine.size(), 30U);
+  // selection block 11, the move mode 3, text entry 2, aim watch 5.
+  ASSERT_EQ(mine.size(), 33U);
   EXPECT_NE(mine.data(), definition().points.data());
 
   EXPECT_EQ(mine[0].offset, list_point);
@@ -348,14 +350,22 @@ TEST(SeamModernControlsOnCurse, IsAvailableWithThePortedPiecesPoints) {
     EXPECT_TRUE(mine[19 + i].module.is_resident_image()) << i;
     EXPECT_TRUE(mine[19 + i].inside_calls) << i;
   }
-  for (const std::size_t at : {11U, 23U, 24U}) {
+  // The move mode's: either side of the party bar's call, and the read
+  // call, the last of the five pieces there.
+  EXPECT_EQ(mine[23].offset, party_bar_call);
+  EXPECT_EQ(mine[23].module.load_segment_at, word_adventure);
+  EXPECT_EQ(mine[24].offset, adventure_bar);
+  EXPECT_EQ(mine[24].module.load_segment_at, word_adventure);
+  EXPECT_EQ(mine[25].offset, read_point);
+  EXPECT_EQ(mine[25].module.load_segment_at, word_menu);
+  for (const std::size_t at : {11U, 26U, 27U}) {
     EXPECT_TRUE(mine[at].module.is_resident_image()) << at;
   }
-  EXPECT_EQ(mine[23].offset, editor_entry);
-  EXPECT_EQ(mine[24].offset, editor_return);
+  EXPECT_EQ(mine[26].offset, editor_entry);
+  EXPECT_EQ(mine[27].offset, editor_return);
   for (std::size_t i = 0; i < aim_points.size(); ++i) {
-    EXPECT_EQ(mine[25 + i].offset, aim_points[i]) << i;
-    EXPECT_EQ(mine[25 + i].module.load_segment_at, word_aim) << i;
+    EXPECT_EQ(mine[28 + i].offset, aim_points[i]) << i;
+    EXPECT_EQ(mine[28 + i].module.load_segment_at, word_aim) << i;
   }
   EXPECT_EQ(r.box->seams().enable(seam_id), seam_reason::none);
 }
@@ -386,9 +396,10 @@ TEST(SeamModernControlsOnCurse, UpAndDownBecomeHomeAndEndAtThePartyBars) {
   EXPECT_EQ(r.press(ring_up, camp_segment, camp_bar), ring_home);
   EXPECT_EQ(r.press(ring_down, camp_segment, camp_bar), ring_end);
   EXPECT_EQ(r.press(ring_down, script_segment, script_prompts), ring_end);
-  // The adventuring bar walks with them.
-  EXPECT_EQ(r.press(ring_up, adventure_segment, adventure_bar), ring_up);
-  EXPECT_EQ(r.press(ring_down, adventure_segment, adventure_bar), ring_down);
+  // At the adventuring bar the move mode, in menu mode, makes them the
+  // same two.
+  EXPECT_EQ(r.press(ring_up, adventure_segment, adventure_bar), ring_home);
+  EXPECT_EQ(r.press(ring_down, adventure_segment, adventure_bar), ring_end);
 }
 
 // --- The bar keys ------------------------------------------------------------
@@ -398,9 +409,10 @@ TEST(SeamModernControlsOnCurse, LeftAndRightStepABarButNotWhereTheyMove) {
   r.arm();
   EXPECT_EQ(r.press(ring_left, camp_segment, camp_bar), ring_comma);
   EXPECT_EQ(r.press(ring_right, camp_segment, camp_bar), ring_period);
-  // The party turns, the fighter moves, the target bar goes to the manual
-  // aim: all three keep the arrows.
-  EXPECT_EQ(r.press(ring_left, adventure_segment, adventure_bar), ring_left);
+  // The fighter moves and the target bar goes to the manual aim: both keep
+  // the arrows. The party's bar keeps them from this piece, and the move
+  // mode, in menu mode, makes them its own steps.
+  EXPECT_EQ(r.press(ring_left, adventure_segment, adventure_bar), ring_comma);
   EXPECT_EQ(r.press(ring_right, combat_segment, combat_bar), ring_right);
   EXPECT_EQ(r.press(ring_right, aim_segment, target_bar), ring_right);
 }

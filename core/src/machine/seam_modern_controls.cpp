@@ -47,8 +47,8 @@
 //     `aim-watch`'s last, at five more.
 //   * **The binary is the one the six already named**, the baseline
 //     edition (edition.h), and Curse of the Azure Bonds for the eight
-//     pieces ported to it (#555): all but the move mode, with points of
-//     their own in the definition's `programs`.
+//     pieces ported to it (#555): all of them, with points of their own
+//     in the definition's `programs`.
 //     Every piece's addresses are facts about the program they name, and a
 //     seam is unavailable against any other.
 //   * **A piece no longer asks whether another is on.** `menu-cursor` took
@@ -116,7 +116,8 @@ struct curse_point_table {
          {curse_list_arrows_points(), curse_bar_keys_points(),
           curse_menu_cursor_points(), curse_hero_keys_points(),
           curse_edit_keys_points(), curse_select_yellow_points(),
-          curse_text_entry_points(), curse_aim_watch_points()}) {
+          curse_move_mode_points(), curse_text_entry_points(),
+          curse_aim_watch_points()}) {
       for (const seam_point& each : piece) {
         point[next++] = each;
       }

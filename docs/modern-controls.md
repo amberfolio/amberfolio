@@ -25,7 +25,7 @@ to pull.
 | hero keys | `seam_hero_keys.cpp` | at the main menu, the number row's 1 to 8 select a member and the party list shows each number | 5 |
 | edit keys | `seam_edit_keys.cpp` | an extended key types nothing at a text prompt | 1 |
 | selection block | `seam_select_yellow.cpp` | every selection a block, yellow (white on Curse of the Azure Bonds), a key letter a white one, with a margin all round | 11 |
-| move mode | `seam_move_mode.cpp` | on the party's own bar walking is a mode: `Move` starts it, `Exit` ends it, and in between Left and Right step the bar; `Area` is gone | 5 |
+| move mode | `seam_move_mode.cpp` | on the party's own bar walking is a mode: `Move` starts it, `Exit` ends it, and in between Left and Right step the bar; `Area` is gone | 5 (3 on Curse) |
 | text entry | `seam_text_entry.cpp` | nothing on the screen: a host can ask whether the program is reading a line of text | 2 |
 | aim watch | `seam_aim_watch.cpp` | nothing on the screen: a host's scene says where the combat aim cursor is, who is under it and the range | 5 |
 
@@ -50,11 +50,11 @@ summed over the pieces.
   count with every seam on is sixty-eight, one face counted (`max_points` is
   ninety-six).
 - **Two programs, several modules.** Every piece keys on the baseline
-  edition (`docs/seams.md` §5), and eight of them on Curse of the Azure Bonds too, with
+  edition (`docs/seams.md` §5), and nine of them on Curse of the Azure Bonds too, with
   points of their own (below), so the definition names both. The modules are the
   pieces': overlay 25 for five of them, overlay 16 for the menu cursor's loop
   call, overlay 19 for Modify's score, overlay 14 for the move mode's party
-  bar, overlay 13 for the aim watch, the resident image for the rest, and
+  bar (15 on Curse), overlay 13 for the aim watch, the resident image for the rest, and
   each point names its own.
 - **A piece cannot ask another.** The menu cursor took its colours from the
   selection colour; with the two one seam the answer is always yes and the
@@ -91,17 +91,18 @@ one definition) and each piece's suite.
 
 **On Curse of the Azure Bonds** (#555) the seam is available with eight
 of its pieces: the list arrows, the bar keys, the menu cursor, the hero
-keys, the edit keys, the selection block, text entry and the aim watch,
-each the same mechanism with that program's facts in a row of its own
-(`list_arrows_facts`, `bar_keys_facts`, `menu_cursor_facts`,
-`hero_keys_facts`, `edit_keys_facts`, `select_yellow_facts`,
-`text_entry_facts`, `aim_watch_facts`, and `party_select::facts` for the
-bars that are not raw) and its points in the definition's `programs`,
-thirty of them, in the baseline's order. The facts more than one piece
-reads are the profile's (`program_profile.h`): among them the party
-summary's module (`summary_overlay`: the roster drawer, the hit points'
-draw and the picker, resident on Pool of Radiance and overlay 25 here),
-the roster drawer's stub entry (`screen_paragraph`, `roster_draw_offset`),
+keys, the edit keys, the selection block, the move mode, text entry and
+the aim watch, each the same mechanism with that program's facts in a
+row of its own (`list_arrows_facts`, `bar_keys_facts`,
+`menu_cursor_facts`, `hero_keys_facts`, `edit_keys_facts`,
+`select_yellow_facts`, `move_mode_facts`, `text_entry_facts`,
+`aim_watch_facts`, and `party_select::facts` for the bars that are not
+raw) and its points in the definition's `programs`, thirty-three of
+them, in the baseline's order. The facts more than one piece reads are
+the profile's (`program_profile.h`): among them the party summary's
+module (`summary_overlay`: the roster drawer, the hit points' draw and
+the picker, resident on Pool of Radiance and overlay 25 here), the
+roster drawer's stub entry (`screen_paragraph`, `roster_draw_offset`),
 the character sheet's module (`view_overlay`), the save slots'
 (`slots_overlay`) and the colour of a selection (`selection_colour`:
 white here, the program's own highlight, where the baseline's is
@@ -170,7 +171,7 @@ The bar keys' callers that keep Left and Right:
 
 | caller | module (word) | return offset | what an arrow does there |
 | --- | --- | --- | --- |
-| the adventuring bar | overlay 15 (`0x9A0`) | `0x092C` | turns the party |
+| the adventuring bar | overlay 15 (`0x9A0`) | `0x092C` | turns the party; in menu mode the move mode makes them `,` and `.` itself, after this piece has passed |
 | the combat command bar | overlay 9 (`0x580`) | `0x0947` | **starts a move in that direction**, which Pool of Radiance's bar does not: the bar keeps the arrows' scan codes and hands them to the move |
 | the combat move loop | overlay 9 | `0x0C17` | moves the fighter |
 | the target bar (`Aim:`) | overlay 14 (`0x8E0`) | `0x31CC` | **goes to the manual aim**, which Pool of Radiance's target bar (not raw there) does not |
@@ -245,9 +246,7 @@ and out, whose caller does not say which screen is behind them.
   is drawn (the facts are in the menu cursor's section). The bar of
   thirteen letters the loop hands the routine is only its key table, with
   no colour, as on Pool of Radiance.
-- **Not ported, and why.** The move mode: Curse's party bar is one call, six
-  commands with `Area` first, and the overland is a journey menu, not a
-  walk. And Modify's name field, which Curse's editor has and Pool of
+- **Not ported, and why.** Modify's name field, which Curse's editor has and Pool of
   Radiance's does not: its highlight is a line of its own with a cursor
   letter, drawn in the program's colours.
 - **Driven, the pieces this port added**, on the Steam copy, slot A,
@@ -279,9 +278,8 @@ and out, whose caller does not say which screen is behind them.
   the question stays); at creation Down lights `ELF` at `PICK RACE` and
   Down, Up, Down step the class list; `T`, Right, `O`, Up, `R`, Down,
   `K`, Left saves `TORK` (seam off `TMOHRPKK`); View's Trade opens the
-  picker, and Down, Down, Up select Mark, Travis, Mark; the walk from
-  the opening room to the tavern and Right and Left at the brawl's
-  command bar give the same stills on and off (35 of 35), the Right
+  picker, and Down, Down, Up select Mark, Travis, Mark; Right and Left
+  at the brawl's command bar give the same stills on and off, the Right
   starting Travis's move. The aim watch, read from the seam's words:
   target mode with the range shown at the target bar, manual after `M`,
   none after a key; text entry reading at `CHARACTER NAME:` and not
@@ -290,12 +288,16 @@ and out, whose caller does not say which screen is behind them.
   menu's cursor, the numbers and the block, so there is no `identical`
   for the seam here either: `curse-quiet-controls` `contrast curse-quiet`
   (19 of 58, then divergent from tick 48,382,638, the title's bar, the
-  first highlight drawn, where the block's margin is the difference);
-  `curse-camp-arrows` `contrast curse-camp-keys` (19 of 81),
-  `curse-name-arrows` `contrast curse-name-keys` (19 of 118) and
-  `curse-menu-cursor` `contrast curse-menu-keys` (19 of 49), from the
-  same tick. Each is its baseline's keys at their ticks, recorded again
-  with the seam on. Unit: `SeamModernControlsOnCurse.*`,
+  first highlight drawn, where the block's margin is the difference;
+  `curse-quiet`'s two Lefts and its Up at the party's bar step the
+  highlight to `Search` and select Philippe, its Returns take `Search`,
+  and the party stays at 7,13); `curse-camp-arrows` `contrast
+  curse-camp-keys` (19 of 81), `curse-name-arrows` `contrast
+  curse-name-keys` (19 of 118) and `curse-menu-cursor` `contrast
+  curse-menu-keys` (19 of 49), from the same tick. Each is its
+  baseline's keys at their ticks, recorded again with the seam on; the
+  move mode's pair is in its section. Unit: `SeamModernControlsOnCurse.*`,
+  `SeamMoveModeOnCurse.*`,
   `JournalReaderOnCurse.TheLogsCursorRowIsAWhiteBlockUnderModernControls`,
   `SeamCallProgram.FindsAnInsideCallsPointInAModuleTheProgramMoves`.
 
@@ -1755,6 +1757,58 @@ checkpoints identical, divergent from the first main-menu frame; the
 seam-on half walks once in walking mode, comes back to the menu and opens
 View off the bar, where the seam-off half walks and turns. Off, the engine
 is not consulted (`docs/seams.md` §7). Unit: `SeamMoveMode.*`.
+
+**On Curse of the Azure Bonds** (#555) the party's bar in a town or a
+dungeon has the same two modes, with that program's facts in a row of its
+own (`move_mode_facts`, `curse_move_mode`) and three points: either side
+of the bar's one call, and the key read, the last of the four pieces
+there. Each fact was read from the instruction's bytes in the store
+copy's `GAME.OVR` and image.
+
+| fact | Pool of Radiance | Curse of the Azure Bonds |
+| --- | --- | --- |
+| the adventuring input routine | overlay 14 (`0x730`) `0x0989` | overlay 15 (`0x9A0`) `0x08DF`, a frame of `0x13C` bytes |
+| the party's bars: string; call and return | the city's `0x04B6`, `0x09D0` and `0x09D5`; the wilderness's `0x04DF`, `0x0C40` and `0x0C45` | **one**, `0x03D8`, `0x0927` and `0x092C`, which the overhead view keeps too: `Area` first, so `Move` takes its place as in the city, and the highlight's numbering is the program's |
+| the frame: out-parameter, prompt, the copy | `BP-0x04`, `BP-0x33`, `BP-0x32` | the same. The copy's bytes, `BP-0x32` to `BP-0x0A`, overlap only View's buffer (`BP-0x2E` on), which View empties before it reads it |
+| a letter off the bar | `A`, `C`, `V`, `E` (camp), `S`, `L`; nothing else | `A` (the overhead view, or `Not Here`), `C`, `V`, `E` (camp), `S`, `L`; nothing else, so `M` and `-` go round the loop |
+| a raw key | `H`, `K`, `M`, `P` walk and turn; anything else to the party cursor. A typed letter not on the bar comes back raw | `H` walks, `K` and `M` turn, `P` turns round; anything else to the party cursor (overlay 20 `0x32CF`) and the roster is drawn again. **A typed letter not on the bar is thrown away by the routine itself** |
+| the digits, raw | through the table at `0x288C` | through the table at `0x27D0`, the same keypad layout |
+| Return at the bar | `bar-keys`' Enter table | the routine's own: the lit group's letter, `M` on `Move` and `E` on `Exit` |
+| Esc at the bar | the program's | handed back as `0`, which the loop goes round on; walking, the piece makes it `E` |
+| the overhead view | `0x6AAC` | `0x7228`. The composer (`0x00ED:0x00CF`) clears it itself in the adventuring mode and draws the 3D view |
+| the door bars | `0x0EBF`, `0x0FFE` | `0x0CD7`, `0x0E16` |
+| the highlight | `0x6B2B` | `0x72AE` |
+
+- **The overland is not a walk.** Curse's travel mode is a journey menu,
+  a bar of the script's (`ENTER CITY`, `JOURNEY ON`, `CAMP`), which is
+  another caller to this piece: it has no `Move`, Left and Right step it
+  (the bar keys), and it ends a walk. The party's next bar in a town or a
+  dungeon is in menu mode with `Move` lit.
+- **The automap and the journal** need nothing new. Curse's automap names
+  the party's bar by the call's far return as well as by the pointer
+  (`note_one_bar`: `0x092C` in the segment overlay 15's word names), so
+  Tab opens the panel over the copy; the journal splices `Notes` into the
+  program's string before the copy is made and takes it out after, so the
+  menu bar carries it and the walking one does not.
+- **Driven** on the Steam copy, slot A, with the journal and the automap
+  on: at the opening room `Move` is lit; Tab opens the panel, Down does
+  nothing behind it, Tab gives the roster back with Mathew selected and
+  Down selects Mark; Return gives `EXIT` alone, Escape the menu with
+  `Move` lit; `N` opens the journal and its Exit gives the bar back; Left
+  wraps to `NOTES`, Return opens it, and the bar comes back with `Move`
+  lit. In the pair below, Return on `Move`, Left and Left turn the party
+  west and Up walks into the innkeeper at 6,13, whose screens end the
+  walk. On the overland (slot D of `curse-wild`) Right, Right and Left
+  step the journey bar, which is the program's.
+- **Not driven**: a party in the overhead view when the bar comes up
+  (the piece switched on there); the unit suite pins the clearing.
+- **Fidelity**: `curse-move-walk-mode` `contrast curse-move-walk`, 19 of
+  70 checkpoints identical, divergent from tick 48,382,638, the title's
+  bar. The seam-on half takes `Move`, turns, comes back to the menu on
+  Escape, walks into the innkeeper, selects Mark with Down, and opens
+  View for him with Right, Right and Return, where the seam-off half
+  toggles the overhead view, walks into the innkeeper and turns. Unit:
+  `SeamMoveModeOnCurse.*`.
 
 ## Text entry (#504)
 
