@@ -403,6 +403,13 @@ struct automap_facts {
   /// Whether the overland is recorded from this seam's poll as well
   /// (`observe_overland()`, M5-E5b).
   bool records_overland;
+
+  /// Whether a door on the party's own square is drawn over the party's
+  /// mark (`render()`). The mark's black square covers the inner row of
+  /// the two-pixel leaf, so a door beside the party showed as one yellow
+  /// pixel row against the wall (#555). Off on Pool of Radiance, whose
+  /// panel keeps the pixels its sessions pin.
+  bool doors_over_party;
 };
 
 /// Pool of Radiance: the baseline edition (program_profile.h). The
@@ -421,7 +428,8 @@ constexpr automap_facts pool_of_radiance_automap{
     .roster_call_paragraph = pool_of_radiance.screen_paragraph,
     .roster_call_offset = pool_of_radiance.roster_draw_offset,
     .note_bar = &note_command_bar,
-    .records_overland = true};
+    .records_overland = true,
+    .doors_over_party = false};
 
 /// Where the bar is in the menu-bar routine's frame at the thunk's entry:
 /// the far return on top, then eleven words of arguments, the bar's far
@@ -465,15 +473,16 @@ void note_one_bar(machine& box, const seam_context& ctx, std::uint16_t ds) {
 
 /// Curse of the Azure Bonds (#555). The renderer's tables are Pool of
 /// Radiance's, at their own offsets, and the ground is a byte the program
-/// sets to dark grey on this adapter. No place tables (`no_places()`):
-/// every map is `AREA <n>` and a door is a kind seen shut on the map. The
-/// roster drawer is overlaid (the profile's `summary_overlay`), so the
+/// sets to dark grey on this adapter. Its place tables are a door table
+/// and nothing else (`curse_of_the_azure_bonds_places()`): every map is
+/// `AREA <n>`. A door on the party's own square is drawn over its mark
+/// (`render()`). The roster drawer is overlaid (the profile's `summary_overlay`), so the
 /// give-back calls its resident stub entry at the stub's own paragraph, the
 /// profile's `screen_paragraph` and `roster_draw_offset` (docs/seams.md
 /// §8.4, #526). Its overland is a journey menu, recorded by nobody here.
 constexpr automap_facts curse_automap{
     .profile = curse_of_the_azure_bonds,
-    .places = &map_format::no_places,
+    .places = &map_format::curse_of_the_azure_bonds_places,
     .data_shape_tiles = 0x721C,
     .data_shape_first_slot = 0x0ADA,
     .data_shape_columns = 0x0AE4,
@@ -485,7 +494,8 @@ constexpr automap_facts curse_automap{
     .roster_call_paragraph = curse_of_the_azure_bonds.screen_paragraph,
     .roster_call_offset = curse_of_the_azure_bonds.roster_draw_offset,
     .note_bar = &note_one_bar<curse_of_the_azure_bonds>,
-    .records_overland = false};
+    .records_overland = false,
+    .doors_over_party = true};
 
 /// Curse's roster drawer's `retf 4`, in the profile's `summary_overlay`.
 constexpr std::uint16_t curse_roster_drawn_return = 0x092E;
@@ -983,6 +993,46 @@ void draw_mark(panel_pixels& panel, int x0, int y0,
   }
 }
 
+/// A door's leaf on the party's own square, after the party's mark: the
+/// same two-pixel leaf `stroke()` draws, but under the mark's white, so
+/// the arrow stays whole and the door beside it reads as a door.
+void leaf_beside_mark(panel_pixels& panel, int x0, int y0,
+                      unsigned lane) noexcept {
+  const auto cell = static_cast<int>(automap_cell_pixels);
+  constexpr int leaf_thick = 2;
+  constexpr int leaf_inset = 1;
+  for (int t = 0; t < leaf_thick; ++t) {
+    for (int i = leaf_inset; i < cell - leaf_inset; ++i) {
+      int x = x0 + i;
+      int y = y0 + t;
+      switch (lane) {
+        case lane_north:
+          break;
+        case lane_south:
+          y = y0 + cell - 1 - t;
+          break;
+        case lane_west:
+          x = x0 + t;
+          y = y0 + i;
+          break;
+        default:
+          x = x0 + cell - 1 - t;
+          y = y0 + i;
+          break;
+      }
+      if (x < 0 || y < 0 || x >= panel_width || y >= panel_height) {
+        continue;
+      }
+      const std::size_t at_pixel =
+          (static_cast<std::size_t>(y) * automap_panel_width) +
+          static_cast<std::size_t>(x);
+      if (panel[at_pixel] != colour_white) {
+        panel[at_pixel] = colour_door;
+      }
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // The zone label (M5-E2b)
 // ---------------------------------------------------------------------------
@@ -1355,10 +1405,20 @@ void render(const automap_facts& f, automap_state& state,
     }
   }
 
-  // The party last, so nothing is ever drawn over it.
-  draw_mark(panel, static_cast<int>(px & 0x0FU) * cell,
-            static_cast<int>(py & 0x0FU) * cell, arrow_for(facing),
-            colour_white);
+  // The party last, so nothing is ever drawn over it but its own
+  // square's doors, where the program's row says so.
+  const int party_x0 = static_cast<int>(px & 0x0FU) * cell;
+  const int party_y0 = static_cast<int>(py & 0x0FU) * cell;
+  draw_mark(panel, party_x0, party_y0, arrow_for(facing), colour_white);
+  if (f.doors_over_party) {
+    for (const unsigned lane : lanes) {
+      if (map_format::border_of(grid, px & 0x0FU, py & 0x0FU, lane, doors,
+                                seen_kinds)
+              .kind == map_format::border_kind::door) {
+        leaf_beside_mark(panel, party_x0, party_y0, lane);
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1671,17 +1731,25 @@ enum class claimable : std::uint8_t {
 /// *before* it is queued: when the batch finishes the engine offers this
 /// point again, and a handler that had not already recorded what it was
 /// doing would queue the same calls a second time.
+///
+/// `roster_just_drawn` is the program having drawn the roster on this
+/// very screen (`automap_state::roster_over_stranded()`), which answers
+/// the mode test below by itself: a temple's or a shop's screen is the
+/// program's shop mode, and it draws the roster there with this drawer.
 void give_the_roster_back(const automap_facts& f, machine& box,
-                          seam_context& ctx, std::uint16_t ds) {
+                          seam_context& ctx, std::uint16_t ds,
+                          bool roster_just_drawn = false) {
   const program_profile& profile = f.profile;
   automap_state& state = box.automap();
   state.set_panel_on_screen(false);
   state.set_drawn_signature(0);
+  state.set_stranded(false);
+  state.set_roster_over_stranded(false);
 
   cpu::processor& cpu = box.processor();
   const std::uint8_t mode = cpu.read_byte(ds, profile.data_game_mode);
-  if (mode != profile.mode_camp && mode != profile.mode_travel &&
-      mode != profile.mode_adventure) {
+  if (!roster_just_drawn && mode != profile.mode_camp &&
+      mode != profile.mode_travel && mode != profile.mode_adventure) {
     // Belt and braces, and the program's own rule: the roster is only
     // there to be redrawn on the modes that have one. A repaint the
     // program cannot perform would leave a corrupted screen, which is a
@@ -1713,7 +1781,9 @@ void give_the_roster_back(const automap_facts& f, machine& box,
 /// at the first poll under the party's own bar — after a successful
 /// flee the party is back on its bar with the map it had.
 ///
-/// **Only when it is really on the screen**, and that is the whole of the
+/// **Only when it is really on the screen**, or when some of it is still
+/// there around a roster the program drew over it
+/// (`automap_state::stranded()`), and that is the whole of the
 /// distinction. Everything that takes the panel's *cells* cleared them
 /// first and is drawing there: the panel has already stopped claiming
 /// them, the program will repaint the roster when it is done, and the map
@@ -1727,11 +1797,18 @@ void give_the_roster_back(const automap_facts& f, machine& box,
 [[nodiscard]] bool yield_to_the_program(const automap_facts& f, machine& box,
                                         seam_context& ctx, std::uint16_t ds) {
   const automap_state& state = box.automap();
-  if (!state.panel_open() || !state.panel_on_screen()) {
+  if (!state.panel_open()) {
     return false;
   }
-  give_the_roster_back(f, box, ctx, ds);
-  return true;
+  if (state.panel_on_screen()) {
+    give_the_roster_back(f, box, ctx, ds);
+    return true;
+  }
+  if (state.roster_over_stranded()) {
+    give_the_roster_back(f, box, ctx, ds, true);
+    return true;
+  }
+  return false;
 }
 
 /// What the panel does with a Tab it has decided is its own. True when
@@ -1943,6 +2020,8 @@ void at_key_pending(machine& box, seam_context& ctx) {
   blit(box, state);
   state.set_panel_on_screen(true);
   state.set_drawn_signature(drawn);
+  state.set_stranded(false);
+  state.set_roster_over_stranded(false);
 }
 
 /// The program is about to wait for a key. The claim happens here too,
@@ -2033,7 +2112,18 @@ void at_clear_region(machine& box, seam_context& ctx) {
     return;
   }
   if (automap_state::rect_meets_panel(bottom, right, top, left)) {
-    box.automap().set_panel_covered(true);
+    automap_state& state = box.automap();
+    // Part of a panel that is on the screen is about to go, and the rest
+    // of it stays (`automap_state::stranded()`); a clear of the whole of
+    // it leaves nothing. Either way the roster is not what is on those
+    // cells now.
+    if (automap_state::rect_covers_panel(bottom, right, top, left)) {
+      state.set_stranded(false);
+    } else if (state.panel_on_screen()) {
+      state.set_stranded(true);
+    }
+    state.set_roster_over_stranded(false);
+    state.set_panel_covered(true);
   }
 }
 
@@ -2041,7 +2131,10 @@ void at_clear_region(machine& box, seam_context& ctx) {
 /// panel's cells.
 void at_clear_screen(machine& box, seam_context& ctx) {
   (void)ctx;
-  box.automap().set_panel_covered(true);
+  automap_state& state = box.automap();
+  state.set_stranded(false);
+  state.set_roster_over_stranded(false);
+  state.set_panel_covered(true);
 }
 
 /// The party roster is on the screen again: those cells are the panel's
@@ -2049,7 +2142,13 @@ void at_clear_screen(machine& box, seam_context& ctx) {
 /// there.
 void at_roster_drawn(machine& box, seam_context& ctx) {
   (void)ctx;
-  box.automap().set_panel_covered(false);
+  automap_state& state = box.automap();
+  // The roster is on cells some of the panel is still beside: if the bar
+  // that comes up is not the party's, the give-back is owed.
+  if (state.stranded()) {
+    state.set_roster_over_stranded(true);
+  }
+  state.set_panel_covered(false);
 }
 
 // ---------------------------------------------------------------------------

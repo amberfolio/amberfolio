@@ -620,6 +620,36 @@ class automap_state {
   [[nodiscard]] bool at_command_bar() const noexcept { return at_command_bar_; }
   void set_at_command_bar(bool at) noexcept { at_command_bar_ = at; }
 
+  /// Whether some of the panel's pixels are still on the glass around a
+  /// clear that took only part of its rect (#555).
+  ///
+  /// **The roster drawer clears only the rows it writes**: a row per
+  /// member and one more, and not the header's row or anything above it
+  /// or below the party. When the program puts the roster up over a panel
+  /// that is on the screen (a temple's or a shop's screen, drawn by a
+  /// script with the party's bar gone), the first of those clears says
+  /// the cells are taken and the panel is no longer on the screen, which
+  /// is true of those rows only. The rest of the map, and the label's
+  /// first letter beside the header, stayed where they were.
+  ///
+  /// So a clear that meets the panel without covering it, while the panel
+  /// is on the screen, leaves pixels behind, and `roster_over_stranded()`
+  /// says the roster drawer has drawn over them since: the cells are the
+  /// roster's, and the give-back (the panel's rect cleared and the roster
+  /// drawn again, by the program) is what puts them right when the bar
+  /// that comes up is not the party's. Any other clear of the panel's
+  /// cells after the roster means something else is drawing there, and
+  /// the give-back is not owed. A whole screen or a whole panel cleared,
+  /// a panel drawn and a give-back made leave nothing behind.
+  [[nodiscard]] bool stranded() const noexcept { return stranded_; }
+  void set_stranded(bool left) noexcept { stranded_ = left; }
+  [[nodiscard]] bool roster_over_stranded() const noexcept {
+    return roster_over_stranded_;
+  }
+  void set_roster_over_stranded(bool over) noexcept {
+    roster_over_stranded_ = over;
+  }
+
   /// Whether a rect the program is about to clear, in its own text cells,
   /// meets the panel. Static because the region-clear point wants to
   /// answer it before it has decided to touch anything.
@@ -627,6 +657,12 @@ class automap_state {
                                              std::uint8_t right,
                                              std::uint8_t top,
                                              std::uint8_t left) noexcept;
+
+  /// Whether that rect covers every cell of the panel.
+  [[nodiscard]] static bool rect_covers_panel(std::uint8_t bottom,
+                                              std::uint8_t right,
+                                              std::uint8_t top,
+                                              std::uint8_t left) noexcept;
 
   // --- what this map looks like ----------------------------------------
   //
@@ -880,6 +916,8 @@ class automap_state {
   bool panel_open_{false};
   bool panel_on_screen_{false};
   bool panel_covered_{false};
+  bool stranded_{false};
+  bool roster_over_stranded_{false};
   bool at_command_bar_{false};
 
   bool appearance_valid_{false};

@@ -59,6 +59,39 @@ constexpr std::array<door_graphics, 19> door_table{
      {.disk = 7, .block = 1, .rows = 0x10},
      {.disk = 8, .block = 18, .rows = 0x08}}};
 
+/// Curse of the Azure Bonds' door graphics (#555), derived the same way
+/// from that program's own data: every shut face on its sixteen grids,
+/// and the wall set each grid's script loads with it. Two refinements,
+/// both facts about that data rather than choices about a picture:
+///
+///   * A block whose WALLDEF rows and tiles are the same bytes on several
+///     disks is the same pictures there (block 3 on disks 2, 3, 4 and 6;
+///     block 8 on disks 4 and 5), so a row seen shut on one of them is a
+///     door on each. Block 3's first row is Tilverton's arched doors,
+///     passable there and never shut, and shut on disks 3 and 4.
+///   * A row whose faces are mostly solid walls, with one or a few of
+///     them shut, is a wall standing in for a hidden door, not a door
+///     graphic: four rows (block 7's fourth, block 9's first two and block
+///     10's third), and the last of them is passable sixty times.
+constexpr std::array<door_graphics, 17> curse_door_table{
+    {{.disk = 2, .block = 1, .rows = 0x10},
+     {.disk = 2, .block = 2, .rows = 0x02},
+     {.disk = 2, .block = 3, .rows = 0x01},
+     {.disk = 2, .block = 4, .rows = 0x10},
+     {.disk = 3, .block = 3, .rows = 0x01},
+     {.disk = 3, .block = 5, .rows = 0x14},
+     {.disk = 3, .block = 6, .rows = 0x10},
+     {.disk = 3, .block = 7, .rows = 0x12},
+     {.disk = 4, .block = 3, .rows = 0x01},
+     {.disk = 4, .block = 8, .rows = 0x18},
+     {.disk = 4, .block = 9, .rows = 0x10},
+     {.disk = 4, .block = 10, .rows = 0x10},
+     {.disk = 4, .block = 11, .rows = 0x14},
+     {.disk = 5, .block = 8, .rows = 0x18},
+     {.disk = 5, .block = 12, .rows = 0x18},
+     {.disk = 6, .block = 3, .rows = 0x01},
+     {.disk = 6, .block = 13, .rows = 0x10}}};
+
 /// Is this face a door?
 ///
 /// A shut one always is. A passable one is a door when its nibble is a
@@ -302,7 +335,8 @@ constexpr place_tables pool_of_radiance_tables{.doors = door_table,
                                                .zones = zone_names,
                                                .sub_maps = sub_map_names,
                                                .lairs = lair_grids};
-constexpr place_tables no_tables{};
+constexpr place_tables curse_of_the_azure_bonds_tables{
+    .doors = curse_door_table, .zones = {}, .sub_maps = {}, .lairs = {}};
 
 lair_found find_lair(const place_tables& places, std::uint8_t disk,
                      std::uint8_t area, std::uint8_t geo,
@@ -335,7 +369,9 @@ const place_tables& pool_of_radiance_places() noexcept {
   return pool_of_radiance_tables;
 }
 
-const place_tables& no_places() noexcept { return no_tables; }
+const place_tables& curse_of_the_azure_bonds_places() noexcept {
+  return curse_of_the_azure_bonds_tables;
+}
 
 unsigned cell_of(unsigned x, unsigned y) noexcept {
   return ((y & 0x0FU) * automap_map_side) + (x & 0x0FU);
