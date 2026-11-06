@@ -87,21 +87,25 @@ inline constexpr std::size_t aim_watch_point_count = 5;
 
 /// Curse of the Azure Bonds' points (#555), for the pieces ported to it:
 /// the list arrows, the bar keys, the hero keys, the edit keys, the
-/// selection block, text entry and the aim watch, in the order the
-/// baseline's are offered in. The main menu's cursor and the move mode are
-/// not ported (docs/modern-controls.md), and have no points there. The
+/// selection block, the move mode, text entry and the aim watch, in the
+/// order the baseline's are offered in. The main menu's cursor is not
+/// ported (docs/modern-controls.md), and has no points there. The
 /// selection block has one row write where the baseline has two: Curse's
-/// blitter draws one page.
+/// blitter draws one page. The move mode has one party bar where the
+/// baseline has two.
 inline constexpr std::size_t curse_select_yellow_point_count = 11;
+inline constexpr std::size_t curse_move_mode_point_count = 3;
 inline constexpr std::size_t curse_modern_controls_point_count =
     list_arrows_point_count + bar_keys_point_count + hero_keys_point_count +
     edit_keys_point_count + curse_select_yellow_point_count +
-    text_entry_point_count + aim_watch_point_count;
+    curse_move_mode_point_count + text_entry_point_count +
+    aim_watch_point_count;
 [[nodiscard]] std::span<const seam_point> curse_list_arrows_points() noexcept;
 [[nodiscard]] std::span<const seam_point> curse_bar_keys_points() noexcept;
 [[nodiscard]] std::span<const seam_point> curse_hero_keys_points() noexcept;
 [[nodiscard]] std::span<const seam_point> curse_edit_keys_points() noexcept;
 [[nodiscard]] std::span<const seam_point> curse_select_yellow_points() noexcept;
+[[nodiscard]] std::span<const seam_point> curse_move_mode_points() noexcept;
 [[nodiscard]] std::span<const seam_point> curse_text_entry_points() noexcept;
 [[nodiscard]] std::span<const seam_point> curse_aim_watch_points() noexcept;
 

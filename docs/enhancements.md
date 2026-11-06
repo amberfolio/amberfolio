@@ -438,7 +438,10 @@ walking bar is `EXIT` alone, lit as any selection is: `E` a white block and
 the rest a yellow one.
 
 **Where it does not work.** Only the party's own bar has modes. Combat's
-movement and aim, and Modify, keep their arrows.
+movement and aim, and Modify, keep their arrows. In Curse of the Azure
+Bonds the party's bar in a town or a dungeon has the two modes; its
+overland is a journey menu, whose bar is the game's own, stepped with
+Left and Right.
 
 ### The selection block
 

@@ -30,7 +30,8 @@
 // --------------------------------------
 //
 // All of it addresses, offsets and key codes. Not one byte of the program
-// is reproduced here.
+// is reproduced here. Pool of Radiance's first; Curse of the Azure Bonds'
+// differences after the seam's own section.
 //
 // **The adventuring input routine** is overlay 14 `0x0989`. It reads the
 // view mode byte (`0x49FA`): mode 1 is the city, modes 2 to 4 the
@@ -136,7 +137,36 @@
 // the highlight it was entered with. They are configuration: `enable()`
 // starts them at zero, which is menu mode with `Move` to be lit.
 
+//
+//
+// On Curse of the Azure Bonds (#555)
+// ----------------------------------
+//
+// The same mechanism with that program's facts, in a row of its own. Its
+// adventuring loop (overlay 15 `0x08DF`) has **one** call into the menu-bar
+// routine (`0x0927`, the instruction after it `0x092C`), handed the one bar
+// at `0x03D8` in the data segment; the overhead view is toggled inside the
+// same loop and keeps that bar. So the bar is the shape of Pool of
+// Radiance's city bar: a first group of a capital `A` and three more, whose
+// place `Move` takes. The loop's frame is the baseline's where this piece
+// reads and writes it: the out-parameter at `BP-0x04`, the letter at
+// `BP-0x03`, the empty prompt at `BP-0x33`, and below them nothing the call
+// reads (`BP-0x2E` is View's buffer, which View clears before it reads).
+// Off the bar the loop matches `A` (the overhead view's byte, `0x7228`),
+// `C`, `V`, `E` (camp), `S` and `L`, and loops on anything else; raw, `H`
+// walks, `K`, `M` and `P` turn, and any other key goes to the party cursor
+// and the roster is drawn again. The menu-bar routine throws away a letter
+// the bar does not hold, takes Return as the lit group's letter, and in raw
+// mode turns the digits into the keypad's letters (`8` is `H`) as the
+// baseline's does. The two door bars, in the same module, return at
+// `0x0CD7` and `0x0E16`.
+//
+// The overland is not this loop: it is a journey menu, a bar of the
+// script's, so it is "another caller" here, and the party's next bar in a
+// town or a dungeon is in menu mode with `Move` lit.
+
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -158,42 +188,120 @@
 namespace amberfolio::machine {
 namespace {
 
-/// The program this file's facts are about (program_profile.h): the
-/// baseline edition, and only it.
-constexpr const program_profile& profile = pool_of_radiance;
+using menu_bar::caller;
 
-// --- The adventuring loop's module (overlay 14) ----------------------------
+// --- One program's facts ---------------------------------------------------
 
-/// The loop's out-parameter, below its BP: zero is a letter off the bar.
-constexpr std::uint16_t frame_out_flag = 0x04;
-/// Where the copy is made, below the loop's BP: right after the empty
-/// prompt's length byte (`BP-0x33`), with room for a whole bar before the
-/// loop's own bytes at `BP-0x04`.
-constexpr std::uint16_t frame_copy = 0x32;
-/// At the call: where the bar's far pointer is, above SP.
-constexpr std::uint16_t stack_bar_offset = 14;
-constexpr std::uint16_t stack_bar_segment = 16;
+/// One of the party's own bars: the adventuring loop's call into the
+/// menu-bar routine, the instruction after it, and the program's string the
+/// call is handed.
+struct party_bar {
+  std::uint16_t call;
+  std::uint16_t return_offset;
+  std::uint16_t data_bar;
+  /// Whether `Move` goes in front of the bar's first group (Pool of
+  /// Radiance's wilderness) rather than in its place, which is the overhead
+  /// view's `Area`.
+  bool inserts;
+};
 
-/// The two callers, by the instruction after their call.
-constexpr std::array<menu_bar::caller, 2> adventure_callers{{
-    {.load_segment_at = profile.adventure_overlay.load_segment_at,
-     .return_offset = profile.area_bar_return},
-    {.load_segment_at = profile.adventure_overlay.load_segment_at,
-     .return_offset = profile.view_bar_return},
+/// What this piece needs to know about one program. The modules, the read
+/// point, the routine's copy of the bar, the highlight and the pushback are
+/// the profile's.
+struct move_mode_facts {
+  const program_profile& profile;
+  /// The party's bars, each a pair of points in the adventure overlay.
+  std::span<const party_bar> bars;
+  /// The same calls as callers of the routine, by their returns.
+  std::span<const caller> party_callers;
+  /// The door bars, locked and stuck, in the same module: a walk meets
+  /// them, and answering one does not end it.
+  std::span<const caller> door_callers;
+  /// Below the loop's BP: its out-parameter (zero is a letter off the bar),
+  /// and where the copy is made, right after the empty prompt's length
+  /// byte, with room for a whole bar before the loop's own bytes.
+  std::uint16_t frame_out_flag;
+  std::uint16_t frame_copy;
+  /// The overhead view's byte, in the data segment.
+  std::uint16_t data_overhead_view;
+};
+
+// --- Pool of Radiance ------------------------------------------------------
+
+constexpr const program_profile& por = pool_of_radiance;
+
+/// The city's bar and the wilderness's, both in overlay 14.
+constexpr std::array<party_bar, 2> pool_of_radiance_bars{{
+    {.call = por.area_bar_call,
+     .return_offset = por.area_bar_return,
+     .data_bar = por.data_area_bar,
+     .inserts = false},
+    {.call = por.view_bar_call,
+     .return_offset = por.view_bar_return,
+     .data_bar = por.data_view_bar,
+     .inserts = true},
 }};
-
-/// The door bars, locked and stuck, in the same module: a walk meets them,
-/// and answering one does not end it.
-constexpr std::array<menu_bar::caller, 2> door_callers{{
-    {.load_segment_at = profile.adventure_overlay.load_segment_at,
+constexpr std::array<caller, 2> pool_of_radiance_party_callers{{
+    {.load_segment_at = por.adventure_overlay.load_segment_at,
+     .return_offset = por.area_bar_return},
+    {.load_segment_at = por.adventure_overlay.load_segment_at,
+     .return_offset = por.view_bar_return},
+}};
+constexpr std::array<caller, 2> pool_of_radiance_door_callers{{
+    {.load_segment_at = por.adventure_overlay.load_segment_at,
      .return_offset = 0x0EBF},
-    {.load_segment_at = profile.adventure_overlay.load_segment_at,
+    {.load_segment_at = por.adventure_overlay.load_segment_at,
      .return_offset = 0x0FFE},
 }};
 
-// --- The data segment ------------------------------------------------------
+constexpr move_mode_facts pool_of_radiance_move_mode{
+    .profile = pool_of_radiance,
+    .bars = pool_of_radiance_bars,
+    .party_callers = pool_of_radiance_party_callers,
+    .door_callers = pool_of_radiance_door_callers,
+    .frame_out_flag = 0x04,
+    .frame_copy = 0x32,
+    .data_overhead_view = 0x6AAC};
 
-constexpr std::uint16_t data_overhead_view = 0x6AAC;
+// --- Curse of the Azure Bonds ---------------------------------------------
+
+constexpr const program_profile& curse = curse_of_the_azure_bonds;
+
+/// The one bar, in overlay 15: `Area` first, as Pool of Radiance's city.
+constexpr std::array<party_bar, 1> curse_bars{{
+    {.call = curse.view_bar_call,
+     .return_offset = curse.view_bar_return,
+     .data_bar = curse.data_view_bar,
+     .inserts = false},
+}};
+constexpr std::array<caller, 1> curse_party_callers{{
+    {.load_segment_at = curse.adventure_overlay.load_segment_at,
+     .return_offset = curse.view_bar_return},
+}};
+constexpr std::array<caller, 2> curse_door_callers{{
+    {.load_segment_at = curse.adventure_overlay.load_segment_at,
+     .return_offset = 0x0CD7},
+    {.load_segment_at = curse.adventure_overlay.load_segment_at,
+     .return_offset = 0x0E16},
+}};
+
+/// Curse of the Azure Bonds (#555). The loop's frame is the baseline's
+/// where this piece reads and writes it; the overhead view's byte is the
+/// one `A` toggles.
+constexpr move_mode_facts curse_move_mode{.profile = curse_of_the_azure_bonds,
+                                          .bars = curse_bars,
+                                          .party_callers = curse_party_callers,
+                                          .door_callers = curse_door_callers,
+                                          .frame_out_flag = 0x04,
+                                          .frame_copy = 0x32,
+                                          .data_overhead_view = 0x7228};
+
+// --- The mechanism's constants ---------------------------------------------
+
+/// At the call: where the bar's far pointer is, above SP. The same on both
+/// programs.
+constexpr std::uint16_t stack_bar_offset = 14;
+constexpr std::uint16_t stack_bar_segment = 16;
 
 /// A bar's slot: a length byte and forty characters.
 constexpr std::uint8_t bar_capacity = 40;
@@ -242,10 +350,11 @@ enum class handed : std::uint8_t { program, menu, walking };
   return static_cast<std::uint16_t>(h);
 }
 
-[[nodiscard]] std::uint16_t data_segment(cpu::processor& cpu,
+[[nodiscard]] std::uint16_t data_segment(const move_mode_facts& f,
+                                         cpu::processor& cpu,
                                          const seam_context& ctx) noexcept {
   const std::uint16_t ds = cpu.regs()[cpu::sreg::ds];
-  return party_select::is_the_data_segment(profile, ctx, ds) ? ds : 0;
+  return party_select::is_the_data_segment(f.profile, ctx, ds) ? ds : 0;
 }
 
 [[nodiscard]] std::uint16_t at(std::uint16_t base, unsigned by) noexcept {
@@ -271,35 +380,37 @@ void put(cpu::processor& cpu, std::uint16_t segment, std::uint16_t bar,
 
 /// Whether the overhead view was on and the program has been asked to put
 /// the 3D view back. The point is offered again when the batch is done.
-[[nodiscard]] bool leave_the_overhead_view(machine& box, seam_context& ctx,
+[[nodiscard]] bool leave_the_overhead_view(const move_mode_facts& f,
+                                           machine& box, seam_context& ctx,
                                            std::uint16_t ds) {
   cpu::processor& cpu = box.processor();
-  if (cpu.read_byte(ds, data_overhead_view) == 0) {
+  if (cpu.read_byte(ds, f.data_overhead_view) == 0) {
     return false;
   }
-  cpu.write_byte(ds, data_overhead_view, 0);
+  cpu.write_byte(ds, f.data_overhead_view, 0);
   // The composer repaints the roster's cells, where the map's panel is.
   box.automap().note_panel_painted_over();
   const auto image = static_cast<std::uint16_t>(ctx.image_base() / 16U);
   const std::array<std::uint16_t, 0> nothing{};
   return ctx.call_program(
-      static_cast<std::uint16_t>(image + profile.screen_paragraph),
-      profile.screen_composer_offset, nothing);
+      static_cast<std::uint16_t>(image + f.profile.screen_paragraph),
+      f.profile.screen_composer_offset, nothing);
 }
 
 /// The bar of this mode, made in the copy at `SS:copy` from the program's
-/// bar at `DS:bar`. False, and the copy not to be used, if the program's
-/// string is not the shape the facts say.
+/// bar `b` in the data segment. False, and the copy not to be used, if the
+/// program's string is not the shape the facts say.
 [[nodiscard]] bool make_the_bar(cpu::processor& cpu, std::uint16_t ds,
-                                std::uint16_t bar, std::uint16_t ss,
-                                std::uint16_t copy, bool city, bool walking) {
+                                const party_bar& b, std::uint16_t ss,
+                                std::uint16_t copy, bool walking) {
   if (walking) {
     cpu.write_byte(ss, copy, static_cast<std::uint8_t>(word_length));
     put(cpu, ss, copy, exit_word, 1);
     return true;
   }
+  const std::uint16_t bar = b.data_bar;
   const std::uint8_t length = cpu.read_byte(ds, bar);
-  if (city) {
+  if (!b.inserts) {
     // The first group is the overhead view's: a capital and three more,
     // then a separator.
     if (length <= word_length || length > bar_capacity ||
@@ -326,9 +437,10 @@ void put(cpu::processor& cpu, std::uint16_t segment, std::uint16_t bar,
   return true;
 }
 
-void bar_before(machine& box, seam_context& ctx, std::uint16_t bar, bool city) {
+void bar_before(const move_mode_facts& f, const party_bar& b, machine& box,
+                seam_context& ctx) {
   cpu::processor& cpu = box.processor();
-  const std::uint16_t ds = data_segment(cpu, ctx);
+  const std::uint16_t ds = data_segment(f, cpu, ctx);
   if (ds == 0) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
@@ -337,7 +449,7 @@ void bar_before(machine& box, seam_context& ctx, std::uint16_t bar, bool city) {
   const std::uint16_t ss = regs[cpu::sreg::ss];
   const std::uint16_t sp = regs[cpu::reg16::sp];
   const auto copy =
-      static_cast<std::uint16_t>(regs[cpu::reg16::bp] - frame_copy);
+      static_cast<std::uint16_t>(regs[cpu::reg16::bp] - f.frame_copy);
   const std::uint16_t handed_offset =
       cpu.read_word(ss, at(sp, stack_bar_offset));
   const std::uint16_t handed_segment =
@@ -346,26 +458,27 @@ void bar_before(machine& box, seam_context& ctx, std::uint16_t bar, bool city) {
     return;  // offered again after a batch: the call carries the copy already.
   }
   ctx.set_scratch(scratch_handed, as_word(handed::program));
-  if (handed_offset != bar || handed_segment != ds) {
+  if (handed_offset != b.data_bar || handed_segment != ds) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
-  if (city && leave_the_overhead_view(box, ctx, ds)) {
+  if (!b.inserts && leave_the_overhead_view(f, box, ctx, ds)) {
     return;
   }
   const bool walking = ctx.scratch(scratch_walking) != 0;
-  if (!make_the_bar(cpu, ds, bar, ss, copy, city, walking)) {
+  if (!make_the_bar(cpu, ds, b, ss, copy, walking)) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
   cpu.write_word(ss, at(sp, stack_bar_offset), copy);
   cpu.write_word(ss, at(sp, stack_bar_segment), ss);
 
-  const std::uint8_t entered = cpu.read_byte(ds, profile.data_bar_highlight);
+  const std::uint16_t highlight = f.profile.data_bar_highlight;
+  const std::uint8_t entered = cpu.read_byte(ds, highlight);
   ctx.set_scratch(scratch_highlight, entered);
   if (walking) {
     ctx.set_scratch(scratch_handed, as_word(handed::walking));
-    cpu.write_byte(ds, profile.data_bar_highlight, 1);
+    cpu.write_byte(ds, highlight, 1);
     return;
   }
   ctx.set_scratch(scratch_handed, as_word(handed::menu));
@@ -376,19 +489,20 @@ void bar_before(machine& box, seam_context& ctx, std::uint16_t bar, bool city) {
   std::uint8_t lit = entered;
   if (ctx.scratch(scratch_move_lit) != 0) {
     lit = 1;
-  } else if (!city) {
+  } else if (b.inserts) {
     lit = static_cast<std::uint8_t>(entered + 1U);
   }
-  cpu.write_byte(ds, profile.data_bar_highlight, lit);
+  cpu.write_byte(ds, highlight, lit);
 }
 
 // --- After it comes back ---------------------------------------------------
 
-void bar_after(machine& box, seam_context& ctx, bool city) {
+void bar_after(const move_mode_facts& f, const party_bar& b, machine& box,
+               seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   const auto carried = static_cast<handed>(low_of(ctx.scratch(scratch_handed)));
   ctx.set_scratch(scratch_handed, as_word(handed::program));
-  const std::uint16_t ds = data_segment(cpu, ctx);
+  const std::uint16_t ds = data_segment(f, cpu, ctx);
   if (ds == 0 || carried == handed::program) {
     return;
   }
@@ -397,13 +511,14 @@ void bar_after(machine& box, seam_context& ctx, bool city) {
   const bool off_the_bar =
       cpu.read_byte(regs[cpu::sreg::ss],
                     static_cast<std::uint16_t>(regs[cpu::reg16::bp] -
-                                               frame_out_flag)) == 0;
+                                               f.frame_out_flag)) == 0;
   const std::uint8_t letter = regs.get(cpu::reg8::al);
   const auto entered =
       static_cast<std::uint8_t>(ctx.scratch(scratch_highlight));
+  const std::uint16_t highlight = f.profile.data_bar_highlight;
 
   if (carried == handed::walking) {
-    cpu.write_byte(ds, profile.data_bar_highlight, entered);
+    cpu.write_byte(ds, highlight, entered);
     if (off_the_bar && letter == exit_letter) {
       ctx.set_scratch(scratch_walking, 0);
       ctx.set_scratch(scratch_move_lit, 1);
@@ -415,18 +530,17 @@ void bar_after(machine& box, seam_context& ctx, bool city) {
 
   if (off_the_bar && letter == notes_letter) {
     // The journal's: the highlight is what it was before (#330).
-    cpu.write_byte(ds, profile.data_bar_highlight, entered);
+    cpu.write_byte(ds, highlight, entered);
     return;
   }
-  const std::uint8_t lit = cpu.read_byte(ds, profile.data_bar_highlight);
+  const std::uint8_t lit = cpu.read_byte(ds, highlight);
   if (lit == 1) {
     ctx.set_scratch(scratch_move_lit, 1);
-    cpu.write_byte(ds, profile.data_bar_highlight, entered);
+    cpu.write_byte(ds, highlight, entered);
   } else {
     ctx.set_scratch(scratch_move_lit, 0);
-    if (!city) {
-      cpu.write_byte(ds, profile.data_bar_highlight,
-                     static_cast<std::uint8_t>(lit - 1U));
+    if (b.inserts) {
+      cpu.write_byte(ds, highlight, static_cast<std::uint8_t>(lit - 1U));
     }
   }
   if (off_the_bar && letter == move_letter) {
@@ -434,17 +548,14 @@ void bar_after(machine& box, seam_context& ctx, bool city) {
   }
 }
 
-void at_city_before(machine& box, seam_context& ctx) {
-  bar_before(box, ctx, profile.data_area_bar, true);
+template <const move_mode_facts& F, std::size_t N>
+void at_bar_before(machine& box, seam_context& ctx) {
+  bar_before(F, F.bars[N], box, ctx);
 }
-void at_city_after(machine& box, seam_context& ctx) {
-  bar_after(box, ctx, true);
-}
-void at_wild_before(machine& box, seam_context& ctx) {
-  bar_before(box, ctx, profile.data_view_bar, false);
-}
-void at_wild_after(machine& box, seam_context& ctx) {
-  bar_after(box, ctx, false);
+
+template <const move_mode_facts& F, std::size_t N>
+void at_bar_after(machine& box, seam_context& ctx) {
+  bar_after(F, F.bars[N], box, ctx);
 }
 
 // --- The keys --------------------------------------------------------------
@@ -460,11 +571,12 @@ void at_wild_after(machine& box, seam_context& ctx) {
 
 /// Whether `letter` is one of the command letters of the bar the routine is
 /// running.
-[[nodiscard]] bool on_the_bar(cpu::processor& cpu, std::uint8_t letter) {
+[[nodiscard]] bool on_the_bar(const move_mode_facts& f, cpu::processor& cpu,
+                              std::uint8_t letter) {
   cpu::registers& regs = cpu.regs();
   const std::uint16_t ss = regs[cpu::sreg::ss];
-  const auto bar =
-      static_cast<std::uint16_t>(regs[cpu::reg16::bp] - profile.menu_local_bar);
+  const auto bar = static_cast<std::uint16_t>(regs[cpu::reg16::bp] -
+                                              f.profile.menu_local_bar);
   const std::uint8_t length = cpu.read_byte(ss, bar);
   if (length > bar_capacity) {
     return false;
@@ -479,8 +591,8 @@ void at_wild_after(machine& box, seam_context& ctx) {
 
 /// What a key becomes in menu mode: the arrows and their digits step the
 /// bar and the party, and a letter the bar does not hold is thrown away.
-[[nodiscard]] std::optional<std::uint16_t> in_menu_mode(cpu::processor& cpu,
-                                                        std::uint16_t key) {
+[[nodiscard]] std::optional<std::uint16_t> in_menu_mode(
+    const move_mode_facts& f, cpu::processor& cpu, std::uint16_t key) {
   switch (key) {
     case key_left:
       return key_comma;
@@ -506,7 +618,7 @@ void at_wild_after(machine& box, seam_context& ctx) {
       break;
   }
   const std::uint8_t c = low_of(key);
-  if (is_letter(c) && !on_the_bar(cpu, upper(c))) {
+  if (is_letter(c) && !on_the_bar(f, cpu, upper(c))) {
     return pair(key_ignored_ascii, key_ignored_scan);
   }
   return std::nullopt;
@@ -525,12 +637,13 @@ void at_wild_after(machine& box, seam_context& ctx) {
   return std::nullopt;
 }
 
+template <const move_mode_facts& F>
 void at_key_read(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
-  if (!menu_bar::called_from(cpu, ctx, adventure_callers)) {
+  if (!menu_bar::called_from(cpu, ctx, F.party_callers)) {
     // Another screen's bar: the walk is over, and the party's next bar
     // lights `Move`. A door's is part of the walk.
-    if (!menu_bar::called_from(cpu, ctx, door_callers)) {
+    if (!menu_bar::called_from(cpu, ctx, F.door_callers)) {
       ctx.set_scratch(scratch_walking, 0);
       ctx.set_scratch(scratch_arrived, 0);
     }
@@ -540,14 +653,14 @@ void at_key_read(machine& box, seam_context& ctx) {
       cpu.read_word(bda::segment, bda::keyboard_buffer_head);
   if (head == cpu.read_word(bda::segment, bda::keyboard_buffer_tail) ||
       box.journal().reader_open() ||
-      cpu.read_byte(cpu.regs()[cpu::sreg::ds], profile.data_key_pushback) !=
+      cpu.read_byte(cpu.regs()[cpu::sreg::ds], F.profile.data_key_pushback) !=
           0) {
     return;
   }
   const std::uint16_t key = cpu.read_word(bda::segment, head);
   const std::optional<std::uint16_t> answer = ctx.scratch(scratch_walking) != 0
                                                   ? in_walking_mode(key)
-                                                  : in_menu_mode(cpu, key);
+                                                  : in_menu_mode(F, cpu, key);
   if (answer) {
     cpu.write_word(bda::segment, head, *answer);
   }
@@ -556,27 +669,45 @@ void at_key_read(machine& box, seam_context& ctx) {
 // --- The definition --------------------------------------------------------
 
 constexpr std::array<seam_point, 5> move_mode_point_table{
-    {{.module = profile.adventure_overlay,
-      .offset = profile.area_bar_call,
-      .run = &at_city_before},
-     {.module = profile.adventure_overlay,
-      .offset = profile.area_bar_return,
-      .run = &at_city_after},
-     {.module = profile.adventure_overlay,
-      .offset = profile.view_bar_call,
-      .run = &at_wild_before},
-     {.module = profile.adventure_overlay,
-      .offset = profile.view_bar_return,
-      .run = &at_wild_after},
-     {.module = profile.menu_overlay,
-      .offset = profile.menu_key_read_call,
-      .run = &at_key_read}}};
+    {{.module = por.adventure_overlay,
+      .offset = pool_of_radiance_bars[0].call,
+      .run = &at_bar_before<pool_of_radiance_move_mode, 0>},
+     {.module = por.adventure_overlay,
+      .offset = pool_of_radiance_bars[0].return_offset,
+      .run = &at_bar_after<pool_of_radiance_move_mode, 0>},
+     {.module = por.adventure_overlay,
+      .offset = pool_of_radiance_bars[1].call,
+      .run = &at_bar_before<pool_of_radiance_move_mode, 1>},
+     {.module = por.adventure_overlay,
+      .offset = pool_of_radiance_bars[1].return_offset,
+      .run = &at_bar_after<pool_of_radiance_move_mode, 1>},
+     {.module = por.menu_overlay,
+      .offset = por.menu_key_read_call,
+      .run = &at_key_read<pool_of_radiance_move_mode>}}};
 static_assert(move_mode_point_table.size() == move_mode_point_count);
+
+/// Curse's three: either side of the one bar's call, and the key read.
+constexpr std::array<seam_point, 3> curse_move_mode_point_table{
+    {{.module = curse.adventure_overlay,
+      .offset = curse_bars[0].call,
+      .run = &at_bar_before<curse_move_mode, 0>},
+     {.module = curse.adventure_overlay,
+      .offset = curse_bars[0].return_offset,
+      .run = &at_bar_after<curse_move_mode, 0>},
+     {.module = curse.menu_overlay,
+      .offset = curse.menu_key_read_call,
+      .run = &at_key_read<curse_move_mode>}}};
+static_assert(curse_move_mode_point_table.size() ==
+              curse_move_mode_point_count);
 
 }  // namespace
 
 std::span<const seam_point> move_mode_points() noexcept {
   return move_mode_point_table;
+}
+
+std::span<const seam_point> curse_move_mode_points() noexcept {
+  return curse_move_mode_point_table;
 }
 
 }  // namespace amberfolio::machine
