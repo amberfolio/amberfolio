@@ -21,7 +21,7 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
 No `--install`: a Steam copy is recognized and laid out at `\CURSE`, a
 GOG copy at the root (`docs/hosts.md` §2c). No seam is needed to play;
 those available on this program are the debug cheats, the code wheel,
-the text faces, the message pause, the journal, `modern-controls` (eight
+the text faces, the message pause, the journal, `modern-controls` (nine
 of its pieces) and the automap, each with its facts in `docs/seams.md`
 §10. The
 legs below answer the challenge themselves; with `--seam code-wheel
@@ -50,8 +50,10 @@ Rules:
   `Down` turns round. **In a list, `Home` and `End` move the
   selection**, the party list and a menu's items alike; the arrows do
   nothing there (with `modern-controls` on, Up and Down do what Home and
-  End do, and Left and Right step a bar's highlight). A bar takes its command's first letter, and `Return`
-  takes the highlighted one.
+  End do, Left and Right step a bar's highlight, and at the party menu Up
+  and Down move a cursor over the commands that `Return` takes). A bar
+  takes its command's first letter, and `Return` takes the highlighted
+  one.
 - The `.txt` and `.scene.json` beside a still are the screen's text and
   the scene (`docs/hosts.md` §10, §13). Every map is `AREA <n>`: nobody
   has named Curse's places.
@@ -103,6 +105,14 @@ with no spell memorized:
 Both stand at `7,13 E` in a small room at `00:00`, and the opening event
 runs at once: two screens that `Return` answers. Recorded as
 `curse-quiet` (slot A).
+
+With `modern-controls` on the menu has a cursor, a white block on its
+first row from the first frame: `P@2500 A@2650 Return@2800 Down@2950
+Down@3100 Return@3250 A@3400` takes `LOAD SAVED GAME` by the cursor and
+loads slot A, and Up and Down then walk the party's nine rows, wrapping
+at both ends. Recorded as `curse-menu-cursor`, against the same keys
+with no seam (`curse-menu-keys`, where the arrows and the `Return` do
+nothing and the `A` asks `ADD FROM WHERE?`).
 
 ## Leg 2 — the town and a story event
 
@@ -381,6 +391,8 @@ lines, at `--speed 386` and `--wall none`:
 | `curse-camp-arrows` | `curse-slots` | `modern-controls` | `contrast curse-camp-keys` |
 | `curse-name-keys` | `curse-slots` | none | |
 | `curse-name-arrows` | `curse-slots` | `modern-controls` | `contrast curse-name-keys` |
+| `curse-menu-keys` | `curse-slots` | none | |
+| `curse-menu-cursor` | `curse-slots` | `modern-controls`, the main menu's cursor moved and taken | `contrast curse-menu-keys` |
 | `curse-move-walk` | `curse-slots` | none | |
 | `curse-move-walk-mode` | `curse-slots` | `modern-controls`, the move mode | `contrast curse-move-walk` |
 

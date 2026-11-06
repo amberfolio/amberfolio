@@ -375,7 +375,10 @@ Down** move it over the commands the menu shows, skipping none that is shown
 and wrapping at both ends, and **Return** takes the command under it, as if
 you had typed its letter. The cursor is the game's own string routine's, as a
 pick-list lights a row: the command's first letter a white block and the
-rest of the row a yellow one.
+rest of the row a yellow one. In Curse of the Azure Bonds the same menu has
+the same cursor (with Human Change Classes among its rows where the place
+trains), and its row is a white block end to end, the colour that game
+lights its own selections in.
 
 **Visible from the start.** The cursor is on the first command whenever the
 menu is drawn, so the first press moves it: Down, Down is the third command
@@ -471,6 +474,12 @@ A block is a shape, and reads whatever colours you see. With the seam on:
   row is a yellow block across the row. The lit command on the Notes
   screen's bar is a yellow block with its letter a white one, a lone
   `EXIT` included.
+- **In Curse of the Azure Bonds the block is white**, not yellow: that
+  game already lights a bar's word and a list's row as a white block, so
+  they look as it draws them, with the margin round them, and the selected
+  member, Modify's score, the menu cursor's row and the Notes screen's
+  selections are white blocks beside them. A number the hero keys draw in
+  front of a name stays white on black.
 - **A bar the game hands its colours the wrong way round** (the portrait
   screen's HEAD, BODY and KEEP bar, the temple's "pay for cure" and the
   detect-magic confirmations) is drawn like every other bar: key letters

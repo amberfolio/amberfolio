@@ -195,9 +195,10 @@
 // takes Left and Right to step it and Return to take the lit command,
 // asking the engine whether `modern-controls` is on. A page's bar is lit
 // from its first draw; the listing's is lit by the first Left or Right,
-// because Return there already opens a row. The lit word is a yellow block
-// with its key letter a white one (#483), a bar of one word included: its
-// word is what Return takes. With the seam off none of it exists.
+// because Return there already opens a row. The lit word is a block in the
+// program's selection colour (yellow on the baseline, white on Curse) with
+// its key letter a white one (#483), a bar of one word included: its word
+// is what Return takes. With the seam off none of it exists.
 //
 // **The listing is twenty rows and pages rather than scrolls** (M5-E4e,
 // #318 and #319). It filled ten rows of a twenty-row box on a reason that
@@ -639,14 +640,18 @@ constexpr std::uint16_t list_title_colour = 0x0F;
 constexpr std::uint16_t list_row_colour = 0x0A;
 
 /// The row the cursor is on is a selection the player moves, and is a
-/// yellow block while `modern-controls` is on (#453, #483: the yellow, and
-/// `selection_mark` for the block), the program's bright otherwise.
-constexpr std::uint16_t list_selected_colour = 0x0E;
+/// block in the program's selection colour while `modern-controls` is on
+/// (#453, #483: the profile's `selection_colour`, yellow on the baseline and
+/// white on Curse, and `selection_mark` for the block), the program's
+/// bright otherwise.
+[[nodiscard]] std::uint16_t selected_colour(const journal_facts& f) {
+  return static_cast<std::uint16_t>(f.profile.selection_colour |
+                                    selection_mark);
+}
 
-[[nodiscard]] std::uint16_t list_cursor_colour(const machine& box) {
-  return modern_controls_on(box)
-             ? static_cast<std::uint16_t>(list_selected_colour | selection_mark)
-             : list_title_colour;
+[[nodiscard]] std::uint16_t list_cursor_colour(const journal_facts& f,
+                                               const machine& box) {
+  return modern_controls_on(box) ? selected_colour(f) : list_title_colour;
 }
 
 /// Where the rows go. The frame puts its title on the box's first interior
@@ -1908,11 +1913,9 @@ struct bar_look {
   std::size_t lit = none;
 };
 
-/// The yellow the program draws a selection in, which the highlighted
-/// word is drawn in under `modern-controls`; its key letter is the bright.
+/// The highlighted word is drawn in the selection's colour under
+/// `modern-controls` (`selected_colour()`); its key letter is the bright.
 /// Both are drawn as blocks (`selection_mark`, #483).
-constexpr auto bar_selected_colour =
-    static_cast<std::uint16_t>(list_selected_colour | selection_mark);
 constexpr auto bar_selected_key_colour =
     static_cast<std::uint16_t>(bar_key_colour | selection_mark);
 
@@ -1997,8 +2000,8 @@ constexpr auto bar_selected_key_colour =
     if (nth == look.lit) {
       // **The highlighted command** (#471), drawn the way the program's
       // own highlight is: the word in the bright end to end, and, over
-      // that, its tail in yellow so that the key letter stays white, both
-      // as blocks (#483). A bar of one command has nothing to select
+      // that, its tail in the selection's colour so that the key letter
+      // stays white, both as blocks (#483). A bar of one command has nothing to select
       // among, but its word is what Return takes, so it is lit the same
       // way, as the program's own bars of one are.
       list_line lit;
@@ -2009,7 +2012,7 @@ constexpr auto bar_selected_key_colour =
       }
       list_line tail;
       tail.add(word.substr(1));
-      if (!draw_line(f, ctx, image, tail, bar_selected_colour, list_exit_row,
+      if (!draw_line(f, ctx, image, tail, selected_colour(f), list_exit_row,
                      static_cast<std::uint16_t>(at_column + 1U))) {
         return false;
       }
@@ -2095,7 +2098,7 @@ constexpr auto bar_selected_key_colour =
        ++drawn, ++done) {
     const journal_seen_row& row = rows[top + done];
     const std::uint16_t colour =
-        top + done == cursor ? list_cursor_colour(box) : list_row_colour;
+        top + done == cursor ? list_cursor_colour(f, box) : list_row_colour;
     const auto at_row = static_cast<std::uint16_t>(list_first_row + done);
     list_line line = list_row_text(row);
     line.pad_to(list_when_column - list_name_column);

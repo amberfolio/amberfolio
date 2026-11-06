@@ -126,7 +126,7 @@ frame that carries an input is checkpointed whatever the cadence says.
 
 ### Curse of the Azure Bonds
 
-Thirty-nine sessions, `curse-*`, on the Steam copy at `--speed 386` and
+Forty-one sessions, `curse-*`, on the Steam copy at `--speed 386` and
 `--wall none` (#554, #555). Every one is `disk external`: `curse-load` is
 pinned to the disk `curse-save` wrote (the `curse-saved` snapshot), the
 three `curse-journey` sessions to a disk with the party saved in slot D
@@ -159,21 +159,29 @@ innkeeper's entry 31 cited and logged; 39 of 133, from the same tick)
 and `curse-journey-journal` `identical curse-journey` (on, nothing
 cited, the party's bar never drawn); and
 `modern-controls`' (#555): `curse-quiet-controls` `contrast curse-quiet`
-(on, the move mode's keys at the party's bar but nobody walks: 25 of 58 identical, divergent from tick
+(on, none of its keys pressed but the move mode's at the party's bar,
+where nobody walks: 19 of 58 identical, divergent from tick
 48,382,638, the title's bar, the first highlight drawn, which is a
-yellow block; the main menu's list numbered and the selected member a
-block after it), `curse-camp-arrows` `contrast curse-camp-keys` (the
-arrows and Escape at the camp bar and its Yes/No question; 25 of 81,
-from the same tick) and `curse-name-arrows` `contrast curse-name-keys`
-(the arrows at creation's lists and in the name; 25 of 118, from the
-same tick), each the baseline's keys at its ticks with the seam on, and
-the move mode's, `curse-move-walk-mode` `contrast curse-move-walk`
-(`Move`, a turn, Escape back to the menu, a walk into the innkeeper,
-Down to Mark and View off the bar; 19 of 70, from the same tick); and the automap's: `curse-quiet-automap` `identical curse-quiet`
+white block with its margin; the main menu's cursor, its list numbered
+and the selected member a white block after it), `curse-camp-arrows`
+`contrast curse-camp-keys` (the arrows and Escape at the camp bar and
+its Yes/No question; 19 of 81, from the same tick) and
+`curse-name-arrows` `contrast curse-name-keys` (the arrows at
+creation's lists and in the name; 19 of 118, from the same tick), each
+the baseline's keys at its ticks with the seam on;
+`curse-menu-cursor` `contrast curse-menu-keys` (the main menu's cursor:
+Down, Down and Return take `LOAD SAVED GAME` with no party, `A` loads
+slot A, and Up, Up, Down, Down, Down walk the party's nine rows round
+both ends, where the seam-off run drops the arrows and the Return and
+its `A` asks where to add a character from; 19 of 49, from the same
+tick); the move mode's, `curse-move-walk-mode` `contrast
+curse-move-walk` (`Move`, a turn, Escape back to the menu, a walk into
+the innkeeper, Down to Mark and View off the bar; 19 of 70, from the
+same tick); and the automap's: `curse-quiet-automap` `identical curse-quiet`
 (on, Tab never pressed) and `curse-town-map` `contrast curse-town` (Tab
 at frame 4,000 ahead of the Left there, 40 of 90 identical, divergent
 from tick 79,563,886). The
-other eighteen are the legs with no seam: a new character, a purchase, a
+other nineteen are the legs with no seam: a new character, a purchase, a
 cure at the temple, the game's own Fix, the royal carriage, a journey
 on the overland map, and the rest. Each verifies on the desktop host and on the wasm module
 (`drive.mjs --install '\CURSE' --replay`).
@@ -190,7 +198,7 @@ on the overland map, and the rest. Each verifies on the desktop host and on the 
 | `journal` | `reader`, `notes`, `cite`; on Curse `curse-notes`, `curse-cite` | `quiet-journal` (a `contrast`); on Curse `curse-quiet-journal` (a `contrast`) and `curse-journey-journal` (an `identical`: the party's bar is never drawn) |
 | `explored` | `wild-trail` | `quiet-explored` |
 | the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party`; on Curse `curse-fight-cheat`, `curse-fight-kill`, `curse-camp-wound` | `quiet-cheats`; on Curse `curse-quiet-cheats` |
-| `modern-controls` | `list-down-arrows`, `camp-down-arrows`, `camp-pad-arrows`, `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys`, `bar-esc-keys`, `bar-script-keys`, `bar-portrait-keys`, `menu-down-cursor`, `move-walk-mode`, `door-pick-3`, `list-keys-yellow`, `name-arrows-edit` (each a `contrast`; `door-pick-3` has the seam on at both ends and differs by its keys); on Curse `curse-camp-arrows`, `curse-name-arrows`, `curse-move-walk-mode` | none can exist: three of its pieces draw on sight, so `quiet-modern-controls`, `menu-letters-cursor` and `quiet-all-on-sight` are `contrast`s too (the pair is a `contrast`, as the faces' is). On Curse two of them draw on sight, the hero keys and the selection block, so `curse-quiet-controls` is a `contrast curse-quiet` |
+| `modern-controls` | `list-down-arrows`, `camp-down-arrows`, `camp-pad-arrows`, `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys`, `bar-esc-keys`, `bar-script-keys`, `bar-portrait-keys`, `menu-down-cursor`, `move-walk-mode`, `door-pick-3`, `list-keys-yellow`, `name-arrows-edit` (each a `contrast`; `door-pick-3` has the seam on at both ends and differs by its keys); on Curse `curse-camp-arrows`, `curse-name-arrows`, `curse-menu-cursor`, `curse-move-walk-mode` | none can exist: three of its pieces draw on sight, so `quiet-modern-controls`, `menu-letters-cursor` and `quiet-all-on-sight` are `contrast`s too (the pair is a `contrast`, as the faces' is). On Curse the same three draw on sight, the menu cursor, the hero keys and the selection block, so `curse-quiet-controls` is a `contrast curse-quiet` |
 | `quick-steps` | `walk-quick` | `menu-letters-quick`. Not in `quiet-all`: `quiet`'s movement keys click |
 | `message-pause` | `fight-pause`; on Curse `curse-fight-pause` | `quiet-message-pause`, and `quiet-all`; on Curse `curse-quiet-message-pause` |
 | `fanfare` | `quiet-fanfare` (a `contrast`) | none can exist: every boot runs the titles, where it starts. Not in `quiet-all` |

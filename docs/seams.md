@@ -1634,9 +1634,9 @@ own bar.
   the one before `N`, the bar back, and a `Right` turns the party.
   `--watch 72AE` reads `01` from the bar's first draw to the end. With
   `modern-controls` on, Left and Right step the reader's bar and Return
-  takes the lit word. **The lit word is yellow letters, not a block**:
-  the selection block is not ported to Curse yet (`docs/modern-controls.md`),
-  so nothing turns the mark into one.
+  takes the lit word, a white block: on Curse the selection's colour is
+  the program's own white (`docs/modern-controls.md`), and the selection
+  block turns the mark into a block.
 - **Fidelity**: on and `Notes` never chosen, the run is the seam-off run
   until the party's bar is first drawn, as on Pool of Radiance (§7):
   `curse-quiet-journal` `contrast curse-quiet` (39 of 58 identical,
