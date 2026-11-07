@@ -225,6 +225,11 @@ struct select_yellow_facts {
   std::uint32_t score_string_call;
   std::uint32_t percentage_string_call;
 
+  /// In the profile's `roster_overlay`: the string call that draws the
+  /// character editor's name field highlighted, in light magenta at the
+  /// sheet's first cell, or zero where the editor has no name field.
+  std::uint32_t name_string_call;
+
   /// The resident image: the blitter's EGA row writes, one per page it
   /// draws to, each the instruction that stores (or masks with) the row;
   /// the register the row is in there; and how many BP frames below the
@@ -280,6 +285,7 @@ constexpr select_yellow_facts pool_of_radiance_select_yellow{
     .score_chosen = 0x0918,
     .score_string_call = 0x0976,
     .percentage_string_call = 0x0A41,
+    .name_string_call = 0,
     .row_writes = {0x74A2, 0x74C8},
     .row_write_count = 2,
     .row_register = cpu::reg8::dl,
@@ -314,6 +320,7 @@ constexpr select_yellow_facts curse_select_yellow{
     .score_chosen = 0x09C5,
     .score_string_call = 0x0A2A,
     .percentage_string_call = 0x0AF8,
+    .name_string_call = 0x2775,
     .row_writes = {0x5A93, 0},
     .row_write_count = 1,
     .row_register = cpu::reg8::ah,
@@ -876,6 +883,34 @@ void at_hit_points(machine& box, seam_context& ctx) {
                       F.profile.selection_colour);
 }
 
+// --- The name field (Curse only) --------------------------------------------
+//
+// Curse's editor has a field Pool of Radiance's does not: the character's
+// name, at the sheet's first cell. Highlighted, the program draws the name
+// in light magenta (one string call, the colour pushed as an immediate) and
+// then the letter under its cursor, or a cursor mark past the end, in white
+// on black over it. The name is a selection like a score: its colour is
+// made the selection's here, and the stores make it a block. The cursor's
+// letter is the program's own call and is left alone, so it is a white
+// letter on black inside the block: the cursor is the gap in it.
+
+/// The name field's cell: the first row and the first column.
+constexpr std::uint8_t name_row = 1;
+constexpr std::uint8_t name_column = 1;
+
+template <const select_yellow_facts& F>
+void at_name_field(machine& box, seam_context& ctx) {
+  const stack s = stack_of(box);
+  if (s.top_byte(F.string.colour) != colour_magenta ||
+      paper_of(s, F.string.paper) != 0 ||
+      s.top_byte(F.string.row) != name_row ||
+      s.top_byte(F.string.column) != name_column) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  s.set_top_byte(F.string.colour, F.profile.selection_colour);
+}
+
 // --- Points 8 and 9: the blitter's stores ------------------------------------
 //
 // A store has nothing to decline: every glyph the program draws passes
@@ -969,6 +1004,12 @@ template <const select_yellow_facts& F>
         s.ss, static_cast<std::uint16_t>(drawer + frame_saved_bp));
     return s.cpu.read_byte(s.ss, static_cast<std::uint16_t>(
                                      score + score_highlighted)) != 0;
+  }
+  if constexpr (F.name_string_call != 0) {
+    // The name field, in the colour its point gave it.
+    return returns_to(caller,
+                      module_start(s.cpu, ctx, F.profile.roster_overlay),
+                      F.name_string_call);
   }
   return false;
 }
@@ -1357,11 +1398,13 @@ void at_picture_drawn(machine& box, seam_context& /*ctx*/) {
 
 // --- The definition ---------------------------------------------------------
 
-/// A program's points: the seven that choose a colour, the row writes, and
-/// the three that settle the margin.
+/// A program's points: the seven that choose a colour, the row writes, the
+/// three that settle the margin, and the name field's where the editor has
+/// one.
 template <const select_yellow_facts& F>
 constexpr auto select_yellow_points_of() {
-  std::array<seam_point, 10 + F.row_write_count> out{
+  constexpr std::size_t name_points = F.name_string_call != 0 ? 1 : 0;
+  std::array<seam_point, 10 + F.row_write_count + name_points> out{
       {{.module = F.profile.menu_overlay,
         .offset = F.bar_group_call,
         .run = &at_bar_group<F>},
@@ -1406,6 +1449,11 @@ constexpr auto select_yellow_points_of() {
                  .offset = F.picture_drawn,
                  .run = &at_picture_drawn,
                  .inside_calls = true};
+  if constexpr (name_points != 0) {
+    out[next++] = {.module = F.profile.roster_overlay,
+                   .offset = F.name_string_call,
+                   .run = &at_name_field<F>};
+  }
   return out;
 }
 
