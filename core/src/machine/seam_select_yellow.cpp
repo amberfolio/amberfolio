@@ -1005,13 +1005,10 @@ template <const select_yellow_facts& F>
     return s.cpu.read_byte(s.ss, static_cast<std::uint16_t>(
                                      score + score_highlighted)) != 0;
   }
-  if constexpr (F.name_string_call != 0) {
-    // The name field, in the colour its point gave it.
-    return returns_to(caller,
-                      module_start(s.cpu, ctx, F.profile.roster_overlay),
-                      F.name_string_call);
-  }
-  return false;
+  // The name field, in the colour its point gave it, where there is one.
+  return F.name_string_call != 0 &&
+         returns_to(caller, module_start(s.cpu, ctx, F.profile.roster_overlay),
+                    F.name_string_call);
 }
 
 /// The blitter's own frame, from a point `depth` frames below it.
