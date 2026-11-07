@@ -115,6 +115,17 @@ at both ends. Recorded as `curse-menu-cursor`, against the same keys
 with no seam (`curse-menu-keys`, where the arrows and the `Return` do
 nothing and the `A` asks `ADD FROM WHERE?`).
 
+Leg 0's party of one, made and added without the `Return` after `SAVE
+TORK?` (with the seam on that `Return` takes the cursor's `CREATE`),
+then `M` at the main menu opens `MODIFY:` with `STR` lit. A character
+can be modified while its experience is what Curse starts it on. With
+`modern-controls` on, `Down Down Up Up Up` steps to `WIS`, back to `STR`
+and on to the name field, a white block with the cursor's letter the gap
+in it; `Right` moves the cursor and `Up` steps on to the hit points.
+Recorded as `curse-modify-arrows`, against the same keys with no seam
+(`curse-modify-keys`, where the arrows do nothing and the `Right` raises
+the strength).
+
 ## Leg 2 — the town and a story event
 
 From the opening, `Return Return Left` (facing a wall north), then
@@ -401,6 +412,8 @@ lines, at `--speed 386` and `--wall none`:
 | `curse-name-arrows` | `curse-slots` | `modern-controls` | `contrast curse-name-keys` |
 | `curse-menu-keys` | `curse-slots` | none | |
 | `curse-menu-cursor` | `curse-slots` | `modern-controls`, the main menu's cursor moved and taken | `contrast curse-menu-keys` |
+| `curse-modify-keys` | `curse-slots` | none | |
+| `curse-modify-arrows` | `curse-slots` | `modern-controls`, Modify's fields and name field | `contrast curse-modify-keys` |
 | `curse-move-walk` | `curse-slots` | none | |
 | `curse-move-walk-mode` | `curse-slots` | `modern-controls`, the move mode | `contrast curse-move-walk` |
 

@@ -93,6 +93,14 @@ constexpr std::uint16_t list_row_call = 0x0AFC;
 constexpr std::uint16_t roster_selected_call = 0x0853;
 constexpr std::uint16_t hit_points_chosen = 0x09E6;
 constexpr std::uint16_t score_chosen = 0x09C5;
+/// The character editor's name field, highlighted: its string call (overlay
+/// 18), the cursor letter's after it.
+constexpr std::uint16_t name_string_call = 0x2775;
+constexpr std::uint16_t name_cursor_call = 0x27E5;
+/// The instruction after the name field's second key read; the editor's
+/// call into the menu-bar routine, by the instruction after it.
+constexpr std::uint16_t name_field_read = 0x295A;
+constexpr std::uint16_t modify_bar = 0x29AA;
 constexpr std::array<std::uint16_t, 4> blitter_points{0x5A93, 0x4F98, 0x4E4B,
                                                       0x3542};
 /// The string routine's near call into the blitter: the instruction after.
@@ -308,32 +316,35 @@ TEST(SeamModernControlsOnCurse, IsAvailableWithThePortedPiecesPoints) {
   const curse_rig r;
   const std::span<const seam_point> mine =
       points_on(definition(), curse_digest());
-  // list arrows 3, bar keys 1, menu cursor 2, hero keys 5, edit keys 1, the
-  // selection block 11, the move mode 3, text entry 2, aim watch 5.
-  ASSERT_EQ(mine.size(), 33U);
+  // list arrows 4, bar keys 1, menu cursor 2, hero keys 5, edit keys 1, the
+  // selection block 12, the move mode 3, text entry 2, aim watch 5.
+  ASSERT_EQ(mine.size(), 35U);
   EXPECT_NE(mine.data(), definition().points.data());
 
   EXPECT_EQ(mine[0].offset, list_point);
   EXPECT_EQ(mine[0].module.load_segment_at, word_menu);
   EXPECT_EQ(mine[1].offset, picker_point);
   EXPECT_EQ(mine[1].module.load_segment_at, word_picker);
+  // Modify's name field, which reads its keys itself: Curse's only.
+  EXPECT_EQ(mine[3].offset, name_field_read);
+  EXPECT_EQ(mine[3].module.load_segment_at, word_roster);
   // The read call: the list arrows' first, then the bar keys', the menu
   // cursor's and, after the loop's call, the hero keys'.
-  for (const std::size_t at : {2U, 3U, 4U, 6U}) {
+  for (const std::size_t at : {2U, 4U, 5U, 7U}) {
     EXPECT_EQ(mine[at].offset, read_point) << at;
     EXPECT_EQ(mine[at].module.load_segment_at, word_menu) << at;
   }
-  EXPECT_EQ(mine[5].offset, loop_call);
-  EXPECT_EQ(mine[5].module.load_segment_at, word_roster);
-  EXPECT_FALSE(mine[5].inside_calls);
+  EXPECT_EQ(mine[6].offset, loop_call);
+  EXPECT_EQ(mine[6].module.load_segment_at, word_roster);
+  EXPECT_FALSE(mine[6].inside_calls);
   // The roster drawer's four, inside a batch too.
   for (std::size_t i = 0; i < roster_points.size(); ++i) {
-    EXPECT_EQ(mine[7 + i].offset, roster_points[i]) << i;
-    EXPECT_EQ(mine[7 + i].module.load_segment_at, word_picker) << i;
-    EXPECT_TRUE(mine[7 + i].inside_calls) << i;
+    EXPECT_EQ(mine[8 + i].offset, roster_points[i]) << i;
+    EXPECT_EQ(mine[8 + i].module.load_segment_at, word_picker) << i;
+    EXPECT_TRUE(mine[8 + i].inside_calls) << i;
   }
-  EXPECT_EQ(mine[11].offset, editor_after_read);
-  // The selection block's eleven.
+  EXPECT_EQ(mine[12].offset, editor_after_read);
+  // The selection block's twelve.
   const std::array<std::uint16_t, 7> colours{
       bar_group_call,    list_row_call,   roster_selected_call, score_chosen,
       hit_points_chosen, bar_letter_call, bar_rest_call};
@@ -341,31 +352,35 @@ TEST(SeamModernControlsOnCurse, IsAvailableWithThePortedPiecesPoints) {
                                            word_sheet, word_picker, word_menu,
                                            word_menu};
   for (std::size_t i = 0; i < colours.size(); ++i) {
-    EXPECT_EQ(mine[12 + i].offset, colours[i]) << i;
-    EXPECT_EQ(mine[12 + i].module.load_segment_at, words[i]) << i;
+    EXPECT_EQ(mine[13 + i].offset, colours[i]) << i;
+    EXPECT_EQ(mine[13 + i].module.load_segment_at, words[i]) << i;
   }
-  EXPECT_TRUE(mine[14].inside_calls) << "the roster is drawn back in a batch";
+  EXPECT_TRUE(mine[15].inside_calls) << "the roster is drawn back in a batch";
   for (std::size_t i = 0; i < blitter_points.size(); ++i) {
-    EXPECT_EQ(mine[19 + i].offset, blitter_points[i]) << i;
-    EXPECT_TRUE(mine[19 + i].module.is_resident_image()) << i;
-    EXPECT_TRUE(mine[19 + i].inside_calls) << i;
+    EXPECT_EQ(mine[20 + i].offset, blitter_points[i]) << i;
+    EXPECT_TRUE(mine[20 + i].module.is_resident_image()) << i;
+    EXPECT_TRUE(mine[20 + i].inside_calls) << i;
   }
+  // Modify's name field, Curse's only.
+  EXPECT_EQ(mine[24].offset, name_string_call);
+  EXPECT_EQ(mine[24].module.load_segment_at, word_roster);
+  EXPECT_FALSE(mine[24].inside_calls);
   // The move mode's: either side of the party bar's call, and the read
   // call, the last of the five pieces there.
-  EXPECT_EQ(mine[23].offset, party_bar_call);
-  EXPECT_EQ(mine[23].module.load_segment_at, word_adventure);
-  EXPECT_EQ(mine[24].offset, adventure_bar);
-  EXPECT_EQ(mine[24].module.load_segment_at, word_adventure);
-  EXPECT_EQ(mine[25].offset, read_point);
-  EXPECT_EQ(mine[25].module.load_segment_at, word_menu);
-  for (const std::size_t at : {11U, 26U, 27U}) {
+  EXPECT_EQ(mine[25].offset, party_bar_call);
+  EXPECT_EQ(mine[25].module.load_segment_at, word_adventure);
+  EXPECT_EQ(mine[26].offset, adventure_bar);
+  EXPECT_EQ(mine[26].module.load_segment_at, word_adventure);
+  EXPECT_EQ(mine[27].offset, read_point);
+  EXPECT_EQ(mine[27].module.load_segment_at, word_menu);
+  for (const std::size_t at : {12U, 28U, 29U}) {
     EXPECT_TRUE(mine[at].module.is_resident_image()) << at;
   }
-  EXPECT_EQ(mine[26].offset, editor_entry);
-  EXPECT_EQ(mine[27].offset, editor_return);
+  EXPECT_EQ(mine[28].offset, editor_entry);
+  EXPECT_EQ(mine[29].offset, editor_return);
   for (std::size_t i = 0; i < aim_points.size(); ++i) {
-    EXPECT_EQ(mine[28 + i].offset, aim_points[i]) << i;
-    EXPECT_EQ(mine[28 + i].module.load_segment_at, word_aim) << i;
+    EXPECT_EQ(mine[30 + i].offset, aim_points[i]) << i;
+    EXPECT_EQ(mine[30 + i].module.load_segment_at, word_aim) << i;
   }
   EXPECT_EQ(r.box->seams().enable(seam_id), seam_reason::none);
 }
@@ -400,6 +415,28 @@ TEST(SeamModernControlsOnCurse, UpAndDownBecomeHomeAndEndAtThePartyBars) {
   // same two.
   EXPECT_EQ(r.press(ring_up, adventure_segment, adventure_bar), ring_home);
   EXPECT_EQ(r.press(ring_down, adventure_segment, adventure_bar), ring_end);
+}
+
+TEST(SeamModernControlsOnCurse, UpAndDownStepModifysFields) {
+  const curse_rig r;
+  r.arm();
+  // At a score, the editor's bar: Home and End step the field there.
+  EXPECT_EQ(r.press(ring_up, roster_segment, modify_bar), ring_home);
+  EXPECT_EQ(r.press(ring_down, roster_segment, modify_bar), ring_end);
+  // In the name field the editor reads the scan code itself.
+  r.stand_on(roster_segment, name_field_read);
+  r.regs().set(cpu::reg8::al, 0x48);
+  r.box->step();
+  EXPECT_EQ(r.regs().get(cpu::reg8::al), 0x47);
+  r.stand_on(roster_segment, name_field_read);
+  r.regs().set(cpu::reg8::al, 0x50);
+  r.box->step();
+  EXPECT_EQ(r.regs().get(cpu::reg8::al), 0x4F);
+  // Its own cursor keys are its own.
+  r.stand_on(roster_segment, name_field_read);
+  r.regs().set(cpu::reg8::al, 0x4D);
+  r.box->step();
+  EXPECT_EQ(r.regs().get(cpu::reg8::al), 0x4D);
 }
 
 // --- The bar keys ------------------------------------------------------------
@@ -870,6 +907,55 @@ TEST(SeamModernControlsOnCurse, ModifysHighlightedScoreIsWhite) {
   r.stand_on(sheet_segment, score_chosen);
   r.box->step();
   EXPECT_EQ(r.byte(stack_segment, frame_base - 0x2B), 0x0F);
+}
+
+/// The name field's string call at the top of the stack: the name's far
+/// pointer, the paper, the colour, the row and the column.
+void lay_name_call(const curse_rig& r, std::uint16_t colour,
+                   std::uint16_t row) {
+  const std::array<std::uint16_t, 6> words{0x0010, party_segment, 0,
+                                           colour, row,           1};
+  for (std::size_t i = 0; i < words.size(); ++i) {
+    r.put_word(stack_segment, static_cast<std::uint16_t>(0x0400 + (2 * i)),
+               words[i]);
+  }
+  r.stand_on(roster_segment, name_string_call);
+}
+
+TEST(SeamModernControlsOnCurse, ModifysHighlightedNameIsWhite) {
+  const curse_rig r;
+  r.arm();
+  // Light magenta at the sheet's first cell; the high half of the pushed
+  // register is the program's leftover and stays.
+  lay_name_call(r, 0x050D, 1);
+  r.box->step();
+  EXPECT_EQ(r.word(stack_segment, 0x0406), 0x050F);
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0U);
+
+  // Another colour or another cell is not the call these facts describe.
+  lay_name_call(r, 0x000A, 1);
+  r.box->step();
+  EXPECT_EQ(r.word(stack_segment, 0x0406), 0x000A);
+  lay_name_call(r, 0x000D, 2);
+  r.box->step();
+  EXPECT_EQ(r.word(stack_segment, 0x0406), 0x000D);
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 2U);
+}
+
+TEST(SeamModernControlsOnCurse, TheNameIsABlockAndItsCursorLetterIsNot) {
+  const curse_rig r;
+  r.arm();
+  lay_string_glyph(r, 0x0F, roster_segment, name_string_call + 5U);
+  r.box->step();
+  EXPECT_EQ(r.regs().get(cpu::reg8::ah), 0xC3);
+  // Still magenta is not a selection: the point declined it.
+  lay_string_glyph(r, 0x0D, roster_segment, name_string_call + 5U);
+  r.box->step();
+  EXPECT_EQ(r.regs().get(cpu::reg8::ah), 0x3C);
+  // The cursor letter, white on black after the name, is the gap in it.
+  lay_string_glyph(r, 0x0F, roster_segment, name_cursor_call + 5U);
+  r.box->step();
+  EXPECT_EQ(r.regs().get(cpu::reg8::ah), 0x3C);
 }
 
 TEST(SeamModernControlsOnCurse, ASeamsMarkedStringIsInverted) {

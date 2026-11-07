@@ -88,14 +88,17 @@ inline constexpr std::size_t aim_watch_point_count = 5;
 /// Curse of the Azure Bonds' points (#555), for the pieces ported to it:
 /// the list arrows, the bar keys, the menu cursor, the hero keys, the edit
 /// keys, the selection block, the move mode, text entry and the aim watch,
-/// in the order the baseline's are offered in. The selection block has one
-/// row write where the baseline has two: Curse's blitter draws one page.
-/// The move mode has one party bar where the baseline has two.
-inline constexpr std::size_t curse_select_yellow_point_count = 11;
+/// in the order the baseline's are offered in. The list arrows and the
+/// selection block have a point each for the character editor's name field,
+/// which the baseline's editor has not; the selection block has one row
+/// write where the baseline has two: Curse's blitter draws one page. The
+/// move mode has one party bar where the baseline has two.
+inline constexpr std::size_t curse_list_arrows_point_count = 4;
+inline constexpr std::size_t curse_select_yellow_point_count = 12;
 inline constexpr std::size_t curse_move_mode_point_count = 3;
 inline constexpr std::size_t curse_modern_controls_point_count =
-    list_arrows_point_count + bar_keys_point_count + menu_cursor_point_count +
-    hero_keys_point_count + edit_keys_point_count +
+    curse_list_arrows_point_count + bar_keys_point_count +
+    menu_cursor_point_count + hero_keys_point_count + edit_keys_point_count +
     curse_select_yellow_point_count + curse_move_mode_point_count +
     text_entry_point_count + aim_watch_point_count;
 [[nodiscard]] std::span<const seam_point> curse_list_arrows_points() noexcept;

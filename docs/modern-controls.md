@@ -89,7 +89,7 @@ but the faces). Each piece's pairs are in its section, and
 `tests/sessions/README.md` lists them all. Unit: `SeamModernControls.*` (the
 one definition) and each piece's suite.
 
-**On Curse of the Azure Bonds** (#555) the seam is available with eight
+**On Curse of the Azure Bonds** (#555) the seam is available with nine
 of its pieces: the list arrows, the bar keys, the menu cursor, the hero
 keys, the edit keys, the selection block, the move mode, text entry and
 the aim watch, each the same mechanism with that program's facts in a
@@ -97,8 +97,9 @@ row of its own (`list_arrows_facts`, `bar_keys_facts`,
 `menu_cursor_facts`, `hero_keys_facts`, `edit_keys_facts`,
 `select_yellow_facts`, `move_mode_facts`, `text_entry_facts`,
 `aim_watch_facts`, and `party_select::facts` for the bars that are not
-raw) and its points in the definition's `programs`, thirty-three of
-them, in the baseline's order. The facts more than one piece reads are
+raw) and its points in the definition's `programs`, thirty-five of
+them, in the baseline's order (the list arrows and the selection block
+each with one more, for Modify's name field). The facts more than one piece reads are
 the profile's (`program_profile.h`): among them the party summary's
 module (`summary_overlay`: the roster drawer, the hit points' draw and
 the picker, resident on Pool of Radiance and overlay 25 here), the
@@ -138,6 +139,7 @@ yellow).
 | how the program draws its highlight | the group's characters and the row in `color_hi` on black | **as paper**: black ink on `color_hi`'s paper, a block in the bar's bright already |
 | the roster's selected member's string call | image `0x13AF` | overlay 25 `0x0853` |
 | Modify: a score's colour chosen; its string calls; the hit points' colour chosen; their string call | overlay 19 `0x0918`; `0x0976`, `0x0A41`; image `0x153F`; `0x155E` | overlay 20 (file offset 159837, 14697 bytes, digest `b1c2646b…d739`, word `0x0B00`) `0x09C5`; `0x0A2A`, `0x0AF8`; overlay 25 `0x09E6`; `0x0A08`. The locals and the highlighted argument where Pool of Radiance's are |
+| Modify's name field: the highlighted name's string call; the cursor's letter or mark; the instruction after the field's second key read | none: the editor has no name field | overlay 18 (word `0x0A80`) `0x2775`, the name from the selected member's record in light magenta on black at row 1, column 1, pushed as immediates; `0x27AF` and `0x27E5`, white on black over it; `0x295A`, which stores an extended key's scan code |
 | the blitter's EGA row writes | image `0x74A2`, `0x74C8`, a store of DL to each of two pages | one: image `0x5A93`, the bit mask out of AH (the ink through it, the paper through its complement), one frame below the blitter's, in a path called near; one page, `0xA000` |
 | the step to the next cell; the fill's epilogue; the picture drawer's epilogue | image `0x7667`; `0x71FB`; `0x618C` | image `0x4F98` (the EGA path's; the program's other adapters have their own); `0x4E4B`; `0x3542`. The fill's and the picture's frames the same |
 
@@ -166,6 +168,7 @@ test, then the compares):
 | the shop's bar | overlay 7 (`0x490`) | `0x07DF` |
 | the temple's bar | overlay 5 (`0x430`) | `0x0E91` |
 | the script prompts | overlay 8 (`0x4D0`) | `0x1811` |
+| the character editor, Modify, at a score (Home and End step the field, not the member; Up and Down do nothing there) | overlay 18 (`0xA80`) | `0x29AA` |
 
 The bar keys' callers that keep Left and Right:
 
@@ -193,10 +196,14 @@ mode `0`) and the screen behind it:
 Curse's camp has no Portraits and Monsters bar (its Alter bar is
 raw). Left out as on Pool of Radiance: the load slot bar (overlay 17
 `0x38B7`), the Yes/No prompt, the View bar, combat's. And two Pool of
-Radiance has no counterpart of: the main menu's `Add from where?` bar
-(overlay 18), a main-menu bar like the load slot bar, and a spell's own
-questions (fire shield's `Hot Cold` and `Abort spell?`), asked in combat
-and out, whose caller does not say which screen is behind them.
+Radiance has no counterpart of, which need nothing of their own: the
+main menu's `Add from where?` bar (overlay 18, return `0x36A3`) and a
+spell's own questions (fire shield's `Hot Cold` and `Abort spell?`).
+Neither is raw, so Left and Right step them and Return takes the lit
+command as at any bar, and the routine ends on Escape with no command,
+which `Add from where?` takes as `Exit`. Up and Down select no member
+there: Add does not use the selection, and fire shield's caster is the
+selected member, asked in combat and out.
 
 - **Enter is the program's own.** Curse's routine, with the bar drawn,
   hands a Return back as the first letter of the highlighted group
@@ -246,9 +253,20 @@ and out, whose caller does not say which screen is behind them.
   is drawn (the facts are in the menu cursor's section). The bar of
   thirteen letters the loop hands the routine is only its key table, with
   no colour, as on Pool of Radiance.
-- **Not ported, and why.** Modify's name field, which Curse's editor has and Pool of
-  Radiance's does not: its highlight is a line of its own with a cursor
-  letter, drawn in the program's colours.
+- **Modify's name field**, which Curse's editor has and Pool of
+  Radiance's does not. Highlighted, the program draws the name in light
+  magenta and then the letter under its cursor in white on black over
+  it (a mark past the end); the seam makes the name's colour the
+  selection's at its call, so the name is a white block, and leaves the
+  cursor's call alone, so the cursor is the gap in the block. The field
+  reads its own keys, outside the menu-bar routine: its Left and Right
+  move the cursor, Home and End step the field. **Up and Down step the
+  field** there and at every score, Up to the one before and Down to the
+  one after, as Pool of Radiance's editor does with its rows: at a score
+  through the editor's call into the routine (the list arrows' table
+  above), in the name at the instruction after the second read, where
+  `0x48` becomes `0x47` and `0x50` `0x4F`. With the seam off Curse's
+  editor drops both.
 - **Driven, the pieces this port added**, on the Steam copy, slot A,
   `--wall none`, stills read: the main menu's party list numbered 1 to 6
   in white, the names two columns right, the armour class and its
@@ -294,7 +312,9 @@ and out, whose caller does not say which screen is behind them.
   and the party stays at 7,13); `curse-camp-arrows` `contrast
   curse-camp-keys` (19 of 81), `curse-name-arrows` `contrast
   curse-name-keys` (19 of 118) and `curse-menu-cursor` `contrast
-  curse-menu-keys` (19 of 49), from the same tick. Each is its
+  curse-menu-keys` (19 of 49) and `curse-modify-arrows` `contrast
+  curse-modify-keys` (Modify's fields stepped and the name field; 19 of
+  161), from the same tick. Each is its
   baseline's keys at their ticks, recorded again with the seam on; the
   move mode's pair is in its section. Unit: `SeamModernControlsOnCurse.*`,
   `SeamMoveModeOnCurse.*`,
@@ -1337,6 +1357,7 @@ there is drawn as the program draws it, with the margin round it.
 | a pick-list's row | yellow | white, on the ink, where the program put it on the paper |
 | the roster's selected member | white made yellow | white, left as the program draws it, and made a block |
 | Modify's selected score and hit points | light magenta made yellow | light magenta made white |
+| Modify's highlighted name | none: the editor has no name field | light magenta made white, the cursor's letter left white on black, the gap in the block |
 | the main menu's cursor row | the key white, the rest yellow | white end to end |
 | the journal's log row and its bar's lit command | yellow, the bar's key white | white |
 | the margin | painted in yellow, over black | painted in white, over black |

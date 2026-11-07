@@ -258,6 +258,11 @@ struct list_arrows_facts {
   /// show the party list (#469, `seam_party_select.h`); null where they do
   /// not.
   const party_select::facts* bars_that_are_not_raw;
+
+  /// In the profile's `roster_overlay`: the instruction after the character
+  /// editor's second key read in its name field, which stores the scan code
+  /// of an extended key; zero where the editor has no name field.
+  std::uint32_t name_field_after_read;
 };
 
 // --- Pool of Radiance ------------------------------------------------------
@@ -295,7 +300,8 @@ constexpr list_arrows_facts pool_of_radiance_list_arrows{
     .picker_after_input = menu_bar::pool_of_radiance_picker_return,
     .picker_flag_below_bp = 0x2B,
     .roster_callers = pool_of_radiance_roster_callers,
-    .bars_that_are_not_raw = &party_select::pool_of_radiance_facts};
+    .bars_that_are_not_raw = &party_select::pool_of_radiance_facts,
+    .name_field_after_read = 0};
 
 // --- Curse of the Azure Bonds ---------------------------------------------
 
@@ -303,8 +309,11 @@ constexpr const program_profile& curse = curse_of_the_azure_bonds;
 
 /// Curse's callers whose raw keys go to the party cursor and whose Up and
 /// Down do nothing else, by the instruction after the call into the
-/// menu-bar routine (docs/seams.md §10).
-constexpr std::array<caller, 9> curse_roster_callers{{
+/// menu-bar routine (docs/seams.md §10). And the character editor's, where
+/// Home and End step the field (`G` the one before, `O` the one after) and
+/// Up and Down do nothing: Pool of Radiance's editor steps its rows on Up
+/// and Down itself.
+constexpr std::array<caller, 10> curse_roster_callers{{
     {.load_segment_at = curse.camp_overlay.load_segment_at,
      .return_offset = 0x24FD},  // the camp bar
     {.load_segment_at = curse.camp_overlay.load_segment_at,
@@ -323,6 +332,8 @@ constexpr std::array<caller, 9> curse_roster_callers{{
      .return_offset = 0x0E91},  // the temple's bar
     {.load_segment_at = curse.script_runner_load_segment_at,
      .return_offset = 0x1811},  // the script prompts
+    {.load_segment_at = curse.roster_overlay.load_segment_at,
+     .return_offset = 0x29AA},  // the character editor, Modify
 }};
 
 /// Curse's callers with raw mode off whose screen shows the party list
@@ -343,8 +354,8 @@ constexpr party_select::facts curse_party_select{
 
 /// Curse of the Azure Bonds (#555): the list's out-parameter at `BP-0x57`,
 /// as on Pool of Radiance; the picker in the profile's `summary_overlay`,
-/// its out-parameter at `BP-0x2B`; nine callers; and three bars that are
-/// not raw.
+/// its out-parameter at `BP-0x2B`; ten callers; three bars that are not
+/// raw; and the editor's name field, which reads its keys itself.
 constexpr list_arrows_facts curse_list_arrows{
     .profile = curse_of_the_azure_bonds,
     .list_flag_below_bp = 0x57,
@@ -352,7 +363,8 @@ constexpr list_arrows_facts curse_list_arrows{
     .picker_after_input = 0x2EE5,
     .picker_flag_below_bp = 0x2B,
     .roster_callers = curse_roster_callers,
-    .bars_that_are_not_raw = &curse_party_select};
+    .bars_that_are_not_raw = &curse_party_select,
+    .name_field_after_read = 0x295A};
 
 // --- The handlers ----------------------------------------------------------
 
@@ -392,6 +404,17 @@ void step_the_list(machine& box, seam_context& ctx) {
 template <const list_arrows_facts& F>
 void step_the_picker(machine& box, seam_context& ctx) {
   step_like_home_and_end(box, ctx, F.picker_flag_below_bp);
+}
+
+/// The character editor's name field has read an extended key's scan code
+/// into AL, outside the menu-bar routine: Up and Down become Home and End,
+/// which step the field there as at its scores.
+void step_the_field(machine& box, seam_context& /*ctx*/) {
+  cpu::registers& regs = box.processor().regs();
+  const std::uint8_t key = regs.get(cpu::reg8::al);
+  if (key == scan_up || key == scan_down) {
+    regs.set(cpu::reg8::al, key == scan_up ? scan_home : scan_end);
+  }
 }
 
 /// What each key the handler acts on becomes. The arrows become Home and
@@ -498,26 +521,37 @@ void step_the_party(machine& box, seam_context& ctx) {
   }
 }
 
-/// A program's three points: the list's, the picker's and the read's.
+/// A program's points: the list's, the picker's and the read's, and the
+/// editor's name field where it has one.
 template <const list_arrows_facts& F>
-constexpr std::array<seam_point, 3> list_arrows_points_of() {
-  return {{{.module = F.profile.menu_overlay,
-            .offset = F.profile.pick_list_bar_return,
-            .run = &step_the_list<F>},
-           {.module = F.picker_module,
-            .offset = F.picker_after_input,
-            .run = &step_the_picker<F>},
-           {.module = F.profile.menu_overlay,
-            .offset = F.profile.menu_key_read_call,
-            .run = &step_the_party<F>}}};
+constexpr auto list_arrows_points_of() {
+  constexpr std::size_t name_points = F.name_field_after_read != 0 ? 1 : 0;
+  std::array<seam_point, 3 + name_points> out{
+      {{.module = F.profile.menu_overlay,
+        .offset = F.profile.pick_list_bar_return,
+        .run = &step_the_list<F>},
+       {.module = F.picker_module,
+        .offset = F.picker_after_input,
+        .run = &step_the_picker<F>},
+       {.module = F.profile.menu_overlay,
+        .offset = F.profile.menu_key_read_call,
+        .run = &step_the_party<F>}}};
+  if constexpr (name_points != 0) {
+    out[3] = {.module = F.profile.roster_overlay,
+              .offset = F.name_field_after_read,
+              .run = &step_the_field};
+  }
+  return out;
 }
 
-constexpr std::array<seam_point, 3> list_arrows_point_table =
+constexpr auto list_arrows_point_table =
     list_arrows_points_of<pool_of_radiance_list_arrows>();
 static_assert(list_arrows_point_table.size() == list_arrows_point_count);
 
-constexpr std::array<seam_point, 3> curse_list_arrows_point_table =
+constexpr auto curse_list_arrows_point_table =
     list_arrows_points_of<curse_list_arrows>();
+static_assert(curse_list_arrows_point_table.size() ==
+              curse_list_arrows_point_count);
 
 }  // namespace
 
