@@ -1346,6 +1346,17 @@ rule, settling quarantine and ownership signals are derived in
   because it repaints the viewport over a vendor mid-question (M5-E2d).
   The routines must be called at the paragraph they were linked at
   (§8.4).
+- **A roster drawn over the panel** (#555): the drawer clears only the
+  rows it writes (a row per member and one more), so a screen a script
+  draws with the roster on it (a temple's, a shop's) would leave the map
+  above the header, below the party and beside the header's letters. A
+  clear that meets the panel without covering it, while the panel is on
+  the screen, leaves it stranded (`automap_state::stranded()`); the
+  drawer's return over that owes the give-back, made at the next poll
+  under a bar that is not the party's, in whatever mode the program just
+  drew the roster in (a temple is the shop mode, `1`, which the give-back
+  otherwise refuses). Any other clear of the cells after the roster, a
+  whole panel or screen cleared, a draw and a give-back drop it.
 - Rejected as the "whose screen" gate: the program's "a script has the
   message area" byte, because `--watch 84E4` shows it oscillating every
   step.
@@ -1410,8 +1421,66 @@ the same panel. One `automap_facts` row per program
 | shape tiles; first slot, columns, rows | `0x6A58`; `0x0C8C`, `0x0C96`, `0x0CA0` | `0x721C`; `0x0ADA`, `0x0AE4`, `0x0AEE` |
 | tile banks, their first codes | `0x5E3A`, `0x2722` | `0x65D0`, `0x2682` (a fifth bank past `0xFF` that no wall row reaches) |
 | frame colour, ground colour | `0x6A60`, `0x6A63` | `0x7224`, `0x7227` (dark grey, set by the program on this adapter) |
-| places | measured | none (`no_places()`): every label is `AREA <n>`, and a door is a kind seen shut on the map |
+| places | measured | a door table and the maps' names (`curse_of_the_azure_bonds_places()`); no sub-maps, no lairs |
+| door graphics (disk, WALLDEF block, rows) | 19 rows | 17 rows: disk 2 blocks 1 (`0x10`), 2 (`0x02`), 3 (`0x01`), 4 (`0x10`); disk 3 blocks 3 (`0x01`), 5 (`0x14`), 6 (`0x10`), 7 (`0x12`); disk 4 blocks 3 (`0x01`), 8 (`0x18`), 9 (`0x10`), 10 (`0x10`), 11 (`0x14`); disk 5 blocks 8 (`0x18`), 12 (`0x18`); disk 6 blocks 3 (`0x01`), 13 (`0x10`) |
+| a door on the party's square | under the mark | over the mark, under its white (`doors_over_party`) |
 
+- **The door table** is measured as Pool of Radiance's is: every shut
+  face on the sixteen grids (`GEO2` to `GEO6`), and the wall set each
+  grid's script loads with it (the script's load of the three slots, read
+  per area: Tilverton's grid 1 with blocks 1, 2 and 3). A block whose
+  WALLDEF rows and tiles are the same bytes on several disks is the same
+  pictures there (block 3 on disks 2, 3, 4 and 6, block 8 on disks 4 and
+  5), so a row seen shut on one is a door on each: block 3's first row,
+  Tilverton's arched doors, the temple's among them, is never shut on
+  its own grid and is shut on disks 3 and 4. A row whose faces are
+  mostly solid walls with one to three of them shut is a wall standing
+  in for a hidden door, and is left out: block 7's fourth, block 9's
+  first two and block 10's third (passable sixty times). Kinds seen shut on the loaded map are
+  doors as well, as on Pool of Radiance. Every other way through is a
+  passage: block 1's first three rows, block 2's first and block 3's last
+  on Tilverton's grid.
+- **A door on the party's square** is drawn again after the party's mark,
+  where the mark's black square had covered the leaf's inner row, and not
+  over the arrow's white. Pool of Radiance's panel keeps its own pixels.
+- **The green arch** is the entrance mark (`automap_marker::entrance`):
+  the square the party first stood on after its map changed under it.
+  Neither a load nor a save makes one.
+- **Names**: a table keyed (disk, area), as Pool of Radiance's, with
+  `AREA <n>` for a grid that has no row. The names are the area names of
+  GameBanshee's Curse of the Azure Bonds walkthrough
+  (`https://www.gamebanshee.com/curseoftheazurebonds/walkthrough.php`,
+  one page per area at `.../walkthrough/<name>.php`), nominative facts
+  as the wilderness lairs' are. Each area is matched by its page's
+  numbered places against what that area's script does there, and by
+  which areas its exits lead to:
+
+  | label | disk, area (grid) | the page's places it was matched by | page |
+  | --- | --- | --- | --- |
+  | `TILVER\|TON` | 2, 1 (1) | the inn, the weapon shop, the Temple of Gond, the sage, the carriage at the gate | `tilverton.php` |
+  | `THIEVES' GUILD` | 2, 2 (1, the same grid) | the guild east of the town on Tilverton's page: guildmaster, guest book, kennel, treasure and monkey rooms, the passage to the sewers | `tilverton.php` |
+  | `TILVER\|TON SEWERS` | 2, 3 (3) | the otyughs, the cloth, the secret training hall, the passages to the guild and the hideout | `tilvertonsewers.php` |
+  | `FIRE KNIVES HIDEOUT` | 2, 4 (4) | the blade barrier, the torture chamber, the office, the hospital, the armory | `firekniveshideout.php` |
+  | `YULASH` | 3, 16 (16) | the destroyed checkpoint, the Zhentrim battle, the one-way entrance to the pit | `yulash.php` |
+  | `PIT OF MOANDER` | 3, 17 (17) and 3, 18 | the collapsing way in; the dead Zhentrim, the vegepygmies, Alias, Mogion | `pitofmoander.php` |
+  | `ZHENTIL KEEP` | 4, 32 (32) and 4, 35 | the inn and magic shop; the courthouse and the arena | `zhentilkeep.php` |
+  | `TEMPLE OF BANE` | 4, 33 (Zhentil Keep's grid) | the temple's places on Zhentil Keep's page, entered from area 32 | `zhentilkeep.php` |
+  | `BEHOLDER CAVE` | 4, 34 (33) | Dexam, the otyughs, the minotaurs and priests, the manticores | `beholdercave.php` |
+  | `OXAM'S TOWER` | 4, 37 (37) | the medusas, the gas spore, the dark elf lord, the conference | `oxamstower.php` |
+  | `HAP` | 5, 49 (50) | the inn, the general store, the barn with the efreeti | `hap.php` |
+  | `DRACO\|LICH CAVE` | 5, 50 (50, the same grid) | the cave on Hap's page between the town and the tower, its dracolich | `hap.php` |
+  | `WIZARD'S TOWER` | 5, 51 (51) | Dracandros, the roof | `wizardstower.php` |
+  | `BURIAL GLEN` | 6, 64 (64) | the elfish spirit, the red web, the thri-kreen; its exit east to area 66 | `burialglen.php` |
+  | `RUINS OF MYTH DRANNOR` | 6, 66 (66) | Tirsheya, the rakshasas; its exits to areas 64 and 67 | `ruinsofmythdrannor.php` |
+  | `GRAND RUINED TEMPLE` | 6, 67 (67) | Tyranthraxus, the chapel | `grandruinedtemple.php` |
+
+  **Left at `AREA <n>`**: the three grids a search beside a town
+  reaches (the wilderness page's search sites), because each is several
+  pages' place: disk 3 area 21 is Voonlar's war-blasted section and
+  Phlan's ruins, disk 5 area 53 the caverns beside Shadowdale,
+  Ashabenford and Essembra, and disk 6 area 69 the ruins beside Hillsfar
+  and Teshwave. Disk 5 area 48 is a step between areas with no grid of
+  its own.
 - **Not ported**: the overland. Curse's is a journey menu, not a grid,
   so the poll records nothing there.
 - **Driven** on slot A (`docs/playable-curse.md` leg 2) with Tab at the
@@ -1423,13 +1492,23 @@ the same panel. One `automap_facts` row per program
   away with the
   roster drawn by the program's drawer, and the party's bar brings it
   back. Tab again on the street puts the roster back with the current
-  member white; End with the panel up is taken. The label is `AREA 1`.
+  member white; End with the panel up is taken. The label is
+  `TILVERTON`, set as `TILVER-` over `TON`.
   With `--save-sidecars`, a save to slot C writes `AFMAPC.DAT` and
   loading C reads it back (`docs/hosts.md` §6).
+- **Driven** from a slot A saved in play at `5,7 N` in Tilverton: the
+  temple's door at `4,7 W` is a leaf; at `5,3 E` the door on the north
+  wall of the party's own square is a leaf two pixels deep over the mark;
+  at the temple's altar (`0,7 W`, `HEAL VIEW POOL APPRAISE EXIT`) the
+  roster is the program's, nothing of the map left, and `HEAL`, `VIEW`,
+  the arrows, Tab and Escape all answer there, with every seam on.
 - **Fidelity**: `curse-quiet-automap` `identical curse-quiet` (on, Tab
   never pressed, every one of 58 checkpoints equal); `curse-town-map`
   `contrast curse-town` (Tab at frame 4,000 ahead of the Left there; 40
-  of 90 identical). Tests: `SeamAutomapOnCurse.*`
+  of 90 identical); `curse-temple-map` `contrast curse-temple` (the same
+  Tab, the arched door at `4,7 W` and the temple's screen given back
+  clean; 40 of 107 identical, divergent from tick 79,563,886). Tests:
+  `SeamAutomapOnCurse.*`
   (`tests/core/machine/seam_automap_curse_test.cpp`).
 
 ### The journal reader (#175, #221, #222, #232, #305, #328, #346)
@@ -1710,29 +1789,6 @@ the old claim (`ExploredFidelity.TheArrivalIsNoLongerTheScreenItWouldHaveBeen`,
 `tests/visual/exp-trail.leg` (slot J, eight steps north, the fogged
 squares named), `exp-steady.leg` (no flicker across the icon's
 animation).
-
-**On Curse of the Azure Bonds** (#555) the overland is one picture of
-the region with places on it, travelled between and not walked, so the
-seam has a mechanism of its own there (`explored_picture_facts`, its
-points in the definition's `programs`): the fog leaves a disc round every
-place the mark has stood on, a corridor along the straight line between
-two places travelled one after the other, and the current place.
-[`docs/explored-overlay.md`](explored-overlay.md) §9 has the facts with
-their second routes and the decisions.
-
-| fact | Pool of Radiance | Curse of the Azure Bonds |
-| --- | --- | --- |
-| the screen | mode 3, view kind 2 to 4, a 5x5 window at (8, 8) | mode 3, big picture `0x72AA` = `0x79`, last picture `0x72A4` ≠ `0x50`: one picture at cell (1, 1), `8,8,311,127` |
-| what is recorded | the square stood on (kind `overland`) | the place, area record `+0x342` (a word), and the way from the last place (kind `places`, §9.4 there) |
-| where it is recorded | the key-pending poll | the menu-bar routine's test of whether to put the mark up, overlay 27 `+0x04AC` |
-| when the fog is laid | the present's return, and the poll when something moved | each line the picture blitter finishes (image `0x343B`), its return (`0x3542`), and the mark's test when something moved |
-| what stops it | `0x84E0`, `0x84C8`, `0x84C9`, until the window blit | anything else blitted into the picture's cells (blitter entry `0x3347`, the mark and its saved screen at its cell excepted) or composited (`0x3548`), until the picture is drawn again |
-| how | a masked write over the program's pixels, one read and one write a byte | each byte written from the program's own copy of the picture less the fog, four writes a byte, no read |
-| how far | `explored_reveal_radius` 0 | `explored_place_radius` 16 pixels, `explored_trail_half_width` 5 |
-
-**Fidelity**: `curse-quiet-explored` `identical curse-quiet`;
-`curse-journey-explored` `contrast curse-journey-kill` (only `devices`
-and `display` differ). Tests: `ExploredOnCurse.*`, `ExploredPlaces.*`.
 
 ### Modern controls (#423, #425, #434, #439, #453, #455, #473, #479)
 
@@ -2139,9 +2195,14 @@ point in the definitions' `programs`:
 | the font's far pointer | data-segment `0x5E20` | data-segment `0x65AE`, loaded from `8X8D1.DAX` block 201 |
 | what the blitter draws from | the font, through ES:DI | a copy of the glyph at data-segment `0x65B2`, just past the pointer |
 | the points | image `0x749A` and `0x74C0`, after the fetch for each page; DL holds the row | image `0x5A91`, after the EGA path's read out of the copy; AH holds the row, BX its number, and the glyph's index is the path's first argument, the byte at `[BP+4]` |
-| the guard | ES is the pointer's segment and DI falls inside the buffer | DS is the data segment, BX is under 8, the index is under 177, and AH is the font's own row for that index and row |
+| the guard | ES is the pointer's segment and DI falls inside the buffer | DS is the data segment, BX is under 8, the index is under 177, and AH is the font's own row for that index and row, or already the face's |
 | what the handler writes | DL | AH |
 
+- **The point is offered twice when an interrupt lands on it**: the
+  seams are dispatched before the step that delivers it, and its return
+  comes back to the same instruction with AH already swapped. The guard
+  takes the face's own row as swapped: a decline there would report the
+  face `inert point_not_recognized` while it went on drawing.
 - **The other adapters' paths** (CGA and Tandy, chosen by the program's
   video-mode byte at data-segment `0x5000`) read the same copy and are
   not hooked: this machine has the EGA only, as on Pool of Radiance.

@@ -579,6 +579,18 @@ TEST(SeamFontOnCurse, DeclinesARowThatIsNotTheGlyphs) {
   EXPECT_EQ(r.box->seams().status("font-sans").fired, 0U);
 }
 
+TEST(SeamFontOnCurse, ARowAlreadyTheFacesIsNotDeclined) {
+  // The same instruction offered again after an interrupt taken at its
+  // boundary returned to it: AH is the face's row already.
+  const curse_rig r;
+  r.enable("font-sans");
+  const unsigned a = index_of('A');
+  const std::uint8_t sans = text_face::row(face::sans, a, 3);
+  ASSERT_NE(sans, r.program_row(a, 3));
+  EXPECT_EQ(r.read(a, 3, sans), sans);
+  EXPECT_EQ(r.box->seams().status("font-sans").declined, 0U);
+}
+
 TEST(SeamFontOnCurse, DeclinesWhenTheProgramHasNoFont) {
   const curse_rig r;
   const std::uint32_t at =

@@ -513,7 +513,7 @@ as they are.
 | `quick-steps`, and the timer fix | **Not ported:** at 386, Curse turns and steps fast enough without it. The timer fix exists only behind `quick-steps`. |
 | `message-pause` | Port, and re-measure the pause. |
 | `automap` | Port. |
-| `explored` | Port, onto Curse's overland view. |
+| `explored` | **Not ported:** Curse's overland is a picture travelled from place to place, and the fog is not wanted there. |
 | journal | Port. It is the largest item. |
 | debug cheats | Port, first (C2). |
 | Encamp (F)ix | **Not ported:** the game has its own Fix. |

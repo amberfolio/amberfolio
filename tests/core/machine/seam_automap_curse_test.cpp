@@ -70,11 +70,16 @@ constexpr std::uint16_t data_party_y = 0x722A;
 constexpr std::uint16_t data_party_facing = 0x722B;
 constexpr std::uint16_t data_map_pointer = 0x7220;
 constexpr std::uint16_t data_ground_colour = 0x7227;
+/// The wall-set descriptor: slot 1's block at +4, slot 3's at +12.
+constexpr std::uint16_t data_wall_set = 0x722A;
+constexpr std::uint16_t wall_set_slot_3 = data_wall_set + 12;
 constexpr std::uint16_t data_key_pushback = 0x8CBF;
 constexpr std::uint16_t data_current_member = 0x6520;
 constexpr std::uint16_t data_adventure_bar = 0x03D8;
 constexpr std::uint16_t adventure_bar_return = 0x092C;
 constexpr std::uint8_t mode_adventure = 4;
+/// The mode a temple's or a shop's screen is.
+constexpr std::uint8_t mode_shop = 1;
 
 /// Where the menu-bar routine's frame holds the bar, at the thunk.
 constexpr std::uint16_t bar_frame_menu_offset = 18;
@@ -220,6 +225,49 @@ struct curse_rig {
     }
   }
 
+  /// A wall face on the map: its kind in plane 0 or 1, its two style bits
+  /// in plane 3 (automap_faces.h's format).
+  void face(unsigned x, unsigned y, unsigned lane, std::uint8_t kind,
+            std::uint8_t style) const {
+    const auto cell = static_cast<std::uint16_t>((y * 16U) + x);
+    const auto planes = static_cast<std::uint16_t>(
+        lane == 0 || lane == 2 ? cell : 0x100U + cell);
+    const bool high = lane == 0 || lane == 4;
+    const std::uint8_t was = byte(map_segment, planes);
+    put_byte(
+        map_segment, planes,
+        static_cast<std::uint8_t>(high ? ((was & 0x0FU) | (kind << 4U))
+                                       : ((was & 0xF0U) | (kind & 0x0FU))));
+    const auto styles = static_cast<std::uint16_t>(0x300U + cell);
+    const std::uint8_t had = byte(map_segment, styles);
+    put_byte(map_segment, styles,
+             static_cast<std::uint8_t>((had & ~(3U << lane)) |
+                                       ((style & 3U) << lane)));
+  }
+
+  /// One of the panel's pixels.
+  [[nodiscard]] std::uint8_t pixel(unsigned x, unsigned y) const {
+    return box->automap()
+        .pixels()[(static_cast<std::size_t>(y) * automap_panel_width) + x];
+  }
+
+  /// The region clear entered with a rect: bottom, right, top, left.
+  void clear(std::uint8_t bottom, std::uint8_t right, std::uint8_t top,
+             std::uint8_t left) const {
+    stand_on(image_load_segment, region_clear, 0x0400);
+    put_word(dgroup(), 0x0404, bottom);
+    put_word(dgroup(), 0x0406, right);
+    put_word(dgroup(), 0x0408, top);
+    put_word(dgroup(), 0x040A, left);
+    box->step();
+  }
+
+  /// The roster drawer's return.
+  void roster_drawn_back() const {
+    stand_on(summary_segment, roster_drawn);
+    box->step();
+  }
+
   std::unique_ptr<machine> box;
 };
 
@@ -347,6 +395,146 @@ TEST(SeamAutomapOnCurse, ClosingItCallsTheDrawerAtItsStubsOwnSegment) {
          "which is where the overlay manager reads the record from (#526)";
   EXPECT_EQ(r.regs()[cpu::sreg::cs], before[cpu::sreg::cs]);
   EXPECT_EQ(r.regs()[cpu::reg16::sp], before[cpu::reg16::sp]);
+}
+
+// --- Doors (#555) ------------------------------------------------------------
+
+/// The party's square on the panel, and the colours that matter.
+constexpr unsigned party_x0 = 7 * automap_cell_pixels;
+constexpr unsigned party_y0 = 13 * automap_cell_pixels;
+constexpr std::uint8_t door_yellow = 14;
+constexpr std::uint8_t ground = 8;
+constexpr std::uint8_t mark_white = 15;
+constexpr unsigned lane_west = 6;
+
+/// A passable face of kind 11 west of the party, slot 3 holding `block`,
+/// and a shut face of another kind elsewhere so the map has evidence of
+/// its own and "no evidence, every way through is a door" is off.
+void arched_way_west(const curse_rig& r, std::uint16_t block) {
+  r.enable();
+  r.adventuring();
+  r.face(7, 13, lane_west, 11, 1);
+  r.face(2, 2, 0, 5, 2);
+  r.put_word(curse_rig::dgroup(), wall_set_slot_3, block);
+  r.type(key_tab);
+  r.poll(6);
+  ASSERT_TRUE(r.map_state().panel_on_screen());
+}
+
+TEST(SeamAutomapOnCurse, BlockThreesFirstRowIsADoorWhereverItIsLoaded) {
+  // Tilverton's arched doors: never shut on its own grid, shut on two
+  // others, the same WALLDEF block and tiles on every disk that has it.
+  const curse_rig r;
+  arched_way_west(r, 3);
+  EXPECT_EQ(r.pixel(party_x0, party_y0 + 3), door_yellow);
+  EXPECT_NE(r.map_state().door_nibbles() & (1U << 11U), 0U);
+}
+
+TEST(SeamAutomapOnCurse, ARowNoTableNamesIsAWayThrough) {
+  const curse_rig r;
+  arched_way_west(r, 4);
+  EXPECT_EQ(r.pixel(party_x0, party_y0 + 3), ground)
+      << "block 4's first row: a way through, so the floor shows";
+}
+
+TEST(SeamAutomapOnCurse, ADoorOnThePartysSquareIsDrawnOverItsMark) {
+  // The mark's black square covers the leaf's inner row; on Curse the
+  // leaf goes back over it, under the arrow's white.
+  const curse_rig r;
+  arched_way_west(r, 3);
+  EXPECT_EQ(r.pixel(party_x0 + 1, party_y0 + 2), door_yellow)
+      << "the leaf's inner row, where the mark's black was";
+  EXPECT_EQ(r.pixel(party_x0 + 1, party_y0 + 3), mark_white)
+      << "the arrow's bar stays whole";
+}
+
+// --- A roster drawn over the panel (#555) ------------------------------------
+
+/// The panel up, then the program's roster drawn over it the way a
+/// temple's screen draws it: one row cleared at a time, then the drawer's
+/// return, then the shop's mode and a bar of its own. The stand-ins for
+/// the clear and the drawer are in place for the give-back.
+void temple_over_the_panel(const curse_rig& r) {
+  r.enable();
+  r.adventuring();
+  r.type(key_tab);
+  r.poll(6);
+  ASSERT_TRUE(r.map_state().panel_on_screen());
+
+  for (std::uint8_t row = 4; row <= 10; ++row) {
+    r.clear(row, 0x26, row, 0x11);
+  }
+  EXPECT_TRUE(r.map_state().stranded())
+      << "rows 1 to 3 and 11 to 14 are still the map's";
+  EXPECT_FALSE(r.map_state().panel_on_screen());
+  r.roster_drawn_back();
+  EXPECT_TRUE(r.map_state().roster_over_stranded());
+
+  r.put_byte(curse_rig::dgroup(), data_game_mode, mode_shop);
+  r.put_up_the_bar(0x5000, 0x0300);
+  ASSERT_FALSE(r.map_state().at_command_bar());
+}
+
+void place_the_stand_ins(const curse_rig& r) {
+  const auto place = [&r](std::uint32_t at,
+                          std::span<const std::uint8_t> code) {
+    for (std::size_t i = 0; i < code.size(); ++i) {
+      r.box->memory().ram()[at + i] = code[i];
+    }
+  };
+  const std::uint32_t image = cpu::physical_address(image_load_segment, 0);
+  place(image + region_clear, program_clear);
+  const auto stub =
+      static_cast<std::uint16_t>(image_load_segment + summary_stub_paragraph);
+  place(cpu::physical_address(stub, summary_stub_entry), program_stub);
+  r.put_word(curse_rig::dgroup(), stub_witness, 0);
+}
+
+TEST(SeamAutomapOnCurse, ARosterDrawnOverThePanelIsGivenBackUnderAShopsBar) {
+  const curse_rig r;
+  temple_over_the_panel(r);
+  place_the_stand_ins(r);
+
+  r.stand_on(image_load_segment, key_pending);
+  r.box->step();
+  for (int i = 0; i < 40; ++i) {
+    r.box->step();
+  }
+  EXPECT_EQ(r.word(curse_rig::dgroup(), stub_witness),
+            image_load_segment + summary_stub_paragraph)
+      << "the panel's rect cleared and the roster drawn again, in the "
+         "shop's mode, because the program has just drawn it there";
+  EXPECT_TRUE(r.map_state().panel_open()) << "off the screen, not closed";
+  EXPECT_FALSE(r.map_state().stranded());
+  EXPECT_FALSE(r.map_state().roster_over_stranded());
+}
+
+TEST(SeamAutomapOnCurse, SomethingElseDrawnAfterTheRosterIsNotGivenBack) {
+  const curse_rig r;
+  temple_over_the_panel(r);
+  // A list over most of the right-hand frame: its own screen now.
+  r.clear(0x0F, 0x26, 0x04, 0x02);
+  EXPECT_FALSE(r.map_state().roster_over_stranded());
+  place_the_stand_ins(r);
+
+  r.poll(2);
+  for (int i = 0; i < 40; ++i) {
+    r.box->step();
+  }
+  EXPECT_EQ(r.word(curse_rig::dgroup(), stub_witness), 0U);
+}
+
+TEST(SeamAutomapOnCurse, AWholePanelClearedLeavesNothingBehind) {
+  const curse_rig r;
+  r.enable();
+  r.adventuring();
+  r.type(key_tab);
+  r.poll(6);
+  ASSERT_TRUE(r.map_state().panel_on_screen());
+  r.clear(0x16, 0x26, 0x01, 0x01);
+  EXPECT_FALSE(r.map_state().stranded());
+  r.roster_drawn_back();
+  EXPECT_FALSE(r.map_state().roster_over_stranded());
 }
 
 // --- Who owns the cells ------------------------------------------------------

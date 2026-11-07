@@ -24,17 +24,6 @@ std::size_t automap_cell_index(automap_map_kind kind, unsigned x,
     }
     return (static_cast<std::size_t>(y) * automap_overland_columns) + x;
   }
-  if (kind == automap_map_kind::places) {
-    if (x >= automap_max_places || y >= automap_max_places) {
-      return automap_no_cell;
-    }
-    if (x == y) {
-      return x;
-    }
-    const std::size_t low = x < y ? x : y;
-    const std::size_t high = x < y ? y : x;
-    return automap_max_places + ((high * (high - 1)) / 2) + low;
-  }
   return ((static_cast<std::size_t>(y) & 0x0FU) * automap_map_side) +
          (x & 0x0FU);
 }
@@ -68,6 +57,8 @@ void automap_state::clear() noexcept {
   panel_open_ = false;
   panel_on_screen_ = false;
   panel_covered_ = false;
+  stranded_ = false;
+  roster_over_stranded_ = false;
   at_command_bar_ = false;
   unsettle();
   settled_kind_ = automap_map_kind::grid;
@@ -289,6 +280,13 @@ bool automap_state::rect_meets_panel(std::uint8_t bottom, std::uint8_t right,
          left <= automap_panel_right_col && right >= automap_panel_left_col;
 }
 
+bool automap_state::rect_covers_panel(std::uint8_t bottom, std::uint8_t right,
+                                      std::uint8_t top,
+                                      std::uint8_t left) noexcept {
+  return top <= automap_panel_top_row && bottom >= automap_panel_bottom_row &&
+         left <= automap_panel_left_col && right >= automap_panel_right_col;
+}
+
 bool automap_state::observe(automap_map_kind kind, std::uint8_t disk,
                             std::uint8_t area, std::uint8_t geo, std::uint8_t x,
                             std::uint8_t y) noexcept {
@@ -391,8 +389,7 @@ constexpr std::size_t v1_field_marker_kind =
 /// marker kinds below: an unknown one is not guessed at.
 [[nodiscard]] bool known_map_kind(std::uint8_t kind) noexcept {
   return kind == static_cast<std::uint8_t>(automap_map_kind::grid) ||
-         kind == static_cast<std::uint8_t>(automap_map_kind::overland) ||
-         kind == static_cast<std::uint8_t>(automap_map_kind::places);
+         kind == static_cast<std::uint8_t>(automap_map_kind::overland);
 }
 
 [[nodiscard]] std::uint16_t word_at(std::span<const std::uint8_t> bytes,

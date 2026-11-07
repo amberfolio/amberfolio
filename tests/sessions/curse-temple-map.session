@@ -1,14 +1,17 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# The explored overlay on and the overland map never shown, over
-# curse-quiet's keys: slot A in the city, where the program never draws
-# its picture of the region.
+# curse-temple with the automap on and Tab pressed at frame 4,000, ahead of
+# the Left curse-temple presses there: the panel over the roster from the
+# opening room up the street, the temple's arched door at 4,7 W marked as
+# a door, and the temple's screen at 0,7, where the program draws the
+# roster over the panel a row at a time and the panel is given back clean
+# under the temple's bar (#555).
 #
 # Recorded on the Steam copy with its shipped slots A and B (games/curse-slots), at --speed 386 and --wall none.
 
-about the explored overlay on, the overland never shown: the machine curse-quiet is
+about curse-temple with the automap panel up from the opening room
 disk external
-identical curse-quiet
+contrast curse-temple
 
 dir SAVE
 file 8X8D1.DAX 3769 e8d4c99cd6285e1533e9f60968948401622e62a07174d491129f3e60314a842e

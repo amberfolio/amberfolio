@@ -3,9 +3,8 @@
 The overworld screen in addresses and offsets, the pixel geometry
 measured off a real frame, the keystrokes that put a party on that
 screen, and the marking, the redraw point and the record shape as
-decided (#179, PLAN.md §5 item 5), for Pool of Radiance; §9 is Curse
-of the Azure Bonds' picture overland (#555). The seam is
-`seam_explored.cpp`; the record lives in `machine/automap.h`.
+decided (#179, PLAN.md §5 item 5). The seam is `seam_explored.cpp`; the
+record lives in `machine/automap.h`.
 
 Everything below is an address, an offset, a length, arithmetic or a
 measurement. No game code, data, text or byte sequence appears here.
@@ -278,8 +277,7 @@ reader can index into the file. An overland record is addressed
 meaningless; the **kind byte is part of the key**, since an interior
 record with geometry block zero would otherwise collide. A version-2
 reader still opens a version-1 file. The layout is in
-`machine/automap.h`. Curse's picture overland is a third kind in the
-same layout (§9.4).
+`machine/automap.h`.
 
 ## 8. What this does not settle
 
@@ -293,135 +291,3 @@ same layout (§9.4).
 - The other two areas have been arrived on and walked (#267): the bias
   needed no correction, and every dumped frame keeps the difference from
   seam-off inside `8,8,127,127`.
-
-## 9. Curse of the Azure Bonds: a picture with places on it (#555)
-
-Curse has no overland walked square by square. Its overland, game mode
-3, is **one picture of the whole region**, drawn at the wilderness
-frame's cell (1, 1), with towns and trails drawn on it; the party's mark
-blinks at the place it is at, and a journey is chosen from a list in the
-text area below the picture. Sections 1 to 8 are Pool of Radiance's
-window and none of its mechanism carries over: the seam has a second set
-of points and handlers for this program (`explored_picture_facts` in
-`seam_explored.cpp`, the definition's `programs`).
-
-### 9.1 The design (the maintainer's)
-
-On the picture, fog everything except:
-
-- a **disc** around every place the party's mark has stood on;
-- a **corridor** along the straight line between two places the party
-  went between one after the other: a trail taken, or the way across
-  country between two places a journey passed through (a journey can
-  stop at a place on the way, and each stop is a place of its own);
-- the party's **current place**, always.
-
-The covering is §5's: palette index 0 on the pixels whose `x + y` is
-even on the screen. Nothing outside the picture is touched: not the
-frame, not the text area, not the bar.
-
-| constant (`machine/automap.h`) | value | why |
-| --- | --- | --- |
-| `explored_place_radius` | **16** pixels from the centre of the place's eight-pixel cell | clears the mark (one cell), the place's own marking on the picture and a cell of country round it, and leaves the next place along most trails under the fog |
-| `explored_trail_half_width` | **5** pixels, a corridor eleven across | wide enough to show the trail line the picture draws and the ground beside it, narrow enough to be a way and not a swathe |
-
-Both are worked out when the fog is laid and never stored, as §5.3's
-radius is.
-
-### 9.2 The fact table, each fact twice
-
-Data-segment offsets (DGROUP is `0x0ABE` paragraphs into the image),
-unless a row says otherwise.
-
-| what | where | first route | second route |
-| --- | --- | --- | --- |
-| game mode; **3** the overland, **0** the start menu | `0x4FD3` | the profile's | the mark test below compares it with 3; driven, 3 on the overland and 0 at the menu a load is made from |
-| the loaded big picture's block id; **`0x79`** the overland's | `0x72AA` | the mark test's compare | driven, `0x79` from the load on, `0xFF` in a fight |
-| the last small picture loaded; **`0x50`** keeps the mark down | `0x72A4` | the mark test's compare | driven, `0x50` in a town's own menu, whose picture is over the map; `0xFF` on the overland |
-| the loaded big picture's far pointer | `0x72A6` (offset), `0x72A8` (segment) | the routine that draws the overland (overlay 30 `+0x087A`) draws the wilderness frame, then pushes `1`, `1` and this pointer to the blitter | the blitter's frame at its return holds this pointer, row 1 and column 1 |
-| the current place | area record (the profile's far pointer) `+0x342`, a word | the routine that places the mark (overlay 28 `+0x0005`) reads it as a word and indexes the place table with it | driven, the place moves when the mark does, and at the place the journey ends the town is the one the text names |
-| the place table: a byte per place, the column and the row of its eight-pixel cell on the screen; 33 places | `0x0A4A` (columns), `0x0A6A` (rows) | the same routine, into the mark's column and row words `0x8C8C` and `0x8C8E` | driven, the mark's 64 blinking pixels sit at the cell the table holds, at each place driven; read at run time, never carried |
-| the mark and what it saves under itself | far pointers `0x8C90` and `0x65E4` | the mark's two routines (overlay 28 `+0x002E`, save then draw; `+0x005D`, put back) blit them at the mark's cell | driven, 64 pixels of one cell blink |
-| the adapter byte; **1** the EGA | `0x5000` | the blitter's and the compositor's first test | a picture block's layout is the EGA's only on that path |
-| the plane order of a byte column's four bytes | `0x2590`, four map-mask values | the blitter's EGA path writes each byte through the value at its index | every pixel the seam leaves clear is byte for byte the seam-off frame's |
-| a picture block: height in lines, width in byte columns, plane bytes | `+0`, `+2`, `+0x17` | the blitter's EGA path | the same |
-
-| point | where | what the handler does |
-| --- | --- | --- |
-| the menu-bar routine's test of whether to put the mark up | overlay 27 (the profile's menu overlay) `+0x04AC`: the compares of the mode with 3, the big picture with `0x79` and the last picture with `0x50`, then the three far calls that place, draw and put back the mark | at mode 0, forgets the last place; with the program's own answer yes, records the place and the way from the last one, and lays the fog if anything has moved |
-| the picture blitter's entry | image `0x3347` (far pointer at `SP+4`, row `SP+8`, column `SP+0Ah`) | anything but the overland's picture, or the mark and its saved screen at the mark's cell, drawn into the picture's cells: the picture is no longer the program's map, and nothing is painted on it until the program draws it again |
-| the blitter's line loop | image `0x343B`, the line just drawn at `BP-4` | drawing the overland's picture on the overland: that line's fog, now |
-| the blitter's one exit | image `0x3542`, `mov sp, bp` with the frame up (`BP+6` the block, `+0Ah` the row, `+0Ch` the column) | the overland's picture at (1, 1): the picture is the map again, and on the overland the whole fog is laid |
-| the overlay compositor's entry | image `0x3548` | a masked picture or a sprite: the same as anything else over the map |
-
-### 9.3 The decisions
-
-**The program does not repaint the picture when the party moves**: a
-journey moves the mark from place to place on the picture as it was
-drawn. So the seam puts the country back itself, **from the program's
-own copy of the picture**, the loaded block in conventional memory: each
-byte of the picture is written as that copy has it, less the fog's
-pixels, four plane-selected writes a byte (18,240 for the whole picture)
-and no read of the video window, so the adapter's latches are not
-touched (`ThePaintTouchesNoLatchAndLeavesEveryPlaneEnabled`). The
-registers are handed back as the program's blitter leaves them: write
-mode 0, no set/reset, bit mask `0xFF`, every plane enabled, the
-sequencer's index on the map mask.
-
-**Line by line as the program draws.** The blitter writes the picture a
-scanline at a time over about six frames; painting only at its return
-left the country uncovered while the picture came in (driven: five
-frames). The line loop's point lays the fog on each line as it is
-finished, so no frame shows a line of the picture without it; the
-return lays the whole of it again, which changes nothing it has already
-laid.
-
-**At the mark's own test**, because the mark is down there: the routine
-ends by putting back what it saved under the mark, so the fog is laid
-before the program saves the screen under the mark again, and what it
-saves at the current place is the picture, clear.
-
-**Whose screen.** A town's menu draws its own picture over the map with
-the mode still 3 and the big picture still the overland's; the program
-keeps its mark down by the last-picture byte, and the seam takes the
-same answer. A script's picture, a figure, a camp or a fight draws
-through the blitter or the compositor, and the seam paints nothing until
-the program draws the overland's picture again (after a fight, leaving a
-town, breaking camp: each driven).
-
-**The start menu is not a way between two places.** A save is loaded and
-a party begun from there; the seam forgets the last place there, so the
-next place the overland shows is a place and not a way.
-
-### 9.4 The record
-
-A third record kind, `automap_map_kind::places` (`machine/automap.h`),
-in the automap's store and its sidecar. Keyed (disk, big picture block),
-the geometry byte zero. A "cell" is a pair of places: `(p, p)`, bit `p`,
-is a place stood on; `(a, b)` is a way between two, one bit whichever
-way it was taken, at `33 + hi * (hi - 1) / 2 + lo`. 561 bits, inside the
-576 every record carries, so the layout stays version 2 and only the
-kind byte is new. Driven with `--save-sidecars`: the journey, a camp and
-a save to slot D wrote `AFMAPD.DAT` (one record of kind 2, the three
-places and the two ways between them), and loading D brought the
-overland up with all of it clear (`save-sidecars writes=0 reads=1
-slot=D trouble=none`).
-
-### 9.5 Driven, and what is not settled
-
-- **Driven** on `curse-wild` at `--speed 386`, `--wall none`: the journey
-  through the pass to the next town (`curse-journey-explored`), the
-  first place on the list by the trail with its inn's battle, a town's
-  menu and leaving it, a camp and breaking it, and a load with the
-  sidecar beside the save. On every one of 453 dumped stills compared with
-  the seam-off run at the same frame, every pixel that differs is a fog
-  pixel inside `8,8,311,127`; the overland's fog covers exactly that
-  rect. The machine's `cpu` and `ram` never differ from the seam-off
-  run's, only `devices` and `display`.
-- **Fidelity**: on and the overland never shown, identical
-  (`curse-quiet-explored` `identical curse-quiet`, all 58 checkpoints).
-- **Not settled**: the radius and the corridor's width have been looked
-  at on dumped stills and not by the maintainer in play. Not driven: a
-  script's own picture over the map with the mark up (no leg reaches
-  one; `APictureDrawnOverTheMapIsLeftAlone` is the mechanism's test),
-  and a picture overland on any disk but the first.

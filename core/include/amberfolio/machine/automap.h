@@ -102,21 +102,7 @@ enum class automap_map_kind : std::uint8_t {
   /// identified by (disk, area) — there is no geometry block to swap out
   /// there, so the third byte is zero and means nothing.
   overland = 1,
-  /// A region shown as **one picture with places on it**, travelled
-  /// between rather than walked (Curse of the Azure Bonds' overland map,
-  /// #555). A "cell" is a pair of places: `(p, p)` is a place the party
-  /// stood on, and `(a, b)` with `a != b` is the way between two places
-  /// it went between one after the other, the same bit whichever way it
-  /// went. Identified by (disk, picture block), the third byte zero.
-  places = 2,
 };
-
-/// The most places a `places` record holds. One bit each, and one for
-/// each unordered pair of them: 33 + 33 * 32 / 2 = 561 bits, which is
-/// inside the 576 every record carries, so this kind needs no wider row.
-/// The program's own table of places is read at run time; this is the
-/// record's capacity, which a table longer than it would not fit.
-inline constexpr unsigned automap_max_places = 33;
 
 /// One bit per cell, at the width of the **widest** kind, because a
 /// record is one fixed width whatever it is about.
@@ -130,18 +116,9 @@ inline constexpr std::size_t automap_grid_seen_bytes = automap_map_cells / 8;
 inline constexpr std::size_t automap_overland_seen_bytes =
     automap_overland_cells / 8;
 inline constexpr std::size_t automap_seen_bytes = automap_overland_seen_bytes;
-static_assert(automap_max_places +
-                      (automap_max_places * (automap_max_places - 1) / 2) <=
-                  automap_seen_bytes * 8,
-              "a places record's visits and ways fit in one record's bitmap");
 
 /// The bit index of a cell on a map of this kind, or `automap_no_cell`
 /// when the coordinates are not on such a map.
-///
-/// On a `places` record the coordinates are two places: a place itself
-/// when they are equal, its own bit `p`, and a way between two when they
-/// are not, bit `automap_max_places + hi * (hi - 1) / 2 + lo` for the
-/// pair's lower and higher place, so `(a, b)` and `(b, a)` are one bit.
 ///
 /// A grid's coordinates **wrap at four bits**, which is what the
 /// program's own map addressing does and is therefore not an error there.
@@ -260,28 +237,6 @@ inline constexpr unsigned explored_cell_pixels = 24;
 /// what the record holds and what the enhancement is named for.
 /// `docs/explored-overlay.md` §5.3 has both measurements.
 inline constexpr int explored_reveal_radius = 0;
-
-/// **How much of a picture overland a visit and a journey uncover**, in
-/// screen pixels (Curse of the Azure Bonds, #555;
-/// `docs/explored-overlay.md` §9). That map is one picture of the region
-/// with places drawn on it, and the party goes from place to place, so
-/// what it has seen is a **disc** around each place its mark has stood on
-/// and a **corridor** along the straight line between two places it went
-/// between one after the other.
-///
-/// The disc's radius is two of the picture's eight-pixel cells: the
-/// party's mark is one cell drawn on the place's own, so a disc of 16
-/// pixels from that cell's centre clears the mark, the place's own
-/// marking on the picture and a cell of country on every side of it,
-/// and leaves the next place along most trails under the fog until the
-/// party goes there. The corridor's half-width is 5 pixels, eleven
-/// across: wide enough to show the trail line the picture draws and the
-/// ground either side of it, narrow enough that a way taken is a way and
-/// not a swathe. Both are a reveal worked out when the picture is drawn,
-/// never stored, so either can change without costing a player the
-/// places they have been.
-inline constexpr int explored_place_radius = 16;
-inline constexpr int explored_trail_half_width = 5;
 
 /// The top-left cell of the window, in the program's own terms: a column
 /// of the 44-column overland terrain table and a row of the map.
@@ -507,20 +462,6 @@ class automap_state {
     return find(automap_map_kind::overland, disk, area, 0);
   }
 
-  /// A picture overland's forms (`automap_map_kind::places`): keyed
-  /// (disk, picture block), with no geometry block. Its cells are pairs
-  /// of places, so `reveal(map, p, p)` is a visit and `reveal(map, a, b)`
-  /// a way taken, and `seen()` answers either.
-  [[nodiscard]] automap_record& record_for_places(
-      std::uint8_t disk, std::uint8_t picture) noexcept {
-    return record_for(automap_map_kind::places, disk, picture, 0);
-  }
-
-  [[nodiscard]] const automap_record* find_places(
-      std::uint8_t disk, std::uint8_t picture) const noexcept {
-    return find(automap_map_kind::places, disk, picture, 0);
-  }
-
   /// Whether a cell has been seen. On a grid the coordinates wrap at four
   /// bits, the way the program's own do; on an overland map a cell off
   /// the map is answered `false` rather than wrapped.
@@ -620,6 +561,36 @@ class automap_state {
   [[nodiscard]] bool at_command_bar() const noexcept { return at_command_bar_; }
   void set_at_command_bar(bool at) noexcept { at_command_bar_ = at; }
 
+  /// Whether some of the panel's pixels are still on the glass around a
+  /// clear that took only part of its rect (#555).
+  ///
+  /// **The roster drawer clears only the rows it writes**: a row per
+  /// member and one more, and not the header's row or anything above it
+  /// or below the party. When the program puts the roster up over a panel
+  /// that is on the screen (a temple's or a shop's screen, drawn by a
+  /// script with the party's bar gone), the first of those clears says
+  /// the cells are taken and the panel is no longer on the screen, which
+  /// is true of those rows only. The rest of the map, and the label's
+  /// first letter beside the header, stayed where they were.
+  ///
+  /// So a clear that meets the panel without covering it, while the panel
+  /// is on the screen, leaves pixels behind, and `roster_over_stranded()`
+  /// says the roster drawer has drawn over them since: the cells are the
+  /// roster's, and the give-back (the panel's rect cleared and the roster
+  /// drawn again, by the program) is what puts them right when the bar
+  /// that comes up is not the party's. Any other clear of the panel's
+  /// cells after the roster means something else is drawing there, and
+  /// the give-back is not owed. A whole screen or a whole panel cleared,
+  /// a panel drawn and a give-back made leave nothing behind.
+  [[nodiscard]] bool stranded() const noexcept { return stranded_; }
+  void set_stranded(bool left) noexcept { stranded_ = left; }
+  [[nodiscard]] bool roster_over_stranded() const noexcept {
+    return roster_over_stranded_;
+  }
+  void set_roster_over_stranded(bool over) noexcept {
+    roster_over_stranded_ = over;
+  }
+
   /// Whether a rect the program is about to clear, in its own text cells,
   /// meets the panel. Static because the region-clear point wants to
   /// answer it before it has decided to touch anything.
@@ -627,6 +598,12 @@ class automap_state {
                                              std::uint8_t right,
                                              std::uint8_t top,
                                              std::uint8_t left) noexcept;
+
+  /// Whether that rect covers every cell of the panel.
+  [[nodiscard]] static bool rect_covers_panel(std::uint8_t bottom,
+                                              std::uint8_t right,
+                                              std::uint8_t top,
+                                              std::uint8_t left) noexcept;
 
   // --- what this map looks like ----------------------------------------
   //
@@ -880,6 +857,8 @@ class automap_state {
   bool panel_open_{false};
   bool panel_on_screen_{false};
   bool panel_covered_{false};
+  bool stranded_{false};
+  bool roster_over_stranded_{false};
   bool at_command_bar_{false};
 
   bool appearance_valid_{false};

@@ -1492,16 +1492,12 @@ read log (#555): with `--seam journal --save-sidecars`, a save to slot C
 after the innkeeper's citation of entry 31 writes `AFSEENC.DAT` (one row,
 entry 31 unread), and loading C reads it back
 (`save-sidecars writes=0 reads=1 slot=C trouble=none`). `AFMAP<S>.DAT`
-holds the automap's exploration and the explored overlay's places
-(#555). With `--seam automap --save-sidecars`, Tab at the opening room
-and a walk to the street, `E`, `S`, `C` write `AFMAPC.DAT` (one record,
-disk 2, area 1, seven squares: `save-sidecars writes=1 reads=0 slot=C
-trouble=none`), and loading C reads it back, the panel at `6,12 N`
-drawing the room the party stood in at the start. With `--seam explored
---save-sidecars`, a save to slot D after a journey writes `AFMAPD.DAT`
-(one record of the places kind, `docs/explored-overlay.md` §9.4), and
-loading D reads it back (`save-sidecars writes=0 reads=1 slot=D
-trouble=none`).
+is the automap's exploration (#555): with `--seam automap
+--save-sidecars`, Tab at the opening room and a walk to the street,
+`E`, `S`, `C` write `AFMAPC.DAT` (one record, disk 2, area 1, seven
+squares: `save-sidecars writes=1 reads=0 slot=C trouble=none`), and
+loading C reads it back, the panel at `6,12 N` drawing the room the
+party stood in at the start.
 
 Three placeholders: `<S>` a slot letter, `<N>` a party-member index,
 `<NAME>` a DOS name the player chose and this build cannot enumerate.
@@ -2463,10 +2459,11 @@ A fight (game mode 5, the tactical grid):
 
   - **No travel shape**: Curse's overland is a journey, a list of places,
     and reads `null`.
-  - **Every map is `AREA <n>`**: the zone names, lairs and door table are
-    Pool of Radiance's places, keyed by disk and area numbers Curse uses
-    for other maps, so they are kept per program and Curse has none. A
-    door is a door where the map says it is shut.
+  - **The zone names, lairs and door table are kept per program**,
+    because they are keyed by disk and area numbers Curse uses for other
+    maps. Curse's are a door table and the maps' names
+    (`docs/seams.md` §10, the automap), `AREA <n>` where a grid has none:
+    a door is a door where its wall graphic is one, as the panel draws it.
   - **The titles are `null`**: the program is in mode 4 from start-up,
     and an area is up only once its script's block, numbered from one,
     is loaded (the area number is zero until then).
