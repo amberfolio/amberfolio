@@ -40,9 +40,11 @@ constexpr std::string_view curse_fingerprint =
 constexpr std::uint16_t word_adventure = 0x9A0;
 constexpr std::uint16_t word_camp = 0x9E0;
 constexpr std::uint16_t word_menu = 0x1050;
+constexpr std::uint16_t word_script = 0x4D0;
 constexpr std::uint16_t adventure_segment = 0x6400;
 constexpr std::uint16_t camp_segment = 0x6800;
 constexpr std::uint16_t menu_segment = 0x6000;
+constexpr std::uint16_t script_segment = 0x6A00;
 
 /// The points: either side of the party bar's call in overlay 15, and the
 /// key read in overlay 27.
@@ -55,6 +57,10 @@ constexpr std::uint16_t baseline_city_before = 0x09D0;
 /// Callers by their returns: the camp bar, and the two door bars in the
 /// adventuring loop's module.
 constexpr std::uint16_t camp_return = 0x24FD;
+/// The script runner's call (overlay 8), and the pick-list's (overlay 27,
+/// from inside it).
+constexpr std::uint16_t script_return = 0x1811;
+constexpr std::uint16_t pick_list_return = 0x10F3;
 constexpr std::uint16_t door_bar_locked = 0x0CD7;
 constexpr std::uint16_t door_bar_stuck = 0x0E16;
 
@@ -72,6 +78,8 @@ constexpr std::uint16_t loop_copy = 0x32;
 constexpr std::uint16_t frame_ip = 2;
 constexpr std::uint16_t frame_cs = 4;
 constexpr std::uint16_t routine_bar = 0x53;
+/// The routine's count of the groups it parsed the bar into.
+constexpr std::uint16_t routine_groups = 0x8E;
 /// At the call: the bar's far pointer above SP.
 constexpr std::uint16_t stack_bar_offset = 14;
 constexpr std::uint16_t stack_bar_segment = 16;
@@ -115,6 +123,7 @@ struct rig {
     put_word(image_load_segment, word_adventure, adventure_segment);
     put_word(image_load_segment, word_camp, camp_segment);
     put_word(image_load_segment, word_menu, menu_segment);
+    put_word(image_load_segment, word_script, script_segment);
     put_string(dgroup(), party_bar, a_bar);
   }
 
@@ -326,6 +335,38 @@ TEST(SeamMoveModeOnCurse, ADoorsBarKeepsTheWalkAndAnyOtherEndsIt) {
   r.before();
   EXPECT_EQ(r.handed(), "Move Bravo Cobra");
   EXPECT_EQ(r.lit(), 1);
+}
+
+TEST(SeamMoveModeOnCurse, AScriptsContinuePromptIsPartOfTheWalk) {
+  // The script runner's call with a bar of one group: the prompt a script
+  // raises to wait for Return. The walk goes on after it.
+  const rig r;
+  r.arm();
+  r.start_walking();
+  r.put_byte(stack_segment,
+             static_cast<std::uint16_t>(frame_base - routine_groups), 1);
+  static_cast<void>(
+      r.press(letter_b, script_segment, script_return, "Continue"));
+  r.before();
+  EXPECT_EQ(r.handed(), "Exit") << "still walking";
+  r.arrive(bar_after, 0x48, 1);
+  // The same caller with a question of two commands ends it.
+  r.put_byte(stack_segment,
+             static_cast<std::uint16_t>(frame_base - routine_groups), 2);
+  EXPECT_EQ(r.press(letter_b, script_segment, script_return), letter_b);
+  r.before();
+  EXPECT_EQ(r.handed(), "Move Bravo Cobra");
+}
+
+TEST(SeamMoveModeOnCurse, APickListOfOneCommandIsAChoice) {
+  const rig r;
+  r.arm();
+  r.start_walking();
+  r.put_byte(stack_segment,
+             static_cast<std::uint16_t>(frame_base - routine_groups), 1);
+  static_cast<void>(r.press(letter_b, menu_segment, pick_list_return, "Exit"));
+  r.before();
+  EXPECT_EQ(r.handed(), "Move Bravo Cobra");
 }
 
 TEST(SeamMoveModeOnCurse, TheOverheadViewIsLeftForThe3DViewBeforeTheBar) {

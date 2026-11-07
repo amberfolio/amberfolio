@@ -169,13 +169,16 @@ under the temple's bar. Recorded as `curse-temple-map`.
 `MOVE CAST VIEW ENCAMP SEARCH LOOK` with `MOVE` lit, and the arrows step
 it and the party list instead of walking: `Return` on `MOVE` makes the
 bar `EXIT` alone, and the arrows walk until `Return`, `Escape` or `E`,
-or a screen of the game's own, brings the menu back. So a walk with the
-seam on needs a `Return` before it. From the opening, `Return Left
-Escape Return Left Up Return Return Down Right Right Return Escape`
-takes `MOVE`, turns, goes back to the menu, walks into the innkeeper,
-selects Mark and opens View for him (`curse-move-walk-mode`); with the
-seam off the same keys toggle the overhead view, walk into the
-innkeeper and turn (`curse-move-walk`).
+or a screen of the game's own that asks for a choice, brings the menu
+back. A sign's or a story line's `PRESS <ENTER>/<RETURN> TO CONTINUE` is
+not one: after its `Return` the bar is `EXIT` again. So a walk with the
+seam on needs a `Return` before it, and only that. From the opening,
+`Return Left Escape Return Left Up Return Return Right Up Return Left Up
+Up Right Up Up Up Up Up Return Up Up Up Up Right Up Return Escape Down
+Right Right Return Escape` takes `MOVE`, turns, goes back to the menu,
+walks past the innkeeper and the signs at 6,12, 4,7 and 5,3, selects Mark and opens View for him (`curse-move-walk-mode`);
+with the seam off the same keys toggle the overhead view, make the same
+walk and turn (`curse-move-walk`).
 
 Walking west at `1,14`, a group of royal guards turns the party back:
 the way is closed until the royal carriage comes. Leg 7 is what brings

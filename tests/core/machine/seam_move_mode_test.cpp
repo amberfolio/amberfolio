@@ -50,6 +50,8 @@ constexpr std::uint16_t wild_after = 0x0C45;
 constexpr std::uint16_t key_point = 0x0572;
 /// The camp bar's return, a caller of the routine that is not the party's.
 constexpr std::uint16_t camp_return = 0x1F24;
+/// The pick-list's call into the routine, in overlay 25.
+constexpr std::uint16_t pick_list_return = 0x0FE0;
 
 /// The data segment is the image's paragraph 0xC7C on, and the facts in it.
 constexpr std::uint16_t dgroup_paragraphs = 0xC7C;
@@ -65,6 +67,8 @@ constexpr std::uint16_t loop_out_flag = 0x04;
 constexpr std::uint16_t frame_ip = 2;
 constexpr std::uint16_t frame_cs = 4;
 constexpr std::uint16_t routine_bar = 0x53;
+/// The routine's count of the groups it parsed the bar into.
+constexpr std::uint16_t routine_groups = 0x8E;
 
 /// At the call: the bar's far pointer above SP, and the loop's local the
 /// piece makes its bar in, below BP.
@@ -536,6 +540,49 @@ TEST(SeamMoveMode, ADoorsBarDoesNotEndTheWalk) {
     EXPECT_EQ(r.handed(), "Exit") << door;
     r.arrive(city_after, 0x48, 1);
   }
+}
+
+TEST(SeamMoveMode, ANoticeOfOneCommandIsPartOfTheWalk) {
+  // A script's continue prompt: a bar the routine parsed into one group.
+  // It only waits for Return, and the walk goes on after it.
+  const rig r;
+  r.arm();
+  r.start_walking();
+  r.put_byte(stack_segment,
+             static_cast<std::uint16_t>(frame_base - routine_groups), 1);
+  static_cast<void>(r.press(letter_b, camp_segment, camp_return, "Continue"));
+  r.before(city_before);
+  EXPECT_EQ(r.handed(), "Exit") << "still walking";
+  r.arrive(city_after, 0x48, 1);
+  // A bar of two commands is a choice, and ends it.
+  r.put_byte(stack_segment,
+             static_cast<std::uint16_t>(frame_base - routine_groups), 2);
+  EXPECT_EQ(r.press(letter_b, camp_segment, camp_return), letter_b);
+  r.before(city_before);
+  EXPECT_EQ(r.handed(), "Move Bravo Cobra");
+}
+
+TEST(SeamMoveMode, ANoticeLeavesTheMenusHighlightAlone) {
+  const rig r;
+  r.arm();
+  r.city_call('C', 3);
+  r.put_byte(stack_segment,
+             static_cast<std::uint16_t>(frame_base - routine_groups), 1);
+  static_cast<void>(r.press(letter_b, camp_segment, camp_return, "Continue"));
+  r.before(city_before);
+  EXPECT_EQ(r.lit(), 3) << "Cobra stays lit: the party never left its bar";
+}
+
+TEST(SeamMoveMode, APickListOfOneCommandIsAChoice) {
+  // The rows are the choice, whatever the list's bar holds.
+  const rig r;
+  r.arm();
+  r.start_walking();
+  r.put_byte(stack_segment,
+             static_cast<std::uint16_t>(frame_base - routine_groups), 1);
+  static_cast<void>(r.press(letter_b, menu_segment, pick_list_return, "Exit"));
+  r.before(city_before);
+  EXPECT_EQ(r.handed(), "Move Bravo Cobra");
 }
 
 TEST(SeamMoveMode, TheOverheadViewIsLeftForThe3DViewBeforeTheBar) {

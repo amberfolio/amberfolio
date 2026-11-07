@@ -1694,8 +1694,13 @@ has two modes:
 - **The party arrives in menu mode with `Move` lit**: after a load, a fight,
   camp, a shop, a script's question, View, any screen with a bar of its
   own. Walking lasts across steps and the events a step runs, and ends at
-  the next bar that is not the party's or a door's (a locked or stuck
-  door's bar is part of the walk).
+  the next bar that asks for a choice. Two kinds of bar are part of the
+  walk: a locked or stuck door's, and **a notice**, a bar of one command
+  that only waits for Return, such as the prompt a script raises after a
+  sign or a line of story. A pick-list's bar is a choice however few
+  commands it has, because its rows are. The program's other waits for a
+  key, and `message-pause`'s, do not go through the menu-bar routine, and
+  leave the mode alone.
 - **`Area` is gone**, by decision: the automap (Tab) is the overhead view,
   and with the automap off the overhead view is not reachable.
 
@@ -1704,7 +1709,7 @@ has two modes:
 | the city's call into the menu-bar routine, `0x09D0` | overlay 14 (`0x730`) | the bar the call is handed (the program's string, `Notes` on it if the journal is on) is copied into the loop's frame at `BP-0x32`, made this mode's bar, and the call's far pointer (`SS:SP+14`) aimed at the copy. Menu mode: the first group, `Area`, becomes `Move`. Walking: the copy is `Exit`. The highlight is put under `Move` when the party has just arrived or `Move` was last lit; `Exit` is lit. With the overhead view on (`0x6AAC`), first clears it and calls the program's screen composer (`0xBA:0x27D9`) through the batch, and the point is offered again |
 | the instruction after it, `0x09D5` | overlay 14 | `M` off the bar starts walking; `E` off the walking bar stops it and is handed back as `-`, which the program loops on, so the party does not camp. The highlight goes back to the program's numbering, `Move` lit kept in a word of the seam's, and the value it was entered with when `Notes` was chosen |
 | the wilderness's call, `0x0C40`, and the instruction after it, `0x0C45` | overlay 14 | the same, with `Move ` inserted in front of the bar's first group (27 + 5 + the journal's 6 is 38 of the slot's 40), every group after it one up, and the highlight moved for it both ways |
-| image `0x0572` of overlay 25, the key read (`bar-keys`' point), the last of the five pieces there | overlay 25 | at the two adventuring callers only. Menu mode: Left and Right become `,` and `.`, Up and Down Home and End, the digits `4`, `6`, `8`, `2` the same four, and a letter that is not one of the bar's command letters the key the program throws away (`seam_key_read.h`), so a typed `H`, `K` or `P` does not walk. Walking: Esc becomes `E`, every letter but `E` is thrown away; Return is `bar-keys`' (the lit command, `Exit`'s `E`). **Any other caller ends walking** and has `Move` lit at the party's next bar, but for the door bars (`0x0EBF`, `0x0FFE`) |
+| image `0x0572` of overlay 25, the key read (`bar-keys`' point), the last of the five pieces there | overlay 25 | at the two adventuring callers only. Menu mode: Left and Right become `,` and `.`, Up and Down Home and End, the digits `4`, `6`, `8`, `2` the same four, and a letter that is not one of the bar's command letters the key the program throws away (`seam_key_read.h`), so a typed `H`, `K` or `P` does not walk. Walking: Esc becomes `E`, every letter but `E` is thrown away; Return is `bar-keys`' (the lit command, `Exit`'s `E`). **Any other caller ends walking** and has `Move` lit at the party's next bar, but for the door bars (`0x0EBF`, `0x0FFE`) and a notice: a bar the routine parsed into one group (its count at `BP-0x8E`) from any caller but the pick-list (`0x0FE0`). Both leave the piece's words alone |
 
 | fact | value |
 |---|---|
@@ -1715,6 +1720,7 @@ has two modes:
 | what it does with a raw key | `H`, `K`, `M`, `P` walk and turn (relative in the city, where only `H` ends the routine; absolute facings in the wilderness, where all four end it); anything else goes to the party cursor. A typed letter not on the bar comes back raw, so a typed `H` walks |
 | the overhead view | `0x6AAC`; the program clears it on a new game, where an area does not allow it and when a script's message comes up; only `A` sets it |
 | the highlight | `0x6B2B`, shared by every bar (#304) |
+| a notice | the menu-bar routine's group count, `BP-0x8E` of its frame, is one. A script's continue prompt is its menu command with one item: the routine parses it into one group and lights it whole. `bar-script-keys`' walk meets one at 7,1, lit whole as its one group, and the question after it, a bar of two commands, ends the walk |
 
 - **The program's string is never written.** The copy is a local nothing
   reads and the pointer an argument the routine pops, so a seam switched
@@ -1777,6 +1783,7 @@ copy's `GAME.OVR` and image.
 | Esc at the bar | the program's | handed back as `0`, which the loop goes round on; walking, the piece makes it `E` |
 | the overhead view | `0x6AAC` | `0x7228`. The composer (`0x00ED:0x00CF`) clears it itself in the adventuring mode and draws the 3D view |
 | the door bars | `0x0EBF`, `0x0FFE` | `0x0CD7`, `0x0E16` |
+| a notice: the group count; the pick-list's call | `BP-0x8E`; overlay 25 `0x0FE0` | the same; overlay 27 `0x10F3`, a near call from inside it. A script's continue prompt comes from the script runner's call (overlay 8 `0x1811`) with one group, as a sign's does |
 | the highlight | `0x6B2B` | `0x72AE` |
 
 - **The overland is not a walk.** Curse's travel mode is a journey menu,
@@ -1796,18 +1803,20 @@ copy's `GAME.OVR` and image.
   Down selects Mark; Return gives `EXIT` alone, Escape the menu with
   `Move` lit; `N` opens the journal and its Exit gives the bar back; Left
   wraps to `NOTES`, Return opens it, and the bar comes back with `Move`
-  lit. In the pair below, Return on `Move`, Left and Left turn the party
-  west and Up walks into the innkeeper at 6,13, whose screens end the
-  walk. On the overland (slot D of `curse-wild`) Right, Right and Left
+  lit. In the pair below the walk goes on through five continue prompts,
+  the innkeeper's two at 6,13 and the signs' at 6,12, 4,7 and 5,3, the
+  bar `EXIT` again after each Return. On the overland (slot D of `curse-wild`) Right, Right and Left
   step the journey bar, which is the program's.
 - **Not driven**: a party in the overhead view when the bar comes up
   (the piece switched on there); the unit suite pins the clearing.
 - **Fidelity**: `curse-move-walk-mode` `contrast curse-move-walk`, 19 of
-  70 checkpoints identical, divergent from tick 48,382,638, the title's
+  115 checkpoints identical, divergent from tick 48,382,638, the title's
   bar. The seam-on half takes `Move`, turns, comes back to the menu on
-  Escape, walks into the innkeeper, selects Mark with Down, and opens
-  View for him with Right, Right and Return, where the seam-off half
-  toggles the overhead view, walks into the innkeeper and turns. Unit:
+  Escape, takes `Move` again and walks from the opening room to the sign
+  at 5,3 through five continue prompts, ends the walk with Escape,
+  selects Mark with Down, and opens View for him with Right, Right and
+  Return; the seam-off half toggles the overhead view, makes the same
+  walk and turns. Unit:
   `SeamMoveModeOnCurse.*`.
 
 ## Text entry (#504)
