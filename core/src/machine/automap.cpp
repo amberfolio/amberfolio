@@ -24,17 +24,6 @@ std::size_t automap_cell_index(automap_map_kind kind, unsigned x,
     }
     return (static_cast<std::size_t>(y) * automap_overland_columns) + x;
   }
-  if (kind == automap_map_kind::places) {
-    if (x >= automap_max_places || y >= automap_max_places) {
-      return automap_no_cell;
-    }
-    if (x == y) {
-      return x;
-    }
-    const std::size_t low = x < y ? x : y;
-    const std::size_t high = x < y ? y : x;
-    return automap_max_places + ((high * (high - 1)) / 2) + low;
-  }
   return ((static_cast<std::size_t>(y) & 0x0FU) * automap_map_side) +
          (x & 0x0FU);
 }
@@ -400,8 +389,7 @@ constexpr std::size_t v1_field_marker_kind =
 /// marker kinds below: an unknown one is not guessed at.
 [[nodiscard]] bool known_map_kind(std::uint8_t kind) noexcept {
   return kind == static_cast<std::uint8_t>(automap_map_kind::grid) ||
-         kind == static_cast<std::uint8_t>(automap_map_kind::overland) ||
-         kind == static_cast<std::uint8_t>(automap_map_kind::places);
+         kind == static_cast<std::uint8_t>(automap_map_kind::overland);
 }
 
 [[nodiscard]] std::uint16_t word_at(std::span<const std::uint8_t> bytes,

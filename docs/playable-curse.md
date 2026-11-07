@@ -23,7 +23,7 @@ GOG copy at the root (`docs/hosts.md` §2c). No seam is needed to play;
 those available on this program are the debug cheats, the code wheel,
 the text faces, the message pause, the journal, `modern-controls` (nine
 of its pieces) and the automap, each with its facts in `docs/seams.md`
-§10, and the explored overlay (`docs/explored-overlay.md`). The
+§10. The
 legs below answer the challenge themselves; with `--seam code-wheel
 --code-wheel-answered` the boot goes from `P` straight to the party
 menu, and every frame after it comes earlier. Leg 3 with `--seam
@@ -349,12 +349,6 @@ the `W`: the party wins at once (frame about 7,100), `Return` takes the
 win, `E` leaves the treasure, and the mark stands at the next town's
 edge with the same bar.
 
-With `--seam explored` the picture comes up under the fog with a disc
-clear around the town the party stands at, and each place the journey
-stops at (the pass on the way) and the way between each two are
-uncovered as the mark moves (`docs/explored-overlay.md` §9). Recorded
-as `curse-journey-explored`.
-
 ---
 
 ## The session library
@@ -369,7 +363,6 @@ lines, at `--speed 386` and `--wall none`:
 | `curse-boot-answered` | `curse-slots` | `code-wheel`, answered | `contrast curse-boot` |
 | `curse-quiet` | `curse-slots` | none | |
 | `curse-quiet-cheats` | `curse-slots` | the three cheats, none pulled | `identical curse-quiet` |
-| `curse-quiet-explored` | `curse-slots` | `explored` | `identical curse-quiet` |
 | `curse-quiet-font-sans` | `curse-slots` | `font-sans` | `contrast curse-quiet` |
 | `curse-quiet-font-chisel` | `curse-slots` | `font-chisel` | `contrast curse-quiet` |
 | `curse-quiet-message-pause` | `curse-slots` | `message-pause` | `identical curse-quiet` |
@@ -398,7 +391,6 @@ lines, at `--speed 386` and `--wall none`:
 | `curse-journey` | `curse-wild` | none | |
 | `curse-journey-kill` | `curse-wild` | `cheat-kill-all`, pulled | `contrast curse-journey` |
 | `curse-journey-journal` | `curse-wild` | `journal` | `identical curse-journey` |
-| `curse-journey-explored` | `curse-wild` | `explored`, `cheat-kill-all` pulled | `contrast curse-journey-kill` |
 | `curse-cite` | `curse-slots` | `journal`, entry 31 cited | `contrast curse-buy` |
 | `curse-camp-keys` | `curse-slots` | none | |
 | `curse-camp-arrows` | `curse-slots` | `modern-controls` | `contrast curse-camp-keys` |
