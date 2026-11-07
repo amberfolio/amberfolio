@@ -66,7 +66,9 @@
 // points at. Anything else is not the instruction these facts describe,
 // and the handler declines and touches nothing. On Curse, where the row
 // comes out of a copy, DS has to be the data segment, BX a row, the
-// index a glyph, and AH that glyph's row in the font.
+// index a glyph, and AH that glyph's row in the font, or already the
+// face's row for it: an interrupt taken at the point's boundary returns
+// to it, and the point is offered again with AH swapped.
 //
 //
 // The fidelity claim (docs/seams.md §8.5)
@@ -211,6 +213,14 @@ void swap_copied_row(machine& box, seam_context& ctx) {
   const unsigned index = cpu.read_byte(
       regs[cpu::sreg::ss], static_cast<std::uint16_t>(bp + F.index_above_bp));
   const std::uint32_t byte = (index * text_face::glyph_bytes) + row;
+  if (index < F.buffer_glyphs && text_face::replaces(index) &&
+      regs.get(cpu::reg8::ah) == text_face::row(Which, index, row)) {
+    // Already this face's row: the same instruction offered a second
+    // time, after an interrupt taken at its boundary returned to it
+    // (machine.cpp dispatches the seams before the step that delivers
+    // the interrupt). Swapped once is swapped.
+    return;
+  }
   if (index >= F.buffer_glyphs || font_offset + byte > 0xFFFFU ||
       cpu.read_byte(font_segment,
                     static_cast<std::uint16_t>(font_offset + byte)) !=

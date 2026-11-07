@@ -1012,7 +1012,7 @@ TEST(SceneJson, StartsWithTheFieldsBothScreensHave) {
 
 // --- On Curse of the Azure Bonds (#555) -------------------------------------
 //
-// The same reads with Curse's facts: no view kind, no place tables, the
+// The same reads with Curse's facts: no view kind, its own place tables, the
 // tactical grid's tables further into the data segment, the 422-byte record.
 
 namespace curse {
@@ -1083,7 +1083,7 @@ struct curse_rig : rig {
   }
 };
 
-TEST(SceneOnCurse, SaysWhereThePartyIsAndNamesTheAreaByItsNumber) {
+TEST(SceneOnCurse, SaysWhereThePartyIsAndNamesTheArea) {
   const curse_rig r;
   r.grid(7, 13, east, 2, 1);
   r.face(7, 13, north, 1, 0);
@@ -1093,14 +1093,24 @@ TEST(SceneOnCurse, SaysWhereThePartyIsAndNamesTheAreaByItsNumber) {
   EXPECT_EQ(s.x, 7);
   EXPECT_EQ(s.y, 13);
   EXPECT_EQ(s.facing, east);
-  EXPECT_EQ(std::string_view(s.zone.data(), s.zone_length), "AREA 1");
+  EXPECT_EQ(std::string_view(s.zone.data(), s.zone_length), "TILVERTON")
+      << "the soft break the panel's band may split it at is not said";
   ASSERT_GT(s.view_count, 0U);
   EXPECT_EQ(s.view[0].faces[0], scene_face::wall);
 }
 
+TEST(SceneOnCurse, AGridSeveralPlacesShareIsNamedByItsNumber) {
+  // Disk 3 area 21 is what a search beside two towns reaches.
+  const curse_rig r;
+  r.grid(3, 3, north, 3, 21);
+  const scene s = r.read();
+  ASSERT_EQ(r.last, scene_trouble::none);
+  EXPECT_EQ(std::string_view(s.zone.data(), s.zone_length), "AREA 21");
+}
+
 TEST(SceneOnCurse, NeverUsesPoolOfRadiancesNameForTheSameNumbers) {
   // Pool of Radiance calls disk 1 area 18 a plaza; on Curse the same two
-  // numbers are a different map nobody has named.
+  // numbers are no map anybody has named.
   const curse_rig r;
   r.grid(3, 3, north, 1, 18);
   const scene s = r.read();

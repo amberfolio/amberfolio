@@ -154,9 +154,10 @@ struct place_tables;
 /// Pool of Radiance's: measured (`docs/seams.md` §10, the automap).
 [[nodiscard]] const place_tables& pool_of_radiance_places() noexcept;
 
-/// A program nobody has measured places for: every map is `AREA <n>`, no
-/// grid is divided into lairs, and a door is known by being seen shut.
-[[nodiscard]] const place_tables& no_places() noexcept;
+/// Curse of the Azure Bonds': its door graphics, measured the same way,
+/// and its maps' names, a public walkthrough's (`docs/seams.md` §10, the
+/// automap). No sub-maps and no lairs; a grid with no name is `AREA <n>`.
+[[nodiscard]] const place_tables& curse_of_the_azure_bonds_places() noexcept;
 
 /// Which wall faces of this map are doors: its own shut faces, and the
 /// table's answer for the wall sets loaded with it.

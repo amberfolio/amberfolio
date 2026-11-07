@@ -2459,10 +2459,11 @@ A fight (game mode 5, the tactical grid):
 
   - **No travel shape**: Curse's overland is a journey, a list of places,
     and reads `null`.
-  - **Every map is `AREA <n>`**: the zone names, lairs and door table are
-    Pool of Radiance's places, keyed by disk and area numbers Curse uses
-    for other maps, so they are kept per program and Curse has none. A
-    door is a door where the map says it is shut.
+  - **The zone names, lairs and door table are kept per program**,
+    because they are keyed by disk and area numbers Curse uses for other
+    maps. Curse's are a door table and the maps' names
+    (`docs/seams.md` §10, the automap), `AREA <n>` where a grid has none:
+    a door is a door where its wall graphic is one, as the panel draws it.
   - **The titles are `null`**: the program is in mode 4 from start-up,
     and an area is up only once its script's block, numbered from one,
     is loaded (the area number is zero until then).

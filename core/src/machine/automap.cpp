@@ -57,6 +57,8 @@ void automap_state::clear() noexcept {
   panel_open_ = false;
   panel_on_screen_ = false;
   panel_covered_ = false;
+  stranded_ = false;
+  roster_over_stranded_ = false;
   at_command_bar_ = false;
   unsettle();
   settled_kind_ = automap_map_kind::grid;
@@ -276,6 +278,13 @@ bool automap_state::rect_meets_panel(std::uint8_t bottom, std::uint8_t right,
                                      std::uint8_t left) noexcept {
   return top <= automap_panel_bottom_row && bottom >= automap_panel_top_row &&
          left <= automap_panel_right_col && right >= automap_panel_left_col;
+}
+
+bool automap_state::rect_covers_panel(std::uint8_t bottom, std::uint8_t right,
+                                      std::uint8_t top,
+                                      std::uint8_t left) noexcept {
+  return top <= automap_panel_top_row && bottom >= automap_panel_bottom_row &&
+         left <= automap_panel_left_col && right >= automap_panel_right_col;
 }
 
 bool automap_state::observe(automap_map_kind kind, std::uint8_t disk,
