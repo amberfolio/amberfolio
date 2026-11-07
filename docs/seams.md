@@ -1711,29 +1711,6 @@ the old claim (`ExploredFidelity.TheArrivalIsNoLongerTheScreenItWouldHaveBeen`,
 squares named), `exp-steady.leg` (no flicker across the icon's
 animation).
 
-**On Curse of the Azure Bonds** (#555) the overland is one picture of
-the region with places on it, travelled between and not walked, so the
-seam has a mechanism of its own there (`explored_picture_facts`, its
-points in the definition's `programs`): the fog leaves a disc round every
-place the mark has stood on, a corridor along the straight line between
-two places travelled one after the other, and the current place.
-[`docs/explored-overlay.md`](explored-overlay.md) §9 has the facts with
-their second routes and the decisions.
-
-| fact | Pool of Radiance | Curse of the Azure Bonds |
-| --- | --- | --- |
-| the screen | mode 3, view kind 2 to 4, a 5x5 window at (8, 8) | mode 3, big picture `0x72AA` = `0x79`, last picture `0x72A4` ≠ `0x50`: one picture at cell (1, 1), `8,8,311,127` |
-| what is recorded | the square stood on (kind `overland`) | the place, area record `+0x342` (a word), and the way from the last place (kind `places`, §9.4 there) |
-| where it is recorded | the key-pending poll | the menu-bar routine's test of whether to put the mark up, overlay 27 `+0x04AC` |
-| when the fog is laid | the present's return, and the poll when something moved | each line the picture blitter finishes (image `0x343B`), its return (`0x3542`), and the mark's test when something moved |
-| what stops it | `0x84E0`, `0x84C8`, `0x84C9`, until the window blit | anything else blitted into the picture's cells (blitter entry `0x3347`, the mark and its saved screen at its cell excepted) or composited (`0x3548`), until the picture is drawn again |
-| how | a masked write over the program's pixels, one read and one write a byte | each byte written from the program's own copy of the picture less the fog, four writes a byte, no read |
-| how far | `explored_reveal_radius` 0 | `explored_place_radius` 16 pixels, `explored_trail_half_width` 5 |
-
-**Fidelity**: `curse-quiet-explored` `identical curse-quiet`;
-`curse-journey-explored` `contrast curse-journey-kill` (only `devices`
-and `display` differ). Tests: `ExploredOnCurse.*`, `ExploredPlaces.*`.
-
 ### Modern controls (#423, #425, #434, #439, #453, #455, #473, #479)
 
 `seam_modern_controls.cpp`: arrows, Enter, Esc and the number keys at

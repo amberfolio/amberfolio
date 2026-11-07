@@ -1492,16 +1492,12 @@ read log (#555): with `--seam journal --save-sidecars`, a save to slot C
 after the innkeeper's citation of entry 31 writes `AFSEENC.DAT` (one row,
 entry 31 unread), and loading C reads it back
 (`save-sidecars writes=0 reads=1 slot=C trouble=none`). `AFMAP<S>.DAT`
-holds the automap's exploration and the explored overlay's places
-(#555). With `--seam automap --save-sidecars`, Tab at the opening room
-and a walk to the street, `E`, `S`, `C` write `AFMAPC.DAT` (one record,
-disk 2, area 1, seven squares: `save-sidecars writes=1 reads=0 slot=C
-trouble=none`), and loading C reads it back, the panel at `6,12 N`
-drawing the room the party stood in at the start. With `--seam explored
---save-sidecars`, a save to slot D after a journey writes `AFMAPD.DAT`
-(one record of the places kind, `docs/explored-overlay.md` §9.4), and
-loading D reads it back (`save-sidecars writes=0 reads=1 slot=D
-trouble=none`).
+is the automap's exploration (#555): with `--seam automap
+--save-sidecars`, Tab at the opening room and a walk to the street,
+`E`, `S`, `C` write `AFMAPC.DAT` (one record, disk 2, area 1, seven
+squares: `save-sidecars writes=1 reads=0 slot=C trouble=none`), and
+loading C reads it back, the panel at `6,12 N` drawing the room the
+party stood in at the start.
 
 Three placeholders: `<S>` a slot letter, `<N>` a party-member index,
 `<NAME>` a DOS name the player chose and this build cannot enumerate.
