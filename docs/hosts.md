@@ -2467,8 +2467,8 @@ A fight (game mode 5, the tactical grid):
   - **The titles are `null`**: the program is in mode 4 from start-up,
     and an area is up only once its script's block, numbered from one,
     is loaded (the area number is zero until then).
-  - **The aim** waits on the aim watch, a piece of `modern-controls`,
-    being ported to Curse.
+  - **The aim** is the aim watch's, as on Pool of Radiance: absent
+    while `modern-controls` is off.
   - **Driven** over `curse-fight`'s run: the room at `7,13` with walls
     north, east and south and a door west; the walk west and north along
     the street square by square; in the brawl, six of the party and a

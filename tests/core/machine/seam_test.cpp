@@ -647,6 +647,44 @@ TEST(SeamFired, IsZeroForASeamThatIsOnAndNeverReached) {
   EXPECT_EQ(edit_hits, 0u);
 }
 
+TEST(SeamFired, IsOfferedOnceWhenAnInterruptIsTakenAtItsBoundary) {
+  // The processor delivers a due interrupt instead of the instruction at
+  // CS:IP, and the interrupt's return comes back to that CS:IP. The point
+  // there is offered at the boundary its instruction runs from and not at
+  // the one the interrupt was taken at: once for one execution (#582).
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("test-edit"), seam_reason::none);
+
+  // MOV AX, 1111h ; NOP ; HLT, the point on the NOP, and an IRET at
+  // offset 20h for vector 60h to come back through.
+  constexpr std::uint8_t vector = 0x60;
+  constexpr std::uint16_t handler_offset = 0x0020;
+  r.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xF4});
+  auto ram = r.pc().memory().ram();
+  ram[cpu::physical_address(image_load_segment, handler_offset)] = 0xCF;
+  ram[(vector * 4U) + 0] = handler_offset & 0xFFU;
+  ram[(vector * 4U) + 1] = handler_offset >> 8U;
+  ram[(vector * 4U) + 2] = image_load_segment & 0xFFU;
+  ram[(vector * 4U) + 3] = image_load_segment >> 8U;
+  r.regs().set_flag(cpu::flag::if_, true);
+
+  r.pc().step();  // MOV
+  r.pc().processor().raise_intr(vector);
+  ASSERT_TRUE(r.pc().processor().interrupt_due());
+  ASSERT_EQ(r.regs().ip, edit_offset) << "standing on the point";
+
+  r.pc().step();  // the interrupt, not the NOP
+  EXPECT_EQ(edit_hits, 0u) << "not offered at a boundary that owes one";
+  EXPECT_EQ(r.regs().ip, handler_offset);
+
+  r.pc().step();  // IRET
+  ASSERT_EQ(r.regs().ip, edit_offset) << "back on the point";
+  r.pc().step();  // the point, then the NOP
+  EXPECT_EQ(edit_hits, 1u);
+  EXPECT_EQ(r.pc().seams().status("test-edit").fired, 1u);
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x2222);
+}
+
 TEST(SeamFired, CountsEveryRunOfTheHandler) {
   const rig r;
   ASSERT_EQ(r.pc().seams().enable("test-edit"), seam_reason::none);
