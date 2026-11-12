@@ -69,6 +69,11 @@ The registry is a fixed table of `seam_engine::max_seams`.
   `machine::step()`: deadlines, the keyboard drain, the BIOS callout,
   then seams (`docs/machine.md` §3), so a point on a BIOS stub sees the
   state the service left.
+- It runs **once for one execution of that instruction**. A boundary
+  that owes an interrupt offers nothing: the processor delivers the
+  interrupt instead of the instruction, its return comes back to the
+  same CS:IP, and the point is offered there (#582). So a handler may
+  do what is not idempotent, invert a register or step a counter.
 - A handler that wants the instruction to run returns; one that wants it
   not to run moves IP.
 - It **must not stop the machine**. A seam whose preconditions fail stays
@@ -986,7 +991,7 @@ to carry.
 | `roster-fix` | **built in, always on, not listed** (§7): a character the roster names and the save directory does not hold is left off the Add list, instead of the program asking for a save disk for ever | overlay 17 (the roster list routine) |
 | `timer-fix` | **built in, always on, not listed** (§7): the sound driver never hooks the timer over its own hook, which a click quick steps did not wait for leaves it about to do | the resident image |
 | `automap` | a map of where the party has been, over the roster, on **Tab** | the resident image |
-| `journal` | what the game cites goes on a list; **Notes** on the party's own bar opens it on the game's screen, out of the player's ingested journal. On Curse, the list alone (below) | the resident image, and the adventuring loop's module |
+| `journal` | what the game cites goes on a list; **Notes** on the party's own bar opens it on the game's screen, out of the player's ingested journal | the resident image, and the adventuring loop's module |
 | `explored` | fog of war on the overworld map: a black checker over every square the party has not stood on; a setting, no key | the resident image |
 | `modern-controls` | the controls a later game has, nine pieces in one seam: Up and Down step the pick-lists and the selected party member; Left, Right, Enter and Esc work at the command bars; walking is a mode the party's bar starts with `Move` and ends with `Exit`, `Area` gone; the main menu has a cursor, and its number row's 1 to 8 select a party member with each number shown; the arrows no longer type letters at a text prompt; every selection is a yellow block with its key letter a white one; and it notes when the program is reading a line of text and where the combat aim bar keeps its cursor, for a host to ask (§10) | overlay 25 (the menu-bar and list routines), overlays 13, 14, 16 and 19, and the resident image |
 | `quick-steps` | a turn, and the next step, do not wait for the footstep's click; the click still plays, and a step's two clicks keep their spacing | the resident image, and the call sites in overlays 14 and 3 |
@@ -2195,14 +2200,9 @@ point in the definitions' `programs`:
 | the font's far pointer | data-segment `0x5E20` | data-segment `0x65AE`, loaded from `8X8D1.DAX` block 201 |
 | what the blitter draws from | the font, through ES:DI | a copy of the glyph at data-segment `0x65B2`, just past the pointer |
 | the points | image `0x749A` and `0x74C0`, after the fetch for each page; DL holds the row | image `0x5A91`, after the EGA path's read out of the copy; AH holds the row, BX its number, and the glyph's index is the path's first argument, the byte at `[BP+4]` |
-| the guard | ES is the pointer's segment and DI falls inside the buffer | DS is the data segment, BX is under 8, the index is under 177, and AH is the font's own row for that index and row, or already the face's |
+| the guard | ES is the pointer's segment and DI falls inside the buffer | DS is the data segment, BX is under 8, the index is under 177, and AH is the font's own row for that index and row |
 | what the handler writes | DL | AH |
 
-- **The point is offered twice when an interrupt lands on it**: the
-  seams are dispatched before the step that delivers it, and its return
-  comes back to the same instruction with AH already swapped. The guard
-  takes the face's own row as swapped: a decline there would report the
-  face `inert point_not_recognized` while it went on drawing.
 - **The other adapters' paths** (CGA and Tandy, chosen by the program's
   video-mode byte at data-segment `0x5000`) read the same copy and are
   not hooked: this machine has the EGA only, as on Pool of Radiance.

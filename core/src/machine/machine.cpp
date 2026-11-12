@@ -275,10 +275,18 @@ cpu::step_status machine::step() {
   // two tests of two words, and `due()`, one comparison against the
   // clock, and `dispatch` is not called (seam.h, "The cost when it is
   // off").
+  //
+  // Not at a boundary that owes an interrupt, for the callout's reason
+  // (`dispatch_services()`): `cpu_.step()` would deliver the interrupt
+  // instead of the instruction, its return would come back to this
+  // CS:IP, and the point would be offered a second time for one
+  // execution of its instruction. A handler that inverts a register
+  // then inverts it back (#582). The interrupt goes first, and the point
+  // is offered once, at the boundary its instruction really runs from.
   if (seams_.armed()) {
     const std::uint32_t at =
         cpu::physical_address(cpu_.regs()[cpu::sreg::cs], cpu_.regs().ip);
-    if (seams_.wants(at) || seams_.due(now_)) {
+    if ((seams_.wants(at) || seams_.due(now_)) && !cpu_.interrupt_due()) {
       seams_.dispatch(*this, at);
     }
   }
