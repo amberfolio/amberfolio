@@ -882,5 +882,121 @@ TEST(SlotStoreDirectory, ACopyThatDoesNotSayGetsNoSidecarsAndSaysSo) {
   EXPECT_FALSE(r.has("OTHERDIR\\AFMAPA.DAT"));
 }
 
+// ---------------------------------------------------------------------------
+// Beside Curse of the Azure Bonds' saves (#587)
+// ---------------------------------------------------------------------------
+
+/// A copy laid out the way Curse of the Azure Bonds is sold: started in
+/// `\CURSE`, saving in `\CURSE\SAVE`, and its configuration file
+/// `CURSE.CFG`, four lines with the save directory on the **third**. No
+/// `POOL.CFG` anywhere. The fourth line of this rig's file names a
+/// directory too, which is where a reader that took `POOL.CFG`'s line
+/// would put the files.
+constexpr std::string_view curse_saves = "CURSE\\SAVE";
+constexpr std::string_view curse_slot_c = "CURSE\\SAVE\\SAVGAMC.DAT";
+constexpr std::string_view curse_slot_d = "CURSE\\SAVE\\SAVGAMD.DAT";
+constexpr std::string_view curse_map_c = "CURSE\\SAVE\\AFMAPC.DAT";
+constexpr std::string_view curse_log_c = "CURSE\\SAVE\\AFSEENC.DAT";
+constexpr std::string_view curse_map_d = "CURSE\\SAVE\\AFMAPD.DAT";
+constexpr std::string_view curse_log_d = "CURSE\\SAVE\\AFSEEND.DAT";
+
+void lay_out_as_curse(rig& r) {
+  ASSERT_EQ(r.files->unlink(path_of("POOL.CFG")), vfs_error::none);
+  ASSERT_EQ(r.files->mkdir(path_of("CURSE")), vfs_error::none);
+  ASSERT_EQ(r.files->mkdir(path_of(curse_saves)), vfs_error::none);
+  const std::string_view text =
+      "-\r\n-\r\nC:\\CURSE\\SAVE\\\r\nC:\\CURSE\\FOURTH\\\r\n";
+  r.put("CURSE\\CURSE.CFG",
+        {reinterpret_cast<const std::uint8_t*>(text.data()), text.size()});
+  ASSERT_EQ(r.box->dos().set_current_directory(*r.files, path_of("CURSE")),
+            vfs_error::none);
+}
+
+TEST(SlotStoreOnCurse, TheSaveDirectoryIsTheOneTheThirdLineNames) {
+  rig r;
+  lay_out_as_curse(r);
+  r.store.enable(true);
+  r.store.attach(*r.box);
+  ASSERT_NE(r.store.save_directory(), nullptr);
+  EXPECT_EQ(*r.store.save_directory(), path_of(curse_saves));
+  EXPECT_EQ(r.store.trouble(), slot_trouble::none);
+  EXPECT_EQ(r.store.save_directory_trouble(),
+            machine::save_directory_trouble::none);
+}
+
+TEST(SlotStoreOnCurse, ASavedSlotGetsBothSidecarsBesideItsSaves) {
+  rig r;
+  lay_out_as_curse(r);
+  r.store.enable(true);
+  r.store.attach(*r.box);
+  r.explore(2, 1, 1, 7, 13);
+  r.cite(journal_kind::entry, 31);
+
+  r.store.saw(event_of(file_action::create, curse_slot_c));
+  r.store.saw(event_of(file_action::close, curse_slot_c));
+
+  EXPECT_EQ(r.store.slot(), 'C');
+  EXPECT_EQ(r.store.trouble(), slot_trouble::none);
+  ASSERT_TRUE(r.has(curse_map_c));
+  ASSERT_TRUE(r.has(curse_log_c));
+  EXPECT_FALSE(r.has("CURSE\\FOURTH\\AFMAPC.DAT")) << "line 4 is not the line";
+  EXPECT_FALSE(r.has("CURSE\\FOURTH\\AFSEENC.DAT"));
+  EXPECT_FALSE(r.has("CURSE\\AFMAPC.DAT")) << "nor beside the game's files";
+  EXPECT_FALSE(r.has("SAVE\\AFMAPC.DAT")) << "nor where another copy saves";
+
+  automap_state map;
+  ASSERT_TRUE(map.read_sidecar(r.bytes_of(curse_map_c)));
+  const automap_record* room = map.find(2, 1, 1);
+  ASSERT_NE(room, nullptr);
+  EXPECT_TRUE(automap_state::seen(*room, 7, 13));
+
+  journal_store log;
+  ASSERT_TRUE(log.read_log_sidecar(r.bytes_of(curse_log_c)));
+  ASSERT_EQ(log.seen().size(), 1u);
+  EXPECT_EQ(log.seen()[0].what.kind, journal_kind::entry);
+  EXPECT_EQ(log.seen()[0].what.number, 31);
+}
+
+TEST(SlotStoreOnCurse, LoadingASlotReadsBothBackFromBesideItsSaves) {
+  rig r;
+  lay_out_as_curse(r);
+  r.store.enable(true);
+  r.store.attach(*r.box);
+
+  // Slot C: one square of one map and one citation, saved.
+  r.explore(2, 1, 1, 7, 13);
+  r.cite(journal_kind::entry, 31);
+  r.store.saw(event_of(file_action::create, curse_slot_c));
+  r.store.saw(event_of(file_action::close, curse_slot_c));
+
+  // Slot D: another party, somewhere else, sent to another entry.
+  r.maps().clear();
+  r.box->journal().clear_seen();
+  r.log.set_seen({});
+  r.explore(3, 2, 5, 4, 4);
+  r.cite(journal_kind::entry, 7);
+  r.store.saw(event_of(file_action::create, curse_slot_d));
+  r.store.saw(event_of(file_action::close, curse_slot_d));
+  ASSERT_TRUE(r.has(curse_map_d));
+  ASSERT_TRUE(r.has(curse_log_d));
+
+  // The load menu looks at every slot; then the player loads C.
+  r.store.saw(event_of(file_action::open, curse_slot_d, false));
+  r.store.saw(event_of(file_action::close, curse_slot_d, false));
+  r.store.saw(event_of(file_action::open, curse_slot_c));
+  r.store.saw(event_of(file_action::close, curse_slot_c));
+
+  EXPECT_EQ(r.store.slot(), 'C');
+  EXPECT_EQ(r.store.reads(), 2u) << "the map and the log";
+  const automap_record* room = r.maps().find(2, 1, 1);
+  ASSERT_NE(room, nullptr);
+  EXPECT_TRUE(automap_state::seen(*room, 7, 13));
+  EXPECT_EQ(r.maps().find(3, 2, 5), nullptr) << "D's map is not C's";
+  const std::span<const machine::journal_seen_row> shown =
+      r.box->journal().seen();
+  ASSERT_EQ(shown.size(), 1u);
+  EXPECT_EQ(shown[0].what.number, 31) << "D's reading list is not C's";
+}
+
 }  // namespace
 }  // namespace amberfolio::host
