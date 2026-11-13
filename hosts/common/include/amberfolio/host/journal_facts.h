@@ -424,11 +424,13 @@ struct journal_edition {
   [[nodiscard]] bool reads_own_text() const noexcept { return !pages.empty(); }
 };
 
-/// Every journal edition this build knows the insides of: the archive
-/// release's, which is scans (#214), and the Steam release's, which is
-/// text (#398). Every other journal is reported as an unrecognized
-/// edition until somebody sits down with one, which is the fail-closed
-/// direction `machine/document.cpp` describes for the gate.
+/// Every journal edition this build knows the insides of. Pool of
+/// Radiance's two: the archive release's, which is scans (#214), and the
+/// Steam release's, which is text (#398). And Curse of the Azure Bonds'
+/// two: the Steam release's, text (#555), and the GOG release's, scans
+/// (#585). Every other journal is reported as an unrecognized edition
+/// until somebody sits down with one, which is the fail-closed direction
+/// `machine/document.cpp` describes for the gate.
 [[nodiscard]] std::span<const journal_edition> known_journals();
 
 /// The edition `digest` names within `table`, or null.

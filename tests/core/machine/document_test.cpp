@@ -101,8 +101,9 @@ TEST(DocumentTable, KnowsOneDocumentOfEachKindPerReleaseItHasSeen) {
   // fingerprint was a fact about a file nobody had hashed, and this test
   // said so. Two releases' documents are here now (#398): the archive
   // release's and the Steam release's, a code wheel and a journal each;
-  // and Curse of the Azure Bonds' Steam journal (#555), with no wheel
-  // beside it because nothing has been gated on a wheel since #290. The
+  // and Curse of the Azure Bonds' two journals, the Steam release's
+  // (#555) and the GOG release's (#585), with no wheel beside them
+  // because nothing has been gated on a wheel since #290. The
   // count is what catches a row added without a thought about which kind
   // it is.
   std::size_t wheels = 0;
@@ -114,7 +115,7 @@ TEST(DocumentTable, KnowsOneDocumentOfEachKindPerReleaseItHasSeen) {
         << known.name << " is in the table as no document at all";
   }
   EXPECT_EQ(wheels, 2U);
-  EXPECT_EQ(journals, 3U);
+  EXPECT_EQ(journals, 4U);
 }
 
 TEST(DocumentKindName, IsTheWordsAPersonReads) {

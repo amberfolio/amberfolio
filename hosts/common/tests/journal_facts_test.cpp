@@ -24,6 +24,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "amberfolio/host/journal_picture.h"
 #include "amberfolio/host/journal_probe.h"
@@ -36,19 +37,20 @@
 namespace amberfolio::host {
 namespace {
 
-TEST(JournalTable, HasTheThreeEditionsSomebodySatDownWith) {
+TEST(JournalTable, HasTheFourEditionsSomebodySatDownWith) {
   // It was empty until M5-E3b (#214), and the header said why at length:
   // these are facts about a document somebody has to sit down with. The
   // archive edition is first and the tests about scans below read it as
-  // `front()`; the Steam edition, typeset as text, is second (#398); and
+  // `front()`; the Steam edition, typeset as text, is second (#398);
   // Curse of the Azure Bonds' Steam edition, typeset as text, is third
-  // (#555).
-  ASSERT_EQ(known_journals().size(), 3U)
+  // (#555); and its GOG edition, scans again, is fourth (#585).
+  ASSERT_EQ(known_journals().size(), 4U)
       << "an edition came or went; the rules below are what a row has to"
-         " satisfy, and #214, #398 and #555 are where these came from";
+         " satisfy, and #214, #398, #555 and #585 are where these came from";
   EXPECT_FALSE(known_journals().front().reads_own_text());
   EXPECT_TRUE(known_journals()[1].reads_own_text());
   EXPECT_TRUE(known_journals()[2].reads_own_text());
+  EXPECT_FALSE(known_journals()[3].reads_own_text());
   EXPECT_EQ(known_journals().front().entries.size(), 99U)
       << "the archive release's journal has fifty-eight entries,"
          " twenty-three tales and eighteen proclamations";
@@ -537,6 +539,166 @@ TEST(JournalTable, CursesEditionsPiecesAreInReadingOrder) {
       EXPECT_TRUE(later_sheet || later_column || further_down)
           << journal_kind_name(fact.kind) << ' ' << fact.number
           << " has a piece that does not follow the one before it";
+    }
+  }
+}
+
+/// Which of a spread's four column bands a rectangle of Curse's GOG
+/// edition begins in: the bands are cut at samples 438 and 1258, with the
+/// spine at 845 (`journal_facts.cpp`).
+[[nodiscard]] std::size_t curse_gog_band(std::uint32_t left) {
+  if (left < 438U) {
+    return 0U;
+  }
+  if (left < 845U) {
+    return 1U;
+  }
+  if (left < 1258U) {
+    return 2U;
+  }
+  return 3U;
+}
+
+TEST(JournalTable, CursesGogEditionHasItsSteamEditionsItems) {
+  // The same journal scanned (#585): fifty-nine entries and sixty-two
+  // tales by the same numbers, because the game cites an item by section
+  // and number, and the nine pictures on the same nine entries.
+  const journal_edition& steam = known_journals()[2];
+  const journal_edition& gog = known_journals()[3];
+  EXPECT_EQ(gog.program, steam.program);
+  ASSERT_EQ(gog.entries.size(), steam.entries.size());
+  std::size_t pictures = 0;
+  for (std::size_t i = 0; i < gog.entries.size(); ++i) {
+    const journal_entry_fact& scanned = gog.entries[i];
+    const journal_entry_fact& typeset = steam.entries[i];
+    // Row for row, so each section is the chain the Steam edition's is.
+    EXPECT_EQ(scanned.kind, typeset.kind) << "row " << i;
+    EXPECT_EQ(scanned.number, typeset.number) << "row " << i;
+    EXPECT_EQ(scanned.art.size(), typeset.art.size())
+        << journal_kind_name(scanned.kind) << ' ' << scanned.number;
+    pictures += scanned.art.size();
+  }
+  EXPECT_EQ(pictures, 9U);
+}
+
+TEST(JournalTable, CursesGogEditionsPagesAreAllCarriedNotDecoded) {
+  // Fifteen spreads of one shape, every one `/DCTDecode` (#212): the
+  // items are on twelve of them.
+  std::set<std::uint16_t> pages;
+  std::map<std::uint16_t, std::uint64_t> offsets;
+  for (const journal_entry_fact& fact : known_journals()[3].entries) {
+    for (const std::span<const journal_fragment> pieces :
+         {fact.fragments, fact.art}) {
+      for (const journal_fragment& piece : pieces) {
+        EXPECT_EQ(piece.image.filter, journal_filter::dct);
+        EXPECT_EQ(piece.image.components, 3U) << "the scans are RGB";
+        EXPECT_EQ(piece.image.width, 1650U);
+        EXPECT_EQ(piece.image.height, 1275U);
+        pages.insert(piece.page);
+        // One page, one stream.
+        const auto [at, fresh] = offsets.emplace(piece.page, piece.offset);
+        EXPECT_EQ(at->second, piece.offset) << "page " << piece.page;
+      }
+    }
+  }
+  EXPECT_EQ(pages.size(), 12U);
+  EXPECT_EQ(*pages.begin(), 2U);
+  EXPECT_EQ(*pages.rbegin(), 16U);
+}
+
+TEST(JournalTable, CursesGogEditionOpensEveryItemWithItsHeadingAlone) {
+  // An item's first piece is its heading's line, measured from right of
+  // the checkbox printed before it, and the body under it opens a
+  // paragraph. The counts are the ones the prose quotes
+  // (`journal_facts.cpp`, `docs/journal.md` section 3).
+  std::size_t pieces = 0;
+  std::size_t heading_only = 0;
+  std::size_t carried_on = 0;
+  std::size_t breaks = 0;
+  for (const journal_entry_fact& fact : known_journals()[3].entries) {
+    ASSERT_FALSE(fact.fragments.empty());
+    pieces += fact.fragments.size();
+    const journal_fragment& heading = fact.fragments.front();
+    EXPECT_LE(heading.region.height, 48U)
+        << journal_kind_name(fact.kind) << ' ' << fact.number
+        << " opens with more than a line of its heading's type";
+    EXPECT_LE(heading.region.width, 220U);
+    if (fact.fragments.size() == 1U) {
+      ++heading_only;
+      EXPECT_FALSE(fact.art.empty())
+          << journal_kind_name(fact.kind) << ' ' << fact.number
+          << " is a heading and nothing else";
+      continue;
+    }
+    EXPECT_TRUE(fact.fragments[1].begins_paragraph)
+        << journal_kind_name(fact.kind) << ' ' << fact.number
+        << " runs its heading into its first sentence";
+    for (std::size_t i = 2; i < fact.fragments.size(); ++i) {
+      ++carried_on;
+      if (fact.fragments[i].begins_paragraph) {
+        ++breaks;
+      }
+    }
+  }
+  EXPECT_EQ(pieces, 255U);
+  EXPECT_EQ(heading_only, 6U);
+  // Where a body carries on in another piece, a boundary is usually a
+  // continuation and three times it is not (#361).
+  EXPECT_EQ(carried_on, 19U);
+  EXPECT_EQ(breaks, 3U);
+}
+
+TEST(JournalTable, CursesGogEditionsPiecesAreInReadingOrder) {
+  // Down a column, then the next column, then the next scan; and further
+  // down the same column, where a body follows its heading, resumes under
+  // its entry's picture, or is cut where its margin moves.
+  for (const journal_entry_fact& fact : known_journals()[3].entries) {
+    for (std::size_t i = 1; i < fact.fragments.size(); ++i) {
+      const journal_fragment& before = fact.fragments[i - 1];
+      const journal_fragment& after = fact.fragments[i];
+      const std::size_t band_before = curse_gog_band(before.region.left);
+      const std::size_t band_after = curse_gog_band(after.region.left);
+      const bool later_scan = after.page > before.page;
+      const bool later_column =
+          after.page == before.page && band_after > band_before;
+      const bool further_down =
+          after.page == before.page && band_after == band_before &&
+          after.region.top >= before.region.top + before.region.height;
+      EXPECT_TRUE(later_scan || later_column || further_down)
+          << journal_kind_name(fact.kind) << ' ' << fact.number
+          << " has a piece that does not follow the one before it";
+    }
+  }
+}
+
+TEST(JournalTable, NoRectangleOfCursesGogEditionOverlapsAnother) {
+  // Every piece hugs its own ink, so on one scan no two rectangles of
+  // the edition share a sample: not two items' text, and not a text
+  // piece and a picture (#357).
+  std::vector<const journal_fragment*> all;
+  for (const journal_entry_fact& fact : known_journals()[3].entries) {
+    for (const journal_fragment& piece : fact.fragments) {
+      all.push_back(&piece);
+    }
+    for (const journal_fragment& picture : fact.art) {
+      all.push_back(&picture);
+    }
+  }
+  for (std::size_t i = 0; i < all.size(); ++i) {
+    for (std::size_t j = i + 1; j < all.size(); ++j) {
+      const journal_fragment& a = *all[i];
+      const journal_fragment& b = *all[j];
+      if (a.page != b.page) {
+        continue;
+      }
+      const bool apart = a.region.left + a.region.width <= b.region.left ||
+                         b.region.left + b.region.width <= a.region.left ||
+                         a.region.top + a.region.height <= b.region.top ||
+                         b.region.top + b.region.height <= a.region.top;
+      EXPECT_TRUE(apart) << "scan " << a.page << ": the rectangle at "
+                         << a.region.left << ',' << a.region.top
+                         << " overlaps the one at " << b.region.left << ','
+                         << b.region.top;
     }
   }
 }

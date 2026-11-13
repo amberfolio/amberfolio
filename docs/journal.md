@@ -64,22 +64,24 @@ amberfolio <dir> <program.exe> --seam journal
 
 ## 3. Adding an edition
 
-Three editions are in the table:
+Four editions are in the table:
 
 | edition | fingerprint | its words are | pieces | pictures |
 | --- | --- | --- | --- | --- |
 | Pool of Radiance, the GOG release's (#214) | `67cbfc0c…c737c` | scans, `/DCTDecode` (§4a), read by an engine | 58 entries in 75 pieces; 99 items in 117 | 14 on 12 entries |
 | Pool of Radiance, the Steam release's (#398) | `a31368c3…4ac1ee` | text, read out of the document (§3a) | 99 items in 115 pieces | 14 on the same 12 entries |
 | Curse of the Azure Bonds, the Steam release's (#555) | `68bd9d47…fec8031` | text, read out of the document (§3a) | 121 items in 141 pieces | 9 on 9 entries |
+| Curse of the Azure Bonds, the GOG release's (#585) | `7c918ead…d8529bb` | scans, `/DCTDecode` (§4a), read by an engine | 121 items in 255 pieces | 9 on the same 9 entries |
 
 Curse's journal has two numbered sections, fifty-nine entries and
-sixty-two tavern tales. **Curse's GOG journal is not in the table**: it
-is page scans (`7c918ead…`), which would need an engine and a fact table
-measured off the scans the way §3 measures Pool of Radiance's.
+sixty-two tavern tales. Its two editions have the same 121 items by the
+same numbers and the same nine pictures on the same nine entries, which
+the suite checks row for row.
 
-Both have the same ninety-nine items by the same numbers — 58 entries,
-23 tales, 18 proclamations — which the suite checks, because the game
-cites an item by section and number. In the GOG edition six of the 18
+Pool of Radiance's two have the same ninety-nine items by the same
+numbers — 58 entries, 23 tales, 18 proclamations — which the suite
+checks, because the game cites an item by section and number. In its GOG
+edition six of the 18
 boundaries between an entry's pieces are paragraph breaks rather than
 continuations (§5); the Steam edition measures that itself (§3a).
 
@@ -171,6 +173,57 @@ repository: it reads a document this project may never carry. The method:
    left margin. Twelve of the eighteen start within two samples of it;
    six start 18 to 22 right of it. Nothing lands between, which is what
    makes the rule a measurement. Set `begins_paragraph` on the six.
+
+**Curse's GOG edition** (#585) is the same job, and its scans change
+three of the steps. It is seventeen pages, every one `/DCTDecode` RGB:
+fifteen two-page spreads of 1650 by 1275 samples, and a first and a last
+page with no item on them. The items are on twelve of the spreads.
+
+- **Headings are found by their ink** (step 2). They are printed in blue
+  and the body in black, so a heading is a line band whose ink is blue;
+  no template and no engine is asked. The chain that comes out is 59 and
+  62, and every heading an engine reads back has the chain's number.
+- **A heading is a piece of its own.** Every item but entry 1 opens with
+  a printed checkbox, the ornament §3a drops as a font. A rectangle
+  cannot leave it out of a column, since the body starts at the same
+  margin, so an item's first piece is its heading's line, from right of
+  the checkbox to the end of the heading's ink, and the body under it is
+  the next piece and opens a paragraph. 121 items are 255 pieces: 121
+  headings and 134 pieces of body. Six entries are a heading and a
+  picture and nothing else.
+- **A piece hugs its own ink**, four samples around it and never past
+  the middle of the gap to its neighbour. The scans are askew by as much
+  as a degree, so a column band measured at the head of a page clips
+  type at its foot. The bands are cut at samples 438 and 1258, in the
+  gutter between a printed page's two columns on every spread.
+- **Matter outside the grid** (step 3): the introduction's title above
+  entry 1 and the page facing it; each section's title and
+  introduction; the rule drawn on from the headings of entries 52 and
+  59; and a drawing between the columns of scan 15, with a rule above
+  and below it and a caption, which belongs to no tale. Six tales are
+  set narrower beside it, and tale 51 is cut where its margin moves,
+  because the rule over the drawing is level with its second line.
+- **Two maps span both columns of a printed page**, as in the Steam
+  edition (§3a): entry 51 is carried on at the top of both columns above
+  entry 52's heading, and above entry 59's the first column's top is the
+  end of entry 57 and the second's is entry 58 whole.
+- **The boundaries** (step 7): nineteen pieces carry a body on. The
+  margin an indent is measured against is a line fitted through the left
+  ends of the piece's lines, because of the skew. Sixteen first lines
+  start within four samples of it and three start 28 to 30 right of it,
+  in entries 1, 3 and 12.
+
+**What an engine makes of a heading depends on how it is handed the
+page** (#585). The linked engine reads each rectangle on its own and
+reads all 121 headings. An engine handed the whole spread segments the
+page itself: the desktop's Tesseract run as a program reads nothing at
+all where three of this edition's headings are, and runs the checkbox
+into the first letter of eight more. The hosts differ on what follows a
+piece that read nothing: the page drops it and keeps the rest of the
+item (`journal.mjs`), and the desktop's program-driven engine fails the
+item (`hosts/sdl/src/tesseract_ocr.cpp`), so that engine reports 118 of
+121 (§7). The browser's engine is handed the whole spread too, drawn
+twice the size, and has not read this edition.
 
 ## 3a. An edition typeset as text (#398)
 
@@ -470,7 +523,8 @@ that (`createImageBitmap` and a canvas, one recognition per scan); the
 program-driven desktop engine hands the CLI a file and Tesseract's CLI
 has no crop or scale flag, so a default desktop ingestion reads worse
 than a browser one, and the linked engine (#216) is the way to close
-that. The desktop's installed engine has never been measured. (§11.4's
+that. The desktop's engine run as a program has been measured once, on
+Curse's GOG edition (§7). (§11.4's
 decoder is not the missing piece: it would decode the page, but the CLI
 takes a path and this host does not write an image out.)
 
@@ -680,6 +734,29 @@ seven pages, entry 2 opens as one page of text, and entry 20 as its
 heading's page and its picture, drawn whole in the box. The recorded
 pair is over a store of this project's own words (`curse-notes`,
 `docs/seams.md` §10).
+
+**By hand, Curse's GOG edition** (#585), through the desktop host, each
+reading scored by §5a's harness against the Steam edition's text put in
+the store as every item's correction:
+
+| engine | read | characters | words |
+| --- | --- | --- | --- |
+| linked, Tesseract 5.5.1 (`AMBERFOLIO_LINK_TESSERACT`) | `entries=121 extracted=121 recognized=121`, `pictures=9/9` | 2.07% | 6.67% |
+| the same Tesseract run as a program (`--journal-ocr`) | `entries=121 extracted=121 recognized=118`, `pictures=9/9` | 2.17% | 7.13% |
+
+The harness counts every curly quotation mark and every word hyphenated
+at a line's end, which the reader folds and joins (§9); with those two
+folded the linked reading differs in 0.87% of its characters. All 121 of
+the linked engine's items begin with their own heading, and the three
+boundaries the table calls paragraph breaks are breaks in the Steam
+edition's text. The three items the program-driven engine does not
+recognize are entries 9, 39 and 55 (§3). The longest item is about three
+kilobytes. In the game, on the GOG copy with `journal` on over the
+linked engine's store: the innkeeper's citation (`docs/playable-curse.md`
+leg 2) puts entry 31 on the log, and Return opens it, one page of text
+under its heading. Not done: this document in a browser, and one of its
+pictures on the game's screen (the nine were looked at decoded out of
+the store).
 
 **By hand, the Steam edition** (§3a): every item through the desktop host
 and through the module under node with the page's own `journal.mjs`, one
@@ -896,6 +973,16 @@ The result is in `hosts/common/src/journal_facts.cpp`. Not in the table:
 the edition's legend for its map symbols, printed under its own heading
 and belonging to no numbered item, so it has no key and is unreachable
 from the game.
+
+Curse's GOG edition (#585) has nine, on the entries the Steam edition
+has them on, each the bounding box of its ink in a band under its
+entry's heading (under the caption, for entry 4), its labels and its key
+inside. Entry 1's is a row of five symbols set in the entry's second
+column, and the prose is cut around it. The sieve was the ink's colour:
+the drawings are printed in brown and blue, and no body rectangle has
+coloured ink in it. Not in the table, as in the Steam edition: the
+introduction's map, the drawings in its printed notes, and the drawing
+between the tales' columns.
 
 Curse's Steam edition has nine, on entries 1, 4, 8, 9, 17, 20, 39, 52
 and 59, each an image of its own and its rectangle the part the page's

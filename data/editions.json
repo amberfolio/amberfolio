@@ -367,7 +367,8 @@
         {"kind": "file", "name": "WALLDEF6.DAX", "required": true, "size": 3534, "sha256": "7287bb656c3ce60e23cb18557880108e669b780faa407657b2ee2092a7c48258"},
         {"kind": "file", "name": "WILDCOM.DAX", "required": true, "size": 5275, "sha256": "184f96781ce658c1d65fe0390dabc6048be5817296df806f7d6fcb8d7b13a9c4"},
         {"kind": "configuration", "name": "CURSE.CFG", "required": true, "sha256": "ae5b3e4bea7b39a29a4ed11eda2c99b3ab255937c233a3be51defc6341a279a9"},
-        {"kind": "document", "document": "journal", "required": false, "about": "Curse of the Azure Bonds Adventurer's Journal, Steam release (PDF)", "sha256": "68bd9d4734a232a0a18c44510985e61a489adc17693ecdfb411c6cd2dfec8031"}
+        {"kind": "document", "document": "journal", "required": false, "about": "Curse of the Azure Bonds Adventurer's Journal, Steam release (PDF)", "sha256": "68bd9d4734a232a0a18c44510985e61a489adc17693ecdfb411c6cd2dfec8031"},
+        {"kind": "document", "document": "journal", "required": false, "about": "Curse of the Azure Bonds Adventurer's Journal, GOG release (PDF)", "sha256": "7c918ead661b353e7da606b9137929f1dee2c9c203408b0b751cf719cd8529bb"}
       ]
     },
     {
@@ -470,7 +471,8 @@
         {"kind": "file", "name": "WALLDEF6.DAX", "required": true, "size": 3534, "sha256": "7287bb656c3ce60e23cb18557880108e669b780faa407657b2ee2092a7c48258"},
         {"kind": "file", "name": "WILDCOM.DAX", "required": true, "size": 5275, "sha256": "184f96781ce658c1d65fe0390dabc6048be5817296df806f7d6fcb8d7b13a9c4"},
         {"kind": "configuration", "name": "CURSE.CFG", "required": true, "sha256": "a78b156991aa7f992e336bcf2fb3fbce2cb0d2bdd8d03959a5b1c16652e1291a"},
-        {"kind": "document", "document": "journal", "required": false, "about": "Curse of the Azure Bonds Adventurer's Journal, Steam release (PDF)", "sha256": "68bd9d4734a232a0a18c44510985e61a489adc17693ecdfb411c6cd2dfec8031"}
+        {"kind": "document", "document": "journal", "required": false, "about": "Curse of the Azure Bonds Adventurer's Journal, Steam release (PDF)", "sha256": "68bd9d4734a232a0a18c44510985e61a489adc17693ecdfb411c6cd2dfec8031"},
+        {"kind": "document", "document": "journal", "required": false, "about": "Curse of the Azure Bonds Adventurer's Journal, GOG release (PDF)", "sha256": "7c918ead661b353e7da606b9137929f1dee2c9c203408b0b751cf719cd8529bb"}
       ]
     }
   ]
