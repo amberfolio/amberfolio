@@ -126,6 +126,14 @@ legs "$repo" --game-disk "$tmp/disk" --leg short-text
 expect_code "a text line with a short digest is refused" 1
 expect_says "and says what a digest is" "64 hex characters"
 
+# A `speed` line names a machine the host knows. One it does not would be
+# refused by the host on both sides of a pair, and read as a leg whose
+# runs dumped nothing.
+leg warp-speed   "kind single"   "program MADEUP.EXE"   "speed warp"   "until 1000"   "same 10-20"
+legs "$repo" --game-disk "$tmp/disk" --leg warp-speed
+expect_code "a speed the host has no name for is refused" 1
+expect_says "and says which" "no speed 'warp'"
+
 # --- a leg that is malformed says which line, and does not run -----------
 leg no-kind \
   "program MADEUP.EXE" \
@@ -178,12 +186,12 @@ cp "$here"/../tests/visual/*.leg "$repo/tests/visual/" 2>/dev/null || true
 rm -f "$repo/tests/visual/empty-pair.leg" "$repo/tests/visual/empty-single.leg" \
       "$repo/tests/visual/no-kind.leg" "$repo/tests/visual/typo.leg" \
       "$repo/tests/visual/unknown-rect.leg" "$repo/tests/visual/no-store.leg" \
-      "$repo/tests/visual/good.leg" "$repo/tests/visual/short-text.leg"
+      "$repo/tests/visual/good.leg" "$repo/tests/visual/short-text.leg"       "$repo/tests/visual/warp-speed.leg"
 mkdir -p "$repo/tests/visual"
 # Both of them: `rdr-art.leg` has a store of its own, because the
 # picture in it would move frames the cite-all legs have pinned
 # (#328).
-cp "$here"/../tests/visual/reader-store.txt "$here"/../tests/visual/reader-art-store.txt "$repo/tests/visual/"
+cp "$here"/../tests/visual/reader-store.txt "$here"/../tests/visual/reader-art-store.txt    "$here"/../tests/visual/curse-reader-store.txt "$repo/tests/visual/"
 legs "$repo"
 expect_code "the committed legs are all skipped without a disk" 1
 if printf '%s' "$out" | grep -qE '^(SKIP|ok|FAIL)' &&

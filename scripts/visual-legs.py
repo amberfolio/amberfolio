@@ -79,6 +79,10 @@ DRIVERS = {"SDL_VIDEODRIVER": "dummy", "SDL_AUDIODRIVER": "dummy"}
 #: Where a leg's frame range may end.
 END = "end"
 
+#: What a leg's `speed` line may say: the host's own names for `--speed`
+#: (`docs/hosts.md` §2).
+SPEEDS = ("xt", "turbo", "at", "386")
+
 
 class Leg:
     """One `.leg` file, parsed.
@@ -106,6 +110,10 @@ class Leg:
         self.seams: list[str] = []
         self.both: list[str] = []
         self.until = 0
+        #: Which machine to be (`--speed`), or None for the host's own
+        #: default, the one every leg before this line existed was
+        #: measured on. A frame number is a fact about one speed.
+        self.speed: str | None = None
         self.every = 25
         self.slack = 0
         self.keys: list[str] = []
@@ -196,6 +204,15 @@ class Leg:
             self.both.append(word[1])
         elif head == "until":
             self.until = int(word[1])
+        elif head == "speed":
+            # The host's `--speed`, as a leg's own line: a leg's frames
+            # are measured at one speed, and a program whose scripts are
+            # all written at another (`docs/playable-curse.md`) says so
+            # here rather than being driven twenty times slower.
+            if word[1] not in SPEEDS:
+                raise ValueError(f"no speed {word[1]!r}; one of "
+                                 + ", ".join(SPEEDS))
+            self.speed = word[1]
         elif head == "every":
             self.every = int(word[1])
         elif head == "slack":
@@ -292,6 +309,8 @@ def run_side(host: Path, disk: Path, leg: Leg, into: Path,
                "--wall", "none", "--no-config",
                "--dump", str(into / "stills" / "f"),
                "--dump-every", str(leg.every)]
+    if leg.speed is not None:
+        command += ["--speed", leg.speed]
     for seam in seams:
         command += ["--seam", seam]
     for one in documents:

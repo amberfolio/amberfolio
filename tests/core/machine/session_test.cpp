@@ -206,11 +206,12 @@ TEST(SessionLibrary, TheRecordingsMadeSinceFormatFourAreStillRead) {
 
 // And the ones made since format five (#531), which is what the host
 // writes now, a seam's number on its line: the message-pause pair, and
-// the two all-on recordings, which carry the seam too.
+// each program's two all-on recordings, which carry the seam too.
 TEST(SessionLibrary, TheRecordingsMadeSinceFormatFiveCarryTheirNumbers) {
   for (const std::string_view name :
        {"quiet-message-pause.rec", "fight-pause.rec", "quiet-all.rec",
-        "quiet-all-on-sight.rec"}) {
+        "quiet-all-on-sight.rec", "curse-quiet-all.rec",
+        "curse-quiet-all-on-sight.rec"}) {
     const std::string text = read_session_file(name);
     ASSERT_FALSE(text.empty()) << name;
     EXPECT_THAT(text, ::testing::StartsWith("amberfolio-recording 5 state=2\n"))
@@ -290,6 +291,12 @@ TEST(SessionLibrary, AJournalSessionNamesAStoreThisRepositoryWrote) {
       {.session = "cite.session",
        .named = "tests/visual/cite-store.txt",
        .here = "../visual/cite-store.txt"},
+      {.session = "curse-notes.session",
+       .named = "tests/visual/curse-reader-store.txt",
+       .here = "../visual/curse-reader-store.txt"},
+      {.session = "curse-map-reader.session",
+       .named = "tests/visual/curse-reader-store.txt",
+       .here = "../visual/curse-reader-store.txt"},
   };
   for (const named_store& row : named) {
     const std::string text = read_session_file(row.session);

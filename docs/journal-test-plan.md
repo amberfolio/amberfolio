@@ -233,8 +233,14 @@ All four items are settled; none added mechanism to the seam or the core.
    `kind pair` or `kind single`; a pair uses `allow <range> <rects>`, a
    single uses `same <range>`, `equal <before> <after> [rects to leave
    out]` and `text <frame> <sha256>`, the digest of the host's screen
-   text beside that still (`docs/hosts.md` §10). It has the sweep's three outcomes, and
-   `scripts/test-visual-legs.sh` asserts in CI that a skip is loud. Trap:
+   text beside that still (`docs/hosts.md` §10). A `speed` line is the
+   host's `--speed`; without one a leg runs at the host's default, which
+   every Pool of Radiance leg is measured on, and the four `curse-*` legs
+   say `speed 386` (`docs/playable-curse.md`). The runner takes one disk
+   and drives every leg it is asked for on it, so legs for another
+   program or another snapshot are named with `--leg`. It has the
+   sweep's three outcomes, and `scripts/test-visual-legs.sh` asserts in
+   CI that a skip is loud. Trap:
    **a leg run rewrites the store it was pointed at**; check the fixture
    out again rather than committing it.
 4. **A shared wall seed for on/off pairs**: not needed. Neither host

@@ -137,6 +137,27 @@ weapon shop's sign at `3,12` and into the shop at `2,12`; `Y` takes the
 shopkeeper's offer and the bar is `BUY VIEW POOL APPRAISE EXIT`; `B`
 lists the stock with `BUY NEXT EXIT`. Recorded as `curse-town`.
 
+The shopkeeper's offer is a script's two-answer question, `YES NO` with
+`YES` lit: `Escape` does nothing there and `Return` takes `YES`. With
+`modern-controls` on, `Escape` answers `NO`, the keeper's farewell takes
+a `Return`, and the party is back on the street at `3,12`. From the
+opening, `Return Left Left Up Return Return Right Up Return Left Up Up
+Up Return Up +1 Escape +1 Return`: recorded as `curse-script-esc`,
+against the same keys with no seam (`curse-script-keys`, whose first
+`Return` takes `AREA` and whose last ends at the shop's bar).
+
+**A locked door.** East of the sign at `6,12` the street narrows into an
+alley: from `6,12 N`, `Right Up` is `7,12` and a line about it
+(`Return`), and `Left Up` walks into the door on its north wall, which
+is locked: the bar is `BASH PICK EXIT`, and the party does not move.
+The bar is not raw, so the arrows do nothing at it. With
+`modern-controls` on, Up and Down select the member who bashes or
+picks: from the opening, `Return Left Left Up Return Return Right Up
+Return Right Up Return Left Up +1 Down Down Up E` selects Mark, Travis
+and Mark again, and `E` leaves the bar with the walk still on.
+Recorded as `curse-door-arrows`, against the same keys with no seam
+(`curse-door-keys`).
+
 **A purchase.** `B` again buys the highlighted item, the battle axe at
 the top, for the selected member: the list stays up, and Mathew's
 platinum goes from 300 to 297. `E` leaves the list, `E` the shop, and
@@ -165,6 +186,9 @@ the screen composed again and the bar back (`Right@7000` turns the
 party). Over `tests/visual/curse-reader-store.txt` (`--journal-store`),
 recorded as `curse-notes`; the same keys with no seam are
 `curse-notes-keys`, where `Return` takes `AREA` and `E` encamps.
+`tests/visual/curse-rdr-page.leg` holds the same walk in pixels and in
+what each screen says, and `curse-not-bar.leg` that `NOTES` is all the
+seam puts on the adventuring screen.
 
 **The automap.** With `--seam automap`, `Tab` at frame 4,000 (ahead of
 the `Left` there) opens the panel over the roster at the opening room,
@@ -175,6 +199,15 @@ party's bar is back, and a second `Tab` puts the roster back
 `curse-temple`'s keys marks the temple's arched door at `4,7 W` as a
 door, and at the altar the program's roster replaces the panel whole
 under the temple's bar. Recorded as `curse-temple-map`.
+
+**The automap under the reader.** With both seams on, after the
+innkeeper: `Tab@5200` puts the map over the roster, `N@5350` opens the
+log over the whole screen, `Return@5500` entry 31 and `N@5800` its
+second page; `E@6400` is the log and `E@6700` closes it, and the screen
+the program composes has the map on it again, pixel for pixel the one
+before `N`. `Tab@7000` puts the roster back and `Tab@7300` the map.
+Recorded as `curse-map-reader`; `tests/visual/curse-map-back.leg` holds
+the three give-backs as stills.
 
 **The move mode.** With `modern-controls` on, the party's bar is
 `MOVE CAST VIEW ENCAMP SEARCH LOOK` with `MOVE` lit, and the arrows step
@@ -464,6 +497,13 @@ lines, at `--speed 386` and `--wall none`:
 | `curse-modify-arrows` | `curse-slots` | `modern-controls`, Modify's fields and name field | `contrast curse-modify-keys` |
 | `curse-move-walk` | `curse-slots` | none | |
 | `curse-move-walk-mode` | `curse-slots` | `modern-controls`, the move mode | `contrast curse-move-walk` |
+| `curse-quiet-all` | `curse-slots` | `code-wheel`, `automap`, `journal`, `message-pause` and the three cheats, none triggered | `identical curse-quiet-journal` |
+| `curse-quiet-all-on-sight` | `curse-slots` | those, and `modern-controls` | `contrast curse-quiet-all` |
+| `curse-map-reader` | `curse-slots` | `automap`, `journal`: the map, the reader over it, the map back | |
+| `curse-script-keys` | `curse-slots` | none | |
+| `curse-script-esc` | `curse-slots` | `modern-controls`, Escape at a script's question | `contrast curse-script-keys` |
+| `curse-door-keys` | `curse-slots` | none | |
+| `curse-door-arrows` | `curse-slots` | `modern-controls`, Up and Down at a locked door's bar | `contrast curse-door-keys` |
 
 ```sh
 python3 scripts/sweep.py --game-disk games/curse-slots --game-disk games/curse-saved \
@@ -478,3 +518,26 @@ itself the way the desktop host does, so it is told:
 node build/wasm/hosts/web/Release/drive.mjs games/curse-slots START.EXE \
   --install '\CURSE' --replay tests/sessions/curse-fight.rec
 ```
+
+## The visual legs
+
+Four legs in `tests/visual` drive this program, each on the
+`curse-slots` snapshot with a `speed 386` line
+(`scripts/visual-legs.py`, `docs/journal-test-plan.md` §5):
+
+| leg | kind | what it holds |
+| --- | --- | --- |
+| `curse-not-bar` | pair, `journal` | on and off differ in the five cells of `NOTES` on the party's bar and nowhere else |
+| `curse-rdr-page` | single, `journal` | the log, entry 31's pages forward and back, its picture, each settled and each saying what it said; the screen before `N` back after the last `E`, every pixel |
+| `curse-map-back` | single, `automap` and `journal` | the map up before the log is the map up after it; Tab takes it away and brings it back |
+| `curse-text-create` | single, `modern-controls` | eleven screens from the title's bar through a character's creation read back as text, every highlight a block |
+
+```sh
+for leg in curse-not-bar curse-rdr-page curse-map-back curse-text-create; do
+  python3 scripts/visual-legs.py --game-disk games/curse-slots --leg $leg
+done
+```
+
+The runner takes one disk and runs every leg it is asked for on it, so
+a leg is named: without `--leg` the Pool of Radiance legs would be
+driven on this disk too.

@@ -1,0 +1,82 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# The reader on Curse of the Azure Bonds (#588): the log, an entry's
+# pages forward and back, its picture, the log again, and the screen
+# given back whole. `tests/sessions/curse-notes.rec` is the same walk
+# as hashes; this is the same claim in pixels and in what the screen
+# says, on `docs/playable-curse.md` leg 2's keys.
+# A single leg, for rdr-page.leg's reason: the log and a page cover the
+# screen, so a rect that allowed them would check nothing, and `N`
+# reaches the program in a seam-off run.
+# On this program a screen the seam draws is settled within a dump of
+# its key at `--speed 386`, where Pool of Radiance's takes about 230
+# frames at its own; each range below starts one dump after the key.
+# Driven on the Steam copy with its shipped slots (`curse-slots`).
+
+about the reader on Curse: the log, an entry's pages and picture, and the screen given back exactly
+kind single
+program START.EXE
+speed 386
+store tests/visual/curse-reader-store.txt
+seam journal
+until 153122200
+every 25
+
+# The challenge, which takes any letter, slot A, the opening event's two
+# screens and the innkeeper's, whose second cites entry 31.
+key P@2500
+key A@2650
+key Return@2800
+key L@2950
+key A@3100
+key B@3250
+key Return@3550
+key Return@3850
+key Left@4000
+key Left@4600
+key Up@4750
+key Return@4900
+key Return@5050
+
+# `Notes` opens the log and Return the row the cursor is on. `NEXT` to
+# the second page, Backspace back, `NEXT` twice onto the picture, and
+# out by `EXIT` twice: to the log, and to the adventuring screen.
+key N@5350
+key Return@5500
+key N@5800
+key Backspace@6100
+key N@6400
+key N@6700
+key E@7000
+key E@7300
+
+# The party's bar with `Notes` on it, before the log is opened.
+same 5100-5350
+
+# The log, page 1, page 2, page 1 again, page 2 again, the picture and
+# the log again: each holding still with nothing pressed.
+same 5375-5500
+same 5525-5800
+same 5825-6100
+same 6125-6400
+same 6425-6700
+same 6725-7000
+same 7025-7300
+
+# Backspace steps back to the page `NEXT` left, and `NEXT` forward to
+# the one it left: the same screens, not merely settled ones.
+equal 5525 6125
+equal 5825 6425
+
+# What the log and the pages say, bar and page count included, in the
+# program's own font: the store's words upper-cased, and the star that
+# opening the entry takes off its row.
+text 5375 3a67a7ed810f9c7bc65a38d80050a17ec7fcc28a635a39220e40eb0894546271
+text 5525 50fc10e9174753a9d0cff521ab74e0674df55b4235ef8f07f1f05e71fbba2c92
+text 5825 664b57cdf489b3c7829659df16db1cb811b4953b611304c9a95c1d6527c761a9
+text 7025 3ce4409c3d7da571e86dfd71b88a00bc1f989ec710ddc1f8f2906b98d6c4e6b7
+
+# The screen the reader took, back again after it: every pixel, the bar
+# row included, with nothing excepted, and holding still to the end.
+equal 5325 7325
+same 7325-7675

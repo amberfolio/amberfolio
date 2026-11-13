@@ -126,8 +126,8 @@ frame that carries an input is checkpointed whatever the cadence says.
 
 ### Curse of the Azure Bonds
 
-Forty-four sessions, `curse-*`, on the Steam copy at `--speed 386` and
-`--wall none` (#554, #555). Every one is `disk external`: `curse-load` is
+Fifty-one sessions, `curse-*`, on the Steam copy at `--speed 386` and
+`--wall none` (#554, #555, #588). Every one is `disk external`: `curse-load` is
 pinned to the disk `curse-save` wrote (the `curse-saved` snapshot), the
 three `curse-journey` sessions to a disk with the party saved in slot D
 on the overland map (`curse-wild`), and the rest to the copy with its
@@ -187,27 +187,47 @@ at frame 4,000 ahead of the Left there, 40 of 90 identical, divergent
 from tick 79,563,886) and `curse-temple-map` `contrast curse-temple`
 (the same Tab: the temple's arched door a door, and the roster the
 program draws at the altar given back whole; 40 of 107, from the same
-tick). The
-other nineteen are the legs with no seam: a new character, a purchase, a
-cure at the temple, the game's own Fix, the royal carriage, a journey
-on the overland map, and the rest. Each verifies on the desktop host and on the wasm module
-(`drive.mjs --install '\CURSE' --replay`).
+tick); `modern-controls`' two at a door and at a script's question
+(#588), `curse-door-arrows` `contrast curse-door-keys` (the locked door at
+7,12 N, whose bar is not raw: Down, Down and Up select the second
+member, the third and the second again, where the seam-off run throws
+them away; 19 of 81, from the same tick) and `curse-script-esc`
+`contrast curse-script-keys` (the weapon shop's question at 2,12:
+Escape answers `NO` and the party is back on the street, where the
+seam-off run ignores it and its Return takes `YES`; 19 of 80, from the
+same tick), each walked in the move mode with a Return before the walk
+that takes `AREA` in the seam-off half; and the seams together (#588):
+`curse-quiet-all` `identical curse-quiet-journal` (every seam that
+draws nothing until used, the code wheel, the automap, the journal, the
+message pause and the three cheats, armed over `curse-quiet`'s keys and
+none triggered: no more machine than the journal alone, all 58
+checkpoints), `curse-quiet-all-on-sight` `contrast curse-quiet-all`
+(that with `modern-controls`: 19 of 58, divergent from tick 48,382,638,
+the title's bar) and `curse-map-reader` (the automap up after the
+innkeeper, `Notes` and entry 31 read over it, and the map given back
+with the screen; Tab takes it away and brings it back; 84 checkpoints,
+over `tests/visual/curse-reader-store.txt`). The other twenty-two are
+the legs with no seam: a new character, a purchase, a cure at the
+temple, the game's own Fix, the royal carriage, a journey on the
+overland map, and the rest. Each verifies on the desktop host through
+the sweep and on the wasm module (`drive.mjs --install '\CURSE'
+--replay`, told a descriptor's store by hand).
 
 ## The matrix, by seam
 
 | Seam | On and exercised | On and never triggered |
 | --- | --- | --- |
-| `code-wheel` | every game session but the boot pair: the challenge is answered before the run and the seam steps over the boot's call to the check; on Curse `curse-boot-answered` | `boot-wheel`, on and unanswered: it watches 144 times and triggers nothing; on Curse `curse-boot-wheel` |
+| `code-wheel` | every game session but the boot pair: the challenge is answered before the run and the seam steps over the boot's call to the check; on Curse `curse-boot-answered` | `boot-wheel`, on and unanswered: it watches 144 times and triggers nothing; on Curse `curse-boot-wheel`, and `curse-quiet-all`, where the letter that answers the challenge latches nothing |
 | `encamp-fix` | `camp-fix` | `quiet-encamp` |
 | `roster-fix` (built in, always on) | `roster-add` | none can exist: there is no off. Every other session verifies with it on, `party` reaching it twice |
 | `timer-fix` (built in, always on) | `walk-quick`, at every sound after a skipped wait | none can exist: there is no off. Every session without quick steps verifies with it on: the driver's vector is the BIOS's at every install |
-| `automap` | `walk-map`; on Curse `curse-town-map`, `curse-temple-map` | `quiet-automap`; on Curse `curse-quiet-automap` |
-| `journal` | `reader`, `notes`, `cite`; on Curse `curse-notes`, `curse-cite` | `quiet-journal` (a `contrast`); on Curse `curse-quiet-journal` (a `contrast`) and `curse-journey-journal` (an `identical`: the party's bar is never drawn) |
+| `automap` | `walk-map`; on Curse `curse-town-map`, `curse-temple-map`, `curse-map-reader` | `quiet-automap`; on Curse `curse-quiet-automap` and `curse-quiet-all` |
+| `journal` | `reader`, `notes`, `cite`; on Curse `curse-notes`, `curse-cite`, `curse-map-reader` | `quiet-journal` (a `contrast`); on Curse `curse-quiet-journal` (a `contrast`) and `curse-journey-journal` (an `identical`: the party's bar is never drawn) |
 | `explored` | `wild-trail` | `quiet-explored` |
-| the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party`; on Curse `curse-fight-cheat`, `curse-fight-kill`, `curse-camp-wound` | `quiet-cheats`; on Curse `curse-quiet-cheats` |
-| `modern-controls` | `list-down-arrows`, `camp-down-arrows`, `camp-pad-arrows`, `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys`, `bar-esc-keys`, `bar-script-keys`, `bar-portrait-keys`, `menu-down-cursor`, `move-walk-mode`, `door-pick-3`, `list-keys-yellow`, `name-arrows-edit` (each a `contrast`; `door-pick-3` has the seam on at both ends and differs by its keys); on Curse `curse-camp-arrows`, `curse-name-arrows`, `curse-menu-cursor`, `curse-modify-arrows`, `curse-move-walk-mode` | none can exist: three of its pieces draw on sight, so `quiet-modern-controls`, `menu-letters-cursor` and `quiet-all-on-sight` are `contrast`s too (the pair is a `contrast`, as the faces' is). On Curse the same three draw on sight, the menu cursor, the hero keys and the selection block, so `curse-quiet-controls` is a `contrast curse-quiet` |
+| the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party`; on Curse `curse-fight-cheat`, `curse-fight-kill`, `curse-camp-wound` | `quiet-cheats`; on Curse `curse-quiet-cheats` and `curse-quiet-all` |
+| `modern-controls` | `list-down-arrows`, `camp-down-arrows`, `camp-pad-arrows`, `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys`, `bar-esc-keys`, `bar-script-keys`, `bar-portrait-keys`, `menu-down-cursor`, `move-walk-mode`, `door-pick-3`, `list-keys-yellow`, `name-arrows-edit` (each a `contrast`; `door-pick-3` has the seam on at both ends and differs by its keys); on Curse `curse-camp-arrows`, `curse-name-arrows`, `curse-menu-cursor`, `curse-modify-arrows`, `curse-move-walk-mode`, `curse-door-arrows`, `curse-script-esc` | none can exist: three of its pieces draw on sight, so `quiet-modern-controls`, `menu-letters-cursor` and `quiet-all-on-sight` are `contrast`s too (the pair is a `contrast`, as the faces' is). On Curse the same three draw on sight, the menu cursor, the hero keys and the selection block, so `curse-quiet-controls` is a `contrast curse-quiet` and `curse-quiet-all-on-sight` a `contrast curse-quiet-all` |
 | `quick-steps` | `walk-quick` | `menu-letters-quick`. Not in `quiet-all`: `quiet`'s movement keys click |
-| `message-pause` | `fight-pause`; on Curse `curse-fight-pause` | `quiet-message-pause`, and `quiet-all`; on Curse `curse-quiet-message-pause` |
+| `message-pause` | `fight-pause`; on Curse `curse-fight-pause` | `quiet-message-pause`, and `quiet-all`; on Curse `curse-quiet-message-pause`, and `curse-quiet-all` |
 | `fanfare` | `quiet-fanfare` (a `contrast`) | none can exist: every boot runs the titles, where it starts. Not in `quiet-all` |
 | `font-sans`, `font-chisel` | `quiet-font-sans`, `quiet-font-chisel` (on is exercised: text is drawn from the first screen); on Curse `curse-quiet-font-sans`, `curse-quiet-font-chisel` | none can exist; the pair is a `contrast` |
 
@@ -218,12 +238,16 @@ nothing to an idle machine, and `identical quiet-journal` is the test of it.
 main menu, the party bar's `Move` and the highlights' blocks, which draw as
 soon as there is something to draw on, so
 it cannot be in an `identical` run; it is added in `quiet-all-on-sight`,
-which is a `contrast` against `quiet-all`.
+which is a `contrast` against `quiet-all`. Curse of the Azure Bonds has
+the same two, `curse-quiet-all` `identical curse-quiet-journal` and
+`curse-quiet-all-on-sight` `contrast curse-quiet-all`, over the seams
+that program has.
 
 Subsets: `quiet-all` (all on but the faces and `modern-controls`),
 `quiet-all-on-sight` (that, with `modern-controls`), `subset-map-reader` (two seams wanting the
 same pixels), `camp-fix` (the Fix with a cheat), `wild-trail` (explored
-without automap; they share a store).
+without automap; they share a store); on Curse `curse-quiet-all`,
+`curse-quiet-all-on-sight` and `curse-map-reader`.
 
 ## Running them
 
@@ -295,7 +319,8 @@ Only when the machine it describes legitimately changes:
   `tests/programs/machine_harness.cpp` move together);
 - what `machine::reset()` leaves behind changes;
 - a seam is added after the session was made and the session claims to
-  carry them all (`quiet-all`, `quiet-all-on-sight`);
+  carry them all (`quiet-all`, `quiet-all-on-sight`, `curse-quiet-all`,
+  `curse-quiet-all-on-sight`);
 - a seam the session turns on legitimately changes what it does. The
   test: the change was chosen, argued on an issue, and visible in the
   seam's source, never that a red line went green.

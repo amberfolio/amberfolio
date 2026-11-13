@@ -727,6 +727,8 @@ and never triggered.
 | `quiet-message-pause` | identical | `quiet` (no message is shown, so neither point is reached) |
 | `fight-pause` | contrast | `fight` (the pause that opens the battle, and every combat line after it, stand longer) |
 | `curse-quiet-message-pause` | identical | `curse-quiet` (no pause is reached) |
+| `curse-quiet-all` | identical | `curse-quiet-journal` (every seam on Curse of the Azure Bonds that draws nothing until used: the code wheel, the automap, the journal, the message pause and the three cheats) |
+| `curse-quiet-all-on-sight` | contrast | `curse-quiet-all` (the same with `modern-controls` on: the title's bar is the first highlight drawn) |
 | `curse-fight-pause` | contrast | `curse-fight` (the pause that opens the brawl, and every combat line after it, stand longer) |
 | `quiet-fanfare` | contrast | `quiet` (the piece from the end of the boot's loading on: the chip's writes, and its registers while it plays) |
 
@@ -1074,7 +1076,9 @@ in the definition's `programs`:
   asks. Its operand is checked before the step, so a wrong fact declines.
 - **Fidelity**: `curse-boot-wheel` `identical curse-boot` (on, a wrong
   letter typed, every one of 31 checkpoints equal);
-  `curse-boot-answered` `contrast curse-boot`. Tests:
+  `curse-boot-answered` `contrast curse-boot`. In `curse-quiet-all`,
+  on with six other seams and `A` typed at the challenge, it latches
+  nothing. Tests:
   `SeamCodeWheelOnCurse.*` in `tests/core/machine/seam_test.cpp`.
 
 ### The Encamp (F)ix (#172, #186, #189, #194, #298, #303, #304)
@@ -1512,7 +1516,13 @@ the same panel. One `automap_facts` row per program
   `contrast curse-town` (Tab at frame 4,000 ahead of the Left there; 40
   of 90 identical); `curse-temple-map` `contrast curse-temple` (the same
   Tab, the arched door at `4,7 W` and the temple's screen given back
-  clean; 40 of 107 identical, divergent from tick 79,563,886). Tests:
+  clean; 40 of 107 identical, divergent from tick 79,563,886).
+  `curse-map-reader` is the panel under the journal's reader: up, the
+  log and an entry read over the whole screen, and the map on the screen
+  the program composes afterwards, with Tab still its key
+  (`tests/visual/curse-map-back.leg` is the same in stills: the frame
+  before `Notes` and the frame after the last `EXIT` are one frame).
+  In `curse-quiet-all`. Tests:
   `SeamAutomapOnCurse.*`
   (`tests/core/machine/seam_automap_curse_test.cpp`).
 
@@ -1736,7 +1746,15 @@ own bar.
   party's bar is never drawn). Every run from slot A passes the
   innkeeper, so no `curse-quiet` twin is a run with nothing cited. Its
   save to slot C with `--save-sidecars` writes `\SAVE\AFSEENC.DAT`, one
-  row, entry 31 unread, and loading C reads it back. Tests:
+  row, entry 31 unread, and loading C reads it back.
+  `curse-quiet-all` `identical curse-quiet-journal`: the code wheel, the
+  automap, the message pause and the three cheats on beside it add
+  nothing to what `Notes` on the bar does, all 58 checkpoints.
+  `curse-map-reader` is the reader over the automap's panel. Legs:
+  `tests/visual/curse-not-bar.leg` (on and off differ in the five cells
+  of `NOTES` and nowhere else), `curse-rdr-page.leg` (the log, the pages
+  forward and back, the picture, and the screen before `N` back whole)
+  and `curse-map-back.leg`. Tests:
   `JournalOnCurse.*`, `JournalReaderOnCurse.*`.
 
 ### The explored overlay (#179, M5-E5a to M5-E5g)
@@ -2029,8 +2047,8 @@ animation step: both are held by the unit suite.
 the baseline's ticks, and its lines stand a second and a half where the
 baseline's stand a quarter, so the brawl is still being fought at the
 run's end, and five of the baseline's keys end a pause instead of
-answering what they answered there. Not in a `quiet-all`: Curse has
-none. Tests: `SeamMessagePauseCurse.*` in
+answering what they answered there. In `curse-quiet-all`, which is
+`identical curse-quiet-journal`. Tests: `SeamMessagePauseCurse.*` in
 `tests/core/machine/seam_message_pause_test.cpp`.
 
 ### The fanfare (#538)
