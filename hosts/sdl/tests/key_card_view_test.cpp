@@ -6,8 +6,9 @@
 // is checked here is what this host does with it: that every line is the
 // panel's width, so the two views are one rectangle; that every page is
 // the same height, so turning one does not resize it; that a page number
-// past the end is brought back; and that a seam's rows are in the lines
-// only when the card was built with the seam on.
+// past the end is brought back; that a seam's rows are in the lines
+// only when the card was built with the seam on; and that the card is
+// the one for the program the engine is running.
 
 #include "key_card_view.h"
 
@@ -17,15 +18,29 @@
 #include <vector>
 
 #include "amberfolio/host/key_card.h"
+#include "amberfolio/machine/edition.h"
+#include "amberfolio/machine/loader.h"
 #include "amberfolio/machine/seam.h"
+#include "amberfolio/sha256.h"
 #include "gtest/gtest.h"
 
 namespace amberfolio::sdl {
 namespace {
 
 [[nodiscard]] std::vector<host::key_page> everything() {
-  return host::key_card_for(host::card_shell::desktop,
+  return host::key_card_for(host::card_shell::desktop, {},
                             [](std::string_view) { return true; });
+}
+
+/// Whether any page of `pages` is the context `id`.
+[[nodiscard]] bool has_page(const std::vector<host::key_page>& pages,
+                            std::string_view id) {
+  for (const host::key_page& page : pages) {
+    if (page.context->id == id) {
+      return true;
+    }
+  }
+  return false;
 }
 
 [[nodiscard]] bool any_line_has(const std::vector<std::string>& lines,
@@ -99,6 +114,38 @@ TEST(KeyCardView, ASeamsRowsAreInTheLinesOnlyWhileItIsOn) {
     found = found || any_line_has(card_lines(on, at), "Notes log");
   }
   EXPECT_TRUE(found);
+}
+
+TEST(KeyCardView, TheCardIsTheRunningProgramsOwn) {
+  const auto programs = machine::known_editions();
+  ASSERT_EQ(programs.size(), 2U);
+
+  // No program, and a program this build does not recognize: the
+  // baseline's card.
+  machine::seam_engine engine;
+  EXPECT_TRUE(has_page(card_pages(engine), "wilderness"));
+  EXPECT_FALSE(has_page(card_pages(engine), "journey"));
+  engine.loaded(sha256_digest{}, machine::image_load_segment);
+  ASSERT_EQ(engine.known_edition(), nullptr);
+  EXPECT_TRUE(has_page(card_pages(engine), "wilderness"));
+
+  sha256_digest digest{};
+  ASSERT_TRUE(machine::parse_digest(programs[0].fingerprint, digest));
+  engine.loaded(digest, machine::image_load_segment);
+  EXPECT_TRUE(has_page(card_pages(engine), "wilderness"));
+  EXPECT_FALSE(has_page(card_pages(engine), "journey"));
+
+  // Curse of the Azure Bonds has no wilderness to walk, and a journey.
+  ASSERT_TRUE(machine::parse_digest(programs[1].fingerprint, digest));
+  engine.loaded(digest, machine::image_load_segment);
+  const std::vector<host::key_page> curse = card_pages(engine);
+  EXPECT_FALSE(has_page(curse, "wilderness"));
+  EXPECT_TRUE(has_page(curse, "journey"));
+  std::size_t at = 0;
+  for (std::size_t page = 0; page < curse.size(); ++page) {
+    at = page;
+    EXPECT_FALSE(any_line_has(card_lines(curse, at), "wilderness"));
+  }
 }
 
 TEST(KeyCardView, AnEmptyCardSaysSo) {

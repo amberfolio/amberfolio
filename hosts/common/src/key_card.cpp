@@ -6,7 +6,8 @@
 // **To add a seam's keys, add a line in the context where the key is
 // pressed** and name the seam as the third word. The row shows only while
 // that seam is on, and the unit suite checks the name against
-// `all_seams()`.
+// `all_seams()`. A row that is true of one program names it as the fourth
+// word, and the suite checks that against the edition table.
 //
 // How each row was checked is in docs/hosts.md: driven against the
 // running program where that is cheap, and against the routine that
@@ -15,18 +16,32 @@
 #include "amberfolio/host/key_card.h"
 
 #include <array>
+#include <functional>
 #include <span>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include "amberfolio/machine/edition.h"
+
 namespace amberfolio::host {
 namespace {
+
+// The words a row or a context names a program by: what
+// `key_card_program()` answers for the two editions this build knows. The
+// unit suite holds each to the edition table.
+constexpr std::string_view pool = "pool";
+constexpr std::string_view curse = "curse";
+constexpr std::string_view no_seam;
 
 // Contexts are in the order a player is likely to want them: where the
 // party walks, then the bars and lists every screen shares, then the
 // special screens, then what a shell adds.
+//
+// A row that is true of one program names it as its fourth word, and a
+// screen only one program has names it on the context. Where the two
+// programs differ on one key there are two rows, side by side.
 
 constexpr std::array explore_rows{
     key_row{"Up, 8", "step forward one square"},
@@ -62,8 +77,24 @@ constexpr std::array wilderness_rows{
             "modern-controls"},
 };
 
+// Curse of the Azure Bonds has no wilderness to walk: its overland is a
+// bar of the script's and a list of the places the party may go.
+constexpr std::array journey_rows{
+    key_row{"its first letter", "take that command of the journey's bar"},
+    key_row{", and .", "step the lit command left and right"},
+    key_row{"Left, Right", "step the lit command", "modern-controls"},
+    key_row{"Return", "take the lit command; in the list, go to the lit place"},
+    key_row{"Home, End", "in the list of places: the place above or below"},
+    key_row{"Up, Down", "in the list of places: as Home and End do",
+            "modern-controls"},
+    key_row{"Esc", "in the list of places: goes to the lit place too"},
+};
+
 constexpr std::array bar_rows{
-    key_row{"its capital letter", "take that command; lower case works"},
+    key_row{"its capital letter", "take that command; lower case works",
+            no_seam, pool},
+    key_row{"its first letter", "take that command; lower case works", no_seam,
+            curse},
     key_row{", and .", "step the highlight left and right, wrapping"},
     key_row{"Left, Right", "step the highlight, except where they move or edit",
             "modern-controls"},
@@ -73,19 +104,27 @@ constexpr std::array bar_rows{
     key_row{"Up, Down at a door", "and the save bar: step the selected member",
             "modern-controls"},
     key_row{"Return", "take the highlighted command at nearly every bar",
-            "modern-controls"},
+            "modern-controls", pool},
+    key_row{"Return", "take the highlighted command", no_seam, curse},
     key_row{"Y, N", "answer a Yes/No question"},
-    key_row{"Esc", "leave camp, a list or a picker; not the exploring bar"},
+    key_row{"Esc", "leave camp, a list or a picker; not the exploring bar",
+            no_seam, pool},
+    key_row{"Esc", "leave camp or a shop's list; not the exploring bar",
+            no_seam, curse},
     key_row{"Esc at Yes/No", "answer No to the question", "modern-controls"},
     key_row{"F", "on the camp bar: Fix, rest as long as the party needs",
-            "encamp-fix"},
-    key_row{"the selection",
-            "a block, yellow (white in Curse): lit word, row, member",
-            "modern-controls"},
+            "encamp-fix", pool},
+    key_row{"the selection", "a block, yellow: the lit word, row or member",
+            "modern-controls", pool},
+    key_row{"the selection", "a block, white: the lit word, row or member",
+            "modern-controls", curse},
 };
 
 constexpr std::array menu_rows{
-    key_row{"its capital letter", "take that command; lower case works"},
+    key_row{"its capital letter", "take that command; lower case works",
+            no_seam, pool},
+    key_row{"its first letter", "take that command; lower case works", no_seam,
+            curse},
     key_row{"Home, End", "select the previous or next party member"},
     key_row{"Up, Down", "move a cursor over the commands shown (not 8, 2)",
             "modern-controls"},
@@ -95,7 +134,9 @@ constexpr std::array menu_rows{
             "modern-controls"},
     key_row{"the cursor row",
             "a block like every selection, its first letter white",
-            "modern-controls"},
+            "modern-controls", pool},
+    key_row{"the cursor row", "a white block from end to end",
+            "modern-controls", curse},
 };
 
 constexpr std::array list_rows{
@@ -106,10 +147,12 @@ constexpr std::array list_rows{
             "modern-controls"},
     key_row{"Return", "choose the highlighted row"},
     key_row{"Return at Items", "take the lit command: Ready, until it is moved",
-            "modern-controls"},
+            "modern-controls", pool},
     key_row{"PgUp, PgDn, 9, 3",
             "turn the page, when the list has more than one"},
-    key_row{"Esc, E", "leave the list (E is the bar's EXIT)"},
+    key_row{"Esc, E", "leave the list (E is the bar's EXIT)", no_seam, pool},
+    key_row{"E", "leave the list (the bar's EXIT)", no_seam, curse},
+    key_row{"Esc", "leave a shop's list", no_seam, curse},
 };
 
 constexpr std::array picker_rows{
@@ -118,16 +161,23 @@ constexpr std::array picker_rows{
     key_row{"Up, Down, 8, 2", "the previous or next member", "modern-controls"},
     key_row{"S, Return", "choose this member"},
     key_row{"Return on EXIT", "choose nobody", "modern-controls"},
-    key_row{"Esc, E", "choose nobody"},
+    key_row{"Esc, E", "choose nobody", no_seam, pool},
+    key_row{"E", "choose nobody (the bar's EXIT)", no_seam, curse},
 };
 
 constexpr std::array combat_rows{
-    key_row{"M, then the arrows",
-            "step one square; into an enemy is an attack"},
+    key_row{"M, then the arrows", "step one square; into an enemy is an attack",
+            no_seam, pool},
+    key_row{"the arrows", "a turn opens on the move: step one square", no_seam,
+            curse},
     key_row{"Home, PgUp, End, PgDn", "while moving: step NW, NE, SW, SE"},
-    key_row{"Esc", "while moving: stop moving"},
+    key_row{"Esc", "while moving: stop moving", no_seam, pool},
+    key_row{"Esc", "while moving: the bar, and back where the move began",
+            no_seam, curse},
+    key_row{"an arrow at the bar", "start a move in that direction", no_seam,
+            curse},
     key_row{"A", "Aim: N, P choose a target, M a cursor, E leaves"},
-    key_row{"T", "in Aim: attack the target in range"},
+    key_row{"T", "in Aim: attack the target in range", no_seam, pool},
     key_row{"Q", "Quick: the computer plays this turn"},
     key_row{"D", "Done: Guard, Delay, Quit, Speed or Exit"},
 };
@@ -135,6 +185,18 @@ constexpr std::array combat_rows{
 constexpr std::array score_rows{
     key_row{"Up, Down, 8, 2", "previous or next score; hit points come last"},
     key_row{"Right, Left, 6, 4", "raise or lower the highlighted score"},
+    key_row{"K", "keep the changes"},
+    key_row{"Esc, E", "put the old scores back and leave"},
+};
+
+// Curse of the Azure Bonds' Modify has a name field among its scores, and
+// steps its fields on Home and End.
+constexpr std::array field_rows{
+    key_row{"Home, End", "the field above or below: name, scores, hit points"},
+    key_row{"Up, Down", "step the fields, as Home and End do",
+            "modern-controls"},
+    key_row{"Right, Left",
+            "raise or lower the lit score; in the name, its cursor"},
     key_row{"K", "keep the changes"},
     key_row{"Esc, E", "put the old scores back and leave"},
 };
@@ -172,7 +234,10 @@ constexpr std::array desktop_rows{
 constexpr std::array contexts{
     key_context{"explore", "Exploring: the 3D view (towns, dungeons)",
                 explore_rows},
-    key_context{"wilderness", "Exploring: the wilderness map", wilderness_rows},
+    key_context{"wilderness", "Exploring: the wilderness map", wilderness_rows,
+                card_shell::both, pool},
+    key_context{"journey", "Exploring: the overland journey", journey_rows,
+                card_shell::both, curse},
     key_context{"bars", "Command bars (the line along the bottom)", bar_rows},
     key_context{"menu", "The main menu (party setup, training halls)",
                 menu_rows},
@@ -180,7 +245,10 @@ constexpr std::array contexts{
                 list_rows},
     key_context{"picker", "Choosing a party member", picker_rows},
     key_context{"combat", "Combat", combat_rows},
-    key_context{"scores", "Modify: a new character's scores", score_rows},
+    key_context{"scores", "Modify: a new character's scores", score_rows,
+                card_shell::both, pool},
+    key_context{"fields", "Modify: a new character's scores and name",
+                field_rows, card_shell::both, curse},
     key_context{"text", "Typing a name", text_rows},
     key_context{"journal", "Notes (the journal)", journal_rows},
     key_context{"desktop", "This window (the desktop host)", desktop_rows,
@@ -222,11 +290,30 @@ void append_string(std::string& out, std::string_view text) {
   out += '"';
 }
 
+/// The word of the edition an unqualified card is for: the baseline, the
+/// first row of the edition table.
+[[nodiscard]] std::string baseline_program() {
+  return key_card_program(&machine::known_editions().front());
+}
+
 [[nodiscard]] std::string build_json() {
   std::string out;
   out += "{\"legend\":";
   append_string(out, legend);
-  out += ",\"contexts\":[";
+  out += ",\"programs\":[";
+  bool first_program = true;
+  for (const machine::edition& program : machine::known_editions()) {
+    if (!first_program) {
+      out += ',';
+    }
+    first_program = false;
+    out += "{\"word\":";
+    append_string(out, key_card_program(&program));
+    out += ",\"fingerprint\":";
+    append_string(out, program.fingerprint);
+    out += '}';
+  }
+  out += "],\"contexts\":[";
   bool first_context = true;
   for (const key_context& context : contexts) {
     if (!first_context) {
@@ -239,6 +326,8 @@ void append_string(std::string& out, std::string_view text) {
     append_string(out, context.title);
     out += ",\"shell\":";
     append_string(out, shell_word(context.shell));
+    out += ",\"program\":";
+    append_string(out, context.program);
     out += ",\"rows\":[";
     bool first_row = true;
     for (const key_row& row : context.rows) {
@@ -252,6 +341,8 @@ void append_string(std::string& out, std::string_view text) {
       append_string(out, row.does);
       out += ",\"seam\":";
       append_string(out, row.seam);
+      out += ",\"program\":";
+      append_string(out, row.program);
       out += '}';
     }
     out += "]}";
@@ -266,17 +357,42 @@ std::span<const key_context> key_card() { return contexts; }
 
 std::string_view key_card_legend() { return legend; }
 
+std::string key_card_program(const machine::edition* program) {
+  if (program == nullptr) {
+    return {};
+  }
+  const std::string_view file = program->configuration.file;
+  const std::string_view stem = file.substr(0, file.find('.'));
+  std::string word;
+  word.reserve(stem.size());
+  for (const char c : stem) {
+    word.push_back(c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c);
+  }
+  return word;
+}
+
 std::vector<key_page> key_card_for(
-    card_shell shell, const std::function<bool(std::string_view)>& seam_on) {
+    card_shell shell, std::string_view program,
+    const std::function<bool(std::string_view)>& seam_on) {
+  // No program, or one this build does not recognize, is shown the
+  // baseline's card: what every card was before a second program had one.
+  const std::string baseline = baseline_program();
+  const std::string_view running = program.empty() ? baseline : program;
+  const auto for_running = [running](std::string_view named) {
+    return named.empty() || named == running;
+  };
   std::vector<key_page> pages;
   for (const key_context& context : contexts) {
     if (context.shell != card_shell::both && context.shell != shell) {
       continue;
     }
+    if (!for_running(context.program)) {
+      continue;
+    }
     key_page page;
     page.context = &context;
     for (const key_row& row : context.rows) {
-      if (row.seam.empty() || seam_on(row.seam)) {
+      if (for_running(row.program) && (row.seam.empty() || seam_on(row.seam))) {
         page.rows.push_back(&row);
       }
     }

@@ -14,6 +14,11 @@ injected into the game**: a seam is native C++ that stops the program at
 an address, reads or writes memory, and lets it continue. The program on
 the disk and every file the game owns are never modified.
 
+**Each game has its own.** An enhancement is written for a program, and
+the toggle panel lists the ones the game you loaded has: Curse of the
+Azure Bonds has no Encamp Fix (the game has a Fix of its own), explored
+overlay, quick steps or fanfare. The key card is each game's too.
+
 ## Answer the code wheel once
 
 **What it does.** The game asks you to look up a word on the code wheel

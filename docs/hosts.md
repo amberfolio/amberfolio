@@ -1820,6 +1820,18 @@ choice made in it is remembered.**
 A row is **name, state, fired, reason, gate**, in that order, on both
 hosts. None of them is decoration.
 
+**The rows are the loaded program's seams** (#556). A seam whose facts
+describe another program, core's `wrong_binary`, is not listed once the
+program is one this build recognizes: on Curse of the Azure Bonds the
+panel has no row for `encamp-fix`, `explored`, `quick-steps` or
+`fanfare`. Every other reason stays on its row, a module not loaded yet
+and a document not presented among them. For a program this build does
+not recognize every seam reads `wrong_binary` and every row is listed,
+and with no program loaded every row is listed and reads `no_program`.
+The rule is `panel_lists()` in `src/seam_panel.h` and `panelLists()` in
+`page/toggle-panel.mjs`, over the reason the engine already gives;
+`--seams` still prints every seam.
+
 | column | what it is |
 |---|---|
 | seam | `seam_status::id`, with what the seam is for beside it |
@@ -2160,10 +2172,24 @@ of rows of *keys*, *what they do* and, for a seam's key, the seam. Neither
 shell keeps a second copy, so a change to the card is a change to that
 file.
 
+**A program is shown its own card** (#556). A context or a row may name a
+program, by `key_card_program()`'s word for an edition (the stem of its
+configuration file in lower case: `pool`, `curse`), and is then shown
+only while that program runs; one that names none is true of both. Curse
+of the Azure Bonds has no wilderness context and has one for its
+overland journey; its Modify has a context of its own, for the name
+field; and where the two programs differ on a key each has a row. With
+no program, or one this build does not recognize, the card is the
+baseline's. The JSON carries `program` on every context and row (empty
+for both) and `programs`, each word with its program image's SHA-256,
+so a page gets the word from `Machine.programFingerprint()` through
+`keyCardProgram()`. A page that ignores `program` shows both games' rows
+together.
+
 | host | where | how it reads the table |
 | --- | --- | --- |
-| desktop | the toggle panel's second view: the right mouse button steps hidden, seams, card, hidden. Up and Down, or a click, turn the page; one context to a page | `host::key_card_for()` over the seam engine (`src/key_card_view.*`) |
-| page | the *the game's keys* box, under the seam list | `Machine`-less `readKeyCard()` over `af_web_key_card_json` (ABI 3.1), filtered by `visibleKeyCard()`, both in `page/host.mjs` |
+| desktop | the toggle panel's second view: the right mouse button steps hidden, seams, card, hidden. Up and Down, or a click, turn the page; one context to a page | `host::key_card_for()` over the seam engine and its `known_edition()` (`src/key_card_view.*`) |
+| page | the *the game's keys* box, under the seam list | `Machine`-less `readKeyCard()` over `af_web_key_card_json` (ABI 3.1), filtered by `visibleKeyCard()` for the loaded program's `keyCardProgram()` word, all in `page/host.mjs` |
 
 Both are drawn by the shell and never into the game's screen. The page
 redraws the card when the set of seams that are on changes; the desktop
@@ -2172,8 +2198,9 @@ builds it at every paint.
 **Beside it, the controls page.** `page/controls.html`, linked from the
 box, lists every controls improvement by screen, the enhancement each one
 needs and what each trades (#448), and the one look, the selection as a
-block, yellow, or white on Curse of the Azure Bonds (#453, #483, #555); every one is the single `modern-controls` seam (#473), and the page
-says so in its legend. It is the dev page's furniture, served with it and
+block (#453, #483, #555), in a part for each game (#556): a row is true
+of the game whose part it is in. Every one is the single
+`modern-controls` seam (#473), and the page says so in its legend. It is the dev page's furniture, served with it and
 not released, like `index.html`; the keys per screen stay the card's.
 
 **A seam's keys show only while it is on.** A row names a seam id, and a
@@ -2229,6 +2256,26 @@ and the desktop's own keys (§2's table and
 `keymap.cpp`). A row that a drive contradicted was fixed before it was
 written: Return does not step Modify's rows, though one routine reads as
 if it does.
+
+**Curse of the Azure Bonds' rows** were driven the same way on the Steam
+copy (`docs/playable-curse.md`, `docs/modern-controls.md`), with no seam
+unless one is named: the journey bar's `,` and `.`, Return taking its
+lit command, the list of places on Home and End with the arrows doing
+nothing, and Escape there going to the lit place; with `modern-controls`
+on, Left and Right on that bar and Up and Down in that list; Escape
+leaving camp and a shop's list and doing nothing at the member picker;
+a list's Home, End, `7`, `1`, PgUp and PgDn, its wrap, and, with the
+seam, Up, Down, `8` and `2`; the picker's Home, End, `7`, `1` and
+Return; combat opening a turn on the move, the four diagonals, Escape
+putting the fighter back where the move began, Aim with N, M and E, and
+Done's second bar; Modify's Home and End, Right raising a score, `K`
+keeping, and Escape and `E` restoring; a name's Backspace and Escape
+accepting. Resting on a reading for that program: the number row's `9`
+and `3` in a list, an arrow at combat's command bar starting a move
+(Right driven), E at the picker and in a list (the bars' EXIT), and
+every row the two programs share that is not named here. Left off its
+card because nothing verified them: T in Aim, moving into an enemy as an
+attack, Modify's `6` and `4`, and Return at Items.
 
 ## 12. A line of text, being read (#504)
 

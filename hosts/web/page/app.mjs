@@ -60,6 +60,7 @@ import {
   wallClockFields,
   readScreenKeyboard,
   readKeyCard,
+  keyCardProgram,
   visibleKeyCard,
   commitKey,
   moveFocus,
@@ -2048,13 +2049,15 @@ function renderSeams(
 /// to nothing here. A row that belongs to a seam is shown only while that
 /// seam is on (`visibleKeyCard()`), so the card follows the toggles above
 /// it, and the page says which seam a row belongs to in the row's tooltip.
+/// A context or a row that is one game's is shown only for the program
+/// loaded (`keyCardProgram()` over its fingerprint, #556).
 ///
 /// Drawn by the page and never into the game's screen (PLAN.md §5).
 ///
 /// Answers a `refresh()` the run loop calls on its readout cadence; it
 /// rebuilds the section only when the set of seams that are on has moved,
-/// so a player reading the card is not handed a new one under their eyes
-/// every half second.
+/// or the program has, so a player reading the card is not handed a new
+/// one under their eyes every half second.
 function renderKeyCard(machine, container) {
   if (!container) return () => {};
   const card = readKeyCard(machine.module);
@@ -2066,10 +2069,11 @@ function renderKeyCard(machine, container) {
         .filter((seam) => seam.state === AF_SEAM_ON)
         .map((seam) => seam.id),
     );
-    const fingerprint = [...on].sort().join(',');
+    const program = keyCardProgram(card, machine.programFingerprint());
+    const fingerprint = `${program}:${[...on].sort().join(',')}`;
     if (fingerprint === drawn) return;
     drawn = fingerprint;
-    const sections = visibleKeyCard(card, 'page', (id) => on.has(id)).map((context) => {
+    const sections = visibleKeyCard(card, 'page', (id) => on.has(id), program).map((context) => {
       const section = document.createElement('section');
       section.id = `keycard-${context.id}`;
       const heading = document.createElement('h3');

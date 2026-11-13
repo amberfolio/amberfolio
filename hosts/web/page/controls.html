@@ -1,9 +1,11 @@
 <!doctype html>
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
-<!-- Every controls improvement, by screen (#448). Served beside the dev page
-     and linked from its key card box; not part of the release bundle. The
-     per-screen keys themselves are the key card's (hosts/common); this page
-     says which enhancement each improvement needs and what it trades. -->
+<!-- Every controls improvement, by screen (#448), a part for each game
+     (#556). Served beside the dev page and linked from its key card box; not
+     part of the release bundle. The per-screen keys themselves are the key
+     card's (hosts/common), which shows each game its own; this page says
+     which enhancement each improvement needs and what it trades. A static
+     page: a row is true of the game whose part it is in. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -52,8 +54,12 @@ h1 { font: 400 clamp(22px, 4vw, 30px)/1.15 var(--display); letter-spacing: .02em
 .c-mod { color: var(--c-mod); } .c-base { color: var(--c-base); }
 
 section { display: grid; gap: 10px; }
-h2 { font: 400 15px/1.2 var(--display); letter-spacing: .04em; margin: 0; padding-bottom: 6px; border-bottom: 1px solid var(--rule); }
-h2 small { font: 400 13px var(--body); color: var(--muted); letter-spacing: 0; margin-left: 6px; }
+.games { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 14px; }
+.games a { color: inherit; }
+article { display: grid; gap: 28px; }
+h2 { font: 400 clamp(18px, 3vw, 22px)/1.2 var(--display); letter-spacing: .02em; margin: 0; padding-top: 14px; border-top: 4px solid var(--frame); }
+h3 { font: 400 15px/1.2 var(--display); letter-spacing: .04em; margin: 0; padding-bottom: 6px; border-bottom: 1px solid var(--rule); }
+h3 small { font: 400 13px var(--body); color: var(--muted); letter-spacing: 0; margin-left: 6px; }
 .tbl { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
 td { padding: 7px 8px; vertical-align: top; border-bottom: 1px solid var(--rule); }
@@ -63,7 +69,7 @@ td.t { width: 1%; text-align: right; }
 kbd { font: 500 12.5px/1 var(--mono); background: var(--key-bg); border: 1px solid var(--key-edge); border-bottom-width: 2px; border-radius: 3px; padding: 3px 6px; display: inline-block; margin: 1px 2px 1px 0; white-space: nowrap; }
 .note { font-size: 13px; color: var(--muted); margin: 0; max-width: 70ch; }
 .trades { background: var(--panel); border: 1px solid var(--rule); border-left: 4px solid var(--frame); padding: 12px 16px; display: grid; gap: 6px; }
-.trades h2 { border: 0; padding: 0; }
+.trades h3 { border: 0; padding: 0; }
 .trades ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 @media (max-width: 560px) { td.k { min-width: 110px; } td.t .chip { font-size: 11px; } }
 </style>
@@ -72,19 +78,27 @@ kbd { font: 500 12.5px/1 var(--mono); background: var(--key-bg); border: 1px sol
 <div class="wrap">
 <header>
   <h1>Amber Folio Controls</h1>
-  <p class="lede">Every keyboard improvement in the build, by where you are in Pool of Radiance. The game's own keys still work everywhere. The tag is the one enhancement you switch on; untagged rows are the game's own or always on.</p>
+  <p class="lede">Every keyboard improvement in the build, by where you are in the game, with a part for each game. The game's own keys still work everywhere. The tag is the one enhancement you switch on; untagged rows are the game's own or always on.</p>
   <div class="how">
     <span><b>Desktop:</b> right-click for the seam panel, right-click again for the key card.</span>
     <span><b>Web:</b> the seam list and the key card sit under the game.</span>
   </div>
+  <p class="lede">Both show the game you are playing: the panel lists that game's enhancements, and the key card that game's screens and keys.</p>
   <div class="legend">
     <span class="chip c-mod">modern-controls</span>
   </div>
-  <p class="lede">One switch covers every row below that carries this tag: the arrows in lists, Enter, Esc and Left and Right at the bars, the main menu's cursor, the number row's heroes at the main menu, walking as a mode on the exploring bar, text entry that ignores the arrows, and the selection drawn as a yellow block.</p>
+  <nav class="games" aria-label="Games">
+    <a href="#pool-of-radiance">Pool of Radiance</a>
+    <a href="#curse-of-the-azure-bonds">Curse of the Azure Bonds</a>
+  </nav>
 </header>
 
+<article id="pool-of-radiance">
+<h2>Pool of Radiance</h2>
+<p class="lede">One switch covers every row below that carries the tag: the arrows in lists, Enter, Esc and Left and Right at the bars, the main menu's cursor, the number row's heroes at the main menu, walking as a mode on the exploring bar, text entry that ignores the arrows, and the selection drawn as a yellow block.</p>
+
 <section>
-  <h2>Main menu <small>title screen and training hall</small></h2>
+  <h3>Main menu <small>title screen and training hall</small></h3>
   <div class="tbl"><table>
     <tr><td class="k">the cursor</td><td>A highlight on the first command as soon as the menu is drawn.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
     <tr><td class="k"><kbd>Up</kbd><kbd>Down</kbd></td><td>Move the highlight over the commands shown, skipping hidden ones.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
@@ -97,7 +111,7 @@ kbd { font: 500 12.5px/1 var(--mono); background: var(--key-bg); border: 1px sol
 </section>
 
 <section>
-  <h2>Pick-lists <small>race, class, alignment, shops, spells, coins</small></h2>
+  <h3>Pick-lists <small>race, class, alignment, shops, spells, coins</small></h3>
   <div class="tbl"><table>
     <tr><td class="k"><kbd>Up</kbd><kbd>Down</kbd></td><td>Highlight the row above or below, like Home and End. Wraps within the page.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
     <tr><td class="k"><kbd>Home</kbd><kbd>End</kbd></td><td>The same, the game's own keys.</td><td class="t"></td></tr>
@@ -110,7 +124,7 @@ kbd { font: 500 12.5px/1 var(--mono); background: var(--key-bg); border: 1px sol
 </section>
 
 <section>
-  <h2>Choosing a party member <small>Trade, "cast on whom", a script's pick</small></h2>
+  <h3>Choosing a party member <small>Trade, "cast on whom", a script's pick</small></h3>
   <div class="tbl"><table>
     <tr><td class="k"><kbd>Up</kbd><kbd>Down</kbd></td><td>Previous or next member.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
     <tr><td class="k"><kbd>Home</kbd><kbd>End</kbd></td><td>The same, the game's own keys.</td><td class="t"></td></tr>
@@ -121,7 +135,7 @@ kbd { font: 500 12.5px/1 var(--mono); background: var(--key-bg); border: 1px sol
 </section>
 
 <section>
-  <h2>Command bars <small>the line along the bottom</small></h2>
+  <h3>Command bars <small>the line along the bottom</small></h3>
   <div class="tbl"><table>
     <tr><td class="k"><kbd>Left</kbd><kbd>Right</kbd></td><td>Step the highlight, like <kbd>,</kbd> and <kbd>.</kbd>. Everywhere except combat movement and aim, and Modify, where the arrows already do something. At the exploring bar they step it until you choose Move (see Exploring).</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
     <tr><td class="k"><kbd>Enter</kbd></td><td>Take the highlighted command at nearly every bar: the exploring bars, camp and its Magic, Alter and Speed bars, shops, temples, combat's command, Done, Speed and aim bars, View, the portrait bar, the loot bars, a locked or stuck door's bar and the load slot bar. At the rest-time menu it follows the highlight too, which opens on Mins, not Rest. Commands other enhancements add, such as Fix and Notes, work too. Where the game gives Enter a meaning (lists, the party-order screen, combat move and the aim cursor, keep-or-sell, the icon editor) it keeps it, and the save slot bar and Modify ignore it.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
@@ -132,7 +146,7 @@ kbd { font: 500 12.5px/1 var(--mono); background: var(--key-bg); border: 1px sol
 </section>
 
 <section>
-  <h2>Yes/No questions <small>the game's prompts and the event scripts'</small></h2>
+  <h3>Yes/No questions <small>the game's prompts and the event scripts'</small></h3>
   <div class="tbl"><table>
     <tr><td class="k"><kbd>Enter</kbd></td><td>Answer with the highlighted choice. The highlight starts on No at the game's own Yes/No.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
     <tr><td class="k"><kbd>Esc</kbd></td><td>Answer No.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
@@ -144,7 +158,7 @@ kbd { font: 500 12.5px/1 var(--mono); background: var(--key-bg); border: 1px sol
 </section>
 
 <section>
-  <h2>Exploring <small>towns, dungeons and the wilderness</small></h2>
+  <h3>Exploring <small>towns, dungeons and the wilderness</small></h3>
   <div class="tbl"><table>
     <tr><td class="k">the bar</td><td>You arrive at it with Move lit, where Area was: the overhead view is the automap now (<kbd>Tab</kbd>).</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
     <tr><td class="k"><kbd>Left</kbd><kbd>Right</kbd></td><td>Step the bar's highlight. <kbd>Enter</kbd> takes it.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
@@ -157,7 +171,7 @@ kbd { font: 500 12.5px/1 var(--mono); background: var(--key-bg); border: 1px sol
 </section>
 
 <section>
-  <h2>Notes <small>the journal's log and the pages of an entry</small></h2>
+  <h3>Notes <small>the journal's log and the pages of an entry</small></h3>
   <div class="tbl"><table>
     <tr><td class="k"><kbd>Left</kbd><kbd>Right</kbd></td><td>Step the lit word of the screen's bar: Next, Prev, Exit. In the log the first press lights the bar.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
     <tr><td class="k"><kbd>Enter</kbd></td><td>Take the lit command. In the log, Enter opens the row under the cursor until Left or Right lights the bar; <kbd>Up</kbd> and <kbd>Down</kbd> give it back to the rows. With no entries in the log, Enter takes Exit.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
@@ -167,7 +181,7 @@ kbd { font: 500 12.5px/1 var(--mono); background: var(--key-bg); border: 1px sol
 </section>
 
 <section>
-  <h2>Typing <small>a name, a script's answer, a number, the code word</small></h2>
+  <h3>Typing <small>a name, a script's answer, a number, the code word</small></h3>
   <div class="tbl"><table>
     <tr><td class="k">arrows, <kbd>Home</kbd><kbd>End</kbd>, <kbd>PgUp</kbd><kbd>PgDn</kbd>, <kbd>Ins</kbd><kbd>Del</kbd>, F-keys</td><td>Do nothing. Without the enhancement each one types a stray letter (Right types M, Up H).</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
     <tr><td class="k">letters, <kbd>Backspace</kbd>, <kbd>Enter</kbd></td><td>Type, erase, accept (the game's own; <kbd>Esc</kbd> accepts too).</td><td class="t"></td></tr>
@@ -175,17 +189,17 @@ kbd { font: 500 12.5px/1 var(--mono); background: var(--key-bg); border: 1px sol
 </section>
 
 <section>
-  <h2>Everywhere, always on</h2>
+  <h3>Everywhere, always on</h3>
   <div class="tbl"><table>
     <tr><td class="k">held key</td><td>Repeats, on the desktop build as on the web build and the original keyboard. The on-screen keyboard never repeats.</td><td class="t"><span class="chip c-base">desktop</span></td></tr>
     <tr><td class="k">key card</td><td>Every screen's keys in one place, with an enhancement's rows shown only while it is on.</td><td class="t"><span class="chip c-base">both builds</span></td></tr>
-    <tr><td class="k">every selection</td><td>Drawn as a yellow block, the letters cut out of it, with a command's key letter a white block: a shape, so it reads whatever colours you see. In Curse of the Azure Bonds the block is white, the colour that game lights its own selections in. A bar's lit word, a list's row, the party list's selected member, Modify's selected score, the main menu's cursor and the Notes list's. It is a look and takes no key.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
+    <tr><td class="k">every selection</td><td>Drawn as a yellow block, the letters cut out of it, with a command's key letter a white block: a shape, so it reads whatever colours you see. A bar's lit word, a list's row, the party list's selected member, Modify's selected score, the main menu's cursor and the Notes list's. It is a look and takes no key.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
   </table></div>
   <p class="note">Combat, Modify and text entry keep the game's own keys.</p>
 </section>
 
 <div class="trades">
-  <h2>What these change</h2>
+  <h3>What these change</h3>
   <ul>
     <li>Right at the post-combat Take bar no longer takes Money, and Left at the temple's keep prompt no longer keeps. Typing <kbd>M</kbd> or <kbd>K</kbd> still does.</li>
     <li>At camp, Magic and Alter, Left and Right no longer send the selection back to the first hero.</li>
@@ -194,6 +208,157 @@ kbd { font: 500 12.5px/1 var(--mono); background: var(--key-bg); border: 1px sol
     <li>The number row picks a hero at the main menu only; everywhere else it does what the keypad does.</li>
   </ul>
 </div>
+</article>
+
+<article id="curse-of-the-azure-bonds">
+<h2>Curse of the Azure Bonds</h2>
+<p class="lede">The same switch on this game's own screens. This game already takes Enter at its bars and lights its selections as a white block, so those rows carry no tag here. The tag covers the arrows in lists and at the bars, Esc at a question, the main menu's cursor, the number row's heroes at the main menu, walking as a mode on the exploring bar, text entry that ignores the arrows, Up and Down in Modify, and every selection drawn as one block with a margin.</p>
+
+<section>
+  <h3>Main menu <small>the party menu, at the start and at a training hall</small></h3>
+  <div class="tbl"><table>
+    <tr><td class="k">the cursor</td><td>A highlight on the first command as soon as the menu is drawn.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
+    <tr><td class="k"><kbd>Up</kbd><kbd>Down</kbd></td><td>Move the highlight over the commands shown, wrapping at both ends.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
+    <tr><td class="k"><kbd>Enter</kbd></td><td>Take the highlighted command.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
+    <tr><td class="k">the highlight</td><td>A white block from end to end.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
+    <tr><td class="k"><kbd>1</kbd>–<kbd>8</kbd> <span class="note">number row</span></td><td>Select that hero; the party list shows each number.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
+    <tr><td class="k"><kbd>Home</kbd><kbd>End</kbd></td><td>Previous or next hero (the game's own).</td><td class="t"></td></tr>
+    <tr><td class="k">first letter</td><td>Take that command (the game's own; lower case works).</td><td class="t"></td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h3>Pick-lists <small>race, class, alignment, a shop's stock, a temple's cures</small></h3>
+  <div class="tbl"><table>
+    <tr><td class="k"><kbd>Up</kbd><kbd>Down</kbd></td><td>Highlight the row above or below, like Home and End. Wraps within the page.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
+    <tr><td class="k"><kbd>Home</kbd><kbd>End</kbd></td><td>The same, the game's own keys.</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>Enter</kbd></td><td>Choose the highlighted row: Enter takes the bar's lit command, and the bar opens on the one that chooses (the game's own).</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>Left</kbd><kbd>Right</kbd>, then <kbd>Enter</kbd></td><td>Move the bar's lit command to another, and Enter takes it instead.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
+    <tr><td class="k"><kbd>PgUp</kbd><kbd>PgDn</kbd></td><td>Turn the page when the list is longer than one (the game's own).</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>E</kbd></td><td>Leave the list: the bar's Exit. <kbd>Esc</kbd> leaves a shop's list.</td><td class="t"></td></tr>
+    <tr><td class="k">the highlighted row</td><td>The game's white block, with a margin round it; nothing else in the list is lit.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h3>Choosing a party member <small>Trade, and wherever the game asks for one</small></h3>
+  <div class="tbl"><table>
+    <tr><td class="k"><kbd>Up</kbd><kbd>Down</kbd></td><td>Previous or next member.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
+    <tr><td class="k"><kbd>Home</kbd><kbd>End</kbd></td><td>The same, the game's own keys.</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>Enter</kbd></td><td>Choose this member (the game's own: the bar opens on Select).</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>E</kbd></td><td>Choose nobody: the bar's Exit. <kbd>Esc</kbd> does nothing here.</td><td class="t"></td></tr>
+    <tr><td class="k">the selected member</td><td>A white block in the party list.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h3>Command bars <small>the line along the bottom</small></h3>
+  <div class="tbl"><table>
+    <tr><td class="k"><kbd>Left</kbd><kbd>Right</kbd></td><td>Step the lit command, like <kbd>,</kbd> and <kbd>.</kbd>. Everywhere except where the arrows already do something: combat's command bar, where an arrow starts a move, the move itself, the aim bar and its cursor, and Modify. At the exploring bar they step it until you choose Move (see Exploring).</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
+    <tr><td class="k"><kbd>Enter</kbd></td><td>Take the lit command (the game's own, at every bar it lights).</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>Up</kbd><kbd>Down</kbd></td><td>Previous or next hero wherever Home and End step it: camp and its Magic and Alter bars, the party-order screen, shops, temples, script prompts and the post-combat bars. Also at a locked or stuck door's bar and the save slot bar, where the game throws Home and End away. At the exploring bar they select a hero until you choose Move, and walk after.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
+    <tr><td class="k"><kbd>,</kbd><kbd>.</kbd></td><td>Step the lit command left and right (the game's own).</td><td class="t"></td></tr>
+    <tr><td class="k">first letter</td><td>Take that command (the game's own; lower case works).</td><td class="t"></td></tr>
+    <tr><td class="k">the lit command</td><td>The game's white block, with a margin round it, and only the word is lit.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h3>Yes/No questions <small>the game's prompts and the event scripts'</small></h3>
+  <div class="tbl"><table>
+    <tr><td class="k"><kbd>Esc</kbd></td><td>Answer No.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
+    <tr><td class="k"><kbd>Left</kbd><kbd>Right</kbd></td><td>Move the lit answer.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
+    <tr><td class="k"><kbd>Enter</kbd></td><td>Take the lit answer (the game's own).</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>Y</kbd><kbd>N</kbd></td><td>Answer directly (the game's own).</td><td class="t"></td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h3>Exploring <small>towns and dungeons</small></h3>
+  <div class="tbl"><table>
+    <tr><td class="k">the bar</td><td>You arrive at it with Move lit, where Area was: the overhead view is the automap now (<kbd>Tab</kbd>).</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
+    <tr><td class="k"><kbd>Left</kbd><kbd>Right</kbd></td><td>Step the bar's lit command. <kbd>Enter</kbd> takes it.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
+    <tr><td class="k"><kbd>Up</kbd><kbd>Down</kbd></td><td>Previous or next hero.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
+    <tr><td class="k"><kbd>M</kbd>, or <kbd>Enter</kbd> on Move</td><td>Start walking. The bar reads Exit, and the arrows walk and turn as the game has them do.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
+    <tr><td class="k"><kbd>Enter</kbd> <kbd>Esc</kbd> <kbd>E</kbd></td><td>While walking: back to the bar, Move lit. A screen of the game's own that asks for a choice also brings you back to the bar. A sign or a story line that only asks you to continue does not: after its Enter you are walking again.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
+    <tr><td class="k">arrows</td><td>Up steps, Left and Right turn, Down turns round: with modern-controls off always, with it on while walking.</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>Home</kbd><kbd>End</kbd></td><td>Previous or next hero (the game's own).</td><td class="t"></td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h3>The overland journey <small>between towns</small></h3>
+  <div class="tbl"><table>
+    <tr><td class="k"><kbd>Left</kbd><kbd>Right</kbd></td><td>Step the journey bar's lit command.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
+    <tr><td class="k"><kbd>,</kbd><kbd>.</kbd></td><td>The same, the game's own keys.</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>Enter</kbd></td><td>Take the lit command; in the list of places, go to the lit place (the game's own).</td><td class="t"></td></tr>
+    <tr><td class="k">first letter</td><td>Take that command (the game's own).</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>Up</kbd><kbd>Down</kbd></td><td>In the list of places: the place above or below, like Home and End.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
+    <tr><td class="k"><kbd>Home</kbd><kbd>End</kbd></td><td>The same, the game's own keys.</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>Esc</kbd></td><td>In the list of places it goes to the lit place too, and does not go back (the game's own).</td><td class="t"></td></tr>
+  </table></div>
+  <p class="note">This game has no wilderness to walk. The overland is a picture of the region with the party's mark on it, a bar of commands and a list of the places the party may go from where it stands. The bar has no Move, and the arrows do not walk here.</p>
+</section>
+
+<section>
+  <h3>Notes <small>the journal's log and the pages of an entry</small></h3>
+  <div class="tbl"><table>
+    <tr><td class="k"><kbd>Left</kbd><kbd>Right</kbd></td><td>Step the lit word of the screen's bar: Next, Prev, Exit. In the log the first press lights the bar.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
+    <tr><td class="k"><kbd>Enter</kbd></td><td>Take the lit command. In the log, Enter opens the row under the cursor until Left or Right lights the bar; <kbd>Up</kbd> and <kbd>Down</kbd> give it back to the rows.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
+    <tr><td class="k">the lit word</td><td>A white block, and the log's cursor row is one too.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
+    <tr><td class="k"><kbd>Up</kbd><kbd>Down</kbd>, <kbd>N</kbd>, <kbd>P</kbd>, <kbd>E</kbd>, <kbd>Esc</kbd></td><td>The Notes screen's own keys, unchanged: move in the log, turn a page, leave.</td><td class="t"></td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h3>Typing <small>a name, the code word</small></h3>
+  <div class="tbl"><table>
+    <tr><td class="k">arrows, <kbd>Home</kbd><kbd>End</kbd>, <kbd>PgUp</kbd><kbd>PgDn</kbd>, <kbd>Ins</kbd><kbd>Del</kbd>, F-keys</td><td>Do nothing. Without the enhancement each one types a stray letter (Right types M, Up H).</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
+    <tr><td class="k">letters, <kbd>Backspace</kbd>, <kbd>Enter</kbd></td><td>Type, erase, accept (the game's own; <kbd>Esc</kbd> accepts too).</td><td class="t"></td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h3>Modify <small>a new character's scores and name</small></h3>
+  <div class="tbl"><table>
+    <tr><td class="k"><kbd>Up</kbd><kbd>Down</kbd></td><td>Step the fields, the name among them, as Home and End do. With the enhancement off they do nothing here.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
+    <tr><td class="k">the name field</td><td>A white block while it is lit, the letter under its cursor the gap in it.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
+    <tr><td class="k"><kbd>Home</kbd><kbd>End</kbd></td><td>The field above or below: the name, the scores, the hit points (the game's own).</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>Left</kbd><kbd>Right</kbd></td><td>Lower or raise the lit score; in the name, move its cursor (the game's own).</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>K</kbd></td><td>Keep the changes (the game's own).</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>Esc</kbd> <kbd>E</kbd></td><td>Put the old scores back and leave (the game's own).</td><td class="t"></td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h3>Combat <small>the game's own keys, unchanged</small></h3>
+  <div class="tbl"><table>
+    <tr><td class="k">arrows</td><td>A turn opens on the move: an arrow steps one square.</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>Home</kbd><kbd>PgUp</kbd><kbd>End</kbd><kbd>PgDn</kbd></td><td>While moving: step diagonally.</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>Esc</kbd></td><td>While moving: back to the command bar, with the fighter back where the move began.</td><td class="t"></td></tr>
+    <tr><td class="k">an arrow at the bar</td><td>Start a move in that direction.</td><td class="t"></td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h3>Everywhere, always on</h3>
+  <div class="tbl"><table>
+    <tr><td class="k">held key</td><td>Repeats, on the desktop build as on the web build and the original keyboard. The on-screen keyboard never repeats.</td><td class="t"><span class="chip c-base">desktop</span></td></tr>
+    <tr><td class="k">key card</td><td>Every screen's keys in one place, this game's own, with an enhancement's rows shown only while it is on.</td><td class="t"><span class="chip c-base">both builds</span></td></tr>
+    <tr><td class="k">every selection</td><td>Drawn as a white block, the letters cut out of it, with a margin all round: white is the colour this game lights its own selections in. A bar's lit word, a list's row, the party list's selected member, Modify's selected field, the main menu's cursor and the Notes list's. It is a look and takes no key.</td><td class="t"><span class="chip c-mod">modern-controls</span></td></tr>
+  </table></div>
+</section>
+
+<div class="trades">
+  <h3>What these change</h3>
+  <ul>
+    <li>At camp, Magic and Alter, Left and Right no longer send the selection back to the first hero.</li>
+    <li>With modern-controls on, Area is gone from the exploring bar (the automap is the overhead view), and the arrows walk only after Move.</li>
+    <li>The number row picks a hero at the main menu only.</li>
+    <li>In Modify, Up and Down step the fields.</li>
+  </ul>
+</div>
+</article>
 </div>
 </body>
 </html>

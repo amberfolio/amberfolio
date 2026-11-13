@@ -60,7 +60,8 @@ void place(std::string& line, std::size_t at, std::string_view text) {
 
 std::vector<host::key_page> card_pages(const machine::seam_engine& seams) {
   return host::key_card_for(
-      host::card_shell::desktop, [&seams](std::string_view id) {
+      host::card_shell::desktop, host::key_card_program(seams.known_edition()),
+      [&seams](std::string_view id) {
         return seams.status(id).state == machine::seam_state::on;
       });
 }

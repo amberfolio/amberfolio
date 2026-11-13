@@ -120,7 +120,24 @@ struct panel_row {
 [[nodiscard]] panel_row panel_row_of(const machine::seam_status& row,
                                      machine::document_kind gate);
 
-/// Every seam this engine carries, in registration order.
+/// Whether the panel lists a seam whose status is `row`.
+///
+/// **The panel lists the loaded program's seams** (#556). A seam whose
+/// facts describe another program (`seam_reason::wrong_binary`) is not a
+/// choice a player of this one has, and a row that can never be ticked
+/// is a row about a different game. Every other reason stays on its row:
+/// a module not loaded yet and a document not presented are things that
+/// change while this program runs.
+///
+/// `program_known` is whether the engine recognizes the program
+/// (`seam_engine::known_edition()`). For one it does not, every seam is
+/// `wrong_binary`, and every row is listed and says so: an empty panel
+/// would hide the one fact that player needs. With no program loaded the
+/// reason is `no_program` and every row is listed too.
+[[nodiscard]] bool panel_lists(const machine::seam_status& row,
+                               bool program_known) noexcept;
+
+/// The seams `panel_lists()` lists, in registration order.
 [[nodiscard]] std::vector<panel_row> panel_rows(
     const machine::seam_engine& seams);
 

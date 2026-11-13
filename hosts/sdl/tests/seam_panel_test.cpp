@@ -12,17 +12,23 @@
 // Beside that, the two things a reader cannot check by eye: that a value
 // too long for its column stops at the column and does not walk into the
 // one beside it, and that a click lands on the row it looks like it
-// landed on.
+// landed on. And which seams are rows at all (#556): the loaded
+// program's, and not another game's.
 
 #include "seam_panel.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
+#include "amberfolio/machine/edition.h"
+#include "amberfolio/machine/loader.h"
 #include "amberfolio/machine/seam.h"
+#include "amberfolio/sha256.h"
 #include "gtest/gtest.h"
 #include "key_card_view.h"
 
@@ -39,6 +45,20 @@ namespace {
                               .armed = true,
                               .fired = 12,
                               .addressed = true};
+}
+
+/// An engine that has been told it is running `program`, as a load
+/// tells it.
+void load(machine::seam_engine& engine, const machine::edition& program) {
+  sha256_digest digest{};
+  ASSERT_TRUE(machine::parse_digest(program.fingerprint, digest));
+  engine.loaded(digest, machine::image_load_segment);
+}
+
+[[nodiscard]] bool lists(const std::vector<panel_row>& rows,
+                         std::string_view id) {
+  return std::ranges::any_of(
+      rows, [&](const panel_row& row) { return row.id == id; });
 }
 
 /// Which line of `panel_lines()` seam `index` is on.
@@ -314,6 +334,97 @@ TEST(SeamPanel, IsAsWideAsTheKeyCard) {
   for (const std::string& line : panel_lines(
            {panel_row_of(a_status(), machine::document_kind::none)}, 0)) {
     EXPECT_EQ(line.size(), card_columns) << line;
+  }
+}
+
+TEST(SeamPanel, DoesNotListASeamThatIsAnotherProgramsOnly) {
+  machine::seam_status other = a_status();
+  other.state = machine::seam_state::unavailable;
+  other.reason = machine::seam_reason::wrong_binary;
+  other.armed = false;
+  // The loaded program is one this build knows, and the seam is not its.
+  EXPECT_FALSE(panel_lists(other, true));
+  // A program this build does not recognize has no seam at all: every
+  // row is listed and says why, where an empty panel would say nothing.
+  EXPECT_TRUE(panel_lists(other, false));
+}
+
+TEST(SeamPanel, ListsASeamThatIsUnavailableOrInertForAnotherReason) {
+  machine::seam_status waiting = a_status();
+  waiting.armed = false;
+  for (const machine::seam_reason reason :
+       {machine::seam_reason::none, machine::seam_reason::module_not_resident,
+        machine::seam_reason::document_not_presented,
+        machine::seam_reason::schema_mismatch,
+        machine::seam_reason::no_program}) {
+    waiting.reason = reason;
+    EXPECT_TRUE(panel_lists(waiting, true))
+        << machine::seam_reason_name(reason);
+    EXPECT_TRUE(panel_lists(waiting, false))
+        << machine::seam_reason_name(reason);
+  }
+}
+
+TEST(SeamPanel, WithNoProgramLoadedListsEverySeam) {
+  const machine::seam_engine engine;
+  const std::vector<panel_row> rows = panel_rows(engine);
+  ASSERT_EQ(rows.size(), engine.count());
+  for (const panel_row& row : rows) {
+    EXPECT_EQ(row.reason, "no_program") << row.id;
+  }
+}
+
+TEST(SeamPanel, ListsOnlyTheLoadedProgramsSeams) {
+  const auto programs = machine::known_editions();
+  ASSERT_EQ(programs.size(), 2U);
+
+  // The baseline has every seam this build lists.
+  machine::seam_engine pool;
+  load(pool, programs[0]);
+  const std::vector<panel_row> pool_rows = panel_rows(pool);
+  EXPECT_EQ(pool_rows.size(), pool.count());
+  EXPECT_TRUE(lists(pool_rows, "encamp-fix"));
+  EXPECT_TRUE(lists(pool_rows, "explored"));
+
+  // Curse of the Azure Bonds has some of them, and its panel is those:
+  // no row reads `wrong_binary`, and every row can be ticked.
+  machine::seam_engine curse;
+  load(curse, programs[1]);
+  const std::vector<panel_row> curse_rows = panel_rows(curse);
+  EXPECT_LT(curse_rows.size(), curse.count());
+  EXPECT_FALSE(curse_rows.empty());
+  for (const panel_row& row : curse_rows) {
+    EXPECT_TRUE(row.available) << row.id;
+    EXPECT_NE(row.reason, "wrong_binary") << row.id;
+  }
+  EXPECT_TRUE(lists(curse_rows, "modern-controls"));
+  EXPECT_TRUE(lists(curse_rows, "automap"));
+  EXPECT_TRUE(lists(curse_rows, "journal"));
+  for (const std::string_view absent :
+       {"encamp-fix", "explored", "quick-steps", "fanfare"}) {
+    EXPECT_FALSE(lists(curse_rows, absent)) << absent;
+    EXPECT_EQ(curse.status(absent).reason, machine::seam_reason::wrong_binary)
+        << absent;
+  }
+  // And nothing else is left off: a row is missing only for that reason.
+  std::size_t another_programs = 0;
+  for (std::size_t i = 0; i < curse.count(); ++i) {
+    if (curse.status(i).reason == machine::seam_reason::wrong_binary) {
+      ++another_programs;
+    }
+  }
+  EXPECT_EQ(curse_rows.size() + another_programs, curse.count());
+}
+
+TEST(SeamPanel, ListsEverySeamForAProgramItDoesNotRecognize) {
+  machine::seam_engine engine;
+  engine.loaded(sha256_digest{}, machine::image_load_segment);
+  ASSERT_EQ(engine.known_edition(), nullptr);
+  const std::vector<panel_row> rows = panel_rows(engine);
+  ASSERT_EQ(rows.size(), engine.count());
+  for (const panel_row& row : rows) {
+    EXPECT_FALSE(row.available) << row.id;
+    EXPECT_EQ(row.reason, "wrong_binary") << row.id;
   }
 }
 
