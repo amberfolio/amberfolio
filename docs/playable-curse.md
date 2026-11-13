@@ -363,6 +363,54 @@ the `W`: the party wins at once (frame about 7,100), `Return` takes the
 win, `E` leaves the treasure, and the mark stands at the next town's
 edge with the same bar.
 
+## Leg 8 — a Pool of Radiance party
+
+`ADD CHARACTER TO PARTY`, `POOL` asks for no directory and looks in none
+but the program's own save directory, the one `CURSE.CFG` names
+(`\CURSE\SAVE` on the Steam copy) and leg 0's `CURSE` lists `*.GUY` in.
+It searches `*.CHA` there, Pool of Radiance's file for a character kept
+under a name (`docs/hosts.md` §6), and then `*.SAV`, opening each to
+measure it: a 285-byte record is a member of a Pool of Radiance saved
+game, and a 422-byte one is Curse's own and is left off the list. So the
+disk for this leg is `curse-slots` with Pool of Radiance's files copied
+into its `SAVE` from that game's save directory: two `<NAME>.CHA` with
+their `<NAME>.SPC`, and the `CHRDATJ1.SAV`, `.ITM` and `.SPC` of a game
+saved in slot J. The two games name a slot's records alike, so a record
+sits there under a letter Curse has not saved.
+
+```
+P A Return A P Return End End Return E
+```
+
+`POOL` lists the three, the saved game's member with the slot's letter
+after the name, over the bar `ADD A CHARACTER: ADD EXIT`. `Return` takes
+`ADD`, which marks the row; `End End Return` adds the third and `E` is
+the party menu again, nine items now, with both listed at the armour
+class and hit points Pool of Radiance left them (frame 3,950).
+
+Adding a character reads its record, then looks for `<NAME>.SWG`,
+`<NAME>.FX` and `<NAME>.SPC` and reads the `.SPC` when it is there. A
+saved game's member is looked for the same way, under the first eight
+letters of the character's name, and not under the record's own. No
+`.ITM` is asked for, the one beside the record included, and the member
+has no items in `VIEW`, whose bar is `TRADE DROP EXIT`. Nothing is
+written by the add. `SAVE CURRENT GAME` then writes 422-byte records
+under Curse's names, a member removed is kept as `<NAME>.GUY`, and Pool
+of Radiance's files stay as they were. Records out of a Steam copy's
+save directory and out of a copy's laid out at the root were added this
+way.
+
+The wasm module is the same from the same folder: `drive.mjs` with
+`--install '\CURSE'` and these keys draws frame 3,950 byte for byte. No
+session records the leg; no snapshot holds one game's files in the
+other's save directory.
+
+**`COPYCURS.EXE`**, the tool shipped beside the program for moving
+characters between the games, does not run. It asks for 80x25 text,
+which is a notice (`docs/machine.md` §5), and stops six frames in at
+`INT 10h AH=01h`, the cursor's shape, before it names a file. Its
+screens are text this machine has no path for.
+
 ---
 
 ## The session library
