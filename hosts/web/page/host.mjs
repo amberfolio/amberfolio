@@ -2326,24 +2326,35 @@ export function releaseLatched(module, latched) {
 // The game's keys by context, as data: one table in `hosts/common`
 // (`amberfolio/host/key_card.h`) that the desktop host paints and this
 // page renders, so a change to the card is a change to that table and to
-// no shell. Machine-less, like the keyboard's tables above — a card is
-// not a fact about a loaded program — and plain data: a page that wants
-// the card reads it once with `readKeyCard()` and renders it however it
-// likes.
+// no shell. Machine-less, like the keyboard's tables above — the card is
+// every program's, read before any is loaded — and plain data: a page
+// that wants the card reads it once with `readKeyCard()` and renders it
+// however it likes.
 //
 // A row may name a seam. It is shown only while that seam is on, which is
 // the page's to decide because it is the page that learns a seam has been
 // switched: `visibleKeyCard()` is that rule, the one `key_card_for()` has
 // in C++, and `tests/smoke.mjs` checks it over the card the module hands
 // out.
+//
+// A context or a row may name a program (#556), and is then shown only
+// while that program is the one loaded: the two games do not have the
+// same screens. `keyCardProgram()` turns `Machine.programFingerprint()`
+// into the word the card names a program by, and `visibleKeyCard()` takes
+// it.
 
 /// The whole card, once:
 ///
-///   `{ legend, contexts: [{ id, title, shell, rows: [{ keys, does, seam }] }] }`
+///   `{ legend, programs: [{ word, fingerprint }],
+///      contexts: [{ id, title, shell, program,
+///                   rows: [{ keys, does, seam, program }] }] }`
 ///
 /// `shell` is `both` for the game's own keys, and `desktop` or `page` for
 /// the keys one shell takes for itself. `seam` is empty for a row about
-/// the program as it is.
+/// the program as it is. `program` is empty for a context or a row true
+/// of every program, or one of `programs`' words; `programs` is every
+/// program the card knows, the baseline first, each with the SHA-256 of
+/// its program image.
 export function readKeyCard(module) {
   const needed = module._af_web_key_card_json(0, 0);
   const scratch = module._malloc(needed + 1);
@@ -2362,15 +2373,35 @@ export function readKeyCard(module) {
   }
 }
 
-/// The card as one shell shows it: the contexts for `shell` and for
-/// `both`, each with only the rows whose seam `seamIsOn(id)` says is on
-/// or that name none, and no context left with nothing to show. The
-/// rule `key_card_for()` has in C++.
-export function visibleKeyCard(card, shell, seamIsOn) {
+/// The word `card` names the program with this fingerprint by
+/// (`Machine.programFingerprint()`), or `''` for no fingerprint and for a
+/// program the card does not know.
+export function keyCardProgram(card, fingerprint) {
+  if (typeof fingerprint !== 'string' || fingerprint === '') return '';
+  const wanted = fingerprint.toLowerCase();
+  const known = (card.programs ?? []).find((program) => program.fingerprint === wanted);
+  return known?.word ?? '';
+}
+
+/// The card as one shell shows it for one program: the contexts for
+/// `shell` and for `both`, each with only the rows whose seam
+/// `seamIsOn(id)` says is on or that name none, and no context left with
+/// nothing to show. The rule `key_card_for()` has in C++.
+///
+/// `program` is a `keyCardProgram()` word. A context or a row that names
+/// a program is kept only for that one; with no word (nothing loaded, or
+/// a program the card does not know) the card is the baseline's, the
+/// first of `card.programs`.
+export function visibleKeyCard(card, shell, seamIsOn, program = '') {
+  const running = program || (card.programs?.[0]?.word ?? '');
+  const forRunning = (named) => (named ?? '') === '' || named === running;
   const contexts = [];
   for (const context of card.contexts) {
     if (context.shell !== 'both' && context.shell !== shell) continue;
-    const rows = context.rows.filter((row) => row.seam === '' || seamIsOn(row.seam));
+    if (!forRunning(context.program)) continue;
+    const rows = context.rows.filter(
+      (row) => forRunning(row.program) && (row.seam === '' || seamIsOn(row.seam)),
+    );
     if (rows.length !== 0) contexts.push({ ...context, rows });
   }
   return contexts;

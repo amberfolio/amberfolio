@@ -9,6 +9,10 @@
 // deliberately spelled the same so that a player who reads a forum post
 // about one is reading about the other.
 //
+// Which seams are rows is the same on both too: the loaded program's
+// (`panelLists()`), so a game's panel does not carry the other game's
+// enhancements as rows nobody can tick.
+//
 // DOM-free, like host.mjs and persist.mjs and for their reason: `ctest
 // --preset wasm` imports this under node, where there is no `document`.
 // The row, the stored choice and what a refusal costs are plain
@@ -158,9 +162,34 @@ export function applyStoredSeamSettings(machine, chosen) {
   return { set, refused };
 }
 
-/// Every seam, as rows.
+/// What core says of a seam whose facts describe another program than
+/// the one loaded (`machine::seam_reason::wrong_binary`).
+const ANOTHER_PROGRAMS = 'wrong_binary';
+
+/// Whether the panel lists a seam, out of a `Machine.seamList()` row.
+///
+/// **The panel lists the loaded program's seams** (#556), on both hosts
+/// (`panel_lists()` in `hosts/sdl/src/seam_panel.h`). A seam that is
+/// another game's is not a choice a player of this one has. Every other
+/// reason stays on its row: a module not loaded yet and a document not
+/// presented change while the program runs.
+///
+/// `programKnown` is whether this build recognizes the loaded program
+/// (`Machine.edition()` answers a name). For one it does not, every seam
+/// reads `wrong_binary` and every row is listed and says so, where an
+/// empty panel would hide the one fact that player needs; with nothing
+/// loaded the reason is `no_program` and every row is listed too.
+export function panelLists(seam, programKnown) {
+  return !programKnown || seam.reason !== ANOTHER_PROGRAMS;
+}
+
+/// The seams the panel lists, as rows.
 export function panelRows(machine) {
-  return machine.seamList().map(panelRow);
+  const programKnown = machine.edition() !== null;
+  return machine
+    .seamList()
+    .filter((seam) => panelLists(seam, programKnown))
+    .map(panelRow);
 }
 
 /// What a stored record means, fail-closed.

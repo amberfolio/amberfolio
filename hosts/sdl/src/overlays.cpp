@@ -227,7 +227,9 @@ void overlays::panel_adjust(std::size_t at, int direction) {
 }
 
 void overlays::panel_move(int step) {
-  const std::size_t rows = box_.seams().count();
+  // The rows the panel lists, which for a recognized program are that
+  // program's seams and not every seam the engine carries.
+  const std::size_t rows = sdl::panel_rows(box_.seams()).size();
   panel_repaint_ = true;
   if (card_shown_) {
     const std::size_t pages = sdl::card_pages(box_.seams()).size();

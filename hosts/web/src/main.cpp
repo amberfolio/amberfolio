@@ -187,8 +187,9 @@ uint32_t af_web_probe_program_size(void) {
 
 /// The key card (#427) as JSON: the game's keys by context, the same
 /// table the desktop host paints, for a page to render. Machine-less, like
-/// the on-screen keyboard's tables, because a card is not a fact about a
-/// loaded program; the page filters it by which seams are on.
+/// the on-screen keyboard's tables: the card is every program's, each
+/// context and row saying which program it is for (#556), and the page
+/// filters it by the program loaded and by which seams are on.
 uint32_t af_web_key_card_json(char* out, uint32_t cap) {
   return hand_out(amberfolio::host::key_card_json(), out, cap);
 }

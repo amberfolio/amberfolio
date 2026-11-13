@@ -121,6 +121,7 @@ import {
   MAX_CATCH_UP_SECONDS,
   readScreenKeyboard,
   readKeyCard,
+  keyCardProgram,
   visibleKeyCard,
   commitKey,
   commitScancode,
@@ -156,7 +157,9 @@ import {
 import {
   applyStoredSeams,
   applyStoredSeamSettings,
+  panelLists,
   panelRow,
+  panelRows,
   seamSettingsToStore,
   seamsToStore,
   settingEntry,
@@ -822,7 +825,103 @@ if (missing.length === 0) {
     visibleKeyCard(card, 'desktop', () => true).some((context) => context.id === 'desktop'),
     "the desktop's own keys were not shown to the desktop",
   );
-  console.log(`smoke: key card of ${card.contexts.length} contexts and ${rows} rows`);
+
+  // A program's rows follow the program (#556): the card names the
+  // programs it knows, the baseline first, and a context or a row that
+  // names one is shown for that one only.
+  const programs = card.programs ?? [];
+  check(
+    programs.length === 2 && programs[0].word === 'pool' && programs[1].word === 'curse',
+    `the key card's programs are ${JSON.stringify(programs)}`,
+  );
+  check(
+    programs.every((program) => /^[0-9a-f]{64}$/.test(program.fingerprint)),
+    'a program on the key card has no fingerprint',
+  );
+  const words = new Set(programs.map((program) => program.word));
+  for (const context of card.contexts) {
+    check(
+      context.program === '' || words.has(context.program),
+      `${context.id} is for the program ${JSON.stringify(context.program)}`,
+    );
+    for (const row of context.rows) {
+      check(
+        row.program === '' || words.has(row.program),
+        `a row of ${context.id} is for the program ${JSON.stringify(row.program)}`,
+      );
+    }
+  }
+  check(
+    keyCardProgram(card, programs[1]?.fingerprint) === 'curse' &&
+      keyCardProgram(card, programs[1]?.fingerprint.toUpperCase()) === 'curse',
+    "a program's fingerprint did not name its word",
+  );
+  check(
+    keyCardProgram(card, null) === '' && keyCardProgram(card, '0'.repeat(64)) === '',
+    'a program the card does not know was given a word',
+  );
+  const everything = () => true;
+  const has = (contexts, id) => contexts.some((context) => context.id === id);
+  const shownFor = (word) => visibleKeyCard(card, 'page', everything, word);
+  const pool = shownFor('pool');
+  const curse = shownFor('curse');
+  check(has(pool, 'wilderness') && !has(pool, 'journey'), "the baseline's card is not its own");
+  check(
+    has(curse, 'journey') && !has(curse, 'wilderness'),
+    "Curse's card shows a wilderness it does not have, or no journey",
+  );
+  for (const [word, shown] of [
+    ['pool', pool],
+    ['curse', curse],
+  ]) {
+    check(
+      shown.every(
+        (context) =>
+          (context.program === '' || context.program === word) &&
+          context.rows.every((row) => row.program === '' || row.program === word),
+      ),
+      `the card for ${word} shows another program's row`,
+    );
+    // One key, one row: where the two programs differ on a key each has
+    // a row for it, and a player is shown one.
+    for (const context of shown) {
+      const keys = context.rows.map((row) => row.keys);
+      check(
+        new Set(keys).size === keys.length,
+        `the card for ${word} lists a key twice in ${context.id}`,
+      );
+    }
+    // A screen both programs have says something for each.
+    for (const context of card.contexts) {
+      if (context.program === '' && context.shell !== 'desktop') {
+        check(has(shown, context.id), `the card for ${word} has nothing in ${context.id}`);
+      }
+    }
+  }
+  // No program, and one the card does not know: the baseline's card.
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  check(same(visibleKeyCard(card, 'page', everything), pool), 'with no program the card is not the baseline\'s');
+  check(same(visibleKeyCard(card, 'page', everything, ''), pool), "an unknown program's card is not the baseline's");
+  // And a card from a build that named no program is shown whole, as it
+  // always was.
+  const older = {
+    legend: card.legend,
+    contexts: card.contexts.map((context) => ({
+      id: context.id,
+      title: context.title,
+      shell: context.shell,
+      rows: context.rows.map((row) => ({ keys: row.keys, does: row.does, seam: row.seam })),
+    })),
+  };
+  check(
+    visibleKeyCard(older, 'page', everything).length ===
+      card.contexts.filter((context) => context.shell !== 'desktop').length,
+    'a card that names no program lost a context',
+  );
+  console.log(
+    `smoke: key card of ${card.contexts.length} contexts and ${rows} rows, ` +
+      `${pool.length} shown for ${programs[0]?.word} and ${curse.length} for ${programs[1]?.word}`,
+  );
 }
 
 // --- The machine ------------------------------------------------------
@@ -3126,6 +3225,57 @@ if (missing.length === 0) {
     panelRow(aSeam({ state: AF_SEAM_OFF, armed: false, fired: 0 })).state === 'off',
     'a seam nobody turned on does not read off',
   );
+
+  // --- Which seams are rows at all (#556) ------------------------------
+  //
+  // The loaded program's. A seam whose facts describe the other game is
+  // not listed once this build knows which game is loaded; a seam that
+  // waits on a module or a document is, and so is every seam for a
+  // program nobody recognizes and before anything is loaded.
+  const anothers = aSeam({
+    id: 'explored',
+    state: AF_SEAM_UNAVAILABLE,
+    armed: false,
+    reason: 'wrong_binary',
+  });
+  check(!panelLists(anothers, true), "another program's seam is listed for a known program");
+  check(panelLists(anothers, false), 'an unrecognized program was shown an empty panel');
+  for (const reason of ['none', 'module_not_resident', 'document_not_presented', 'no_program']) {
+    check(
+      panelLists(aSeam({ armed: false, reason }), true) &&
+        panelLists(aSeam({ armed: false, reason }), false),
+      `a seam whose reason is ${reason} is not listed`,
+    );
+  }
+  const listed = (edition, seams) =>
+    panelRows({ edition: () => edition, seamList: () => seams })
+      .map((row) => row.id)
+      .join(',');
+  const carried = [
+    aSeam(),
+    anothers,
+    aSeam({ id: 'journal', armed: false, reason: 'module_not_resident' }),
+  ];
+  check(
+    listed('a game this build knows', carried) === 'automap,journal',
+    `a known program's panel lists ${listed('a game this build knows', carried)}`,
+  );
+  check(
+    listed(null, carried) === 'automap,explored,journal',
+    `an unrecognized program's panel lists ${listed(null, carried)}`,
+  );
+  {
+    // And the real thing with nothing loaded: every seam, as it was.
+    const fresh = new Machine(module);
+    check(fresh.attachReferenceDevices() === AF_OK, 'attaching the reference devices failed');
+    fresh.reset();
+    const every = fresh.seamList();
+    check(
+      every.length > 0 && panelRows(fresh).length === every.length,
+      `with no program loaded the panel lists ${panelRows(fresh).length} of ${every.length} seams`,
+    );
+    fresh.destroy();
+  }
 
   // Core's sentence about what the numbers mean (#163) arrives with the
   // separator it is printed after; the panel supplies its own.

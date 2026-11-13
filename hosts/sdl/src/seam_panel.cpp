@@ -186,11 +186,19 @@ panel_row panel_row_of(const machine::seam_status& row,
   return out;
 }
 
+bool panel_lists(const machine::seam_status& row, bool program_known) noexcept {
+  return !program_known || row.reason != machine::seam_reason::wrong_binary;
+}
+
 std::vector<panel_row> panel_rows(const machine::seam_engine& seams) {
+  const bool program_known = seams.known_edition() != nullptr;
   std::vector<panel_row> rows;
   rows.reserve(seams.count());
   for (std::size_t i = 0; i < seams.count(); ++i) {
     const machine::seam_status row = seams.status(i);
+    if (!panel_lists(row, program_known)) {
+      continue;
+    }
     const machine::seam_definition* definition = seams.find(row.id);
     rows.push_back(panel_row_of(row, definition == nullptr
                                          ? machine::document_kind::none

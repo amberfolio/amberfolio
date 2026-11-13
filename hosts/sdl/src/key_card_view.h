@@ -39,8 +39,10 @@ inline constexpr std::size_t card_columns = 94;
 /// `host::key_card_keys_width` wide, so a space always separates them.
 inline constexpr std::size_t card_does_column = 22;
 
-/// The card for this window: the desktop's contexts, with a seam's rows in
-/// them only while that seam is on in `seams`.
+/// The card for this window: the desktop's contexts as the program
+/// `seams` knows it is running has them (the baseline's for one it does
+/// not recognize), with a seam's rows in them only while that seam is on
+/// in `seams`.
 [[nodiscard]] std::vector<host::key_page> card_pages(
     const machine::seam_engine& seams);
 
