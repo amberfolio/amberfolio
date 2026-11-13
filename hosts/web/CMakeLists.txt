@@ -279,6 +279,9 @@ set(_amberfolio_web_export_names
   _af_web_journal_cite_all
   _af_web_journal_store_clear
   _af_web_journal_store_fingerprint
+  # Which program a store is the journal of (#584), so a page keeps a
+  # record for each game.
+  _af_web_journal_store_program
   # The code wheel's answer, kept between visits (M6-C1b, #292): the
   # journal store's four doors, one artifact over, plus the lookup that
   # tells a machine what this tab remembers about the copy it is

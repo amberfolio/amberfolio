@@ -26,7 +26,8 @@
 //     config (`docs/hosts.md` 2a, `journal_store_filename_for()`);
 //     `--journal-store` overrides it, and the line the host prints after
 //     an ingestion says which file it used;
-//   * the browser serializes one into its own key-value storage and reads
+//   * the browser serializes one into its own key-value storage, a record
+//     for each program (`journal.mjs`, `journalStoreKey()`), and reads
 //     it back when the page next loads (M5-E3f), because an ingestion of
 //     a real edition is minutes of OCR and asking for it on every visit
 //     is not a thing to ask. It is `localStorage` and not IndexedDB, and

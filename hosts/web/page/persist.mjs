@@ -491,6 +491,11 @@ export function cacheDrawer(entries = []) {
       values.delete(key);
       owed.add(key);
     },
+    /// Every key held, for a caller that keeps several records under one
+    /// name (`journal.mjs`, a store for each game).
+    keys() {
+      return [...values.keys()];
+    },
     /// What the database has not been told yet, as `[key, value]` with a
     /// null value for a key that was removed.
     changes() {

@@ -690,6 +690,8 @@ TEST(JournalOwner, AnEditionIsItsOwnProgramsAndNoOthers) {
 
   for (const journal_edition& edition : known_journals()) {
     const std::string_view other = edition.program == pool ? curse : pool;
+    EXPECT_EQ(journal_program_of(edition.fingerprint), edition.program)
+        << edition.name;
     EXPECT_EQ(
         journal_owner_of(edition.fingerprint, program_of(edition.program)),
         journal_owner::this_program)
@@ -713,6 +715,8 @@ TEST(JournalOwner, AStoreOfNoKnownEditionIsNobodys) {
   EXPECT_EQ(journal_owner_of("", pool), journal_owner::unknown);
   EXPECT_EQ(journal_owner_of("not a fingerprint", pool),
             journal_owner::unknown);
+  EXPECT_TRUE(journal_program_of(std::string(64, '0')).empty());
+  EXPECT_TRUE(journal_program_of("").empty());
 }
 
 TEST(JournalOwner, TheProbesEditionIsOfNoProgram) {

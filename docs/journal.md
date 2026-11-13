@@ -539,9 +539,15 @@ reads the running program's again. `journal.txt`, the one file every
 store was kept in before, is read once more where the running program
 has no file yet and only if its edition is that program's journal; it is
 written under the program's own name and left where it was. A store
-named with `--journal-store` is used as named. The browser writes the
-same text into `localStorage`, one
-slot, and reads it back on the next load (M5-E3f). Rejected: IndexedDB,
+named with `--journal-store` is used as named. The browser keeps the
+same text, a record for each game: `journal.mjs`'s `keepStore()` puts a
+store under `journalStoreKey()` of the program it is the journal of
+(`af_web_journal_store_program`, the module's answer), and
+`restoreStoreFor()` puts the running program's in the module when one is
+loaded, taking another game's out. The one record every store was kept
+in before is read once more for the game it is the journal of, as the
+desktop's file is. A page that keeps a store some other way asks the
+same export, and has the reader's refusal either way (M5-E3f). Rejected: IndexedDB,
 because this is tens of kilobytes wanted synchronously as the module
 comes up. A full or blocked drawer and a store this build cannot read are
 each a sentence on the page; an unreadable store is left where it is. The

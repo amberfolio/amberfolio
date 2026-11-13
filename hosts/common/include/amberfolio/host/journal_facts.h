@@ -461,6 +461,16 @@ enum class journal_owner : std::uint8_t {
   another_program,
 };
 
+/// The program the edition `edition` spells (64 hex characters, as a
+/// store records it) is the journal of: that program's fingerprint, or
+/// nothing for an edition `table` does not have or one of no program.
+[[nodiscard]] std::string_view journal_program_of(
+    std::span<const journal_edition> table, std::string_view edition) noexcept;
+
+/// The same, over the shipped table.
+[[nodiscard]] std::string_view journal_program_of(
+    std::string_view edition) noexcept;
+
 /// Whose journal the edition `edition` spells (64 hex characters, as a
 /// store records it) is, to the program whose image hashes to `program`.
 [[nodiscard]] journal_owner journal_owner_of(

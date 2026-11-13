@@ -383,6 +383,23 @@ uint32_t af_web_journal_fingerprint(char* out, uint32_t cap) {
   return hand_out(journal().ingester.fingerprint_hex(), out, cap);
 }
 
+/// The program this tab's store is the journal of (#584): that program
+/// image's fingerprint, 64 lowercase hex characters, as
+/// `af_machine_program_fingerprint` spells the one a machine is running.
+/// Nothing for an empty store, and for a store of no edition this build
+/// knows.
+///
+/// What a page keys a kept store by, so that each game's journal has a
+/// record of its own: the game cites an item by section and number, and
+/// one record for both had one game's entry answer the other's citation.
+/// Asked of the store and not of the last ingestion, so it answers the
+/// same for a store read back as for one just read.
+uint32_t af_web_journal_store_program(char* out, uint32_t cap) {
+  return hand_out(
+      amberfolio::host::journal_program_of(journal().store.edition()), out,
+      cap);
+}
+
 /// The recognized edition's name, or nothing.
 uint32_t af_web_journal_edition_name(char* out, uint32_t cap) {
   const amberfolio::host::journal_edition* edition =

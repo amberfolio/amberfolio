@@ -1262,12 +1262,15 @@ export function clearStoreChanged(module) {
 // database said about the write a moment later. `cacheDrawer()` in
 // `persist.mjs` is that drawer and its own comment argues it.
 //
-// **One slot, not one per edition.** The module holds one store and
-// clears it when a document of another edition is ingested
-// (`journal_ingester::adopt`), so a second slot could only ever hold a
-// store the module would refuse to mix with the first. A player who
-// alternates between two printings re-reads the second one; a player who
-// has one journal — which is everyone this is for — never OCRs twice.
+// **One record for each game, not one per edition** (#584). The module
+// holds one store and clears it when a document of another edition is
+// ingested (`journal_ingester::adopt`), so two printings of one journal
+// share a record and a player who alternates between them re-reads the
+// second. Two games do not: each numbers its own journal, the game cites
+// by section and number, and one record for both had one game's entry
+// answer the other's citation. So a store is kept under the program it is
+// the journal of (`journalStoreKey()`), and `restoreStoreFor()` puts the
+// running program's in the module when one is loaded.
 //
 // **Nothing here is quiet about failing.** A drawer that is full, a
 // browser that refuses one, a store from a format this build cannot read:
@@ -1280,6 +1283,50 @@ export function clearStoreChanged(module) {
 /// different drawer rather than a puzzle — the store's own header
 /// versions the contents (`host/journal_store.h`).
 export const JOURNAL_STORE_KEY = 'amberfolio.journal.store.v1';
+
+/// The program the module's store is the journal of: its fingerprint, as
+/// `Machine.programFingerprint()` spells the one a machine is running, or
+/// `''` for an empty store and for a store of no edition this build knows
+/// (#584).
+export function storeProgram(module) {
+  return readText(module, (out, cap) =>
+    module._af_web_journal_store_program(out, cap),
+  );
+}
+
+/// Where the store that is `program`'s journal goes: a record of its own
+/// beside `JOURNAL_STORE_KEY`, which is where a store of no program goes
+/// and where every store went before a store was a program's (#584).
+export function journalStoreKey(program) {
+  return program ? `${JOURNAL_STORE_KEY}.${program}` : JOURNAL_STORE_KEY;
+}
+
+/// Every key in `storage` a journal store is kept under, the one from
+/// before first. A drawer says what it holds through `keys()`
+/// (`persist.mjs`) or through `localStorage`'s own `length` and `key()`;
+/// one that can say neither is answered with the one key from before.
+export function journalStoreKeys(storage = browserStorage()) {
+  if (!storage) return [];
+  let all = [];
+  try {
+    if (typeof storage.keys === 'function') {
+      all = [...storage.keys()];
+    } else if (typeof storage.key === 'function') {
+      for (let i = 0; i < storage.length; ++i) all.push(storage.key(i));
+    } else {
+      return [JOURNAL_STORE_KEY];
+    }
+  } catch {
+    return [JOURNAL_STORE_KEY];
+  }
+  const ours = all
+    .filter(
+      (key) =>
+        key === JOURNAL_STORE_KEY || key?.startsWith(`${JOURNAL_STORE_KEY}.`),
+    )
+    .sort();
+  return ours;
+}
 
 /// The browser's drawer, or null where there is none.
 ///
@@ -1295,14 +1342,18 @@ export function browserStorage() {
   }
 }
 
-/// Put the module's store in the drawer.
+/// Put the module's store in the drawer, under the program it is the
+/// journal of (`journalStoreKey()`, #584) unless a `key` is named.
 ///
 /// Answers `{ kept, characters, why }`. `kept: false` with a `why` is the
 /// only failure shape — an empty store is not written and not an error,
 /// because a page that ingested nothing has nothing to keep.
 export function keepStore(
   module,
-  { storage = browserStorage(), key = JOURNAL_STORE_KEY } = {},
+  {
+    storage = browserStorage(),
+    key = journalStoreKey(storeProgram(module)),
+  } = {},
 ) {
   if (!storage) {
     return { kept: false, characters: 0, why: 'this browser keeps nothing' };
@@ -1391,17 +1442,90 @@ export function restoreStore(
   };
 }
 
-/// The drawer emptied. The module's own copy is `clearStore`'s to empty;
-/// a page doing a reset wants both, and they are separate because only
-/// one of them survives a reload.
-export function forgetStore({
-  storage = browserStorage(),
-  key = JOURNAL_STORE_KEY,
-} = {}) {
+/// The running program's journal into the module, when a program has
+/// just been loaded (#584).
+///
+/// `program` is `Machine.programFingerprint()`. What the module holds
+/// when this is called is whatever the page restored as it came up, or an
+/// ingestion made since, and it need not be this program's:
+///
+///   * this program's, or a store of no program (one handed in, the
+///     probe's): left as it is;
+///   * another program's: kept under its own key if it has moved, taken
+///     out of the module, and this program's record read in its place;
+///   * nothing: this program's record read in.
+///
+/// Where this program has no record yet, the one record every store was
+/// kept in before is read once more and taken only if it is this
+/// program's journal; it is then kept under this program's key and left
+/// where it was, as the desktop host leaves its file.
+///
+/// Answers what `restoreStore()` answers, and `changed`: whether the
+/// module's store is a different one now, which is when a page puts the
+/// read log back and says what it holds.
+export function restoreStoreFor(
+  module,
+  program,
+  { storage = browserStorage() } = {},
+) {
+  const nothing = {
+    restored: false,
+    changed: false,
+    characters: 0,
+    entries: 0,
+    recognized: 0,
+    corrections: 0,
+    pictures: 0,
+    fingerprint: '',
+    why: null,
+  };
+  if (!program) return nothing;
+
+  let changed = false;
+  if (module._af_web_journal_store_size() !== 0) {
+    const whose = storeProgram(module);
+    if (whose === '' || whose === program) return nothing;
+    // Another program's. Its record is the drawer's to keep; the module
+    // holds one store, and it is this program's turn.
+    if (
+      storage &&
+      (storeChanged(module) || storedStore({ storage, key: journalStoreKey(whose) }) === null)
+    ) {
+      keepStore(module, { storage });
+    }
+    clearStore(module);
+    clearStoreChanged(module);
+    changed = true;
+  }
+
+  const own = restoreStore(module, { storage, key: journalStoreKey(program) });
+  if (own.restored || own.why) return { ...own, changed: changed || own.restored };
+
+  const before = restoreStore(module, { storage, key: JOURNAL_STORE_KEY });
+  if (before.restored) {
+    if (storeProgram(module) === program) {
+      keepStore(module, { storage });
+      return { ...before, changed: true };
+    }
+    // Somebody else's journal, or nobody's: not read under this name.
+    clearStore(module);
+    clearStoreChanged(module);
+  }
+  return { ...nothing, changed };
+}
+
+/// The drawer emptied: every journal store it keeps (`journalStoreKeys()`),
+/// or the one under `key` when one is named. The module's own copy is
+/// `clearStore`'s to empty; a page doing a reset wants both, and they are
+/// separate because only one of them survives a reload.
+export function forgetStore({ storage = browserStorage(), key = null } = {}) {
   if (!storage) return { forgotten: false, why: 'this browser keeps nothing' };
   try {
-    const had = storage.getItem(key) !== null;
-    storage.removeItem(key);
+    let had = false;
+    for (const each of key === null ? journalStoreKeys(storage) : [key]) {
+      had = storage.getItem(each) !== null || had;
+      storage.removeItem(each);
+    }
     return { forgotten: had, why: null };
   } catch (problem) {
     return {
