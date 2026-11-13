@@ -51,6 +51,10 @@
 // `aim-watch` piece notes where (seam_aim_watch.cpp); with it off the
 // answer says the bar is not known rather than not up.
 //
+// **The overland as a journey**, on a program whose travel mode is one
+// (Curse of the Azure Bonds, #586): the place the party is at, by name,
+// and nothing else, because the picture it travels on has no grid.
+//
 // **Nothing while nothing knows.** No program, a program this build has no
 // facts for, or a screen none of the shapes covers — a menu, a shop, the
 // camp, a scripted move between areas — and the answer is
@@ -86,6 +90,9 @@ enum class scene_screen : std::uint8_t {
   travel,
   /// A fight: a 7x7 window on a 50-by-25 tactical grid.
   combat,
+  /// The overland as a journey (#586): a picture of the region the party
+  /// travels from place to place on, with no grid to walk and no window.
+  journey,
 };
 
 /// Why there is no scene. The first two are the words the screen text and
@@ -318,6 +325,14 @@ struct scene {
   std::uint8_t x{};
   std::uint8_t y{};
   std::uint8_t facing{};
+
+  // --- journey ---------------------------------------------------------
+
+  /// The place the party is at, or is on its way to: a town's name, as
+  /// the program's own line at its edge spells it. Nothing where the
+  /// program's number names no place this read knows.
+  std::array<char, scene_zone_max> place{};
+  std::uint8_t place_length{};
 
   // --- explore ---------------------------------------------------------
 

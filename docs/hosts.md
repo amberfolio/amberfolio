@@ -2351,6 +2351,12 @@ The overland (game mode 3, view kinds 2 to 4):
  "window":{"x":0,"y":27,"rows":[[{"terrain":2,"move":"open"}, ...5], ...5]}}
 ```
 
+The overland as a journey (Curse of the Azure Bonds' game mode 3, #586):
+
+```json
+{"screen":"journey","disk":1,"area":80,"place":"SHADOWDALE"}
+```
+
 A fight (game mode 5, the tactical grid):
 
 ```json
@@ -2398,6 +2404,18 @@ A fight (game mode 5, the tactical grid):
   number are the same terrain. `move` is what that step does with it:
   `open`, `blocked` (never), or `river` (only for a party that can cross
   one).
+- **A journey is a place and nothing else.** Curse of the Azure Bonds'
+  overland is a picture of the region with the party's mark on it, and
+  the party goes from place to place off a list: there is no grid to
+  stand on, so no `x`, `y`, `facing`, `zone`, `window` or `map`.
+  **`place`** is the town the party is at the edge of, by the name the
+  program's own line there prints. From the moment a place is taken off
+  the list of where to go it is that place, through the question of how
+  to get there, the road and whatever happens on it; backing out of the
+  choice puts it back. `null` where the program's number names no place
+  this build knows. The places it may go to from
+  here are the rows of a list the script builds only while it is up, and
+  screen text (§10) reads them.
 - **A fight has no one square for the party**, so it has no top-level
   `x`, `y` or `facing`: each figure has its own. The grid is 50 columns by
   25 rows, x east and y south, and the screen shows a 7x7 `window` of it
@@ -2463,7 +2481,7 @@ A fight (game mode 5, the tactical grid):
   already says where the figure went.
 - **Null while nothing knows**: a null handle, no program, a program this
   build has no facts for, a scripted move between areas, and every screen
-  none of the shapes covers — the menus, a shop, the camp, the banner
+  none of the four shapes covers — the menus, a shop, the camp, the banner
   after a fight. A host meets a `screen` it does not know as it meets
   `null`.
 - **Where the party stands, not what covers the view.** An encounter's
@@ -2513,8 +2531,23 @@ A fight (game mode 5, the tactical grid):
   | record: length, computer, AC | `0x11D`, `0x10F`, `0x111` | `0x1A6`, `0x198`, `0x19A` |
   | the aim bar's frames: target, range; manual column, row, range, record | `+0x0C`, `-0x30`; `-0x33`, `-0x34`, `-0x38`, `+0x14` (overlay 13) | `+0x0E`, `-0x30`; `-0x33`, `-0x34`, `-0x38`, `+0x16` (overlay 14) |
 
-  - **No travel shape**: Curse's overland is a journey, a list of places,
-    and reads `null`.
+  - **No travel shape, a journey** (#586): Curse's overland is a picture
+    travelled from place to place, and reads `journey` with the place.
+    The place is a word of the area record, `+0x338`: the overland
+    script's own number for where the party is, which picks the name its
+    edge line prints out of a table of fourteen (three towns have two
+    numbers, one for each side they are reached from). The script sets
+    it when the party comes onto the overland and when a place is taken
+    off the list of where to go.
+  - **The journey driven** from saves at a town's edge (the `curse-wild`
+    snapshot and journeys on from it): the place read is the town the
+    program's edge line names at Tilverton, Shadowdale, Ashabenford and
+    Dagger Falls; it becomes the place chosen as soon as it is taken off
+    the list, through the question of how to get there and an event on
+    the road, and goes back when the choice is backed out of; Voonlar
+    is read on the road to it. The other six names are the table's own,
+    read from the overland script (`ECL1.DAX` block 80) and not seen in
+    a run.
   - **The zone names, lairs and door table are kept per program**,
     because they are keyed by disk and area numbers Curse uses for other
     maps. Curse's are a door table and the maps' names

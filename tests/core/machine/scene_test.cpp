@@ -17,6 +17,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <tuple>
 
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/automap.h"
@@ -1038,6 +1039,9 @@ constexpr std::uint16_t record_ac = 0x19A;
 constexpr std::uint16_t record_hp = 0x1A4;
 constexpr std::uint16_t record_bytes = 0x1A6;
 constexpr std::uint16_t data_actor = 0x6520;
+/// In the area record: the overland script's number for the place the
+/// party is at (#586).
+constexpr std::uint16_t area_journey_place = 0x338;
 
 // The aim bar's (seam_aim_watch.cpp), restated: the word the overlay
 // manager keeps overlay 14's segment in, the two meeting points and their
@@ -1258,6 +1262,75 @@ TEST(SceneOnCurse, TheTitlesInTheAdventuringModeAreNoScene) {
   // until its script's block, numbered from one, is.
   const curse_rig r;
   r.grid(7, 13, north, 1, 0);
+  EXPECT_EQ(r.read().screen, scene_screen::none);
+  EXPECT_EQ(r.last, scene_trouble::elsewhere);
+}
+
+// The overland as a journey (#586): a picture travelled from place to
+// place, with no grid. What the read has is the area record's word that
+// numbers the place, and the places by that number.
+
+/// The overland, with the party at the place numbered `number`.
+void journey(const curse_rig& r, std::uint16_t number) {
+  r.cdata(curse::data_game_mode, 3);
+  r.cdata(curse::data_disk, 1);
+  r.cdata(curse::data_area, 80);
+  r.cword(curse::data_record, 0);
+  r.cword(curse::data_record + 2, record_segment);
+  r.record_word(curse::area_journey_place, number);
+}
+
+[[nodiscard]] std::string_view place_of(const scene& now) {
+  return {now.place.data(), now.place_length};
+}
+
+TEST(SceneOnCurse, TheOverlandIsAJourneyAndSaysThePlace) {
+  const curse_rig r;
+  journey(r, 0);
+  scene now = r.read();
+  ASSERT_EQ(now.screen, scene_screen::journey);
+  EXPECT_EQ(now.disk, 1U);
+  EXPECT_EQ(now.area, 80U);
+  EXPECT_EQ(place_of(now), "TILVERTON");
+
+  journey(r, 1);
+  now = r.read();
+  ASSERT_EQ(now.screen, scene_screen::journey);
+  EXPECT_EQ(place_of(now), "SHADOWDALE");
+  // A place and nothing else: no map with a name, no square, no facing.
+  EXPECT_EQ(r.json(),
+            R"({"screen":"journey","disk":1,"area":80,"place":"SHADOWDALE"})");
+}
+
+TEST(SceneOnCurse, ATownReachedFromTwoSidesHasTwoNumbersAndOneName) {
+  const curse_rig r;
+  for (const auto& [first, second, name] :
+       {std::tuple{6, 7, "TESHWAVE"}, std::tuple{10, 11, "HILLSFAR"},
+        std::tuple{12, 13, "MYTH DRANNOR"}}) {
+    journey(r, static_cast<std::uint16_t>(first));
+    EXPECT_EQ(place_of(r.read()), name);
+    journey(r, static_cast<std::uint16_t>(second));
+    EXPECT_EQ(place_of(r.read()), name);
+  }
+}
+
+TEST(SceneOnCurse, ANumberThatNamesNoPlaceIsAJourneyWithNoPlace) {
+  // Still the overland, which is what a host most needs to be told; the
+  // place is what this read does not know, and says so.
+  const curse_rig r;
+  journey(r, 14);
+  const scene now = r.read();
+  ASSERT_EQ(now.screen, scene_screen::journey);
+  EXPECT_EQ(now.place_length, 0U);
+  EXPECT_EQ(r.json(),
+            R"({"screen":"journey","disk":1,"area":80,"place":null})");
+}
+
+TEST(SceneOnCurse, AJourneyWithNoAreaRecordIsNoScene) {
+  const curse_rig r;
+  journey(r, 1);
+  r.cword(curse::data_record, 0);
+  r.cword(curse::data_record + 2, 0);
   EXPECT_EQ(r.read().screen, scene_screen::none);
   EXPECT_EQ(r.last, scene_trouble::elsewhere);
 }
