@@ -210,8 +210,8 @@ over `tests/visual/curse-reader-store.txt`). The other twenty-two are
 the legs with no seam: a new character, a purchase, a cure at the
 temple, the game's own Fix, the royal carriage, a journey on the
 overland map, and the rest. Each verifies on the desktop host through
-the sweep; the wasm module replays one through `drive.mjs --install
-'\CURSE' --replay`, told the descriptor's store by hand.
+the sweep and on the wasm module (`drive.mjs --install '\CURSE'
+--replay`, told a descriptor's store by hand).
 
 ## The matrix, by seam
 
