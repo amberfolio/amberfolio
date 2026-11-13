@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# `Notes` is on the party's bar on Curse of the Azure Bonds, and nothing
+# else on the screen is the seam's (#588; not-bars.leg is Pool of
+# Radiance's). Curse has one bar where Pool of Radiance has two: the
+# overhead view is toggled inside the same loop and keeps it
+# (`docs/seams.md` §10). `tests/sessions/curse-quiet-journal.rec` says
+# the machine differs from the bar's first draw; this says where on the
+# screen it does.
+# A pair leg, over `curse-quiet`'s keys, none of which the seam takes.
+# Driven on the Steam copy with its shipped slots (`curse-slots`).
+
+about Notes is on the party's bar on Curse, and nowhere else
+kind pair
+program START.EXE
+speed 386
+store tests/visual/curse-reader-store.txt
+seam journal
+until 110000000
+every 25
+
+key P@2500
+key A@2650
+key Return@2800
+key L@2950
+key A@3100
+key B@3250
+key Return@3550
+key Return@3850
+key Left@4000
+key Left@4600
+key Up@4750
+key Return@4900
+key Return@5050
+
+# The seventh word's five cells, after the space that follows the bar's
+# own thirty-three characters.
+rect notes 272,192,311,199
+
+# The boot, the party menu, the load and the opening event's two
+# screens: nothing.
+allow 0-3850 none
+
+# From the bar's first draw, the dump after the Return that ends the
+# opening event: the word, and only while the bar is up. The innkeeper's
+# two screens take the bar away and the runs are the same screen there.
+allow 3875-end notes

@@ -1,0 +1,81 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# What the screen says on Curse of the Azure Bonds with every highlight
+# a block (#588; text-create.leg is Pool of Radiance's): the screen read
+# back in the program's own font (machine/screen_text.h) through the
+# title's bar, the main menu and a character's creation, with
+# `modern-controls` on. A selection is then a block with a margin, a
+# cell that is not a glyph in two colours until its column 0 and row 7
+# are blanked out (`docs/hosts.md` §10), and that second reading is what
+# this holds: the lit word of a bar, the lit row of a list and the main
+# menu's cursor each come back as their own characters, black on white.
+# Each `text` line holds one still's screen text - every cell's
+# character, ink and paper - to the digest the program's own output had
+# when this leg was driven. The text itself is the program's and is not
+# here.
+#
+# Driven on the Steam copy with its shipped slots (`curse-slots`), on
+# `tests/sessions/curse-name-arrows.rec`'s keys as far as the icon.
+# `--wall none` makes the roll the same roll every run. With the seam
+# off the title's bar and the race list read back byte for byte as they
+# do here, 41 and 84 pixels apart: the program's own highlight is the
+# same black on white without the margin.
+
+about the screen read back as text over Curse's block highlights, through character creation
+kind single
+program START.EXE
+speed 386
+seam modern-controls
+until 182951200
+every 50
+
+# The challenge, which takes any letter; CREATE; Down to the second race;
+# the first gender; Down, Up, Down to the second class; the first
+# alignment; the roll kept; a name with the four arrows among its
+# letters, which type nothing; and out of the icon editor.
+key P@2500
+key A@2650
+key Return@2800
+key C@2950
+key Down@3400
+key Return@3550
+key Return@4000
+key Down@4450
+key Up@4600
+key Down@4750
+key Return@4900
+key Return@5350
+key N@5950
+key T@6550
+key Right@6700
+key O@6850
+key Up@7000
+key R@7150
+key Down@7300
+key K@7450
+key Left@7600
+key Return@7750
+key E@8500
+
+# The title's bar, its lit word a block.
+text 2500 d7cf318d8a488f87fa3cc1fe168d0db81ab1b4861a169d7556074b76fa55df4e
+# The main menu, the cursor a block on its first row.
+text 2900 e56674983ebefcf9954d160a56107e770bb7caa83362f90eaec87f1f30241698
+# Race, the first row a block, and the bar's lit word under it.
+text 3200 fb0bbc555b7fa8701dde767ab9ec5b09db12366c3a28dd9c01359dceb5440ec7
+# Race, the block on the second row after Down.
+text 3500 c88e5bde55473f07b9ecb7219f727a024c5884c18a9481cd9fe8e8aa6ea28a8c
+# Gender.
+text 3800 a03f63c460bb9440c6908741379433db06c7be465d38dd68a7323e7a5e7146c4
+# Class, the block on the second row.
+text 4850 62bc9109bc7462d94b688ae50352e638cf93ebc3b06c5fe052094c797a827451
+# Alignment.
+text 5150 ca06c7ca3d754259b9c6b34bb2e46c35f7a45e02ee0db6153bb1fea686b5f086
+# The reroll question, its lit answer a block.
+text 5700 fc6e9493b8bacc0fb56af541a07064204114413f6bdeabb2f8a9df9c7bc00629
+# The name prompt, typed, over the rolled character.
+text 7650 fd4be6e47971da9e84b0bd1b798a86e6aa89b516824201b82653281fda9cb440
+# The icon editor's bar, five words and one of them a block.
+text 8200 b61966d84d9594765dc3630705998ef39888c0c3b8b8c021de48ad8a6c239118
+# The question that follows it.
+text 9000 07b13ab1cfb37600cd87032b4642a53f2774fa0036a2211bce0554ead79c3274

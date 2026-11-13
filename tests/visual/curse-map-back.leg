@@ -1,0 +1,74 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# The automap comes back after the reader's full screen on Curse of the
+# Azure Bonds, and Tab is still its key (#588; rdr-map-back.leg and #332
+# are Pool of Radiance's). The reader's give-back asks the program to
+# compose the adventuring screen, whose roster is drawn over the
+# automap's own cells; on this program the composer and the roster's
+# drawer are overlaid and called through stub entries (`docs/seams.md`
+# §10), so the path differs and the claim is the same: the map up before
+# the log is the map up after it. `tests/sessions/curse-map-reader.rec`
+# is the same walk as hashes.
+# A single leg: `N` reaches the program in a seam-off run, and Tab is
+# the automap's, so a seam-off run has no map to compare against.
+# Driven on the Steam copy with its shipped slots (`curse-slots`).
+
+about the automap comes back after the journal's full screen on Curse, and Tab still works
+kind single
+program START.EXE
+speed 386
+store tests/visual/curse-reader-store.txt
+seam automap
+seam journal
+until 151133600
+every 25
+
+key P@2500
+key A@2650
+key Return@2800
+key L@2950
+key A@3100
+key B@3250
+key Return@3550
+key Return@3850
+key Left@4000
+key Left@4600
+key Up@4750
+key Return@4900
+key Return@5050
+
+# Tab for the map, `Notes` for the log, Return for entry 31 and `NEXT`
+# for its second page; `EXIT` twice. Then Tab twice: the first takes the
+# map away and the second brings it back.
+key Tab@5200
+key N@5350
+key Return@5500
+key N@5800
+key E@6400
+key E@6700
+key Tab@7000
+key Tab@7300
+
+# The roster, before the map; the map over it; the log, the two pages
+# and the log again over the whole screen.
+same 5100-5200
+same 5225-5350
+same 5375-5500
+same 5525-5800
+same 5825-6400
+same 6425-6700
+
+# The map back, and holding still.
+same 6725-7000
+
+# The whole claim, as two frames: the screen with the map on it before
+# `Notes`, and the screen after the second `EXIT`. Every pixel, the bar
+# row included.
+equal 5225 6725
+
+# And the key was not spent: Tab puts the roster back as it was before
+# the first Tab, and Tab again puts the map back as it was.
+same 7025-7300
+equal 5175 7025
+same 7325-7575
+equal 5225 7325

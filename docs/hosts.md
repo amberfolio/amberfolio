@@ -2141,7 +2141,12 @@ program lays its font out. `tests/visual/text-create.leg` holds eight
 screens of leg 0 — the main menu, the four creation lists, the name
 prompt over the rolled character, the party menu and Modify — to the
 digests of the program's own `.txt` output, over a copy of the disk
-(`scripts/visual-legs.py`'s `text` line).
+(`scripts/visual-legs.py`'s `text` line). `curse-text-create.leg` holds
+eleven of Curse of the Azure Bonds with `modern-controls` on, from the
+title's bar through a character's creation, where every highlight is a
+block with a margin and is read by the second reading above; the
+title's bar and the race list read the same, byte for byte, with the
+seam off.
 
 ## 11. The key card (#427)
 

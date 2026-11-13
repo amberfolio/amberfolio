@@ -314,7 +314,15 @@ selected member, asked in combat and out.
   curse-name-keys` (19 of 118) and `curse-menu-cursor` `contrast
   curse-menu-keys` (19 of 49) and `curse-modify-arrows` `contrast
   curse-modify-keys` (Modify's fields stepped and the name field; 19 of
-  161), from the same tick. Each is its
+  161), `curse-door-arrows` `contrast curse-door-keys` (the locked
+  door's bar at 7,12 N: Down, Down and Up select Mark, Travis and Mark,
+  where the seam-off run throws them away; 19 of 81) and
+  `curse-script-esc` `contrast curse-script-keys` (Escape answers `NO`
+  at the weapon shop's question, where the seam-off run ignores it; 19
+  of 80), from the same tick; `curse-quiet-all-on-sight` `contrast
+  curse-quiet-all` is the seam beside every other (19 of 58). The
+  Yes/No prompt's Escape is `curse-camp-arrows`', at `QUIT TO DOS`.
+  Each is its
   baseline's keys at their ticks, recorded again with the seam on; the
   move mode's pair is in its section. Unit: `SeamModernControlsOnCurse.*`,
   `SeamMoveModeOnCurse.*`,
