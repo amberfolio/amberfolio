@@ -1072,14 +1072,18 @@ in the definition's `programs`:
   copy` and the store's `answered` line for the digest; answered, the
   boot goes from the title to the party menu with `fired=1` and no
   challenge drawn.
-- **Not driven**: the interpreter's call. One script has the protection
-  command, once: the overland's (`ECL1.DAX` block 80), in a routine it
-  runs when the party arrives at a place from a journey. The routine
-  keeps a count of arrivals and asks on the one after the sixth, then
-  starts the count again. That is read from the script's bytes and not
-  yet seen in a run: no leg makes seven journeys, and none of the twenty
-  sessions with no seam reaches the call (#587). Its operand is checked
-  before the step, so a wrong fact declines.
+- **The interpreter's call.** One script has the protection command,
+  once: the overland's (`ECL1.DAX` block 80), in a routine it runs when
+  the party arrives at a place from a journey. The routine keeps a count
+  of arrivals and asks on the one after the sixth, then starts the count
+  again; no session in the library makes seven journeys, so none reaches
+  it. **Driven** from the `curse-wild` snapshot with the seam on and
+  answered (#587): seven journeys by the trail to the first place on the
+  list, the party saved at each town's edge. Six arrive with `fired=1`,
+  the boot's skip alone. The seventh meets the script's two typed
+  questions and then goes straight on to the script's next line, no
+  challenge drawn, with `fired=2`. Its operand is checked before the
+  step, so a wrong fact declines.
 - **Fidelity**: `curse-boot-wheel` `identical curse-boot` (on, a wrong
   letter typed, every one of 31 checkpoints equal);
   `curse-boot-answered` `contrast curse-boot`. In `curse-quiet-all`,
