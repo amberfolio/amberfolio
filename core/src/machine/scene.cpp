@@ -187,6 +187,13 @@ struct scene_facts {
   int manual_range;
   int manual_record;
 
+  /// The overland journey, on a program whose travel mode is one: the
+  /// word of the current area record that numbers the place the party is
+  /// at, and the places by that number. Zero and empty on a program whose
+  /// overland is the travel view above.
+  std::uint16_t area_journey_place{};
+  std::span<const std::string_view> journey_places{};
+
   [[nodiscard]] constexpr std::uint16_t data_slot_count() const noexcept {
     return static_cast<std::uint16_t>(data_slot_squares + square_shape);
   }
@@ -222,8 +229,25 @@ constexpr scene_facts pool_of_radiance_scene{
 /// the program saves, with the computer's byte and the armour class beside
 /// its side byte as in Pool of Radiance. The aim bar's routines are in
 /// overlay 14 and keep their locals where Pool of Radiance's do, their
-/// arguments two bytes further up. No travel view: the overland journey is
-/// a list of places. Its place tables are a door table and the maps' names.
+/// arguments two bytes further up. No travel view: the overland is a
+/// journey from place to place (#586). Its place tables are a door table
+/// and the maps' names.
+///
+/// **The journey's place** is a word of the area record, `+0x338`, the
+/// overland script's own number for where the party is: it picks the
+/// name the edge line prints (`YOU ARE AT THE EDGE OF ...`) through a
+/// table of fourteen. The script sets it when the party comes onto the
+/// overland and when a place is taken off the list of where to go, so
+/// from then until the journey ends it is where the party is going;
+/// backing out of that choice puts it back. Three towns have two numbers
+/// each, one for each side they are reached from. The names are the
+/// towns', as that line spells them.
+constexpr std::array<std::string_view, 14> curse_journey_places{
+    "TILVERTON",       "SHADOWDALE",  "ASHABENFORD", "DAGGER FALLS",
+    "STANDING STONES", "VOONLAR",     "TESHWAVE",    "TESHWAVE",
+    "ESSEMBRA",        "HAP",         "HILLSFAR",    "HILLSFAR",
+    "MYTH DRANNOR",    "MYTH DRANNOR"};
+
 constexpr scene_facts curse_scene{
     .profile = curse_of_the_azure_bonds,
     .places = &map_format::curse_of_the_azure_bonds_places,
@@ -243,7 +267,9 @@ constexpr scene_facts curse_scene{
     .manual_column = -0x33,
     .manual_row = -0x34,
     .manual_range = -0x38,
-    .manual_record = 0x16};
+    .manual_record = 0x16,
+    .area_journey_place = 0x338,
+    .journey_places = curse_journey_places};
 
 /// The row for the program `digest` names, or null: a program this read
 /// has no facts about.
@@ -500,6 +526,37 @@ void name_zone(const scene_facts& f, scene& out, std::uint8_t geo,
       out.window[(i * scene_window_side) + j] = {.terrain = terrain,
                                                  .move = move_onto(terrain)};
     }
+  }
+  return true;
+}
+
+/// The overland as a journey: which place the party is at. A program
+/// with no such overland has no places, and answers nothing.
+[[nodiscard]] bool read_journey(const scene_facts& f, const memory& ram,
+                                scene& out) {
+  const program_profile& profile = f.profile;
+  if (f.journey_places.empty()) {
+    return false;
+  }
+  const std::uint32_t record =
+      ram.follow(profile.data_area_record,
+                 static_cast<std::uint32_t>(f.area_journey_place) + 2U);
+  if (record == 0) {
+    return false;
+  }
+  out.screen = scene_screen::journey;
+  out.disk = ram.data(profile.data_disk_number);
+  out.area = ram.data(profile.data_area_id);
+  const std::uint16_t number = ram.word_at(record + f.area_journey_place);
+  if (number < f.journey_places.size()) {
+    const std::string_view name = f.journey_places[number];
+    std::size_t used = 0;
+    for (const char ch : name) {
+      if (used < out.place.size()) {
+        out.place[used++] = ch;
+      }
+    }
+    out.place_length = static_cast<std::uint8_t>(used);
   }
   return true;
 }
@@ -1225,7 +1282,7 @@ scene_trouble read_scene_in(const program_profile& program,
   if (mode == profile.mode_adventure) {
     found = read_explore(f, memory_now, kept, out);
   } else if (mode == profile.mode_travel) {
-    found = read_travel(f, memory_now, out);
+    found = read_travel(f, memory_now, out) || read_journey(f, memory_now, out);
   } else if (mode == profile.mode_combat) {
     found = read_combat(f, memory_now, aim, out);
   }
@@ -1267,9 +1324,10 @@ std::size_t scene_json(const scene& from, std::span<char> out) noexcept {
   }
   json.put('{');
   json.key("screen");
-  json.string(from.screen == scene_screen::explore  ? "explore"
-              : from.screen == scene_screen::travel ? "travel"
-                                                    : "combat");
+  json.string(from.screen == scene_screen::explore   ? "explore"
+              : from.screen == scene_screen::travel  ? "travel"
+              : from.screen == scene_screen::journey ? "journey"
+                                                     : "combat");
   json.put(',');
   json.key("disk");
   json.number(from.disk);
@@ -1277,6 +1335,17 @@ std::size_t scene_json(const scene& from, std::span<char> out) noexcept {
   json.key("area");
   json.number(from.area);
   json.put(',');
+  if (from.screen == scene_screen::journey) {
+    // A journey has no map with a name, no square and no facing: a place.
+    json.key("place");
+    if (from.place_length == 0) {
+      json.put("null");
+    } else {
+      json.string(std::string_view{from.place.data(), from.place_length});
+    }
+    json.put('}');
+    return json.finish();
+  }
   json.key("zone");
   json.string(std::string_view{from.zone.data(), from.zone_length});
   if (from.screen == scene_screen::combat) {

@@ -630,7 +630,8 @@ inline constexpr seam_module menu{
 /// **No view kind.** The program has one view in the adventuring mode,
 /// the grid, and its mode 3 is the overland journey, a list of places
 /// rather than a map walked square by square, so `data_view_kind` is zero
-/// and a read takes the grid as given.
+/// and a read takes the grid as given. The scene reads that mode as a
+/// journey, with the place the party is at (`scene.cpp`, #586).
 ///
 /// **One adventuring bar.** The overhead view is toggled inside the same
 /// loop as the 3D view and keeps its bar, so the 3D view's bar, its call
