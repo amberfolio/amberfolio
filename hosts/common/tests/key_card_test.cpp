@@ -331,9 +331,9 @@ TEST(KeyCard, TheJsonIsTheTableAndNotACopyOfIt) {
   EXPECT_EQ(occurrences(json, "\"word\":"), programs.size());
   EXPECT_EQ(occurrences(json, "\"fingerprint\":"), programs.size());
   for (const machine::edition& program : programs) {
-    const std::string entry = "{\"word\":\"" + key_card_program(&program) +
-                              "\",\"fingerprint\":\"" +
-                              std::string(program.fingerprint) + "\"}";
+    const std::string entry = R"({"word":")" + key_card_program(&program) +
+                              R"(","fingerprint":")" +
+                              std::string(program.fingerprint) + R"("})";
     EXPECT_NE(json.find(entry), std::string_view::npos) << entry;
   }
   // The baseline is the first, which is the card a page with no program
