@@ -3741,12 +3741,1019 @@ constexpr std::array<journal_entry_fact, 121> curse_entries{{
 }};
 // --- curse edition end
 
+// --- curse gog edition begin
+/// The Adventurer's Journal of **Curse of the Azure Bonds** as the GOG
+/// release ships it (#585): the printed booklet scanned, seventeen pages,
+/// every one `/DCTDecode`, RGB, eight bits a component. Fifteen are
+/// two-page spreads of 1650 by 1275 samples; the first and the last are
+/// single pages with no numbered item on them. It is the journal the
+/// Steam release typesets as text, item for item: fifty-nine entries and
+/// sixty-two tales, and nine pictures on the same nine entries.
+///
+/// **Measured, never transcribed**: offsets, lengths, an image's shape
+/// and rectangles of it. No pixel and no word of the document is here.
+///
+/// **A heading is a piece of its own.** Every item but entry 1 opens with
+/// a printed checkbox, which is an ornament and not a word of the item
+/// (the Steam edition drops it as a font, `journal_text_font::ornament`).
+/// A rectangle cannot leave it out of a column, because the body under it
+/// starts at the same margin, so each item's first piece is its heading's
+/// line alone, from the middle of the gap right of the checkbox to the
+/// end of the heading's ink, and the body under it is the next piece and
+/// opens a paragraph. A hundred and twenty-one items are two hundred and
+/// fifty-five pieces: a heading each and a hundred and thirty-four pieces
+/// of body. Six entries are a heading and a picture and have no body.
+///
+/// How the rectangles were found:
+///
+/// - **Four column bands to a spread**, cut at samples 438 and 1258, in
+///   the gutter between a printed page's two columns on every spread,
+///   with the spine between 822 and 868. A band runs from under the chain
+///   printed across the head of a page to above its folio.
+/// - **Headings by their ink.** They are printed in blue and the body in
+///   black, so a heading is a line band whose ink is blue, wherever it
+///   is. An item runs from its heading to the next in reading order. The
+///   count that came out, fifty-nine and sixty-two, is the chain, and
+///   every heading an engine read back out of its rectangle came back
+///   with the number the chain gives it.
+/// - **A piece hugs its own ink**, with four samples around it and never
+///   past the middle of the gap to its neighbour. The scans are askew by
+///   as much as a degree, so a band measured at the head of a page clips
+///   type at its foot, and a rectangle the width of the band would take
+///   in what is printed beside a narrower item.
+/// - **Matter outside the grid ends a run or is stepped around**: the
+///   introduction's title above entry 1 and the page facing it, the two
+///   sections' titles and introductions, the folios, the rule drawn on
+///   from the headings of entries 52 and 59, and a drawing with its two
+///   rules and its caption between the columns of scan 15, which belongs
+///   to no tale. Tales 45 to 47 are set narrower on its left, and the
+///   last three lines of tale 51 and tales 52 and 53 on its right; tale
+///   51's body is cut where its margin moves, because the rule over the
+///   drawing is level with its second line.
+/// - **Two maps span both columns of a printed page**, each under its
+///   own entry's heading. Entry 51 is carried on at the top of both
+///   columns above entry 52's heading; above entry 59's, the top of the
+///   first column is the end of entry 57 and the top of the second is
+///   entry 58 whole.
+///
+/// **The boundaries** (#361). Besides the body's first piece, nineteen
+/// pieces carry a body on, in the next column, on the next scan or under
+/// the entry's own picture. A paragraph opens with an indent, measured
+/// against the piece's own left margin, which is a line fitted through
+/// the left ends of its lines because of the skew: sixteen first lines
+/// start within four samples of it, and three start 28 to 30 right of it,
+/// in entries 1, 3 and 12. Nothing lands between.
+///
+/// **The pictures** are the Steam edition's nine, each the bounding box
+/// of its ink in a band under its entry's heading (under the caption, for
+/// entry 4). A map's labels and its key are inside the rectangle. Entry
+/// 1's is a row of five symbols set in its second column, with the prose
+/// cut around it. No text rectangle overlaps a picture.
+
+/// A scan of the GOG edition: the byte offset of its stream's first data
+/// byte, and its `/Length`. Indexed by page, from page 2.
+struct curse_gog_scan {
+  std::uint64_t at{};
+  std::uint32_t bytes{};
+};
+constexpr std::array<curse_gog_scan, 15> curse_gog_scans{{
+    {.at = 508, .bytes = 463214},      // page 2
+    {.at = 464247, .bytes = 508812},   // page 3
+    {.at = 973588, .bytes = 468951},   // page 4
+    {.at = 1443068, .bytes = 472517},  // page 5
+    {.at = 1916114, .bytes = 404815},  // page 6
+    {.at = 2321458, .bytes = 355019},  // page 7
+    {.at = 2677006, .bytes = 455442},  // page 8
+    {.at = 3132977, .bytes = 410344},  // page 9
+    {.at = 3543850, .bytes = 434285},  // page 10
+    {.at = 3978664, .bytes = 406695},  // page 11
+    {.at = 4385888, .bytes = 402163},  // page 12
+    {.at = 4788580, .bytes = 360873},  // page 13
+    {.at = 5149982, .bytes = 347721},  // page 14
+    {.at = 5498232, .bytes = 353667},  // page 15
+    {.at = 5852428, .bytes = 334953},  // page 16
+}};
+
+/// Every one of those scans is one shape: a two-page spread, carried to
+/// the engine rather than decoded (#212).
+constexpr journal_image curse_gog_spread{
+    .width = 1650,
+    .height = 1275,
+    .bits_per_component = 8,
+    .components = 3,
+    .predictor = 1,
+    .filter = journal_filter::dct,
+    .inverted = false,
+};
+
+/// One rectangle of the spread on `page`. A page with no scan in the
+/// table above does not compile.
+constexpr journal_fragment curse_gog_piece(std::uint16_t page,
+                                           journal_region region,
+                                           bool begins_paragraph = false) {
+  const curse_gog_scan& scan = curse_gog_scans.at(page - 2U);
+  return {.page = page,
+          .offset = scan.at,
+          .length = scan.bytes,
+          .image = curse_gog_spread,
+          .region = region,
+          .begins_paragraph = begins_paragraph};
+}
+
+constexpr std::array<journal_fragment, 4> curse_gog_entry001{{
+    curse_gog_piece(2, {.left = 64, .top = 245, .width = 196, .height = 42}),
+    curse_gog_piece(2, {.left = 65, .top = 287, .width = 352, .height = 905},
+                    true),
+    curse_gog_piece(2, {.left = 447, .top = 257, .width = 351, .height = 495}),
+    curse_gog_piece(2, {.left = 450, .top = 835, .width = 346, .height = 330},
+                    true),
+}};
+constexpr std::array<journal_fragment, 1> curse_gog_entry001_art{{
+    curse_gog_piece(2, {.left = 488, .top = 767, .width = 260, .height = 45}),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry002{{
+    curse_gog_piece(6, {.left = 920, .top = 457, .width = 195, .height = 43}),
+    curse_gog_piece(6, {.left = 892, .top = 500, .width = 352, .height = 405},
+                    true),
+}};
+constexpr std::array<journal_fragment, 4> curse_gog_entry003{{
+    curse_gog_piece(6, {.left = 918, .top = 930, .width = 195, .height = 43}),
+    curse_gog_piece(6, {.left = 892, .top = 973, .width = 343, .height = 220},
+                    true),
+    curse_gog_piece(6,
+                    {.left = 1271, .top = 122, .width = 352, .height = 1012}),
+    curse_gog_piece(7, {.left = 67, .top = 109, .width = 353, .height = 877},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry004{{
+    curse_gog_piece(7, {.left = 477, .top = 108, .width = 196, .height = 42}),
+    curse_gog_piece(7, {.left = 479, .top = 152, .width = 175, .height = 28},
+                    true),
+}};
+constexpr std::array<journal_fragment, 1> curse_gog_entry004_art{{
+    curse_gog_piece(7, {.left = 540, .top = 194, .width = 244, .height = 992}),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry005{{
+    curse_gog_piece(7, {.left = 927, .top = 116, .width = 199, .height = 43}),
+    curse_gog_piece(7, {.left = 899, .top = 159, .width = 352, .height = 305},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry006{{
+    curse_gog_piece(7, {.left = 924, .top = 481, .width = 198, .height = 42}),
+    curse_gog_piece(7, {.left = 893, .top = 523, .width = 351, .height = 165},
+                    true),
+}};
+constexpr std::array<journal_fragment, 3> curse_gog_entry007{{
+    curse_gog_piece(7, {.left = 921, .top = 709, .width = 199, .height = 43}),
+    curse_gog_piece(7, {.left = 890, .top = 752, .width = 348, .height = 413},
+                    true),
+    curse_gog_piece(7, {.left = 1281, .top = 122, .width = 326, .height = 87}),
+}};
+constexpr std::array<journal_fragment, 1> curse_gog_entry008{{
+    curse_gog_piece(7, {.left = 1306, .top = 228, .width = 197, .height = 44}),
+}};
+constexpr std::array<journal_fragment, 1> curse_gog_entry008_art{{
+    curse_gog_piece(7, {.left = 1281, .top = 305, .width = 317, .height = 155}),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry009{{
+    curse_gog_piece(7, {.left = 1303, .top = 513, .width = 197, .height = 43}),
+    curse_gog_piece(7, {.left = 1301, .top = 698, .width = 305, .height = 89},
+                    true),
+}};
+constexpr std::array<journal_fragment, 1> curse_gog_entry009_art{{
+    curse_gog_piece(7, {.left = 1305, .top = 558, .width = 132, .height = 134}),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry010{{
+    curse_gog_piece(7, {.left = 1299, .top = 805, .width = 210, .height = 42}),
+    curse_gog_piece(7, {.left = 1268, .top = 847, .width = 353, .height = 277},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry011{{
+    curse_gog_piece(8, {.left = 95, .top = 106, .width = 209, .height = 43}),
+    curse_gog_piece(8, {.left = 66, .top = 149, .width = 353, .height = 569},
+                    true),
+}};
+constexpr std::array<journal_fragment, 4> curse_gog_entry012{{
+    curse_gog_piece(8, {.left = 94, .top = 744, .width = 211, .height = 43}),
+    curse_gog_piece(8, {.left = 68, .top = 787, .width = 340, .height = 303},
+                    true),
+    curse_gog_piece(8, {.left = 449, .top = 112, .width = 354, .height = 1040},
+                    true),
+    curse_gog_piece(8, {.left = 895, .top = 114, .width = 352, .height = 768}),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry013{{
+    curse_gog_piece(8, {.left = 920, .top = 900, .width = 211, .height = 43}),
+    curse_gog_piece(8, {.left = 892, .top = 943, .width = 349, .height = 246},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry014{{
+    curse_gog_piece(8, {.left = 1304, .top = 115, .width = 210, .height = 43}),
+    curse_gog_piece(8, {.left = 1278, .top = 158, .width = 343, .height = 249},
+                    true),
+}};
+constexpr std::array<journal_fragment, 3> curse_gog_entry015{{
+    curse_gog_piece(8, {.left = 1303, .top = 425, .width = 213, .height = 43}),
+    curse_gog_piece(8, {.left = 1270, .top = 468, .width = 356, .height = 631},
+                    true),
+    curse_gog_piece(9, {.left = 70, .top = 114, .width = 344, .height = 221}),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry016{{
+    curse_gog_piece(9, {.left = 97, .top = 353, .width = 212, .height = 43}),
+    curse_gog_piece(9, {.left = 72, .top = 396, .width = 349, .height = 250},
+                    true),
+}};
+constexpr std::array<journal_fragment, 1> curse_gog_entry017{{
+    curse_gog_piece(9, {.left = 98, .top = 664, .width = 212, .height = 43}),
+}};
+constexpr std::array<journal_fragment, 1> curse_gog_entry017_art{{
+    curse_gog_piece(9, {.left = 76, .top = 725, .width = 250, .height = 233}),
+}};
+constexpr std::array<journal_fragment, 3> curse_gog_entry018{{
+    curse_gog_piece(9, {.left = 98, .top = 988, .width = 212, .height = 43}),
+    curse_gog_piece(9, {.left = 73, .top = 1031, .width = 349, .height = 140},
+                    true),
+    curse_gog_piece(9, {.left = 450, .top = 114, .width = 346, .height = 194}),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry019{{
+    curse_gog_piece(9, {.left = 478, .top = 327, .width = 212, .height = 43}),
+    curse_gog_piece(9, {.left = 453, .top = 370, .width = 332, .height = 221},
+                    true),
+}};
+constexpr std::array<journal_fragment, 1> curse_gog_entry020{{
+    curse_gog_piece(9, {.left = 479, .top = 609, .width = 210, .height = 43}),
+}};
+constexpr std::array<journal_fragment, 1> curse_gog_entry020_art{{
+    curse_gog_piece(9, {.left = 457, .top = 683, .width = 338, .height = 467}),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry021{{
+    curse_gog_piece(9, {.left = 920, .top = 112, .width = 210, .height = 43}),
+    curse_gog_piece(9, {.left = 894, .top = 156, .width = 352, .height = 520},
+                    true),
+}};
+constexpr std::array<journal_fragment, 3> curse_gog_entry022{{
+    curse_gog_piece(9, {.left = 922, .top = 694, .width = 211, .height = 43}),
+    curse_gog_piece(9, {.left = 896, .top = 737, .width = 350, .height = 412},
+                    true),
+    curse_gog_piece(9, {.left = 1272, .top = 115, .width = 348, .height = 85}),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry023{{
+    curse_gog_piece(9, {.left = 1300, .top = 218, .width = 210, .height = 43}),
+    curse_gog_piece(9, {.left = 1276, .top = 261, .width = 350, .height = 358},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry024{{
+    curse_gog_piece(9, {.left = 1301, .top = 637, .width = 210, .height = 44}),
+    curse_gog_piece(9, {.left = 1276, .top = 681, .width = 350, .height = 222},
+                    true),
+}};
+constexpr std::array<journal_fragment, 3> curse_gog_entry025{{
+    curse_gog_piece(9, {.left = 1301, .top = 921, .width = 213, .height = 43}),
+    curse_gog_piece(9, {.left = 1274, .top = 964, .width = 353, .height = 140},
+                    true),
+    curse_gog_piece(10, {.left = 72, .top = 107, .width = 342, .height = 113}),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry026{{
+    curse_gog_piece(10, {.left = 100, .top = 239, .width = 213, .height = 43}),
+    curse_gog_piece(10, {.left = 74, .top = 282, .width = 344, .height = 133},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry027{{
+    curse_gog_piece(10, {.left = 100, .top = 441, .width = 213, .height = 42}),
+    curse_gog_piece(10, {.left = 74, .top = 483, .width = 342, .height = 133},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry028{{
+    curse_gog_piece(10, {.left = 99, .top = 643, .width = 212, .height = 42}),
+    curse_gog_piece(10, {.left = 71, .top = 685, .width = 344, .height = 192},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry029{{
+    curse_gog_piece(10, {.left = 98, .top = 899, .width = 213, .height = 43}),
+    curse_gog_piece(10, {.left = 70, .top = 942, .width = 349, .height = 140},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry030{{
+    curse_gog_piece(10, {.left = 482, .top = 111, .width = 210, .height = 43}),
+    curse_gog_piece(10, {.left = 455, .top = 154, .width = 352, .height = 439},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry031{{
+    curse_gog_piece(10, {.left = 480, .top = 612, .width = 210, .height = 43}),
+    curse_gog_piece(10, {.left = 453, .top = 655, .width = 345, .height = 220},
+                    true),
+}};
+constexpr std::array<journal_fragment, 3> curse_gog_entry032{{
+    curse_gog_piece(10, {.left = 479, .top = 895, .width = 211, .height = 43}),
+    curse_gog_piece(10, {.left = 449, .top = 938, .width = 350, .height = 194},
+                    true),
+    curse_gog_piece(10, {.left = 894, .top = 115, .width = 347, .height = 139}),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry033{{
+    curse_gog_piece(10, {.left = 920, .top = 274, .width = 210, .height = 42}),
+    curse_gog_piece(10, {.left = 892, .top = 316, .width = 351, .height = 248},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry034{{
+    curse_gog_piece(10, {.left = 921, .top = 583, .width = 210, .height = 43}),
+    curse_gog_piece(10, {.left = 896, .top = 626, .width = 350, .height = 412},
+                    true),
+}};
+constexpr std::array<journal_fragment, 3> curse_gog_entry035{{
+    curse_gog_piece(10, {.left = 922, .top = 1056, .width = 214, .height = 43}),
+    curse_gog_piece(10, {.left = 897, .top = 1099, .width = 335, .height = 81},
+                    true),
+    curse_gog_piece(10,
+                    {.left = 1273, .top = 113, .width = 348, .height = 194}),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry036{{
+    curse_gog_piece(10, {.left = 1300, .top = 326, .width = 212, .height = 43}),
+    curse_gog_piece(10, {.left = 1274, .top = 369, .width = 348, .height = 331},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry037{{
+    curse_gog_piece(10, {.left = 1301, .top = 718, .width = 212, .height = 43}),
+    curse_gog_piece(10, {.left = 1276, .top = 761, .width = 346, .height = 273},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry038{{
+    curse_gog_piece(11, {.left = 100, .top = 114, .width = 212, .height = 43}),
+    curse_gog_piece(11, {.left = 71, .top = 157, .width = 353, .height = 734},
+                    true),
+}};
+constexpr std::array<journal_fragment, 1> curse_gog_entry039{{
+    curse_gog_piece(11, {.left = 481, .top = 117, .width = 212, .height = 43}),
+}};
+constexpr std::array<journal_fragment, 1> curse_gog_entry039_art{{
+    curse_gog_piece(11, {.left = 463, .top = 189, .width = 306, .height = 327}),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry040{{
+    curse_gog_piece(11, {.left = 480, .top = 553, .width = 210, .height = 43}),
+    curse_gog_piece(11, {.left = 454, .top = 596, .width = 348, .height = 302},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry041{{
+    curse_gog_piece(11, {.left = 479, .top = 917, .width = 210, .height = 43}),
+    curse_gog_piece(11, {.left = 453, .top = 960, .width = 340, .height = 188},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry042{{
+    curse_gog_piece(11, {.left = 917, .top = 114, .width = 211, .height = 43}),
+    curse_gog_piece(11, {.left = 892, .top = 157, .width = 347, .height = 221},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry043{{
+    curse_gog_piece(11, {.left = 919, .top = 396, .width = 210, .height = 43}),
+    curse_gog_piece(11, {.left = 894, .top = 439, .width = 342, .height = 113},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry044{{
+    curse_gog_piece(11, {.left = 920, .top = 570, .width = 210, .height = 43}),
+    curse_gog_piece(11, {.left = 892, .top = 613, .width = 345, .height = 467},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry045{{
+    curse_gog_piece(11, {.left = 1296, .top = 113, .width = 212, .height = 43}),
+    curse_gog_piece(11, {.left = 1271, .top = 156, .width = 344, .height = 194},
+                    true),
+}};
+constexpr std::array<journal_fragment, 3> curse_gog_entry046{{
+    curse_gog_piece(11, {.left = 1298, .top = 369, .width = 212, .height = 42}),
+    curse_gog_piece(11, {.left = 1274, .top = 411, .width = 349, .height = 712},
+                    true),
+    curse_gog_piece(12, {.left = 78, .top = 112, .width = 264, .height = 140}),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry047{{
+    curse_gog_piece(12, {.left = 101, .top = 271, .width = 212, .height = 43}),
+    curse_gog_piece(12, {.left = 74, .top = 314, .width = 338, .height = 168},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry048{{
+    curse_gog_piece(12, {.left = 99, .top = 499, .width = 212, .height = 44}),
+    curse_gog_piece(12, {.left = 72, .top = 543, .width = 344, .height = 332},
+                    true),
+}};
+constexpr std::array<journal_fragment, 3> curse_gog_entry049{{
+    curse_gog_piece(12, {.left = 97, .top = 892, .width = 211, .height = 44}),
+    curse_gog_piece(12, {.left = 70, .top = 936, .width = 346, .height = 194},
+                    true),
+    curse_gog_piece(12, {.left = 453, .top = 115, .width = 351, .height = 332}),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry050{{
+    curse_gog_piece(12, {.left = 480, .top = 465, .width = 210, .height = 43}),
+    curse_gog_piece(12, {.left = 452, .top = 508, .width = 345, .height = 385},
+                    true),
+}};
+constexpr std::array<journal_fragment, 4> curse_gog_entry051{{
+    curse_gog_piece(12, {.left = 478, .top = 939, .width = 208, .height = 43}),
+    curse_gog_piece(12, {.left = 451, .top = 982, .width = 343, .height = 196},
+                    true),
+    curse_gog_piece(12, {.left = 895, .top = 116, .width = 338, .height = 113}),
+    curse_gog_piece(12,
+                    {.left = 1273, .top = 116, .width = 348, .height = 110}),
+}};
+constexpr std::array<journal_fragment, 1> curse_gog_entry052{{
+    curse_gog_piece(12, {.left = 922, .top = 280, .width = 211, .height = 43}),
+}};
+constexpr std::array<journal_fragment, 1> curse_gog_entry052_art{{
+    curse_gog_piece(12, {.left = 888, .top = 344, .width = 729, .height = 820}),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry053{{
+    curse_gog_piece(13, {.left = 101, .top = 111, .width = 210, .height = 42}),
+    curse_gog_piece(13, {.left = 73, .top = 153, .width = 346, .height = 848},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry054{{
+    curse_gog_piece(13, {.left = 98, .top = 1022, .width = 210, .height = 42}),
+    curse_gog_piece(13, {.left = 72, .top = 1064, .width = 332, .height = 138},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry055{{
+    curse_gog_piece(13, {.left = 483, .top = 114, .width = 212, .height = 41}),
+    curse_gog_piece(13, {.left = 458, .top = 155, .width = 340, .height = 247},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry056{{
+    curse_gog_piece(13, {.left = 483, .top = 424, .width = 211, .height = 41}),
+    curse_gog_piece(13, {.left = 456, .top = 465, .width = 348, .height = 466},
+                    true),
+}};
+constexpr std::array<journal_fragment, 3> curse_gog_entry057{{
+    curse_gog_piece(13, {.left = 481, .top = 951, .width = 212, .height = 43}),
+    curse_gog_piece(13, {.left = 456, .top = 994, .width = 340, .height = 166},
+                    true),
+    curse_gog_piece(13, {.left = 886, .top = 122, .width = 347, .height = 218}),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_entry058{{
+    curse_gog_piece(13, {.left = 1289, .top = 121, .width = 211, .height = 41}),
+    curse_gog_piece(13, {.left = 1266, .top = 162, .width = 347, .height = 302},
+                    true),
+}};
+constexpr std::array<journal_fragment, 1> curse_gog_entry059{{
+    curse_gog_piece(13, {.left = 916, .top = 475, .width = 210, .height = 42}),
+}};
+constexpr std::array<journal_fragment, 1> curse_gog_entry059_art{{
+    curse_gog_piece(13, {.left = 909, .top = 561, .width = 679, .height = 619}),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale001{{
+    curse_gog_piece(14, {.left = 107, .top = 463, .width = 166, .height = 34}),
+    curse_gog_piece(14, {.left = 82, .top = 502, .width = 319, .height = 59},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale002{{
+    curse_gog_piece(14, {.left = 105, .top = 582, .width = 168, .height = 35}),
+    curse_gog_piece(14, {.left = 78, .top = 622, .width = 346, .height = 89},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale003{{
+    curse_gog_piece(14, {.left = 102, .top = 729, .width = 167, .height = 35}),
+    curse_gog_piece(14, {.left = 74, .top = 769, .width = 337, .height = 87},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale004{{
+    curse_gog_piece(14, {.left = 99, .top = 877, .width = 167, .height = 35}),
+    curse_gog_piece(14, {.left = 69, .top = 917, .width = 340, .height = 57},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale005{{
+    curse_gog_piece(14, {.left = 97, .top = 997, .width = 171, .height = 34}),
+    curse_gog_piece(14, {.left = 70, .top = 1038, .width = 337, .height = 53},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale006{{
+    curse_gog_piece(14, {.left = 495, .top = 107, .width = 170, .height = 34}),
+    curse_gog_piece(14, {.left = 468, .top = 146, .width = 334, .height = 105},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale007{{
+    curse_gog_piece(14, {.left = 492, .top = 279, .width = 170, .height = 35}),
+    curse_gog_piece(14, {.left = 466, .top = 319, .width = 333, .height = 61},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale008{{
+    curse_gog_piece(14, {.left = 490, .top = 400, .width = 168, .height = 34}),
+    curse_gog_piece(14, {.left = 463, .top = 438, .width = 327, .height = 63},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale009{{
+    curse_gog_piece(14, {.left = 487, .top = 518, .width = 169, .height = 35}),
+    curse_gog_piece(14, {.left = 460, .top = 560, .width = 325, .height = 86},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale010{{
+    curse_gog_piece(14, {.left = 484, .top = 665, .width = 181, .height = 35}),
+    curse_gog_piece(14, {.left = 457, .top = 704, .width = 334, .height = 80},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale011{{
+    curse_gog_piece(14, {.left = 481, .top = 812, .width = 181, .height = 34}),
+    curse_gog_piece(14, {.left = 454, .top = 853, .width = 329, .height = 60},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale012{{
+    curse_gog_piece(14, {.left = 479, .top = 931, .width = 183, .height = 35}),
+    curse_gog_piece(14, {.left = 449, .top = 971, .width = 346, .height = 89},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale013{{
+    curse_gog_piece(14, {.left = 476, .top = 1078, .width = 182, .height = 34}),
+    curse_gog_piece(14, {.left = 451, .top = 1118, .width = 301, .height = 53},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale014{{
+    curse_gog_piece(14, {.left = 916, .top = 113, .width = 182, .height = 35}),
+    curse_gog_piece(14, {.left = 892, .top = 155, .width = 345, .height = 86},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale015{{
+    curse_gog_piece(14, {.left = 918, .top = 260, .width = 184, .height = 34}),
+    curse_gog_piece(14, {.left = 890, .top = 302, .width = 331, .height = 86},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale016{{
+    curse_gog_piece(14, {.left = 919, .top = 405, .width = 184, .height = 35}),
+    curse_gog_piece(14, {.left = 892, .top = 447, .width = 350, .height = 141},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale017{{
+    curse_gog_piece(14, {.left = 921, .top = 606, .width = 184, .height = 34}),
+    curse_gog_piece(14, {.left = 896, .top = 649, .width = 333, .height = 58},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale018{{
+    curse_gog_piece(14, {.left = 921, .top = 725, .width = 184, .height = 34}),
+    curse_gog_piece(14, {.left = 896, .top = 768, .width = 309, .height = 59},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale019{{
+    curse_gog_piece(14, {.left = 922, .top = 845, .width = 183, .height = 34}),
+    curse_gog_piece(14, {.left = 897, .top = 887, .width = 332, .height = 85},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale020{{
+    curse_gog_piece(14, {.left = 1295, .top = 112, .width = 181, .height = 34}),
+    curse_gog_piece(14, {.left = 1270, .top = 153, .width = 342, .height = 59},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale021{{
+    curse_gog_piece(14, {.left = 1296, .top = 230, .width = 180, .height = 34}),
+    curse_gog_piece(14, {.left = 1272, .top = 273, .width = 308, .height = 54},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale022{{
+    curse_gog_piece(14, {.left = 1297, .top = 349, .width = 182, .height = 36}),
+    curse_gog_piece(14, {.left = 1274, .top = 392, .width = 326, .height = 59},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale023{{
+    curse_gog_piece(14, {.left = 1298, .top = 469, .width = 182, .height = 35}),
+    curse_gog_piece(14, {.left = 1274, .top = 512, .width = 306, .height = 56},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale024{{
+    curse_gog_piece(14, {.left = 1299, .top = 589, .width = 181, .height = 34}),
+    curse_gog_piece(14, {.left = 1273, .top = 632, .width = 342, .height = 79},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale025{{
+    curse_gog_piece(14, {.left = 1300, .top = 735, .width = 183, .height = 34}),
+    curse_gog_piece(14, {.left = 1274, .top = 779, .width = 340, .height = 85},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale026{{
+    curse_gog_piece(14, {.left = 1300, .top = 883, .width = 184, .height = 33}),
+    curse_gog_piece(14, {.left = 1277, .top = 925, .width = 313, .height = 58},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale027{{
+    curse_gog_piece(14,
+                    {.left = 1301, .top = 1001, .width = 185, .height = 34}),
+    curse_gog_piece(14, {.left = 1276, .top = 1044, .width = 335, .height = 56},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale028{{
+    curse_gog_piece(15, {.left = 108, .top = 103, .width = 183, .height = 34}),
+    curse_gog_piece(15, {.left = 80, .top = 145, .width = 324, .height = 84},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale029{{
+    curse_gog_piece(15, {.left = 106, .top = 249, .width = 183, .height = 34}),
+    curse_gog_piece(15, {.left = 80, .top = 291, .width = 339, .height = 87},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale030{{
+    curse_gog_piece(15, {.left = 104, .top = 396, .width = 182, .height = 34}),
+    curse_gog_piece(15, {.left = 78, .top = 437, .width = 346, .height = 81},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale031{{
+    curse_gog_piece(15, {.left = 103, .top = 543, .width = 180, .height = 34}),
+    curse_gog_piece(15, {.left = 103, .top = 584, .width = 193, .height = 32},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale032{{
+    curse_gog_piece(15, {.left = 102, .top = 635, .width = 182, .height = 34}),
+    curse_gog_piece(15, {.left = 76, .top = 677, .width = 327, .height = 85},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale033{{
+    curse_gog_piece(15, {.left = 100, .top = 782, .width = 182, .height = 34}),
+    curse_gog_piece(15, {.left = 73, .top = 824, .width = 344, .height = 115},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale034{{
+    curse_gog_piece(15, {.left = 98, .top = 956, .width = 182, .height = 36}),
+    curse_gog_piece(15, {.left = 73, .top = 1000, .width = 332, .height = 79},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale035{{
+    curse_gog_piece(15, {.left = 488, .top = 110, .width = 185, .height = 34}),
+    curse_gog_piece(15, {.left = 460, .top = 151, .width = 301, .height = 86},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale036{{
+    curse_gog_piece(15, {.left = 487, .top = 255, .width = 184, .height = 35}),
+    curse_gog_piece(15, {.left = 461, .top = 297, .width = 329, .height = 59},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale037{{
+    curse_gog_piece(15, {.left = 486, .top = 375, .width = 184, .height = 35}),
+    curse_gog_piece(15, {.left = 461, .top = 418, .width = 345, .height = 57},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale038{{
+    curse_gog_piece(15, {.left = 484, .top = 494, .width = 183, .height = 35}),
+    curse_gog_piece(15, {.left = 457, .top = 536, .width = 339, .height = 61},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale039{{
+    curse_gog_piece(15, {.left = 483, .top = 614, .width = 183, .height = 34}),
+    curse_gog_piece(15, {.left = 456, .top = 656, .width = 338, .height = 88},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale040{{
+    curse_gog_piece(15, {.left = 481, .top = 760, .width = 181, .height = 34}),
+    curse_gog_piece(15, {.left = 455, .top = 802, .width = 348, .height = 86},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale041{{
+    curse_gog_piece(15, {.left = 480, .top = 906, .width = 180, .height = 35}),
+    curse_gog_piece(15, {.left = 454, .top = 949, .width = 345, .height = 52},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale042{{
+    curse_gog_piece(15, {.left = 478, .top = 1026, .width = 182, .height = 35}),
+    curse_gog_piece(15, {.left = 452, .top = 1068, .width = 341, .height = 80},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale043{{
+    curse_gog_piece(15, {.left = 910, .top = 125, .width = 181, .height = 34}),
+    curse_gog_piece(15, {.left = 884, .top = 165, .width = 325, .height = 59},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale044{{
+    curse_gog_piece(15, {.left = 911, .top = 245, .width = 181, .height = 34}),
+    curse_gog_piece(15, {.left = 887, .top = 284, .width = 328, .height = 60},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale045{{
+    curse_gog_piece(15, {.left = 912, .top = 363, .width = 185, .height = 34}),
+    curse_gog_piece(15, {.left = 887, .top = 403, .width = 248, .height = 59},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale046{{
+    curse_gog_piece(15, {.left = 915, .top = 482, .width = 183, .height = 34}),
+    curse_gog_piece(15, {.left = 891, .top = 523, .width = 247, .height = 113},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale047{{
+    curse_gog_piece(15, {.left = 916, .top = 655, .width = 184, .height = 34}),
+    curse_gog_piece(15, {.left = 892, .top = 699, .width = 248, .height = 83},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale048{{
+    curse_gog_piece(15, {.left = 917, .top = 802, .width = 183, .height = 34}),
+    curse_gog_piece(15, {.left = 892, .top = 842, .width = 346, .height = 107},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale049{{
+    curse_gog_piece(15, {.left = 918, .top = 975, .width = 183, .height = 34}),
+    curse_gog_piece(15, {.left = 894, .top = 1016, .width = 340, .height = 59},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale050{{
+    curse_gog_piece(15, {.left = 1290, .top = 120, .width = 181, .height = 35}),
+    curse_gog_piece(15, {.left = 1265, .top = 160, .width = 339, .height = 86},
+                    true),
+}};
+constexpr std::array<journal_fragment, 3> curse_gog_tale051{{
+    curse_gog_piece(15, {.left = 1292, .top = 266, .width = 180, .height = 35}),
+    curse_gog_piece(15, {.left = 1291, .top = 307, .width = 283, .height = 29},
+                    true),
+    curse_gog_piece(15, {.left = 1348, .top = 336, .width = 252, .height = 85}),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale052{{
+    curse_gog_piece(15, {.left = 1374, .top = 439, .width = 182, .height = 35}),
+    curse_gog_piece(15, {.left = 1351, .top = 480, .width = 248, .height = 87},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale053{{
+    curse_gog_piece(15, {.left = 1376, .top = 587, .width = 181, .height = 34}),
+    curse_gog_piece(15, {.left = 1352, .top = 627, .width = 258, .height = 114},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale054{{
+    curse_gog_piece(15, {.left = 1296, .top = 761, .width = 181, .height = 35}),
+    curse_gog_piece(15, {.left = 1271, .top = 802, .width = 325, .height = 140},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale055{{
+    curse_gog_piece(15, {.left = 1298, .top = 962, .width = 184, .height = 34}),
+    curse_gog_piece(
+        15, {.left = 1274, .top = 1004, .width = 345, .height = 110}, true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale056{{
+    curse_gog_piece(16, {.left = 112, .top = 111, .width = 184, .height = 34}),
+    curse_gog_piece(16, {.left = 85, .top = 152, .width = 344, .height = 85},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale057{{
+    curse_gog_piece(16, {.left = 111, .top = 257, .width = 184, .height = 34}),
+    curse_gog_piece(16, {.left = 85, .top = 298, .width = 336, .height = 86},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale058{{
+    curse_gog_piece(16, {.left = 110, .top = 404, .width = 183, .height = 34}),
+    curse_gog_piece(16, {.left = 84, .top = 445, .width = 346, .height = 60},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale059{{
+    curse_gog_piece(16, {.left = 109, .top = 524, .width = 183, .height = 34}),
+    curse_gog_piece(16, {.left = 82, .top = 567, .width = 346, .height = 111},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale060{{
+    curse_gog_piece(16, {.left = 493, .top = 115, .width = 181, .height = 34}),
+    curse_gog_piece(16, {.left = 466, .top = 156, .width = 338, .height = 58},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale061{{
+    curse_gog_piece(16, {.left = 492, .top = 234, .width = 181, .height = 34}),
+    curse_gog_piece(16, {.left = 466, .top = 275, .width = 334, .height = 88},
+                    true),
+}};
+constexpr std::array<journal_fragment, 2> curse_gog_tale062{{
+    curse_gog_piece(16, {.left = 491, .top = 381, .width = 182, .height = 34}),
+    curse_gog_piece(16, {.left = 466, .top = 422, .width = 345, .height = 60},
+                    true),
+}};
+constexpr std::array<journal_entry_fact, 121> curse_gog_entries{{
+    {.kind = journal_kind::entry,
+     .number = 1,
+     .fragments = curse_gog_entry001,
+     .art = curse_gog_entry001_art},
+    {.kind = journal_kind::entry, .number = 2, .fragments = curse_gog_entry002},
+    {.kind = journal_kind::entry, .number = 3, .fragments = curse_gog_entry003},
+    {.kind = journal_kind::entry,
+     .number = 4,
+     .fragments = curse_gog_entry004,
+     .art = curse_gog_entry004_art},
+    {.kind = journal_kind::entry, .number = 5, .fragments = curse_gog_entry005},
+    {.kind = journal_kind::entry, .number = 6, .fragments = curse_gog_entry006},
+    {.kind = journal_kind::entry, .number = 7, .fragments = curse_gog_entry007},
+    {.kind = journal_kind::entry,
+     .number = 8,
+     .fragments = curse_gog_entry008,
+     .art = curse_gog_entry008_art},
+    {.kind = journal_kind::entry,
+     .number = 9,
+     .fragments = curse_gog_entry009,
+     .art = curse_gog_entry009_art},
+    {.kind = journal_kind::entry,
+     .number = 10,
+     .fragments = curse_gog_entry010},
+    {.kind = journal_kind::entry,
+     .number = 11,
+     .fragments = curse_gog_entry011},
+    {.kind = journal_kind::entry,
+     .number = 12,
+     .fragments = curse_gog_entry012},
+    {.kind = journal_kind::entry,
+     .number = 13,
+     .fragments = curse_gog_entry013},
+    {.kind = journal_kind::entry,
+     .number = 14,
+     .fragments = curse_gog_entry014},
+    {.kind = journal_kind::entry,
+     .number = 15,
+     .fragments = curse_gog_entry015},
+    {.kind = journal_kind::entry,
+     .number = 16,
+     .fragments = curse_gog_entry016},
+    {.kind = journal_kind::entry,
+     .number = 17,
+     .fragments = curse_gog_entry017,
+     .art = curse_gog_entry017_art},
+    {.kind = journal_kind::entry,
+     .number = 18,
+     .fragments = curse_gog_entry018},
+    {.kind = journal_kind::entry,
+     .number = 19,
+     .fragments = curse_gog_entry019},
+    {.kind = journal_kind::entry,
+     .number = 20,
+     .fragments = curse_gog_entry020,
+     .art = curse_gog_entry020_art},
+    {.kind = journal_kind::entry,
+     .number = 21,
+     .fragments = curse_gog_entry021},
+    {.kind = journal_kind::entry,
+     .number = 22,
+     .fragments = curse_gog_entry022},
+    {.kind = journal_kind::entry,
+     .number = 23,
+     .fragments = curse_gog_entry023},
+    {.kind = journal_kind::entry,
+     .number = 24,
+     .fragments = curse_gog_entry024},
+    {.kind = journal_kind::entry,
+     .number = 25,
+     .fragments = curse_gog_entry025},
+    {.kind = journal_kind::entry,
+     .number = 26,
+     .fragments = curse_gog_entry026},
+    {.kind = journal_kind::entry,
+     .number = 27,
+     .fragments = curse_gog_entry027},
+    {.kind = journal_kind::entry,
+     .number = 28,
+     .fragments = curse_gog_entry028},
+    {.kind = journal_kind::entry,
+     .number = 29,
+     .fragments = curse_gog_entry029},
+    {.kind = journal_kind::entry,
+     .number = 30,
+     .fragments = curse_gog_entry030},
+    {.kind = journal_kind::entry,
+     .number = 31,
+     .fragments = curse_gog_entry031},
+    {.kind = journal_kind::entry,
+     .number = 32,
+     .fragments = curse_gog_entry032},
+    {.kind = journal_kind::entry,
+     .number = 33,
+     .fragments = curse_gog_entry033},
+    {.kind = journal_kind::entry,
+     .number = 34,
+     .fragments = curse_gog_entry034},
+    {.kind = journal_kind::entry,
+     .number = 35,
+     .fragments = curse_gog_entry035},
+    {.kind = journal_kind::entry,
+     .number = 36,
+     .fragments = curse_gog_entry036},
+    {.kind = journal_kind::entry,
+     .number = 37,
+     .fragments = curse_gog_entry037},
+    {.kind = journal_kind::entry,
+     .number = 38,
+     .fragments = curse_gog_entry038},
+    {.kind = journal_kind::entry,
+     .number = 39,
+     .fragments = curse_gog_entry039,
+     .art = curse_gog_entry039_art},
+    {.kind = journal_kind::entry,
+     .number = 40,
+     .fragments = curse_gog_entry040},
+    {.kind = journal_kind::entry,
+     .number = 41,
+     .fragments = curse_gog_entry041},
+    {.kind = journal_kind::entry,
+     .number = 42,
+     .fragments = curse_gog_entry042},
+    {.kind = journal_kind::entry,
+     .number = 43,
+     .fragments = curse_gog_entry043},
+    {.kind = journal_kind::entry,
+     .number = 44,
+     .fragments = curse_gog_entry044},
+    {.kind = journal_kind::entry,
+     .number = 45,
+     .fragments = curse_gog_entry045},
+    {.kind = journal_kind::entry,
+     .number = 46,
+     .fragments = curse_gog_entry046},
+    {.kind = journal_kind::entry,
+     .number = 47,
+     .fragments = curse_gog_entry047},
+    {.kind = journal_kind::entry,
+     .number = 48,
+     .fragments = curse_gog_entry048},
+    {.kind = journal_kind::entry,
+     .number = 49,
+     .fragments = curse_gog_entry049},
+    {.kind = journal_kind::entry,
+     .number = 50,
+     .fragments = curse_gog_entry050},
+    {.kind = journal_kind::entry,
+     .number = 51,
+     .fragments = curse_gog_entry051},
+    {.kind = journal_kind::entry,
+     .number = 52,
+     .fragments = curse_gog_entry052,
+     .art = curse_gog_entry052_art},
+    {.kind = journal_kind::entry,
+     .number = 53,
+     .fragments = curse_gog_entry053},
+    {.kind = journal_kind::entry,
+     .number = 54,
+     .fragments = curse_gog_entry054},
+    {.kind = journal_kind::entry,
+     .number = 55,
+     .fragments = curse_gog_entry055},
+    {.kind = journal_kind::entry,
+     .number = 56,
+     .fragments = curse_gog_entry056},
+    {.kind = journal_kind::entry,
+     .number = 57,
+     .fragments = curse_gog_entry057},
+    {.kind = journal_kind::entry,
+     .number = 58,
+     .fragments = curse_gog_entry058},
+    {.kind = journal_kind::entry,
+     .number = 59,
+     .fragments = curse_gog_entry059,
+     .art = curse_gog_entry059_art},
+    {.kind = journal_kind::tale, .number = 1, .fragments = curse_gog_tale001},
+    {.kind = journal_kind::tale, .number = 2, .fragments = curse_gog_tale002},
+    {.kind = journal_kind::tale, .number = 3, .fragments = curse_gog_tale003},
+    {.kind = journal_kind::tale, .number = 4, .fragments = curse_gog_tale004},
+    {.kind = journal_kind::tale, .number = 5, .fragments = curse_gog_tale005},
+    {.kind = journal_kind::tale, .number = 6, .fragments = curse_gog_tale006},
+    {.kind = journal_kind::tale, .number = 7, .fragments = curse_gog_tale007},
+    {.kind = journal_kind::tale, .number = 8, .fragments = curse_gog_tale008},
+    {.kind = journal_kind::tale, .number = 9, .fragments = curse_gog_tale009},
+    {.kind = journal_kind::tale, .number = 10, .fragments = curse_gog_tale010},
+    {.kind = journal_kind::tale, .number = 11, .fragments = curse_gog_tale011},
+    {.kind = journal_kind::tale, .number = 12, .fragments = curse_gog_tale012},
+    {.kind = journal_kind::tale, .number = 13, .fragments = curse_gog_tale013},
+    {.kind = journal_kind::tale, .number = 14, .fragments = curse_gog_tale014},
+    {.kind = journal_kind::tale, .number = 15, .fragments = curse_gog_tale015},
+    {.kind = journal_kind::tale, .number = 16, .fragments = curse_gog_tale016},
+    {.kind = journal_kind::tale, .number = 17, .fragments = curse_gog_tale017},
+    {.kind = journal_kind::tale, .number = 18, .fragments = curse_gog_tale018},
+    {.kind = journal_kind::tale, .number = 19, .fragments = curse_gog_tale019},
+    {.kind = journal_kind::tale, .number = 20, .fragments = curse_gog_tale020},
+    {.kind = journal_kind::tale, .number = 21, .fragments = curse_gog_tale021},
+    {.kind = journal_kind::tale, .number = 22, .fragments = curse_gog_tale022},
+    {.kind = journal_kind::tale, .number = 23, .fragments = curse_gog_tale023},
+    {.kind = journal_kind::tale, .number = 24, .fragments = curse_gog_tale024},
+    {.kind = journal_kind::tale, .number = 25, .fragments = curse_gog_tale025},
+    {.kind = journal_kind::tale, .number = 26, .fragments = curse_gog_tale026},
+    {.kind = journal_kind::tale, .number = 27, .fragments = curse_gog_tale027},
+    {.kind = journal_kind::tale, .number = 28, .fragments = curse_gog_tale028},
+    {.kind = journal_kind::tale, .number = 29, .fragments = curse_gog_tale029},
+    {.kind = journal_kind::tale, .number = 30, .fragments = curse_gog_tale030},
+    {.kind = journal_kind::tale, .number = 31, .fragments = curse_gog_tale031},
+    {.kind = journal_kind::tale, .number = 32, .fragments = curse_gog_tale032},
+    {.kind = journal_kind::tale, .number = 33, .fragments = curse_gog_tale033},
+    {.kind = journal_kind::tale, .number = 34, .fragments = curse_gog_tale034},
+    {.kind = journal_kind::tale, .number = 35, .fragments = curse_gog_tale035},
+    {.kind = journal_kind::tale, .number = 36, .fragments = curse_gog_tale036},
+    {.kind = journal_kind::tale, .number = 37, .fragments = curse_gog_tale037},
+    {.kind = journal_kind::tale, .number = 38, .fragments = curse_gog_tale038},
+    {.kind = journal_kind::tale, .number = 39, .fragments = curse_gog_tale039},
+    {.kind = journal_kind::tale, .number = 40, .fragments = curse_gog_tale040},
+    {.kind = journal_kind::tale, .number = 41, .fragments = curse_gog_tale041},
+    {.kind = journal_kind::tale, .number = 42, .fragments = curse_gog_tale042},
+    {.kind = journal_kind::tale, .number = 43, .fragments = curse_gog_tale043},
+    {.kind = journal_kind::tale, .number = 44, .fragments = curse_gog_tale044},
+    {.kind = journal_kind::tale, .number = 45, .fragments = curse_gog_tale045},
+    {.kind = journal_kind::tale, .number = 46, .fragments = curse_gog_tale046},
+    {.kind = journal_kind::tale, .number = 47, .fragments = curse_gog_tale047},
+    {.kind = journal_kind::tale, .number = 48, .fragments = curse_gog_tale048},
+    {.kind = journal_kind::tale, .number = 49, .fragments = curse_gog_tale049},
+    {.kind = journal_kind::tale, .number = 50, .fragments = curse_gog_tale050},
+    {.kind = journal_kind::tale, .number = 51, .fragments = curse_gog_tale051},
+    {.kind = journal_kind::tale, .number = 52, .fragments = curse_gog_tale052},
+    {.kind = journal_kind::tale, .number = 53, .fragments = curse_gog_tale053},
+    {.kind = journal_kind::tale, .number = 54, .fragments = curse_gog_tale054},
+    {.kind = journal_kind::tale, .number = 55, .fragments = curse_gog_tale055},
+    {.kind = journal_kind::tale, .number = 56, .fragments = curse_gog_tale056},
+    {.kind = journal_kind::tale, .number = 57, .fragments = curse_gog_tale057},
+    {.kind = journal_kind::tale, .number = 58, .fragments = curse_gog_tale058},
+    {.kind = journal_kind::tale, .number = 59, .fragments = curse_gog_tale059},
+    {.kind = journal_kind::tale, .number = 60, .fragments = curse_gog_tale060},
+    {.kind = journal_kind::tale, .number = 61, .fragments = curse_gog_tale061},
+    {.kind = journal_kind::tale, .number = 62, .fragments = curse_gog_tale062},
+}};
+// --- curse gog edition end
+
 /// The editions this build knows the insides of.
 ///
 /// Each fingerprint is the same one `machine::known_documents()` carries
 /// for the gate: one artifact seen twice, and the suite checks that the
 /// two agree.
-constexpr std::array<journal_edition, 3> table{{
+constexpr std::array<journal_edition, 4> table{{
     {.fingerprint =
          "67cbfc0c833b835494310680ad298bc4de1cdcc0168115cc3608c2f6074c737c",
      .name = "Pool of Radiance Adventurer's Journal, archive release",
@@ -3764,6 +4771,11 @@ constexpr std::array<journal_edition, 3> table{{
      .program = machine::curse_of_the_azure_bonds.fingerprint,
      .entries = curse_entries,
      .pages = curse_pages},
+    {.fingerprint =
+         "7c918ead661b353e7da606b9137929f1dee2c9c203408b0b751cf719cd8529bb",
+     .name = "Curse of the Azure Bonds Adventurer's Journal, GOG release",
+     .program = machine::curse_of_the_azure_bonds.fingerprint,
+     .entries = curse_gog_entries},
 }};
 
 }  // namespace

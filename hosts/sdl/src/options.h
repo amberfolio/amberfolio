@@ -320,7 +320,7 @@
 //     with its fingerprint and nothing is read: the offsets are only
 //     true of one file, and following them into another produces
 //     twenty failures rather than one sentence. `known_journals()` has
-//     one row — the GOG release's own journal (#214) — so that is
+//     four editions, each game's GOG and Steam journals, so that is
 //     what every *other* journal gets, and `docs/journal.md` §3 is how
 //     an edition is added.
 //

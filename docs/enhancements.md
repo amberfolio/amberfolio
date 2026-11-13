@@ -186,10 +186,11 @@ moves the file); the file input on the page.
 
 **What it needs.** An OCR engine: Tesseract, run as a program on the
 desktop, loaded as the pinned `tesseract.js` from the page's own origin on
-the web, never from a CDN. A recognised edition: the table has one row
-(`docs/journal.md` §3 is how to add one); any other PDF is refused with
-its fingerprint. Pictures need a page decoder, which only a desktop build
-with the engine linked in has; a default build reports `pictures=0/14`.
+the web, never from a CDN. A recognised edition: the table has four,
+each game's GOG and Steam journals (`docs/journal.md` §3 is how to add
+one); any other PDF is refused with its fingerprint. The two Steam
+journals are typeset as text and are read with no engine at all. Every
+build decodes the pages the pictures are on (`docs/journal.md` §11.4).
 
 ### The reader
 

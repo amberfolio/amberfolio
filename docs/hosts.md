@@ -2039,23 +2039,26 @@ desktop's rebuilds the rows from the engine anyway.
 
 ### The documents this build recognises
 
-Four, two releases' worth (`machine/document.cpp`, and the same four
-`document` artifacts on both rows of `data/editions.json`, because any of
-them serves the one program). The GOG release's two are named `archive
-release` in the table:
+Six (`machine/document.cpp`). Pool of Radiance has four, two releases'
+worth, the same four `document` artifacts on both of its rows of
+`data/editions.json`, because any of them serves the one program; the
+GOG release's two are named `archive release` in the table. Curse of the
+Azure Bonds has two journals, on both of its rows for the same reason:
 
 | document | kind | sha256 |
 | --- | --- | --- |
-| the GOG release's code wheel (PDF) | code wheel | `0db301ae…586fd` |
-| the GOG release's Adventurer's Journal (PDF) | journal | `67cbfc0c…c737c` |
-| the Steam release's code wheel (`codewheel-pictures-ENG.pdf`) | code wheel | `32b6bc79…f3f11` |
-| the Steam release's Adventurer's Journal (PDF) | journal | `a31368c3…4ac1ee` |
+| Pool of Radiance, the GOG release's code wheel (PDF) | code wheel | `0db301ae…586fd` |
+| Pool of Radiance, the GOG release's Adventurer's Journal (PDF) | journal | `67cbfc0c…c737c` |
+| Pool of Radiance, the Steam release's code wheel (`codewheel-pictures-ENG.pdf`) | code wheel | `32b6bc79…f3f11` |
+| Pool of Radiance, the Steam release's Adventurer's Journal (PDF) | journal | `a31368c3…4ac1ee` |
+| Curse of the Azure Bonds, the Steam release's Adventurer's Journal (PDF) | journal | `68bd9d47…fec8031` |
+| Curse of the Azure Bonds, the GOG release's Adventurer's Journal (PDF) | journal | `7c918ead…d8529bb` |
 
-A code wheel is a fact that gates nothing (#290). Both journals are
-read, by different routes (`docs/journal.md` §3): the GOG release's
-pages are scans and go through an OCR engine; **the Steam release's are
+A code wheel is a fact that gates nothing (#290). Every journal is
+read, by one of two routes (`docs/journal.md` §3): each GOG release's
+pages are scans and go through an OCR engine; **each Steam release's are
 text and are read out of the document with no engine at all** (#398,
-`docs/journal.md` §3a). So on the page a player who picks the Steam
+`docs/journal.md` §3a). So on the page a player who picks a Steam
 journal fetches no OCR engine and nothing from `vendor/tesseract/`:
 `ingestJournal()` asks the module `af_web_journal_reads_own_text()` first
 and calls its engine loader only for a scanned edition. Both land in the
