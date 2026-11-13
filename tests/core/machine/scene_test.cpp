@@ -18,6 +18,7 @@
 #include <string>
 #include <string_view>
 
+#include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/automap.h"
 #include "amberfolio/machine/edition.h"
 #include "amberfolio/machine/log.h"
@@ -1036,6 +1037,39 @@ constexpr std::uint16_t record_computer = 0x198;
 constexpr std::uint16_t record_ac = 0x19A;
 constexpr std::uint16_t record_hp = 0x1A4;
 constexpr std::uint16_t record_bytes = 0x1A6;
+constexpr std::uint16_t data_actor = 0x6520;
+
+// The aim bar's (seam_aim_watch.cpp), restated: the word the overlay
+// manager keeps overlay 14's segment in, the two meeting points and their
+// waits' returns, manual's halving, and both frames from BP. The arguments
+// sit two bytes further up than Pool of Radiance's; the locals are where
+// Pool of Radiance keeps them.
+constexpr std::uint32_t word_aim = 0x8E0;
+constexpr std::uint16_t target_decided = 0x314C;
+constexpr std::uint16_t target_returned = 0x31CC;
+constexpr std::uint16_t manual_line_ends = 0x3522;
+constexpr std::uint16_t manual_decided = 0x36B3;
+constexpr std::uint16_t manual_returned = 0x3721;
+constexpr int target_attack = 0x0A;
+constexpr int target_reach = 0x0C;
+constexpr int target_record = 0x0E;
+constexpr int target_actor = 0x12;
+constexpr int target_range = -0x30;
+constexpr int target_bar = -0x2A;
+constexpr int manual_attack = 0x12;
+constexpr int manual_record = 0x16;
+constexpr int manual_column = -0x33;
+constexpr int manual_row = -0x34;
+constexpr int manual_range = -0x38;
+constexpr int manual_line = -0x39;
+
+/// Where this test puts the overlay and the aim routine's frame.
+constexpr std::uint16_t aim_segment = 0x7000;
+constexpr std::uint16_t stack_segment = 0x5800;
+constexpr std::uint16_t frame_base = 0x0600;
+/// What every byte of the frame holds until a test says otherwise: no
+/// column or row on the grid, no range a bar prints, no figure's record.
+constexpr std::uint8_t frame_filler = 0xEE;
 }  // namespace curse
 
 struct curse_rig : rig {
@@ -1080,6 +1114,107 @@ struct curse_rig : rig {
       cword(static_cast<std::uint16_t>(curse::data_wall_set + (slot * 4U)),
             0xFFFF);
     }
+  }
+
+  /// A fight with no one in it yet: the window's top-left at (x, y) and
+  /// every square open ground that costs one.
+  void fight(std::uint8_t x, std::uint8_t y) const {
+    cdata(curse::data_game_mode, 5);
+    cdata(curse::data_disk, 2);
+    cdata(curse::data_area, 1);
+    cword(curse::data_combat_block, 0);
+    cword(curse::data_combat_block + 2, combat_block_segment);
+    const std::uint32_t block = std::uint32_t{combat_block_segment} * 16U;
+    ram()[block + 2] = x;
+    ram()[block + 3] = y;
+    for (unsigned i = 0; i < 50U * 25U; ++i) {
+      ram()[block + 7 + i] = ground_open;
+    }
+    cdata(static_cast<std::uint16_t>(curse::data_ground_cost +
+                                     (ground_open * 4U)),
+          1);
+    cdata(curse::data_slot_squares + 3, 0);
+  }
+
+  [[nodiscard]] static std::uint32_t fighter_record(unsigned slot) {
+    return (std::uint32_t{combat_records_segment} * 16U) +
+           (slot * curse::record_bytes);
+  }
+
+  /// One figure in the next slot, one square, in the fight; its slot.
+  [[nodiscard]] unsigned fighter(std::string_view name, bool enemy,
+                                 std::uint8_t x, std::uint8_t y) const {
+    const unsigned slot =
+        static_cast<unsigned>(
+            ram()[curse_base() + curse::data_slot_squares + 3]) +
+        1U;
+    cdata(curse::data_slot_squares + 3, static_cast<std::uint8_t>(slot));
+    const std::uint32_t record = fighter_record(slot);
+    ram()[record] = static_cast<std::uint8_t>(name.size());
+    for (std::size_t i = 0; i < name.size(); ++i) {
+      ram()[record + 1 + i] = static_cast<std::uint8_t>(name[i]);
+    }
+    ram()[record + curse::record_in_fight] = 1;
+    ram()[record + curse::record_side] = enemy ? 1 : 0;
+    ram()[record + curse::record_computer] = enemy ? 1 : 0;
+    ram()[record + curse::record_ac] = 0x3C - 4;
+    ram()[record + curse::record_hp] = 20;
+    cfar(static_cast<std::uint16_t>(curse::data_slot_records + (slot * 4U)),
+         record);
+    const auto squares =
+        static_cast<std::uint16_t>(curse::data_slot_squares + (slot * 4U));
+    cdata(squares, x);
+    cdata(static_cast<std::uint16_t>(squares + 1), y);
+    cdata(static_cast<std::uint16_t>(squares + 2),
+          static_cast<std::uint8_t>(slot));
+    cdata(static_cast<std::uint16_t>(squares + 3), 1);
+    return slot;
+  }
+
+  void turn_of(unsigned slot) const {
+    cfar(curse::data_actor, fighter_record(slot));
+  }
+
+  /// `modern-controls` on, overlay 14 where the manager says it is, and
+  /// the frame nothing but filler.
+  void watch_the_aim() const {
+    ASSERT_EQ(box->seams().enable("modern-controls"), seam_reason::none);
+    const std::uint32_t word =
+        (std::uint32_t{image_segment} * 16U) + curse::word_aim;
+    ram()[word] = static_cast<std::uint8_t>(curse::aim_segment & 0xFFU);
+    ram()[word + 1] = static_cast<std::uint8_t>(curse::aim_segment >> 8U);
+    for (int offset = -0x40; offset < 0x20; ++offset) {
+      frame_byte(offset, curse::frame_filler);
+    }
+  }
+
+  void frame_byte(int offset, std::uint8_t value) const {
+    ram()[(std::uint32_t{curse::stack_segment} * 16U) +
+          static_cast<std::uint16_t>(curse::frame_base + offset)] = value;
+  }
+  void frame_word(int offset, std::uint16_t value) const {
+    frame_byte(offset, static_cast<std::uint8_t>(value & 0xFFU));
+    frame_byte(offset + 1, static_cast<std::uint8_t>(value >> 8U));
+  }
+  /// A far pointer in the frame to `slot`'s record, or to nothing.
+  void frame_record(int offset, unsigned slot) const {
+    const std::uint32_t linear = slot == 0 ? 0 : fighter_record(slot);
+    frame_word(offset, static_cast<std::uint16_t>(linear & 0x0FU));
+    frame_word(offset + 2, static_cast<std::uint16_t>(linear >> 4U));
+  }
+
+  /// Stand on `offset` in overlay 14 with BP on the frame, and take one
+  /// step; the instruction there is a NOP.
+  void arrive(std::uint16_t offset) const {
+    ram()[(std::uint32_t{curse::aim_segment} * 16U) + offset] = 0x90;
+    cpu::registers& regs = box->processor().regs();
+    regs[cpu::sreg::cs] = curse::aim_segment;
+    regs.ip = offset;
+    regs[cpu::sreg::ss] = curse::stack_segment;
+    regs[cpu::reg16::bp] = curse::frame_base;
+    regs[cpu::reg16::sp] =
+        static_cast<std::uint16_t>(curse::frame_base - 0x300);
+    box->step();
   }
 };
 
@@ -1175,7 +1310,108 @@ TEST(SceneOnCurse, ReadsAFigureOnTheGridOutOfItsOwnRecord) {
   EXPECT_TRUE(who.player);
   EXPECT_EQ(s.window_x, 22);
   EXPECT_EQ(s.window_y, 10);
-  static_cast<void>(curse::record_bytes);
+}
+
+// The aim bar's frames are Curse's own: the target's record and the panel's
+// are arguments, two bytes further up than Pool of Radiance's. Each frame
+// below is laid out whole over filler, so a read at Pool of Radiance's
+// offset, or a byte off any local, finds something else.
+
+TEST(SceneOnCurse, FromTargetToTargetTheAimIsReadOutOfCursesFrame) {
+  const curse_rig r;
+  r.watch_the_aim();
+  r.fight(22, 10);
+  const unsigned mathew = r.fighter("MATHEW", false, 25, 13);
+  const unsigned patron = r.fighter("PATRON", true, 27, 12);
+  r.turn_of(mathew);
+  r.frame_word(curse::target_attack, 1);
+  r.frame_word(curse::target_reach, 1);
+  r.frame_record(curse::target_record, patron);
+  r.frame_record(curse::target_actor, mathew);
+  r.frame_byte(curse::target_range, 2);
+  r.frame_byte(curse::target_bar, 6);
+  r.arrive(curse::target_decided);
+
+  scene s = r.read();
+  ASSERT_EQ(r.last, scene_trouble::none) << r.json();
+  ASSERT_EQ(s.screen, scene_screen::combat);
+  ASSERT_TRUE(s.aim_kept);
+  EXPECT_EQ(s.aim.mode, scene_aim_mode::target);
+  EXPECT_EQ(s.aim.x, 27U);
+  EXPECT_EQ(s.aim.y, 12U);
+  EXPECT_EQ(s.aim.under, 1);
+  EXPECT_EQ(s.aim.range, 2);
+  EXPECT_TRUE(s.aim.target);
+  EXPECT_NE(r.json().find(R"("aim":{"mode":"target","x":27,"y":12,"under":1,)"
+                          R"("range":2,"target":true})"),
+            std::string::npos)
+      << r.json();
+
+  r.arrive(curse::target_returned);
+  s = r.read();
+  EXPECT_TRUE(s.aim_kept);
+  EXPECT_EQ(s.aim.mode, scene_aim_mode::none);
+}
+
+TEST(SceneOnCurse, InManualTheAimIsTheCursorOutOfCursesFrame) {
+  const curse_rig r;
+  r.watch_the_aim();
+  r.fight(22, 10);
+  const unsigned mathew = r.fighter("MATHEW", false, 25, 13);
+  const unsigned patron = r.fighter("PATRON", true, 27, 12);
+  r.turn_of(mathew);
+  r.frame_word(curse::manual_attack, 1);
+  r.frame_byte(curse::manual_column, 27);
+  r.frame_byte(curse::manual_row, 12);
+  r.frame_word(curse::manual_range, 2);
+  r.frame_byte(curse::manual_line, 1);
+  r.frame_record(curse::manual_record, 0);
+  r.arrive(curse::manual_line_ends);
+  // The panel's record is put in the frame after the halving.
+  r.frame_record(curse::manual_record, patron);
+  r.arrive(curse::manual_decided);
+
+  const scene s = r.read();
+  ASSERT_EQ(r.last, scene_trouble::none) << r.json();
+  ASSERT_EQ(s.screen, scene_screen::combat);
+  EXPECT_EQ(s.aim.mode, scene_aim_mode::manual);
+  EXPECT_EQ(s.aim.x, 27U);
+  EXPECT_EQ(s.aim.y, 12U);
+  EXPECT_EQ(s.aim.under, 1);
+  EXPECT_EQ(s.aim.range, 2);
+  EXPECT_TRUE(s.aim.target);
+  EXPECT_NE(r.json().find(R"("aim":{"mode":"manual","x":27,"y":12,"under":1,)"
+                          R"("range":2,"target":true})"),
+            std::string::npos)
+      << r.json();
+
+  r.arrive(curse::manual_returned);
+  EXPECT_EQ(r.read().aim.mode, scene_aim_mode::none);
+}
+
+TEST(SceneOnCurse, InManualAnEmptySquareInSightHasARangeAndNoOne) {
+  const curse_rig r;
+  r.watch_the_aim();
+  r.fight(22, 10);
+  r.turn_of(r.fighter("MATHEW", false, 25, 13));
+  r.frame_word(curse::manual_attack, 1);
+  r.frame_byte(curse::manual_column, 24);
+  r.frame_byte(curse::manual_row, 15);
+  r.frame_word(curse::manual_range, 2);
+  r.frame_byte(curse::manual_line, 1);
+  r.frame_record(curse::manual_record, 0);
+  r.arrive(curse::manual_line_ends);
+  // Nothing to aim at: the line's byte is cleared before the bar is built.
+  r.frame_byte(curse::manual_line, 0);
+  r.arrive(curse::manual_decided);
+
+  const scene s = r.read();
+  EXPECT_EQ(s.aim.mode, scene_aim_mode::manual);
+  EXPECT_EQ(s.aim.x, 24U);
+  EXPECT_EQ(s.aim.y, 15U);
+  EXPECT_EQ(s.aim.under, -1);
+  EXPECT_EQ(s.aim.range, 2);
+  EXPECT_FALSE(s.aim.target);
 }
 
 }  // namespace
