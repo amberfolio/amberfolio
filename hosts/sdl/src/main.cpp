@@ -675,7 +675,7 @@ int main(int argc, char** argv) try {
     // not in this file, so a citation leaves a player's transcription
     // alone; it reaches a file beside the saves when the program saves.
     if (journal_text.changed()) {
-      sdl::save_journal_store(opts, journal_text);
+      sdl::save_journal_store(opts, box, journal_text);
       journal_text.clear_changed();
     }
     // And the code wheel's answer, the same way and for the same reason

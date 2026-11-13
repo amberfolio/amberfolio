@@ -22,9 +22,10 @@
 //
 // Where it goes is a host's business, because files are (PLAN.md §4):
 //
-//   * the desktop host writes one file, beside its config
-//     (`docs/hosts.md` 2a); `--journal-store` overrides it, and the line
-//     the host prints after an ingestion says which file it used;
+//   * the desktop host writes one file for each program, beside its
+//     config (`docs/hosts.md` 2a, `journal_store_filename_for()`);
+//     `--journal-store` overrides it, and the line the host prints after
+//     an ingestion says which file it used;
 //   * the browser serializes one into its own key-value storage and reads
 //     it back when the page next loads (M5-E3f), because an ingestion of
 //     a real edition is minutes of OCR and asking for it on every visit
@@ -182,6 +183,7 @@
 #include "amberfolio/host/journal_extract.h"
 #include "amberfolio/host/journal_facts.h"
 #include "amberfolio/host/journal_picture.h"
+#include "amberfolio/machine/edition.h"
 #include "amberfolio/machine/journal.h"
 #include "amberfolio/machine/platform.h"
 #include "amberfolio/sha256.h"
@@ -203,10 +205,27 @@ inline constexpr std::uint32_t journal_store_oldest_version = 1;
 /// before anything else is believed about it.
 inline constexpr std::string_view journal_store_magic = "amberfolio-journal";
 
-/// The file the desktop host writes when it was not told otherwise, under
-/// the per-user data directory it shares with the config and the
-/// answered code wheels (`per_user_path()` in the SDL host).
+/// The file the desktop host kept the one store in before a store was a
+/// program's own (#584), under the per-user data directory it shares with
+/// the config and the answered code wheels (`per_user_path()` in the SDL
+/// host). Read once more, for the program its edition is the journal of,
+/// where that program has no store of its own yet; never written.
 inline constexpr std::string_view journal_store_filename = "journal.txt";
+
+/// The word a program's store is kept under (#584): the stem of the
+/// configuration file it reads, in lower case, `pool` and `curse`. A fact
+/// the edition table already has, and no two programs it knows read the
+/// same file (`edition_test.cpp`), so no two share a store.
+[[nodiscard]] std::string journal_store_word(const machine::edition& program);
+
+/// The file the desktop host keeps `program`'s journal in when it was not
+/// told otherwise: `journal-<word>.txt`, in the same directory.
+///
+/// **A store is one program's.** The game cites an item by section and
+/// number, and the two games number their own journals, so one file for
+/// both had the reader open one game's entry under the other's citation.
+[[nodiscard]] std::string journal_store_filename_for(
+    const machine::edition& program);
 
 // --- The read log's sidecar (#351) ------------------------------------
 //
@@ -564,7 +583,8 @@ std::size_t cite_all_journal(machine::journal_state& into, journal_store& store,
 /// The same, stamped off `box`'s own seeded wall clock at its current
 /// tick — the instant the seam itself stamps a citation with
 /// (`seam_journal.cpp`), derived from virtual time and never read from
-/// the host. What both hosts call.
+/// the host. What both hosts call. Nothing, for a store that is another
+/// program's journal (`journal_owner_of()`, #584).
 std::size_t cite_all_journal(machine::machine& box, journal_store& store);
 
 }  // namespace amberfolio::host

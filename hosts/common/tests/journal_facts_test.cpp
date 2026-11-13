@@ -21,6 +21,7 @@
 #include <map>
 #include <set>
 #include <span>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -28,6 +29,7 @@
 #include "amberfolio/host/journal_probe.h"
 #include "amberfolio/machine/document.h"
 #include "amberfolio/machine/edition.h"
+#include "amberfolio/machine/program_profile.h"
 #include "amberfolio/sha256.h"
 #include "gtest/gtest.h"
 
@@ -650,6 +652,78 @@ TEST(JournalTable, EveryEditionIsAJournalInTheDocumentTable) {
     EXPECT_EQ(document->kind, machine::document_kind::journal)
         << edition.name << " is in the document table as something else";
   }
+}
+
+TEST(JournalTable, EveryEditionIsTheJournalOfAProgramThisBuildKnows) {
+  // A store is read for the program its edition names and for no other
+  // (#584), so an edition that named none, or one nobody recognizes,
+  // would be a journal every game opens.
+  for (const journal_edition& edition : known_journals()) {
+    sha256_digest program;
+    ASSERT_TRUE(machine::parse_digest(edition.program, program))
+        << edition.name;
+    EXPECT_NE(machine::find_edition(program), nullptr) << edition.name;
+  }
+}
+
+/// The digest `hex` spells.
+[[nodiscard]] sha256_digest program_of(std::string_view hex) {
+  sha256_digest digest;
+  EXPECT_TRUE(machine::parse_digest(hex, digest));
+  return digest;
+}
+
+/// The first shipped edition that is `program`'s journal.
+[[nodiscard]] const journal_edition& journal_of(std::string_view program) {
+  for (const journal_edition& edition : known_journals()) {
+    if (edition.program == program) {
+      return edition;
+    }
+  }
+  ADD_FAILURE() << "no journal of that program";
+  return known_journals().front();
+}
+
+TEST(JournalOwner, AnEditionIsItsOwnProgramsAndNoOthers) {
+  const std::string_view pool = machine::pool_of_radiance.fingerprint;
+  const std::string_view curse = machine::curse_of_the_azure_bonds.fingerprint;
+
+  for (const journal_edition& edition : known_journals()) {
+    const std::string_view other = edition.program == pool ? curse : pool;
+    EXPECT_EQ(
+        journal_owner_of(edition.fingerprint, program_of(edition.program)),
+        journal_owner::this_program)
+        << edition.name;
+    EXPECT_EQ(journal_owner_of(edition.fingerprint, program_of(other)),
+              journal_owner::another_program)
+        << edition.name;
+  }
+  // Both games have a journal in the table, or the loop above proved
+  // half of what it says.
+  EXPECT_EQ(journal_of(pool).program, pool);
+  EXPECT_EQ(journal_of(curse).program, curse);
+}
+
+TEST(JournalOwner, AStoreOfNoKnownEditionIsNobodys) {
+  const sha256_digest pool = program_of(machine::pool_of_radiance.fingerprint);
+  // What the session library's stores say, a store with nothing recorded,
+  // and a line that is not a fingerprint at all.
+  EXPECT_EQ(journal_owner_of(std::string(64, '0'), pool),
+            journal_owner::unknown);
+  EXPECT_EQ(journal_owner_of("", pool), journal_owner::unknown);
+  EXPECT_EQ(journal_owner_of("not a fingerprint", pool),
+            journal_owner::unknown);
+}
+
+TEST(JournalOwner, TheProbesEditionIsOfNoProgram) {
+  // A synthetic edition of a synthetic document: read by whichever
+  // program a test runs it under.
+  const std::span<const journal_edition> probe = journal_probe_table();
+  ASSERT_FALSE(probe.empty());
+  EXPECT_TRUE(probe.front().program.empty());
+  EXPECT_EQ(journal_owner_of(probe, probe.front().fingerprint,
+                             program_of(machine::pool_of_radiance.fingerprint)),
+            journal_owner::unknown);
 }
 
 TEST(JournalTable, TheProbeIsNotAThingAPlayersBuildKnows) {

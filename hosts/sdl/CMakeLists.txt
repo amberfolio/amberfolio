@@ -592,6 +592,7 @@ if(AMBERFOLIO_BUILD_TESTS)
     tests/desktop_config_test.cpp
     tests/document_control_test.cpp
     tests/install_test.cpp
+    tests/journal_store_files_test.cpp
     tests/key_card_view_test.cpp
     tests/keymap_test.cpp
     tests/launch_config_test.cpp

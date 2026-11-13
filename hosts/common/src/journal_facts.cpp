@@ -9,8 +9,10 @@
 #include <array>
 #include <cstdint>
 #include <span>
+#include <string_view>
 
 #include "amberfolio/machine/edition.h"
+#include "amberfolio/machine/program_profile.h"
 #include "amberfolio/sha256.h"
 
 namespace amberfolio::host {
@@ -3748,15 +3750,18 @@ constexpr std::array<journal_edition, 3> table{{
     {.fingerprint =
          "67cbfc0c833b835494310680ad298bc4de1cdcc0168115cc3608c2f6074c737c",
      .name = "Pool of Radiance Adventurer's Journal, archive release",
+     .program = machine::pool_of_radiance.fingerprint,
      .entries = archive_entries},
     {.fingerprint =
          "a31368c35c527ce3f760ffac0596ab96254c79b22f7e89be219c6238954ac1ee",
      .name = "Pool of Radiance Adventurer's Journal, Steam release",
+     .program = machine::pool_of_radiance.fingerprint,
      .entries = steam_entries,
      .pages = steam_pages},
     {.fingerprint =
          "68bd9d4734a232a0a18c44510985e61a489adc17693ecdfb411c6cd2dfec8031",
      .name = "Curse of the Azure Bonds Adventurer's Journal, Steam release",
+     .program = machine::curse_of_the_azure_bonds.fingerprint,
      .entries = curse_entries,
      .pages = curse_pages},
 }};
@@ -3806,6 +3811,27 @@ const journal_edition* find_journal(std::span<const journal_edition> editions,
 
 const journal_edition* find_journal(const sha256_digest& digest) noexcept {
   return find_journal(known_journals(), digest);
+}
+
+journal_owner journal_owner_of(std::span<const journal_edition> editions,
+                               std::string_view edition,
+                               const sha256_digest& program) noexcept {
+  sha256_digest document;
+  if (!machine::parse_digest(edition, document)) {
+    return journal_owner::unknown;
+  }
+  const journal_edition* known = find_journal(editions, document);
+  if (known == nullptr || known->program.empty()) {
+    return journal_owner::unknown;
+  }
+  return machine::digest_is(program, known->program)
+             ? journal_owner::this_program
+             : journal_owner::another_program;
+}
+
+journal_owner journal_owner_of(std::string_view edition,
+                               const sha256_digest& program) noexcept {
+  return journal_owner_of(known_journals(), edition, program);
 }
 
 }  // namespace amberfolio::host

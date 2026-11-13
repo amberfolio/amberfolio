@@ -12,7 +12,11 @@
 #include <string_view>
 
 #include "amberfolio/host/code_wheel_store.h"
+#include "amberfolio/host/journal_facts.h"
 #include "amberfolio/host/journal_store.h"
+#include "amberfolio/machine/edition.h"
+#include "amberfolio/machine/machine.h"
+#include "amberfolio/sha256.h"
 #include "desktop_config.h"
 #include "options.h"
 
@@ -38,10 +42,14 @@ namespace amberfolio::sdl {
   return path;
 }
 
-[[nodiscard]] std::string journal_store_path(const options& opts) {
-  return opts.journal_store.empty()
+[[nodiscard]] std::string journal_store_path(const options& opts,
+                                             const machine::edition* program) {
+  if (!opts.journal_store.empty()) {
+    return opts.journal_store;
+  }
+  return program == nullptr
              ? per_user_path(host::journal_store_filename)
-             : opts.journal_store;
+             : per_user_path(host::journal_store_filename_for(*program));
 }
 
 [[nodiscard]] std::string code_wheel_store_path(const options& opts) {
@@ -107,24 +115,108 @@ void save_code_wheel_store(const options& opts,
   }
 }
 
-void load_journal_store(const options& opts, host::journal_store& store) {
-  const std::string path = journal_store_path(opts);
+namespace {
+
+/// The name of the edition `store` is of, for a sentence; empty for one
+/// this build does not know.
+[[nodiscard]] std::string_view edition_name_of(
+    const host::journal_store& store) {
+  sha256_digest digest;
+  if (!machine::parse_digest(store.edition(), digest)) {
+    return {};
+  }
+  const host::journal_edition* known = host::find_journal(digest);
+  return known == nullptr ? std::string_view{} : known->name;
+}
+
+/// Whose journal `store` is, to the program `box` is running.
+[[nodiscard]] host::journal_owner owner_of(const host::journal_store& store,
+                                           machine::machine& box) {
+  return box.seams().have_program()
+             ? host::journal_owner_of(store.edition(), box.seams().program())
+             : host::journal_owner::unknown;
+}
+
+void write_journal_store(const std::string& path,
+                         const host::journal_store& store) {
+  std::ofstream file(path, std::ios::binary | std::ios::trunc);
+  const std::string text = store.serialize();
+  file.write(text.data(), static_cast<std::streamsize>(text.size()));
+  file.flush();
+  if (!file) {
+    std::fprintf(stderr, "amberfolio: journal store %s could not be written\n",
+                 path.c_str());
+  }
+}
+
+/// The file a store was kept in before a store was a program's own
+/// (#584), into `store`, if it is there, reads, and is the running
+/// program's journal. False, and `store` empty, otherwise: another
+/// program's text is never read in under this one's name.
+[[nodiscard]] bool adopt_the_one_store(machine::machine& box,
+                                       host::journal_store& store,
+                                       const std::string& from) {
+  bool found = false;
+  const std::string text = slurp_file(from, found);
+  if (!found) {
+    return false;
+  }
+  if (store.parse(text) != host::journal_trouble::none ||
+      owner_of(store, box) != host::journal_owner::this_program) {
+    store.clear();
+    store.clear_changed();
+    return false;
+  }
+  return true;
+}
+
+}  // namespace
+
+void load_journal_store(const options& opts, machine::machine& box,
+                        host::journal_store& store) {
+  const std::string path =
+      journal_store_path(opts, box.seams().known_edition());
   if (path.empty()) {
     std::fprintf(stderr,
                  "amberfolio: journal this platform does not say where"
                  " per-user data lives; say --journal-store PATH\n");
     return;
   }
-  std::ifstream file(path, std::ios::binary);
-  if (!file) {
+  // A store somebody named is the whole of where to look.
+  load_journal_store_from(path,
+                          opts.journal_store.empty()
+                              ? per_user_path(host::journal_store_filename)
+                              : std::string{},
+                          box, store);
+}
+
+void load_journal_store_from(const std::string& path, const std::string& before,
+                             machine::machine& box,
+                             host::journal_store& store) {
+  bool found = false;
+  const std::string text = slurp_file(path, found);
+  if (!found) {
+    // This program has no store of its own yet. The one file every store
+    // was kept in before #584 may be its journal: taken if it is, kept
+    // from here on under the program's own name, and left where it was.
+    if (!before.empty() && before != path &&
+        adopt_the_one_store(box, store, before)) {
+      write_journal_store(path, store);
+      store.clear_changed();
+      std::fprintf(stderr,
+                   "amberfolio: journal store %s entries=%zu corrections=%zu"
+                   " pictures=%zu - read from %s, and kept here from now"
+                   " on\n",
+                   path.c_str(), store.size(), store.corrections(),
+                   store.picture_count(), before.c_str());
+      return;
+    }
     std::fprintf(stderr,
                  "amberfolio: journal store %s is not there yet - the"
                  " reader has nothing to show until --journal reads one\n",
                  path.c_str());
     return;
   }
-  const std::string text((std::istreambuf_iterator<char>(file)),
-                         std::istreambuf_iterator<char>());
   if (const host::journal_trouble why = store.parse(text);
       why != host::journal_trouble::none) {
     // Left alone rather than used: whatever that file is, it is not this
@@ -142,21 +234,26 @@ void load_journal_store(const options& opts, host::journal_store& store) {
                " pictures=%zu\n",
                path.c_str(), store.size(), store.corrections(),
                store.picture_count());
+  if (owner_of(store, box) == host::journal_owner::another_program) {
+    // A store somebody named, of the other game's journal (#584). Said,
+    // and left as it is: the reader answers as it does with no journal
+    // (`host_services.cpp`), and the file is that game's to keep.
+    const std::string_view name = edition_name_of(store);
+    std::fprintf(stderr,
+                 "amberfolio: journal store %s is the %.*s - another"
+                 " game's journal, so the reader will not open it here\n",
+                 path.c_str(), static_cast<int>(name.size()), name.data());
+  }
 }
 
-void save_journal_store(const options& opts, const host::journal_store& store) {
-  const std::string path = journal_store_path(opts);
+void save_journal_store(const options& opts, machine::machine& box,
+                        const host::journal_store& store) {
+  const std::string path =
+      journal_store_path(opts, box.seams().known_edition());
   if (path.empty()) {
     return;
   }
-  std::ofstream file(path, std::ios::binary | std::ios::trunc);
-  const std::string text = store.serialize();
-  file.write(text.data(), static_cast<std::streamsize>(text.size()));
-  file.flush();
-  if (!file) {
-    std::fprintf(stderr, "amberfolio: journal store %s could not be written\n",
-                 path.c_str());
-  }
+  write_journal_store(path, store);
 }
 
 void settle_code_wheel(const options& opts, machine::machine& box,

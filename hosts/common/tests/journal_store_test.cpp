@@ -13,6 +13,7 @@
 
 #include <array>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -22,6 +23,7 @@
 #include "amberfolio/host/journal_ingest.h"
 #include "amberfolio/host/journal_picture.h"
 #include "amberfolio/host/journal_probe.h"
+#include "amberfolio/machine/edition.h"
 #include "amberfolio/machine/journal.h"
 #include "amberfolio/machine/platform.h"
 #include "gtest/gtest.h"
@@ -733,6 +735,21 @@ TEST(JournalLogRestore, AnEmptyStoreLeavesAnEmptyLog) {
 /// One moment for the whole cite: a bulk cite is one evening.
 constexpr machine::wall_time At{
     .year = 1990, .month = 3, .day = 14, .hour = 21, .minute = 5};
+
+TEST(JournalStoreName, EachProgramKeepsItsJournalInAFileOfItsOwn) {
+  // One file for both games had the reader open one game's entry under
+  // the other's citation (#584).
+  const std::span<const machine::edition> programs = machine::known_editions();
+  ASSERT_EQ(programs.size(), 2u);
+  EXPECT_EQ(journal_store_word(programs[0]), "pool");
+  EXPECT_EQ(journal_store_word(programs[1]), "curse");
+  EXPECT_EQ(journal_store_filename_for(programs[0]), "journal-pool.txt");
+  EXPECT_EQ(journal_store_filename_for(programs[1]), "journal-curse.txt");
+  for (const machine::edition& program : programs) {
+    EXPECT_NE(journal_store_filename_for(program), journal_store_filename)
+        << "the one file every store was kept in is read, never written";
+  }
+}
 
 TEST(JournalCiteAll, TheProbeEditionIsCitedEntryOneFirstAndAllUnread) {
   journal_store store = probe_store();

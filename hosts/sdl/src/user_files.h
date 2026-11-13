@@ -33,9 +33,14 @@ namespace amberfolio::sdl {
 /// looking finds them together.
 [[nodiscard]] std::string per_user_path(std::string_view filename);
 
-/// Where the journal's text is, for this run: `--journal-store` if it was
-/// given, and this platform's per-user data directory otherwise.
-[[nodiscard]] std::string journal_store_path(const options& opts);
+/// Where `program`'s journal text is, for this run: `--journal-store` if
+/// it was given, and otherwise that program's own file in this platform's
+/// per-user data directory (`host::journal_store_filename_for()`, #584).
+/// A null `program` is one this build does not recognize, which has no
+/// journal seam; it is answered with the file the one store was kept in
+/// before a store was a program's own.
+[[nodiscard]] std::string journal_store_path(const options& opts,
+                                             const machine::edition* program);
 
 /// Where the copies that have answered the code-wheel challenge are
 /// remembered, for this run (M6-C1b, #292): `--code-wheel-store` if it
@@ -79,15 +84,34 @@ void save_code_wheel_store(const options& opts,
 /// is not there at all is the ordinary case for somebody who has never
 /// ingested one, and it says so once rather than leaving the reader to
 /// announce it from inside the game later.
-void load_journal_store(const options& opts, host::journal_store& store);
+///
+/// **The store is the running program's** (#584): `box`'s own file, or the
+/// one `--journal-store` names. Where the program has no file yet, the one
+/// file a store was kept in before is read once more, and taken only if
+/// its edition is this program's journal; it is then written under the
+/// program's own name and left where it was. A named store whose edition
+/// is another program's journal is said to be so, and the reader does not
+/// open it (`host_services.cpp`).
+void load_journal_store(const options& opts, machine::machine& box,
+                        host::journal_store& store);
+
+/// The same, with its two files named: `path`, the running program's
+/// store, and `before`, the one file a store was kept in before a store
+/// was a program's own, or empty for none to look in. What
+/// `load_journal_store()` calls, and what a test calls with files of its
+/// own.
+void load_journal_store_from(const std::string& path, const std::string& before,
+                             machine::machine& box, host::journal_store& store);
 
 /// Write the store back, for the log's sake (M5-E4b, #222).
 ///
 /// Ingestion writes this file too, and writes it once at the end of a job
 /// that has just done the expensive part. This is the other writer: the
 /// log changes while a game is being played, so it is written when the
-/// machine says it moved and not on a timer.
-void save_journal_store(const options& opts, const host::journal_store& store);
+/// machine says it moved and not on a timer. To the running program's
+/// own file (`journal_store_path()`).
+void save_journal_store(const options& opts, machine::machine& box,
+                        const host::journal_store& store);
 
 /// The code wheel's challenge, and the one thing a person shows this machine
 /// that is not a file: that they have already answered it (#291). Called

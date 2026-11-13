@@ -403,6 +403,13 @@ struct journal_edition {
   std::string_view fingerprint;
   /// The name a host prints.
   std::string_view name;
+  /// The program this is the journal of: that program image's SHA-256 as
+  /// `machine::edition` spells it (#584). The game cites an item by
+  /// section and number, and entry 12 of one game's journal is not entry
+  /// 12 of another's, so a store is the text of one program's journal and
+  /// is read for no other (`journal_owner_of()`). Empty for an edition of
+  /// no program, which is the probe's.
+  std::string_view program{};
   /// Its entries. Not required to be sorted, and not required to be
   /// every entry the document has — an edition half-tabled is an edition
   /// whose other half a player has not got yet, which is a better answer
@@ -437,6 +444,32 @@ struct journal_edition {
 /// The same, over the shipped table.
 [[nodiscard]] const journal_edition* find_journal(
     const sha256_digest& digest) noexcept;
+
+/// Whose journal a store's text is, to the program that is running
+/// (#584).
+enum class journal_owner : std::uint8_t {
+  /// Nobody this build knows: no edition recorded, an edition that is not
+  /// in the table, or one that names no program. A store somebody wrote
+  /// by hand, and every store the session library replays over. It is
+  /// read as it always was.
+  unknown,
+  /// The running program's own journal.
+  this_program,
+  /// The journal of another program this build knows. Its numbers are
+  /// that game's, and a reader that opened them here would show one
+  /// game's entry under the other's citation.
+  another_program,
+};
+
+/// Whose journal the edition `edition` spells (64 hex characters, as a
+/// store records it) is, to the program whose image hashes to `program`.
+[[nodiscard]] journal_owner journal_owner_of(
+    std::span<const journal_edition> table, std::string_view edition,
+    const sha256_digest& program) noexcept;
+
+/// The same, over the shipped table.
+[[nodiscard]] journal_owner journal_owner_of(
+    std::string_view edition, const sha256_digest& program) noexcept;
 
 /// The most entries one edition may have, and the most bytes of text one
 /// entry's OCR may produce (`journal_store.h` enforces the second).
