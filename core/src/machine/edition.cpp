@@ -40,8 +40,9 @@ namespace {
 /// nothing more.
 ///
 /// The second row is the program the Steam release of Curse of the Azure
-/// Bonds boots, which identifies itself as v1.3 (PLAN.md §7, M9). It is
-/// recognized by name and carries no seam: no seam's fingerprints are its.
+/// Bonds boots, which identifies itself as v1.3 (PLAN.md §7, M9). Its
+/// facts are a profile of its own (`program_profile.h`), and a seam is
+/// available on it where the seam's fingerprints name that profile.
 ///
 /// Each row's configuration file was read off the copies themselves:
 /// `POOL.CFG` has five lines with the save directory on the fourth, and

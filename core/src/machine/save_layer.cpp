@@ -86,8 +86,9 @@ constexpr std::array<save_file, 11> baseline_files{{
      .about = "that character's memorized spells"},
 }};
 
-/// The baseline is the one edition this build has facts about
-/// (`edition.h`), named by its program image the way a seam names one.
+/// The baseline, Pool of Radiance: the first of the two editions this
+/// build has a save layer for (`edition.h`), each named by its program
+/// image the way a seam names one.
 constexpr save_layer baseline{
     .fingerprint =
         "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd",
@@ -103,9 +104,12 @@ constexpr save_layer baseline{
 /// whether it is there. What a member carries goes in `.SWG` and a
 /// character kept under a name the player chose is `<NAME>.GUY`, the
 /// party menu's ADD listing every `*.GUY`; those names are the program's
-/// own (the overlay file spells them) and no driven save has written one
-/// yet, because the shipped parties carry nothing and a new character is
-/// not yet a leg. The program keeps no roster file.
+/// own (the overlay file spells them), and every row has been seen
+/// written (`docs/hosts.md` §6, `docs/playable-curse.md`): `<NAME>.GUY`
+/// and `<NAME>.FX` when a new character is kept, `CHRDAT<S><N>.SWG` when
+/// a save is made by a party with a member who carries something. The
+/// shipped parties carry nothing, so a save straight from one writes no
+/// `.SWG`. The program keeps no roster file.
 ///
 /// Most specific first, as above: the configuration file, then the three
 /// `<NAME>` rows last.

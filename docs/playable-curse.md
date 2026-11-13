@@ -230,11 +230,13 @@ it.
 
 ## Leg 3 — a fight
 
-The tavern at `7,10`: from the street at `6,12 N`, `Left Up Up Right Up
-Up Right Up Return Up Return Up` (signs at `5,10` and `7,10`), and the
-bar's `PUNCH BARKEEP` is the first choice: `Return` starts a brawl with
-ten patrons. In the round, `Escape` leaves the move cursor and `Q` puts
-a member on QUICK; six of each puts the party on QUICK. The program asks
+The tavern, The Curse: from the street at `6,12 N`, `Left Up Up Right Up
+Up Right Up Return Up` (its sign at `5,10`, then its question at
+`6,10`), and the bar's `PUNCH BARKEEP` is the first choice: `Return`
+starts a brawl with ten patrons. In the round, `Escape` leaves the move
+cursor and `Q` puts a member on QUICK; six of each puts the party on
+QUICK (`curse-fight` presses `Up Return Return` first: the two Returns
+bring up the command bar and take its `MOVE` again). The program asks
 whether to continue the battle when more than one of the party is still
 standing and no patron is; `N`, `Return` past the reward, and `E` out of
 the treasure. Recorded as `curse-fight`: the party wins, one member
@@ -249,6 +251,18 @@ Shara on 10.
 
 `--watch 6FAA:2` is the two sides' counts, a byte each, the party's
 first.
+
+**The aim bar.** With `modern-controls` on the walk is made in walking
+mode: `curse-fight`'s keys as far as `Return@8200`, with `Return@4000
+Left@4150 Escape@4300 Return@4450` in the place of its `Left@4000`, and
+the brawl is the same one, Travis first at `25,10`. `Escape@9050 Q@9200
+Q@9350` puts Travis and Shara on QUICK, and Mark's command bar, `MOVE
+VIEW AIM QUICK DONE`, is up by 9,600 with a patron beside him. `A` is `AIM:NEXT PREV MANUAL
+CENTER EXIT` on Mark himself; `N` the patron, `RANGE = 1`, and `TARGET`
+on the bar; `M` the manual cursor, `(USE CURSOR KEYS) TARGET CENTER
+EXIT`, which the arrows move; `E` goes back to the target bar and `E`
+again to the command bar. The scene's `aim` beside each still is in
+`docs/hosts.md` §13.
 
 ## Leg 4 — the cheats
 

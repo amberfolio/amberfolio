@@ -2530,3 +2530,18 @@ A fight (game mode 5, the tactical grid):
     the street square by square; in the brawl, six of the party and a
     patron on the squares the picture draws them on, window `22,10`, the
     panel's member the `turn`, the sheet's HP and AC.
+  - **The aim, driven** over the same brawl with `modern-controls` on
+    (`docs/playable-curse.md` leg 3), each read beside its still: the
+    square the cursor is drawn on, the sheet the panel shows and the
+    number after `RANGE =`. On Mark's turn at `27,13`, window `24,10`:
+    Aim opens from target to target on Mark himself, range 0 and no
+    Target; Next is the patron at `28,14`, `under` its index, range 1,
+    Target offered; Manual leaves the cursor there with the patron under
+    it, and the arrows take it to `27,14` (nobody, range 1), `26,14` (a
+    wall: the bar prints no range and `range` is `null`), `26,13` and
+    `26,12` (Mathew, range 1, Target); Exit is the patron again from
+    target to target, and a second Exit `"aim":null`. On Shara's turn
+    Next steps nearest first through Mathew and Ledera (range 1,
+    Target), Mark, Philippe, the patron at `28,14` (range 3, no Target)
+    and, the window scrolled to `27,11`, Travis at range 7 and a patron
+    at `32,11`, range 8. Unit: `SceneOnCurse.*`.

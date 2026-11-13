@@ -325,7 +325,8 @@ selected member, asked in combat and out.
   Each is its
   baseline's keys at their ticks, recorded again with the seam on; the
   move mode's pair is in its section. Unit: `SeamModernControlsOnCurse.*`,
-  `SeamMoveModeOnCurse.*`,
+  `SeamMoveModeOnCurse.*`, `SceneOnCurse.*` (the aim watch's frames
+  read through the scene),
   `JournalReaderOnCurse.TheLogsCursorRowIsAWhiteBlockUnderModernControls`,
   `SeamCallProgram.FindsAnInsideCallsPointInAModuleTheProgramMoves`.
 

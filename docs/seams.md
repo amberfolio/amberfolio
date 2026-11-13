@@ -1072,8 +1072,14 @@ in the definition's `programs`:
   copy` and the store's `answered` line for the digest; answered, the
   boot goes from the title to the party menu with `fired=1` and no
   challenge drawn.
-- **Not driven**: the interpreter's call. No leg reaches a script that
-  asks. Its operand is checked before the step, so a wrong fact declines.
+- **Not driven**: the interpreter's call. One script has the protection
+  command, once: the overland's (`ECL1.DAX` block 80), in a routine it
+  runs when the party arrives at a place from a journey. The routine
+  keeps a count of arrivals and asks on the one after the sixth, then
+  starts the count again. That is read from the script's bytes and not
+  yet seen in a run: no leg makes seven journeys, and none of the twenty
+  sessions with no seam reaches the call (#587). Its operand is checked
+  before the step, so a wrong fact declines.
 - **Fidelity**: `curse-boot-wheel` `identical curse-boot` (on, a wrong
   letter typed, every one of 31 checkpoints equal);
   `curse-boot-answered` `contrast curse-boot`. In `curse-quiet-all`,
@@ -2037,8 +2043,15 @@ from combat (overlay 14's two calls, overlay 25's status line, overlay
 33's death beat) and one from the brawl's opening. The print opcode's
 two calls are reached in every leg with a scripted line (`curse-quiet`:
 18, `curse-carriage`: 75). The encounter menu's call is reached by no
-session in the library, as on Pool of Radiance, and neither is the
-animation step: both are held by the unit suite.
+session in the library, as on Pool of Radiance, and is held by the unit
+suite. **The animation step is the demonstration's**: the script the
+title plays when no key is pressed (`ECL1.DAX` block 82) has eleven of
+them in a row, and no other script has one, so no session that presses
+a key at the title reaches it. Driven on the Steam copy with the seam
+on and no key for 35,000 frames (#587): the demonstration plays, and
+each of its steps arrives at the pause from overlay 3 `0x3090` and is
+taken as an animation's beat, beside the approach's and the death's in
+the fight the demonstration shows.
 
 **Fidelity**: `curse-quiet-message-pause` `identical curse-quiet` (all
 58 checkpoints: the leg makes no pause), and `curse-fight-pause`
