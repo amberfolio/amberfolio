@@ -684,6 +684,21 @@ sha256_digest journal_store::fingerprint() const {
       reinterpret_cast<const std::uint8_t*>(bytes.data()), bytes.size()));
 }
 
+std::string journal_store_word(const machine::edition& program) {
+  const std::string_view file = program.configuration.file;
+  const std::string_view stem = file.substr(0, file.find('.'));
+  std::string word;
+  word.reserve(stem.size());
+  for (const char c : stem) {
+    word.push_back(c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c);
+  }
+  return word;
+}
+
+std::string journal_store_filename_for(const machine::edition& program) {
+  return "journal-" + journal_store_word(program) + ".txt";
+}
+
 void restore_journal_log(machine::journal_state& into,
                          const journal_store& from) noexcept {
   const std::span<const machine::journal_seen_row> stored = from.seen();
@@ -723,6 +738,13 @@ std::size_t cite_all_journal(machine::journal_state& into, journal_store& store,
 }
 
 std::size_t cite_all_journal(machine::machine& box, journal_store& store) {
+  // Another program's journal has nothing of this one's to cite (#584):
+  // its numbers are that game's, and the reader would refuse every row.
+  if (box.seams().have_program() &&
+      journal_owner_of(store.edition(), box.seams().program()) ==
+          journal_owner::another_program) {
+    return 0;
+  }
   return cite_all_journal(box.journal(), store, box.wall().at(box.time()));
 }
 

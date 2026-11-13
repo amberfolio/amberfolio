@@ -11,11 +11,28 @@
 #include <span>
 
 #include "amberfolio/host/code_wheel_store.h"
+#include "amberfolio/host/journal_facts.h"
+#include "amberfolio/host/journal_store.h"
 #include "amberfolio/machine/journal.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/seam.h"
 
 namespace amberfolio::host {
+
+namespace {
+
+/// Whether `store` is the running program's to read from (#584). A store
+/// whose edition is another program's journal is not: its entry 12 is
+/// that game's entry 12. A machine with no program, and a store of no
+/// edition this build knows, are read as they always were.
+[[nodiscard]] bool reads_for(const journal_store& store,
+                             machine::machine& box) {
+  return !box.seams().have_program() ||
+         journal_owner_of(store.edition(), box.seams().program()) !=
+             journal_owner::another_program;
+}
+
+}  // namespace
 
 void host_services::serve(machine::machine& box,
                           machine::seam_host_service which,
@@ -73,7 +90,10 @@ void host_services::serve(machine::machine& box,
   // off it (`journal_trouble` makes the same distinctions one layer down).
   if (which == machine::seam_host_service::journal_open) {
     machine::journal_state& page = box.journal();
-    if (journal_ == nullptr || journal_->empty()) {
+    // Another program's journal is no journal here (#584): the answer a
+    // player with nothing read gets, and the same thing to do about it.
+    if (journal_ == nullptr || journal_->empty() ||
+        !reads_for(*journal_, box)) {
       page.refuse(machine::journal_delivery::no_journal);
       return;
     }
@@ -105,7 +125,7 @@ void host_services::serve(machine::machine& box,
   // — it is most of the journal.
   if (which == machine::seam_host_service::journal_art) {
     machine::journal_state& page = box.journal();
-    if (journal_ == nullptr) {
+    if (journal_ == nullptr || !reads_for(*journal_, box)) {
       page.refuse_art(0);
       return;
     }

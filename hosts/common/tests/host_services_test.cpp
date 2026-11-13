@@ -19,11 +19,13 @@
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <string>
 #include <string_view>
 
 #include "amberfolio/cpu/address.h"
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/host/code_wheel_store.h"
+#include "amberfolio/host/journal_facts.h"
 #include "amberfolio/host/journal_picture.h"
 #include "amberfolio/host/journal_store.h"
 #include "amberfolio/machine/clock.h"
@@ -31,6 +33,7 @@
 #include "amberfolio/machine/journal.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/memory_map.h"
+#include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/state.h"
 #include "amberfolio/sha256.h"
@@ -278,6 +281,77 @@ TEST(HostServicesJournal, ACorrectionIsWhatTheReaderGets) {
   EXPECT_EQ(r.pc().journal().text(), "what the engine read");
 }
 
+/// `r`'s machine, told it is running the program `fingerprint` names.
+void run_as(const rig& r, std::string_view fingerprint) {
+  sha256_digest digest;
+  ASSERT_TRUE(machine::parse_digest(fingerprint, digest));
+  r.pc().seams().loaded(digest, image_segment);
+}
+
+/// The fingerprint of a shipped edition that is `program`'s journal.
+[[nodiscard]] std::string_view journal_of(std::string_view program) {
+  for (const journal_edition& edition : known_journals()) {
+    if (edition.program == program) {
+      return edition.fingerprint;
+    }
+  }
+  ADD_FAILURE() << "no journal of that program";
+  return {};
+}
+
+TEST(HostServicesJournal, AnotherProgramsJournalIsNoJournalHere) {
+  // One store for both games had Pool of Radiance's entry 12 answer Curse
+  // of the Azure Bonds' citation of entry 12 (#584). The game cites by
+  // section and number, and each game numbers its own journal.
+  const rig r;
+  host_services services;
+  journal_store store;
+  store.set_edition(journal_of(machine::pool_of_radiance.fingerprint));
+  ASSERT_TRUE(store.record_scan({.number = 12}, "the first game's twelfth"));
+  services.set_journal_store(&store);
+
+  run_as(r, machine::curse_of_the_azure_bonds.fingerprint);
+  EXPECT_EQ(ask(services, r.pc(), Entry(12)),
+            machine::journal_delivery::no_journal)
+      << "what a player with nothing read is told, and the same thing to do";
+
+  run_as(r, machine::pool_of_radiance.fingerprint);
+  EXPECT_EQ(ask(services, r.pc(), Entry(12)), machine::journal_delivery::ready);
+  EXPECT_EQ(r.pc().journal().text(), "the first game's twelfth");
+}
+
+TEST(HostServicesJournal, AStoreOfNoEditionThisBuildKnowsIsReadByEither) {
+  // A store written by hand, and every store the session library replays
+  // over: nothing says whose it is, so it is read as it always was.
+  for (const std::string_view program :
+       {machine::pool_of_radiance.fingerprint,
+        machine::curse_of_the_azure_bonds.fingerprint}) {
+    const rig r;
+    host_services services;
+    journal_store store;
+    store.set_edition(std::string(64, '0'));
+    ASSERT_TRUE(store.record_scan({.number = 12}, "nobody's twelfth"));
+    services.set_journal_store(&store);
+    run_as(r, program);
+    EXPECT_EQ(ask(services, r.pc(), Entry(12)),
+              machine::journal_delivery::ready);
+  }
+}
+
+TEST(HostServicesJournal, AnotherProgramsJournalCitesNothing) {
+  const rig r;
+  journal_store store;
+  store.set_edition(journal_of(machine::curse_of_the_azure_bonds.fingerprint));
+  ASSERT_TRUE(store.record_scan({.number = 31}, "the second game's"));
+
+  run_as(r, machine::pool_of_radiance.fingerprint);
+  EXPECT_EQ(cite_all_journal(r.pc(), store), 0u);
+  EXPECT_TRUE(r.pc().journal().seen().empty());
+
+  run_as(r, machine::curse_of_the_azure_bonds.fingerprint);
+  EXPECT_EQ(cite_all_journal(r.pc(), store), 1u);
+}
+
 TEST(HostServicesJournal, AnEntryTheStoreHasNotIsItsOwnAnswer) {
   const rig r;
   host_services services;
@@ -419,6 +493,25 @@ TEST(HostServicesArt, APictureTheStoreHasComesBackWithItsCount) {
   EXPECT_EQ(r.pc().journal().art_height(), 4u);
   EXPECT_EQ(r.pc().journal().art_level_at(0, 0), 1u);
   EXPECT_EQ(r.pc().journal().art_level_at(7, 3), 1u);
+}
+
+TEST(HostServicesArt, AnotherProgramsPicturesAreNotThisOnes) {
+  const rig r;
+  host_services services;
+  journal_store store;
+  store.set_edition(journal_of(machine::pool_of_radiance.fingerprint));
+  ASSERT_TRUE(store.record_scan({.number = 4}, "a caption"));
+  ASSERT_TRUE(store.record_picture(a_picture({.number = 4}, 0, 8, 4, 1)));
+  services.set_journal_store(&store);
+
+  run_as(r, machine::curse_of_the_azure_bonds.fingerprint);
+  services.serve(r.pc(), seam_host_service::journal_art, ArtOfEntry(4, 0));
+  EXPECT_FALSE(r.pc().journal().art_ready());
+  EXPECT_EQ(r.pc().journal().art_count(), 0u);
+
+  run_as(r, machine::pool_of_radiance.fingerprint);
+  services.serve(r.pc(), seam_host_service::journal_art, ArtOfEntry(4, 0));
+  EXPECT_TRUE(r.pc().journal().art_ready());
 }
 
 TEST(HostServicesArt, AnAtlasIsThreePicturesAndEachIsItsOwnAnswer) {

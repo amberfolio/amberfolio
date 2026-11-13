@@ -28,6 +28,7 @@
 #include "amberfolio/host/journal_probe.h"
 #include "amberfolio/host/journal_score.h"
 #include "amberfolio/host/journal_store.h"
+#include "amberfolio/machine/edition.h"
 #include "amberfolio/machine/journal.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/sha256.h"
@@ -275,7 +276,17 @@ void ingest_journal(machine::machine& box, const options& opts,
   // Where the text goes, and what is already there. Read first, so a
   // correction a player made survives this ingestion — which is the
   // whole reason the store is read at all rather than written fresh.
-  const std::string path = journal_store_path(opts);
+  //
+  // **The store of the program this edition is the journal of** (#584),
+  // which need not be the one running: somebody who reads one game's
+  // journal while starting the other has read that game's journal. An
+  // edition of no program (the probe's) goes to the running program's.
+  const machine::edition* of = box.seams().known_edition();
+  if (sha256_digest whose;
+      machine::parse_digest(ingester.edition()->program, whose)) {
+    of = machine::find_edition(whose);
+  }
+  const std::string path = journal_store_path(opts, of);
   if (path.empty()) {
     std::fprintf(stderr,
                  "amberfolio: journal this platform does not say where"
@@ -389,6 +400,26 @@ void ingest_journal(machine::machine& box, const options& opts,
                " pictures=%zu sha256=%s\n",
                path.c_str(), store.size(), store.corrections(),
                store.picture_count(), hex.data());
+
+  if (box.seams().have_program() &&
+      host::journal_owner_of(store.edition(), box.seams().program()) ==
+          host::journal_owner::another_program) {
+    // Read and kept, and not this program's (#584). With a store of its
+    // own to go back to, the running program's is read in its place, so
+    // that nothing written later puts one game's text under the other's
+    // name; a store somebody named stays as it is, and the reader does
+    // not open it.
+    std::fprintf(stderr,
+                 "amberfolio: journal %.*s is another game's journal - kept"
+                 " for that game, and not read by this one\n",
+                 static_cast<int>(ingester.edition()->name.size()),
+                 ingester.edition()->name.data());
+    if (opts.journal_store.empty()) {
+      store.clear();
+      store.clear_changed();
+      load_journal_store(opts, box, store);
+    }
+  }
 }
 
 void bring_up_journal(machine::machine& box, const options& opts,
@@ -412,7 +443,7 @@ void bring_up_journal(machine::machine& box, const options& opts,
     // seams the run is about to turn on — and the reader would replay
     // with no text and hash differently than it recorded. Somebody who
     // named a store meant it.
-    load_journal_store(opts, journal_text);
+    load_journal_store(opts, box, journal_text);
   }
 
   // The read log into the machine the reader draws it from. The log left

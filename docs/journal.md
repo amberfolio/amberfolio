@@ -48,8 +48,10 @@ amberfolio <dir> <program.exe> --journal J.pdf --journal-ocr none
   journal-gated seam arms, then reads inside it. An edition typeset as
   text (§3a) needs no engine: the host says `journal text read from the
   document itself - no OCR engine needed` and looks for none.
-- The store goes to `journal.txt` under the per-user data directory
-  (SDL's `SDL_GetPrefPath`); `--journal-store` says otherwise.
+- The store goes to the file of the game the edition is the journal of,
+  `journal-pool.txt` or `journal-curse.txt`, under the per-user data
+  directory (SDL's `SDL_GetPrefPath`); `--journal-store` says otherwise
+  (§6).
 - An ingestion that goes wrong is one printed sentence; the run continues.
 - In a browser: the dev page's **read your own journal** file input. Both
   hosts print `journal_trouble_name()`.
@@ -510,6 +512,16 @@ picture entry 4 0 193 160 10404
   cannot be read as a header. A file that is not exactly this is refused
   whole, never half-read; CRLF is normalized first.
 - A store of a different edition is cleared, not merged.
+- **A store is one program's** (#584). An edition in the fact table names
+  the program it is the journal of (`journal_edition::program`), because
+  the game cites an item by section and number and each game numbers its
+  own journal. `journal_owner_of()` says whose a store's edition is to
+  the running program, and a store that is another program's journal is
+  not read: the reader answers as it does with no journal
+  (`host_services.cpp`), on both hosts, and `--cite-all-journal` cites
+  nothing. A store of no edition the table knows (one written by hand,
+  and every store the session library replays over) is read as it always
+  was.
 - **No read log.** A version 4 store had `seen` lines here; version 5 has
   none, and they went beside the save (§6a). A version 4 store's lines
   are still read into that run's log, and it is written back as
@@ -517,8 +529,18 @@ picture entry 4 0 193 160 10404
 - Only a store's counts and `journal_store::fingerprint()` may be written
   down anywhere (§8).
 
-**Where it lives** is a host's business (PLAN.md §4). The desktop writes
-the file above. The browser writes the same text into `localStorage`, one
+**Where it lives** is a host's business (PLAN.md §4). The desktop keeps
+one file for each program, named by the stem of the configuration file
+the program reads (`journal_store_filename_for()`): `journal-pool.txt`
+and `journal-curse.txt`, beside the config. A run reads the running
+program's and writes it back; an ingestion writes the file of the game
+its edition is the journal of, whichever program was started, and then
+reads the running program's again. `journal.txt`, the one file every
+store was kept in before, is read once more where the running program
+has no file yet and only if its edition is that program's journal; it is
+written under the program's own name and left where it was. A store
+named with `--journal-store` is used as named. The browser writes the
+same text into `localStorage`, one
 slot, and reads it back on the next load (M5-E3f). Rejected: IndexedDB,
 because this is tens of kilobytes wanted synchronously as the module
 comes up. A full or blocked drawer and a store this build cannot read are

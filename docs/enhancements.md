@@ -168,9 +168,10 @@ Two halves that meet at a text file on your own machine.
 
 **What it does.** Locates each entry inside your own Adventurer's Journal
 PDF off a fact table for that edition, crops it, reads it once with an
-OCR engine, and keeps the text: a file beside the config on the desktop,
-this browser's own storage on the web (the page's *Forget it* button
-empties it). Entries that are drawings are reduced to four tones and kept
+OCR engine, and keeps the text: a file for each game beside the config on
+the desktop, this browser's own storage on the web (the page's *Forget
+it* button empties it). Each game reads its own journal and never the
+other's. Entries that are drawings are reduced to four tones and kept
 beside the text. Corrections are a second field per entry and survive
 re-ingestion.
 
