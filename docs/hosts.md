@@ -992,7 +992,7 @@ rename or removal of either moves these numbers — `abi.h` says so at
 compares `major` against what it was written for and refuses before
 fetching the module.
 
-The ABI moved as follows (`abi.h` has the whole list, now at 3.4): 1.1 added the two doors below (#228, #229), 1.2 added
+The ABI moved as follows (`abi.h` has the whole list, now at 3.5): 1.1 added the two doors below (#228, #229), 1.2 added
 `af_machine_code_wheel_answered` and `af_machine_set_code_wheel_answered`
 (#291), 1.3 added `af_web_journal_part_begins_paragraph` (#361), which is
 how a fragment boundary that is a paragraph break reaches the page that
@@ -1027,7 +1027,11 @@ adds `af_machine_text_entry` (#504, §12). 3.3 adds
 `af_machine_seam_setting` (its value now) and
 `af_machine_seam_set_setting`, which refuses a value outside the bounds
 rather than clamping it. The value is configuration and outlasts
-`af_machine_reset`.
+`af_machine_reset`. 3.5 adds `af_web_journal_store_program` (#584): the
+fingerprint of the program the tab's journal store is the journal of, as
+`af_machine_program_fingerprint` spells the one a machine is running,
+which is what a page keys a kept store by so that each game has its own
+(`docs/journal.md` §6).
 
 **`exportsDigest` does not depend on anyone having bumped the right
 number.** It is the sha256 of the `exports` list, sorted and
@@ -1114,7 +1118,7 @@ it; `app.mjs` uses it and no other file knows the schema.
 | --- | --- | --- | --- |
 | `disk` | the file's canonical path (`\SAVE\SAVGAMA.DAT`) | its bytes | at the drop, and for a `config` row that changed |
 | `play` | the same | the same | when `af_machine_vfs_generation()` moves |
-| `text` | the `localStorage` key it had | one string | at an ingestion, a correction, a *Forget*, an answered code wheel |
+| `text` | the `localStorage` key it had; a journal store's has the fingerprint of the game it is the journal of after it (#584) | one string | at an ingestion, a correction, a *Forget*, an answered code wheel |
 | `settings` | a name | JSON | the program last booted; whether this build may keep sidecars beside the saves (#385, §2b); the seams turned on in the panel and the numbers given them (§8) |
 
 **The save layer draws the line between the first two** (§6). On a

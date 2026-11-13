@@ -78,6 +78,8 @@ import {
   loadEngine,
   keepStore,
   restoreStore,
+  restoreStoreFor,
+  journalStoreKeys,
   citeAllJournal,
   forgetStore,
   clearStore,
@@ -452,7 +454,18 @@ export function runDevPage() {
     // `openKeptStore()` filled: `restoreStore` wants an answer at the
     // moment it is called and IndexedDB cannot give one, so the records
     // are read once and this is the drawer over them (`persist.mjs`).
-    reportRestoredJournal(restoreStore(loaded.module, { storage: drawer }));
+    //
+    // **Which record, when there is one for each game** (#584). No
+    // program is loaded yet, so nothing says whose turn it is: a game's
+    // own record if the drawer holds one, the first of them, and
+    // otherwise the one record every store was kept in before. The boot
+    // puts the running program's in its place (`restoreStoreFor`).
+    const keptJournal =
+      journalStoreKeys(drawer).find((key) => key !== JOURNAL_STORE_KEY) ??
+      JOURNAL_STORE_KEY;
+    reportRestoredJournal(
+      restoreStore(loaded.module, { storage: drawer, key: keptJournal }),
+    );
     // And whatever read log the store holds, into the machine, which is a
     // second call because the store is the module's and the log is the
     // machine's (#237). Nothing, for a store kept since #351: a party's
@@ -985,6 +998,15 @@ export function runDevPage() {
         // this once and doing it every visit, so it is said out loud
         // rather than left for a player to discover next week.
         const stored = keepStore(loaded.module, { storage: drawer });
+        // And if a game is running and this is the other game's journal,
+        // the running game's own back into the module (#584): what was
+        // just read is kept under its own game, and is that game's to
+        // open.
+        const running = started ? machine?.programFingerprint() : null;
+        const back = running
+          ? restoreStoreFor(loaded.module, running, { storage: drawer })
+          : { changed: false };
+        if (back.changed) machine.journalSeenRestore();
         const wrote = await flushText();
         sayWhatIsKept();
         setJournalStatus(
@@ -1007,7 +1029,11 @@ export function runDevPage() {
               ? ` - ${wrote.why}`
               : stored.kept
                 ? ' - kept in this browser for next time'
-                : ''),
+                : '') +
+            (back.changed
+              ? ' - it is the other game\'s journal, and the game' +
+                ' running reads its own'
+              : ''),
         );
       } catch (problem) {
         setJournalStatus(`the ingestion failed: ${problem.message ?? problem}`);
@@ -1544,6 +1570,30 @@ export function runDevPage() {
       if (editionEl) editionEl.textContent = `edition: ${edition ?? 'unrecognized'}`;
       if (edition === null) {
         await reportUnrecognizedEdition(box, appendConsole);
+      }
+      // This program's own journal into the module (#584). A store is one
+      // game's: the game cites by section and number and each game numbers
+      // its own journal, so the record restored as the module came up, or
+      // read since, may be the other game's. After the load, because the
+      // record is keyed by the program's fingerprint; before the run,
+      // because the reader is answered out of the store.
+      const journalNow = restoreStoreFor(
+        loaded.module,
+        box.programFingerprint(),
+        { storage: drawer },
+      );
+      if (journalNow.changed) {
+        box.journalSeenRestore();
+        const wrote = await flushText();
+        if (journalNow.restored || journalNow.why) {
+          reportRestoredJournal(journalNow);
+        } else {
+          setJournalStatus(
+            'no journal read for this game yet - the one kept in this' +
+              ' browser is the other game\'s',
+          );
+        }
+        if (!wrote.ok) appendConsole(`[host] ${wrote.why}\n`);
       }
       // What this browser remembers about *this copy* (M6-C1b, #292).
       // After the load, because the answer is keyed by the program's own

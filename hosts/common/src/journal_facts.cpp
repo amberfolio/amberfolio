@@ -3813,20 +3813,29 @@ const journal_edition* find_journal(const sha256_digest& digest) noexcept {
   return find_journal(known_journals(), digest);
 }
 
+std::string_view journal_program_of(std::span<const journal_edition> editions,
+                                    std::string_view edition) noexcept {
+  sha256_digest document;
+  if (!machine::parse_digest(edition, document)) {
+    return {};
+  }
+  const journal_edition* known = find_journal(editions, document);
+  return known == nullptr ? std::string_view{} : known->program;
+}
+
+std::string_view journal_program_of(std::string_view edition) noexcept {
+  return journal_program_of(known_journals(), edition);
+}
+
 journal_owner journal_owner_of(std::span<const journal_edition> editions,
                                std::string_view edition,
                                const sha256_digest& program) noexcept {
-  sha256_digest document;
-  if (!machine::parse_digest(edition, document)) {
+  const std::string_view whose = journal_program_of(editions, edition);
+  if (whose.empty()) {
     return journal_owner::unknown;
   }
-  const journal_edition* known = find_journal(editions, document);
-  if (known == nullptr || known->program.empty()) {
-    return journal_owner::unknown;
-  }
-  return machine::digest_is(program, known->program)
-             ? journal_owner::this_program
-             : journal_owner::another_program;
+  return machine::digest_is(program, whose) ? journal_owner::this_program
+                                            : journal_owner::another_program;
 }
 
 journal_owner journal_owner_of(std::string_view edition,

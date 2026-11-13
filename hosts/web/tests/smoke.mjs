@@ -387,6 +387,7 @@ const EXPECTED_EXPORTS = [
   '_af_web_journal_cite_all',
   '_af_web_journal_store_clear',
   '_af_web_journal_store_fingerprint',
+  '_af_web_journal_store_program',
   '_af_web_code_wheel_store_write',
   '_af_web_code_wheel_store_read',
   '_af_web_code_wheel_store_changed',
@@ -4759,6 +4760,11 @@ if (missing.length === 0 && sessions !== null) {
     storeChanged,
     clearStoreChanged,
     JOURNAL_STORE_KEY,
+    readStore,
+    storeProgram,
+    journalStoreKey,
+    journalStoreKeys,
+    restoreStoreFor,
   } = await import('./journal.mjs');
 
   const document = probeDocument(module);
@@ -5439,6 +5445,153 @@ if (missing.length === 0 && sessions !== null) {
     restoreStore(module, { storage }).restored === false,
     'a forgotten store came back',
   );
+
+  // --- A record for each game (#584) ------------------------------------
+  //
+  // One record for both games had one game's entry answer the other's
+  // citation: the game cites by section and number and each game numbers
+  // its own journal. So a store is kept under the program it is the
+  // journal of, and the running program's is what a boot puts in the
+  // module.
+  //
+  // The two stores are this file's own words. Their edition lines are the
+  // fingerprints of the two Steam journals, which is a fact about a file
+  // and carries none of it; the programs are the two images' own.
+  {
+    const POOL = 'd825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd';
+    const CURSE = '42fcefd6785679568b00bc1fb5b1d81ac2773416be4a35e0363920ddf6b78acd';
+    const storeOf = (edition, words) =>
+      'amberfolio-journal 5\n' +
+      `edition ${edition}\n` +
+      'engine hand\n' +
+      `scanned entry 12 ${new TextEncoder().encode(words).length}\n` +
+      `${words}\n`;
+    const poolStore = storeOf(
+      'a31368c35c527ce3f760ffac0596ab96254c79b22f7e89be219c6238954ac1ee',
+      'the first game, entry twelve',
+    );
+    const curseStore = storeOf(
+      '68bd9d4734a232a0a18c44510985e61a489adc17693ecdfb411c6cd2dfec8031',
+      'the second game, entry twelve',
+    );
+    const twelve = journalCitation('entry', 12);
+
+    const games = new Map();
+    const gameStorage = {
+      getItem: (key) => (games.has(key) ? games.get(key) : null),
+      setItem: (key, value) => games.set(key, String(value)),
+      removeItem: (key) => games.delete(key),
+      keys: () => [...games.keys()],
+    };
+
+    clearStore(module);
+    check(storeProgram(module) === '', 'an empty store named a program');
+    check(readStore(module, poolStore) === 0, 'the first store was not read');
+    check(
+      storeProgram(module) === POOL,
+      `the first store is the journal of ${storeProgram(module)}`,
+    );
+    check(
+      keepStore(module, { storage: gameStorage }).kept &&
+        games.has(journalStoreKey(POOL)) &&
+        !games.has(JOURNAL_STORE_KEY),
+      'a game\'s store was not kept under that game\'s own key',
+    );
+
+    // The other game boots. Its record is not there yet, and the store
+    // in the module is not its journal: out it goes.
+    const none = restoreStoreFor(module, CURSE, { storage: gameStorage });
+    check(
+      none.changed && !none.restored && module._af_web_journal_store_size() === 0,
+      'the first game\'s journal stayed in the module for the second game',
+    );
+
+    // Its own journal read, and kept beside the first.
+    check(readStore(module, curseStore) === 0, 'the second store was not read');
+    check(storeProgram(module) === CURSE, 'the second store named the wrong program');
+    keepStore(module, { storage: gameStorage });
+    check(
+      games.has(journalStoreKey(POOL)) && games.has(journalStoreKey(CURSE)),
+      'keeping the second game\'s journal lost the first\'s',
+    );
+    check(
+      journalStoreKeys(gameStorage).length === 2,
+      'the drawer does not say it holds two journals',
+    );
+
+    // Back and forth with nothing read again, which is the point.
+    const first = restoreStoreFor(module, POOL, { storage: gameStorage });
+    check(
+      first.changed && first.restored && storeProgram(module) === POOL,
+      'booting the first game did not put its journal in the module',
+    );
+    check(
+      journalText(module, twelve) === 'the first game, entry twelve',
+      'the first game reads the wrong entry twelve',
+    );
+    const second = restoreStoreFor(module, CURSE, { storage: gameStorage });
+    check(
+      second.changed && second.restored && storeProgram(module) === CURSE,
+      'booting the second game did not put its journal in the module',
+    );
+    check(
+      journalText(module, twelve) === 'the second game, entry twelve',
+      'the second game reads the wrong entry twelve',
+    );
+    const again = restoreStoreFor(module, CURSE, { storage: gameStorage });
+    check(
+      !again.changed && !again.restored,
+      'a store that is already the running game\'s was read in again',
+    );
+
+    // The one record from before, which is whichever game's its edition
+    // says: taken by that game, kept under its key, left where it was,
+    // and never read for the other.
+    const before = new Map([[JOURNAL_STORE_KEY, poolStore]]);
+    const beforeStorage = {
+      getItem: (key) => (before.has(key) ? before.get(key) : null),
+      setItem: (key, value) => before.set(key, String(value)),
+      removeItem: (key) => before.delete(key),
+      keys: () => [...before.keys()],
+    };
+    clearStore(module);
+    const notTheirs = restoreStoreFor(module, CURSE, { storage: beforeStorage });
+    check(
+      !notTheirs.restored &&
+        module._af_web_journal_store_size() === 0 &&
+        before.size === 1,
+      'the record from before was read for the other game',
+    );
+    const theirs = restoreStoreFor(module, POOL, { storage: beforeStorage });
+    check(
+      theirs.restored &&
+        theirs.changed &&
+        before.get(journalStoreKey(POOL)) !== undefined &&
+        before.get(JOURNAL_STORE_KEY) === poolStore,
+      'the record from before was not taken by the game it is the journal of',
+    );
+
+    // A store of no program (the probe's, one written by hand) is left
+    // where a page put it, whichever game boots.
+    clearStore(module);
+    check(
+      readStore(module, storeOf('0'.repeat(64), 'nobody\'s')) === 0,
+      'a store of no known edition was not read',
+    );
+    const nobodys = restoreStoreFor(module, POOL, { storage: gameStorage });
+    check(
+      !nobodys.changed && journalText(module, twelve) === 'nobody\'s',
+      'a store of no program was taken out of the module at a boot',
+    );
+
+    // And forgetting forgets every game's.
+    check(
+      forgetStore({ storage: gameStorage }).forgotten && games.size === 0,
+      'forgetting left a game\'s journal in the drawer',
+    );
+    clearStore(module);
+    clearStoreChanged(module);
+  }
 
   // --- The store on the facade, and its flag (M5-C1, #229) -------------
   //

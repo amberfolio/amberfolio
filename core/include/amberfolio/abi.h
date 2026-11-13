@@ -449,8 +449,14 @@ uint32_t af_version(void);
 ///     `af_machine_seam_setting_name`, `_setting_limit` and `_setting`,
 ///     and set through `af_machine_seam_set_setting`. Minor: a host that
 ///     never asks runs every seam at its `initial`.
+///   * **3.5** — #584, one added entry point on the web host's own surface
+///     and nothing changed: `af_web_journal_store_program`, the
+///     fingerprint of the program the tab's journal store is the journal
+///     of, which is what a page keys a kept store by so that each game
+///     has its own. Minor, and machine-less: a host that never asks keeps
+///     one record, and the reader refuses another game's either way.
 #define AF_ABI_VERSION_MAJOR 3u
-#define AF_ABI_VERSION_MINOR 4u
+#define AF_ABI_VERSION_MINOR 5u
 
 // --- Facts about the machine ------------------------------------------
 //
