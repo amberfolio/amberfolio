@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The fanfare seam's score (seam_fanfare.cpp, #538): every byte the piece
-// writes to the Tandy sound chip's port, and the PIT tick from the piece's
-// start it is written at. The piece was written for this project, for
-// this seam; nothing in it comes from the program.
+// The fanfare seam's score for Pool of Radiance (seam_fanfare.cpp).
+// Every byte the piece writes to the Tandy sound chip's port, and the PIT
+// tick from the piece's start it is written at. The piece was written for
+// this project, for this seam; nothing in it comes from the program.
 //
 // Written by scripts/fanfare-score.py from the composer's list of writes.
 // Edit that list and run the script again rather than editing this table.

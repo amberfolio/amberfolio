@@ -400,8 +400,9 @@ TEST(SeamPanel, ListsOnlyTheLoadedProgramsSeams) {
   EXPECT_TRUE(lists(curse_rows, "modern-controls"));
   EXPECT_TRUE(lists(curse_rows, "automap"));
   EXPECT_TRUE(lists(curse_rows, "journal"));
+  EXPECT_TRUE(lists(curse_rows, "fanfare"));
   for (const std::string_view absent :
-       {"encamp-fix", "explored", "quick-steps", "fanfare"}) {
+       {"encamp-fix", "explored", "quick-steps"}) {
     EXPECT_FALSE(lists(curse_rows, absent)) << absent;
     EXPECT_EQ(curse.status(absent).reason, machine::seam_reason::wrong_binary)
         << absent;

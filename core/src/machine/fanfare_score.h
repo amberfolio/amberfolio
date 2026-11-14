@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The fanfare seam's score (seam_fanfare.cpp, #538), as the seam plays
-// it: a list of writes to the Tandy sound chip's port, each at a tick of
-// the piece's own time. fanfare_score.cpp has the list and where it
-// comes from.
+// The fanfare seam's scores (seam_fanfare.cpp, #538, #598), one piece a
+// game, as the seam plays them: a list of writes to the Tandy sound
+// chip's port, each at a tick of the piece's own time. fanfare_score.cpp
+// and fanfare_score_curse.cpp have the lists and where they come from.
 
 #pragma once
 
@@ -24,7 +24,11 @@ struct chip_cue {
   std::uint8_t value;
 };
 
-/// The whole piece, in order.
+/// Pool of Radiance's piece, the whole of it, in order.
 [[nodiscard]] std::span<const chip_cue> fanfare_score() noexcept;
+
+/// Curse of the Azure Bonds' piece, the whole of it, in order
+/// (fanfare_score_curse.cpp, #598).
+[[nodiscard]] std::span<const chip_cue> curse_fanfare_score() noexcept;
 
 }  // namespace amberfolio::machine

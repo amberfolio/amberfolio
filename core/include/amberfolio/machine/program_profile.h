@@ -514,6 +514,16 @@ inline constexpr program_profile pool_of_radiance{
 /// program's own stub table.
 namespace curse_of_the_azure_bonds_modules {
 
+/// Overlay 2: the title screens (`seam_fanfare.cpp`). The stub's record is
+/// at image `0x0390`.
+inline constexpr seam_module titles{
+    .file = "GAME.OVR",
+    .file_offset = 218,
+    .length = 1911,
+    .digest =
+        "57cbe5d27ae928ee6d9939b59169546c454ffd75d5c2a34c82a0d36e0e0ac32a",
+    .load_segment_at = 0x3A0};
+
 /// Overlay 3: the event-script interpreter, which carries a script's own
 /// protection command (`seam_code_wheel.cpp`). The stub's record is at
 /// image `0x03C0`.
@@ -672,7 +682,7 @@ inline constexpr program_profile curse_of_the_azure_bonds{
     .draw_string_entry = 0x5029,
     .command_bar_entry = 0x106A,
     .roster_drawn_return = {},
-    .titles_overlay = {},
+    .titles_overlay = curse_of_the_azure_bonds_modules::titles,
     .interpreter_overlay = curse_of_the_azure_bonds_modules::interpreter,
     .combat_overlay = curse_of_the_azure_bonds_modules::combat,
     .aim_overlay = curse_of_the_azure_bonds_modules::aim,
