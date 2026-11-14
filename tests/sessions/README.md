@@ -126,7 +126,7 @@ frame that carries an input is checkpointed whatever the cadence says.
 
 ### Curse of the Azure Bonds
 
-Fifty-one sessions, `curse-*`, on the Steam copy at `--speed 386` and
+Fifty-four sessions, `curse-*`, on the Steam copy at `--speed 386` and
 `--wall none` (#554, #555, #588). Every one is `disk external`: `curse-load` is
 pinned to the disk `curse-save` wrote (the `curse-saved` snapshot), the
 three `curse-journey` sessions to a disk with the party saved in slot D
