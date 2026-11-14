@@ -10,8 +10,11 @@ the emulator runs the unmodified original program. Quality-of-life
 enhancements are opt-in runtime patches to the machine's memory
 ("seams"), off by default, leaving the bytes on disk untouched.
 
-**Status: 1.1.** `v1.1.4` is the current release. Pool of
-Radiance plays end to end on all four targets from a player-supplied copy,
+**Status: 1.2.** `v1.2.0` is the current release, the first that plays
+Curse of the Azure Bonds as well: its Steam and GOG copies boot, play and
+save, with the code wheel, the controls, the lettering, the message
+pause, the automap, the journal (both editions) and a fanfare of its own.
+Pool of Radiance plays end to end on all four targets from a player-supplied copy,
 and the six v1 enhancements work and toggle independently on desktop and
 in the browser: *Answer the code wheel once*, the Encamp Fix, the
 automap, the journal, fog of war on the overworld, and the debug cheats.
