@@ -407,10 +407,12 @@ the shells carry it. It exits as **1.2**. Tracking: #557.
   roster, the saves and character import all enumerate directories.
 - **The camp has its own Fix command.** The program keeps no roster
   file; it enumerates its save directory instead.
-- **Characters cross between the games.** The program imports Pool of
-  Radiance characters from a directory the player names. The shipped
-  `COPYCURS.EXE` moves characters between the games' save directories,
-  and looks for Pool of Radiance at `C:\POOLRAD` by default.
+- **Characters cross between the games.** The program's own import
+  (`ADD CHARACTER TO PARTY`, `POOL`) reads Pool of Radiance characters
+  from Curse's own save directory and nowhere else: a `<NAME>.CHA`, or a
+  slot's 285-byte `CHRDAT<S><N>.SAV`. It never looks at `C:\POOLRAD`.
+  The shipped `COPYCURS.EXE` stops at a text mode this machine does not
+  show (`docs/playable-curse.md`, leg 8).
 - The shipped `SAVE\` holds slots A and B, six characters each, in
   422-byte records. The sound driver is Pool of Radiance's, relocated.
 - Steam's Adventurer's Journal for Curse is typeset, with pictures. It
@@ -493,12 +495,9 @@ as they are.
   - Both shells recognize a Curse copy.
   - The toggle panel, the key card and the controls page are per game.
   - The document control knows Curse's journals.
-  - The player's Pool of Radiance folder can be mounted at `C:\POOLRAD`
-    beside `C:\CURSE`, so the game's own import and `COPYCURS.EXE` find
-    it where they look.
 
   *Exit: a new player goes from a Curse copy to playing without reading
-  source, and a Pool of Radiance party carries over.*
+  source.*
 - **C5 — Release 1.2.** The docs and the release bundle. *Exit: the
   gate in §1 is green for both games.*
 
@@ -555,6 +554,9 @@ as they are.
   the reference shell here is its future substrate).
 - Gold Box titles past Curse of the Azure Bonds. They start after M9.
 - Hillsfar character import into Curse.
+- Putting a Pool of Radiance party where Curse's import reads it, in
+  Curse's own save directory. It will be solved through the web page,
+  not in M9.
 - Other audio hardware (Ad Lib, Roland), mouse support, other
   video modes (CGA/MCGA/Hercules), machine save-states, localization,
   32-bit builds.
