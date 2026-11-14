@@ -446,11 +446,14 @@ TEST(SeamModernControlsOnCurse, LeftAndRightStepABarButNotWhereTheyMove) {
   r.arm();
   EXPECT_EQ(r.press(ring_left, camp_segment, camp_bar), ring_comma);
   EXPECT_EQ(r.press(ring_right, camp_segment, camp_bar), ring_period);
-  // The fighter moves and the target bar goes to the manual aim: both keep
-  // the arrows. The party's bar keeps them from this piece, and the move
-  // mode, in menu mode, makes them its own steps.
+  // The combat command bar is stepped, as Pool of Radiance's is: there an
+  // arrow would start a move.
+  EXPECT_EQ(r.press(ring_left, combat_segment, combat_bar), ring_comma);
+  EXPECT_EQ(r.press(ring_right, combat_segment, combat_bar), ring_period);
+  // The target bar goes to the manual aim and keeps the arrows. The party's
+  // bar keeps them from this piece, and the move mode, in menu mode, makes
+  // them its own steps.
   EXPECT_EQ(r.press(ring_left, adventure_segment, adventure_bar), ring_comma);
-  EXPECT_EQ(r.press(ring_right, combat_segment, combat_bar), ring_right);
   EXPECT_EQ(r.press(ring_right, aim_segment, target_bar), ring_right);
 }
 

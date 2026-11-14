@@ -264,6 +264,14 @@ EXIT`, which the arrows move; `E` goes back to the target bar and `E`
 again to the command bar. The scene's `aim` beside each still is in
 `docs/hosts.md` §13.
 
+**The command bar's arrows.** At that bar, with `modern-controls` on,
+Left and Right step the highlight as at every other bar: the bar opens
+on `DONE`, and `Right@9700 Right@9850 Right@10000 Return@10150` light
+`MOVE`, `VIEW` and `AIM` and take `AIM`, on Mark himself. With the
+seam off the program takes an arrow there as the start of a move, and
+the first Right moves Mark. Recorded as `curse-combat-bar-arrows`,
+against the same keys with no seam (`curse-combat-bar-keys`).
+
 ## Leg 4 — the cheats
 
 | seam | how | what the run shows |
@@ -519,6 +527,8 @@ lines, at `--speed 386` and `--wall none`:
 | `curse-script-esc` | `curse-slots` | `modern-controls`, Escape at a script's question | `contrast curse-script-keys` |
 | `curse-door-keys` | `curse-slots` | none | |
 | `curse-door-arrows` | `curse-slots` | `modern-controls`, Up and Down at a locked door's bar | `contrast curse-door-keys` |
+| `curse-combat-bar-keys` | `curse-slots` | none | |
+| `curse-combat-bar-arrows` | `curse-slots` | `modern-controls`, Left and Right at the brawl's command bar | `contrast curse-combat-bar-keys` |
 
 ```sh
 python3 scripts/sweep.py --game-disk games/curse-slots --game-disk games/curse-saved \

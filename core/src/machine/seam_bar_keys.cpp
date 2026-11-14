@@ -458,15 +458,14 @@ constexpr std::array<caller, 1> curse_script_caller{
       .return_offset = 0x1811}}};
 
 /// The callers that keep Left and Right on Curse: the adventuring bar, the
-/// combat command bar and its move loop (both move the fighter on an
-/// arrow), the target bar and the manual aim (an arrow at the target bar
-/// starts the manual aim), the character editor, and the two share
-/// prompts.
-constexpr std::array<caller, 8> curse_arrow_callers{{
+/// combat move loop (an arrow moves the fighter), the target bar and the
+/// manual aim (an arrow at the target bar starts the manual aim), the
+/// character editor, and the two share prompts. The combat command bar
+/// (return `0x0947`) is not one: an arrow there would start a move, and
+/// Left and Right step it as they do Pool of Radiance's.
+constexpr std::array<caller, 7> curse_arrow_callers{{
     {.load_segment_at = curse.adventure_overlay.load_segment_at,
      .return_offset = 0x092C},
-    {.load_segment_at = curse.combat_overlay.load_segment_at,
-     .return_offset = 0x0947},
     {.load_segment_at = curse.combat_overlay.load_segment_at,
      .return_offset = 0x0C17},
     {.load_segment_at = curse.aim_overlay.load_segment_at,

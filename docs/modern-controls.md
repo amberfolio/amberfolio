@@ -175,7 +175,6 @@ The bar keys' callers that keep Left and Right:
 | caller | module (word) | return offset | what an arrow does there |
 | --- | --- | --- | --- |
 | the adventuring bar | overlay 15 (`0x9A0`) | `0x092C` | turns the party; in menu mode the move mode makes them `,` and `.` itself, after this piece has passed |
-| the combat command bar | overlay 9 (`0x580`) | `0x0947` | **starts a move in that direction**, which Pool of Radiance's bar does not: the bar keeps the arrows' scan codes and hands them to the move |
 | the combat move loop | overlay 9 | `0x0C17` | moves the fighter |
 | the target bar (`Aim:`) | overlay 14 (`0x8E0`) | `0x31CC` | **goes to the manual aim**, which Pool of Radiance's target bar (not raw there) does not |
 | the manual aim | overlay 14 | `0x3721` | moves the cursor |
@@ -296,9 +295,10 @@ selected member, asked in combat and out.
   the question stays); at creation Down lights `ELF` at `PICK RACE` and
   Down, Up, Down step the class list; `T`, Right, `O`, Up, `R`, Down,
   `K`, Left saves `TORK` (seam off `TMOHRPKK`); View's Trade opens the
-  picker, and Down, Down, Up select Mark, Travis, Mark; Right and Left
-  at the brawl's command bar give the same stills on and off, the Right
-  starting Travis's move. The aim watch, read from the seam's words:
+  picker, and Down, Down, Up select Mark, Travis, Mark; at the brawl's
+  command bar Right, Right, Right step the highlight from `DONE` to
+  `AIM` and Return takes it (seam off: the first Right starts Mark's
+  move, and he ends it three squares east). The aim watch, read from the seam's words:
   target mode with the range shown at the target bar, manual after `M`,
   none after a key; text entry reading at `CHARACTER NAME:` and not
   before or after.
@@ -319,7 +319,9 @@ selected member, asked in combat and out.
   where the seam-off run throws them away; 19 of 81) and
   `curse-script-esc` `contrast curse-script-keys` (Escape answers `NO`
   at the weapon shop's question, where the seam-off run ignores it; 19
-  of 80), from the same tick; `curse-quiet-all-on-sight` `contrast
+  of 80) and `curse-combat-bar-arrows` `contrast curse-combat-bar-keys`
+  (the brawl's command bar stepped to `AIM`, where the seam-off run's
+  Right moves Mark; 19 of 123), from the same tick; `curse-quiet-all-on-sight` `contrast
   curse-quiet-all` is the seam beside every other (19 of 58). The
   Yes/No prompt's Escape is `curse-camp-arrows`', at `QUIT TO DOS`.
   Each is its
