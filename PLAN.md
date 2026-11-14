@@ -518,7 +518,7 @@ as they are.
 | debug cheats | Port, first (C2). |
 | Encamp (F)ix | **Not ported:** the game has its own Fix. |
 | roster fix | Not ported unless Curse has the failure; it keeps no roster file. |
-| `fanfare` | Not ported, for now. |
+| `fanfare` | Port, with a piece of its own (#598). |
 
 ## 8. Risks and mitigations
 
@@ -554,7 +554,7 @@ as they are.
 - The amberfolio.org website and hosted player (separate initiative;
   the reference shell here is its future substrate).
 - Gold Box titles past Curse of the Azure Bonds. They start after M9.
-- Hillsfar character import into Curse, and a fanfare on Curse.
+- Hillsfar character import into Curse.
 - Other audio hardware (Ad Lib, Roland), mouse support, other
   video modes (CGA/MCGA/Hercules), machine save-states, localization,
   32-bit builds.

@@ -76,6 +76,7 @@ add_executable(amberfolio-core-tests
   core/machine/seam_quick_steps_test.cpp
   core/machine/seam_message_pause_test.cpp
   core/machine/seam_fanfare_test.cpp
+  core/machine/seam_fanfare_curse_test.cpp
   core/machine/seam_moment_test.cpp
   core/machine/seam_text_entry_test.cpp
   core/machine/seam_aim_watch_test.cpp

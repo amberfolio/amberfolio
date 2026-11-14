@@ -126,7 +126,7 @@ frame that carries an input is checkpointed whatever the cadence says.
 
 ### Curse of the Azure Bonds
 
-Fifty-one sessions, `curse-*`, on the Steam copy at `--speed 386` and
+Fifty-four sessions, `curse-*`, on the Steam copy at `--speed 386` and
 `--wall none` (#554, #555, #588). Every one is `disk external`: `curse-load` is
 pinned to the disk `curse-save` wrote (the `curse-saved` snapshot), the
 three `curse-journey` sessions to a disk with the party saved in slot D
@@ -228,7 +228,7 @@ the sweep and on the wasm module (`drive.mjs --install '\CURSE'
 | `modern-controls` | `list-down-arrows`, `camp-down-arrows`, `camp-pad-arrows`, `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys`, `bar-esc-keys`, `bar-script-keys`, `bar-portrait-keys`, `menu-down-cursor`, `move-walk-mode`, `door-pick-3`, `list-keys-yellow`, `name-arrows-edit` (each a `contrast`; `door-pick-3` has the seam on at both ends and differs by its keys); on Curse `curse-camp-arrows`, `curse-name-arrows`, `curse-menu-cursor`, `curse-modify-arrows`, `curse-move-walk-mode`, `curse-door-arrows`, `curse-script-esc` | none can exist: three of its pieces draw on sight, so `quiet-modern-controls`, `menu-letters-cursor` and `quiet-all-on-sight` are `contrast`s too (the pair is a `contrast`, as the faces' is). On Curse the same three draw on sight, the menu cursor, the hero keys and the selection block, so `curse-quiet-controls` is a `contrast curse-quiet` and `curse-quiet-all-on-sight` a `contrast curse-quiet-all` |
 | `quick-steps` | `walk-quick` | `menu-letters-quick`. Not in `quiet-all`: `quiet`'s movement keys click |
 | `message-pause` | `fight-pause`; on Curse `curse-fight-pause` | `quiet-message-pause`, and `quiet-all`; on Curse `curse-quiet-message-pause`, and `curse-quiet-all` |
-| `fanfare` | `quiet-fanfare` (a `contrast`) | none can exist: every boot runs the titles, where it starts. Not in `quiet-all` |
+| `fanfare` | `quiet-fanfare` (a `contrast`); on Curse `curse-quiet-fanfare` (a `contrast`) | none can exist: every boot runs the titles, where it starts. Not in `quiet-all` or `curse-quiet-all` |
 | `font-sans`, `font-chisel` | `quiet-font-sans`, `quiet-font-chisel` (on is exercised: text is drawn from the first screen); on Curse `curse-quiet-font-sans`, `curse-quiet-font-chisel` | none can exist; the pair is a `contrast` |
 
 **`modern-controls` is in `quiet-all-on-sight` and not in `quiet-all`.**

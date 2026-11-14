@@ -17,7 +17,8 @@ the disk and every file the game owns are never modified.
 **Each game has its own.** An enhancement is written for a program, and
 the toggle panel lists the ones the game you loaded has: Curse of the
 Azure Bonds has no Encamp Fix (the game has a Fix of its own), explored
-overlay, quick steps or fanfare. The key card is each game's too.
+overlay or quick steps, and a fanfare of its own. The key card is each
+game's too.
 
 ## Answer the code wheel once
 
@@ -577,13 +578,20 @@ not given one.
 
 ## The fanfare
 
-**What it does.** Plays a short piece, about thirty-one seconds, on the
-Tandy sound chip as soon as the boot's `LOADING...PLEASE WAIT` is done.
-The game itself is silent from there to its first sound in play. The
-piece was written for this project; nothing in it is the game's. It plays
-on through the publisher's logo, the title and the credits and into the
-menus at the same tempo at every speed setting, and a key that hurries
-the titles along does not stop it.
+**What it does.** Plays a short piece on the Tandy sound chip as soon as
+the boot's loading is done, one piece for each game; each was written for
+this project, and nothing in either is the game's. It plays at the same
+tempo at every speed setting, and a key that hurries the titles along
+does not stop it.
+
+- **Pool of Radiance**: about thirty-one seconds. The game is silent from
+  the end of `LOADING...PLEASE WAIT` to its first sound in play, so the
+  piece plays on through the publisher's logo, the title and the credits
+  and into the menus.
+- **Curse of the Azure Bonds**: *Five Sigils*, in D minor, about
+  thirty-nine seconds. The game sounds once in its titles, at their
+  fourth picture, and that ends the piece: about twenty seconds of it at
+  the 386 speed, less when a key hurries the titles along.
 
 **How you turn it on.** `--seam fanfare`, or its toggle in the panel. It
 takes effect at the next boot, because the end of the loading is where
@@ -591,7 +599,8 @@ it starts. Switched off while it plays, it stops there and then, and the
 chip goes quiet.
 
 **What it will not do.** Play over the game. The first sound the game
-makes, a footstep or a door, ends the piece for good, and so does the
+makes, a footstep, a door or Curse's own title sound, ends the piece for
+good, and so does the
 game's sound being turned off (Ctrl-S). It plays only through the Tandy
 chip, which is how every copy is started here.
 

@@ -731,6 +731,7 @@ and never triggered.
 | `curse-quiet-all-on-sight` | contrast | `curse-quiet-all` (the same with `modern-controls` on: the title's bar is the first highlight drawn) |
 | `curse-fight-pause` | contrast | `curse-fight` (the pause that opens the brawl, and every combat line after it, stand longer) |
 | `quiet-fanfare` | contrast | `quiet` (the piece from the end of the boot's loading on: the chip's writes, and its registers while it plays) |
+| `curse-quiet-fanfare` | contrast | `curse-quiet` (Curse's piece from the end of the boot's loading to the titles' own sound, and the driver's ticks it kept off the chip) |
 
 **A built-in fix has no pair** (`built_in_fixes()`, seam.h). It is on
 with its program and listed nowhere: no panel, config file, flag or
@@ -998,7 +999,7 @@ to carry.
 | `modern-controls` | the controls a later game has, nine pieces in one seam: Up and Down step the pick-lists and the selected party member; Left, Right, Enter and Esc work at the command bars; walking is a mode the party's bar starts with `Move` and ends with `Exit`, `Area` gone; the main menu has a cursor, and its number row's 1 to 8 select a party member with each number shown; the arrows no longer type letters at a text prompt; every selection is a yellow block with its key letter a white one; and it notes when the program is reading a line of text and where the combat aim bar keeps its cursor, for a host to ask (§10) | overlay 25 (the menu-bar and list routines), overlays 13, 14, 16 and 19, and the resident image |
 | `quick-steps` | a turn, and the next step, do not wait for the footstep's click; the click still plays, and a step's two clicks keep their spacing | the resident image, and the call sites in overlays 14 and 3 |
 | `message-pause` | a message the program moves on from by itself stands at least the seam's number of milliseconds, 1500 unless the player chose otherwise, and any key ends it; the encounter menu waits as long before it wipes a line the script just printed | the resident image, and overlays 3 and 31 (on Curse, 3 and 33) |
-| `fanfare` | a piece written for this project plays on the Tandy chip from the end of the boot's loading on, paced by a point at a moment (§3b); the program's first sound ends it | overlay 1, the resident image, and a moment |
+| `fanfare` | a piece written for this project plays on the Tandy chip from the end of the boot's loading on, one for each game, paced by a point at a moment (§3b); the program's first sound ends it | overlay 1 (on Curse, 2), the resident image, and a moment |
 | `cheat-invulnerable` | the party takes no damage | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage, **when pulled** (§3a) | the end check's overlay |
 | `cheat-wound-party` | the whole party drops to one hit point, **when pulled at camp** (§3a) | the resident image |
@@ -2119,6 +2120,56 @@ setting is the byte at DGROUP `0x5372`, 0 the Tandy chip.
   governor, in `devices` and `audio` only, and in `audio` alone once the
   chip is handed back). No `identical` pair can exist: every boot runs
   the titles. Not in `quiet-all` for the same reason.
+- **Open**: nothing.
+
+#### On Curse of the Azure Bonds (#598)
+
+A piece of its own, *Five Sigils*, written for this project for the
+Tandy chip: 2,082 writes over 38.9 seconds (`fanfare_score_curse.cpp`).
+One `fanfare_facts` row a program, Pool of Radiance's first.
+
+**What the program does differently.** The titles are overlay 2
+(GAME.OVR file offset 218, 1911 bytes, load-segment word `0x3A0`), at
+`0x0632`, a `push bp` with DS the data segment; the program calls them
+when its loading is done and again each time its demonstration ends. The
+driver's dispatch entry is `0x69B0`, the request a word above the far
+return. The sound setting is DGROUP `0x5C04`, and it holds **1 for the
+Tandy chip** (0 the speaker, 2 none): the configuration's `T` writes 1,
+read at the 386 governor in frame 77. Two things Pool of Radiance's
+driver does not do:
+
+- **Requests that start no sound.** The program asks its driver for 0
+  before every file it reads and 1 after it, and for `0xFF` at start-up,
+  so the titles make the request pair at each picture they load. None of
+  them is a sound. The first request that is one is the titles' own, at
+  their fourth picture.
+- **A driver that keeps the chip.** Once those requests have started it,
+  the driver's timer writes the chip at every tick, through one routine,
+  `0x7DBF`: with nothing playing it silences all four voices, and with a
+  sound playing it writes each voice from the sound. Measured at the 386
+  governor: about seven hundred writes a second through the silent
+  titles. A piece written over that is cut off within the tick.
+
+**Points on Curse** (beside the three above, at its own addresses):
+
+| point | what the handler does |
+| --- | --- |
+| `0x69B0`, the dispatch entry | as Pool of Radiance's, except that requests 0, 1 and `0xFF` leave the piece playing |
+| `0x7DBF`, the driver's chip routine | while a moment is outstanding, moves IP to the `retn` at `0x7E3B`, so the routine leaves at once and the piece has the chip; refuses a target that is not a `retn` |
+
+- **How much is heard**: the titles' own sound ends it, at their fourth
+  picture: about 19.5 seconds of the 38.9 at the 386 governor, from 1 to
+  20.5 seconds into the run, then the game's own sound as it always was.
+  A key that hurries the titles along shortens it.
+- **`fired`** counts the driver's ticks as well, about 750 a second while
+  the piece plays.
+- **Fidelity**: before the titles it moves nothing. While the piece plays
+  the driver's routine does not run, so the driver's own bytes are left
+  as the ticks found them, and stay different (`curse-quiet-fanfare`,
+  `contrast curse-quiet`, 1 of 58 checkpoints identical, divergent from
+  tick 2,565,294; `cpu`, `ram`, `devices` and `audio` while it plays,
+  `ram` and `audio` alone from tick 63,655,086 to the end; the screen,
+  DOS and the keyboard never differ).
 - **Open**: nothing.
 
 ### The timer fix

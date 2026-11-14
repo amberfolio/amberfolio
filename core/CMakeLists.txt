@@ -50,6 +50,7 @@ add_library(amberfolio-core STATIC
   src/machine/edition.cpp
   src/machine/ega.cpp
   src/machine/fanfare_score.cpp
+  src/machine/fanfare_score_curse.cpp
   src/machine/fingerprint.cpp
   src/machine/font.cpp
   src/machine/int10.cpp

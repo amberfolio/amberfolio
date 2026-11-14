@@ -1823,8 +1823,8 @@ hosts. None of them is decoration.
 **The rows are the loaded program's seams** (#556). A seam whose facts
 describe another program, core's `wrong_binary`, is not listed once the
 program is one this build recognizes: on Curse of the Azure Bonds the
-panel has no row for `encamp-fix`, `explored`, `quick-steps` or
-`fanfare`. Every other reason stays on its row, a module not loaded yet
+panel has no row for `encamp-fix`, `explored` or `quick-steps`. Every
+other reason stays on its row, a module not loaded yet
 and a document not presented among them. For a program this build does
 not recognize every seam reads `wrong_binary` and every row is listed,
 and with no program loaded every row is listed and reads `no_program`.
