@@ -110,23 +110,36 @@
 namespace amberfolio::machine {
 namespace {
 
-/// The program this seam's facts are about (program_profile.h): the
-/// baseline edition, and only it. The seam is available on it and on no
-/// other binary.
-constexpr const program_profile& profile = pool_of_radiance;
-constexpr auto fanfare_binaries = fingerprints_of(std::array{&profile});
+/// One program's facts: where its titles routine starts, where its driver
+/// takes a request, the byte that says which device it sounds through and
+/// that byte's value for the Tandy chip, and the piece it plays.
+struct fanfare_facts {
+  const program_profile& profile;
+  /// In the titles overlay (the profile's): the titles routine's entry, a
+  /// `push bp`.
+  std::uint16_t titles_entry;
+  /// The driver's dispatch entry, from the image segment.
+  std::uint32_t dispatch_offset;
+  /// The sound setting, a byte in the data segment, and its value for the
+  /// Tandy chip.
+  std::uint16_t data_sound;
+  std::uint8_t sound_on_the_chip;
+  /// The piece.
+  std::span<const chip_cue> (*score)() noexcept;
+};
 
-/// In the titles overlay (the profile's): the titles routine's entry, a
-/// `push bp`.
-constexpr std::uint32_t titles_entry = 0x0627;
+/// Pool of Radiance.
+constexpr fanfare_facts pool_of_radiance_fanfare{.profile = pool_of_radiance,
+                                                 .titles_entry = 0x0627,
+                                                 .dispatch_offset = 0x8BBC,
+                                                 .data_sound = 0x5372,
+                                                 .sound_on_the_chip = 0,
+                                                 .score = &fanfare_score};
+
+constexpr auto fanfare_binaries =
+    fingerprints_of(std::array{&pool_of_radiance});
+
 constexpr std::uint8_t push_bp = 0x55;
-
-/// The driver's dispatch entry, from the image segment.
-constexpr std::uint32_t dispatch_offset = 0x8BBC;
-
-/// The sound setting, a byte in the data segment: 0 for the Tandy chip.
-constexpr std::uint16_t data_sound = 0x5372;
-constexpr std::uint8_t sound_on_the_chip = 0;
 
 /// The seam's one word: the next cue of the score.
 constexpr unsigned next_cue = 0;
@@ -137,14 +150,16 @@ constexpr unsigned next_cue = 0;
 constexpr std::array<std::uint8_t, 11> as_found{
     0x80, 0x00, 0xA0, 0x00, 0xC0, 0x00, 0xE0, 0x9F, 0xBF, 0xDF, 0xFF};
 
+template <const fanfare_facts& F>
 [[nodiscard]] std::uint16_t data_segment(const seam_context& ctx) {
   return static_cast<std::uint16_t>((ctx.image_base() >> 4U) +
-                                    profile.dgroup_paragraphs);
+                                    F.profile.dgroup_paragraphs);
 }
 
+template <const fanfare_facts& F>
 [[nodiscard]] bool sounding_on_the_chip(machine& box, const seam_context& ctx) {
-  return box.processor().read_byte(data_segment(ctx), data_sound) ==
-         sound_on_the_chip;
+  return box.processor().read_byte(data_segment<F>(ctx), F.data_sound) ==
+         F.sound_on_the_chip;
 }
 
 void hand_the_chip_back(machine& box) {
@@ -153,25 +168,27 @@ void hand_the_chip_back(machine& box) {
   }
 }
 
+template <const fanfare_facts& F>
 void start_with_the_titles(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   const cpu::registers& regs = cpu.regs();
-  if (regs[cpu::sreg::ds] != data_segment(ctx) ||
+  if (regs[cpu::sreg::ds] != data_segment<F>(ctx) ||
       cpu.read_byte(regs[cpu::sreg::cs], regs.ip) != push_bp) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
-  if (ctx.offered() || !sounding_on_the_chip(box, ctx)) {
+  if (ctx.offered() || !sounding_on_the_chip<F>(box, ctx)) {
     return;
   }
   ctx.set_scratch(next_cue, 0);
   ctx.offer_at(box.time());
 }
 
+template <const fanfare_facts& F>
 void play_what_is_due(machine& box, seam_context& ctx) {
-  const std::span<const chip_cue> score = fanfare_score();
+  const std::span<const chip_cue> score = F.score();
   std::size_t next = ctx.scratch(next_cue);
-  if (next >= score.size() || !sounding_on_the_chip(box, ctx)) {
+  if (next >= score.size() || !sounding_on_the_chip<F>(box, ctx)) {
     hand_the_chip_back(box);
     return;
   }
@@ -205,18 +222,23 @@ void switched_off(machine& box, seam_context& /*ctx*/) {
   hand_the_chip_back(box);
 }
 
+/// The points of one program's row: the titles' entry, the moment, and
+/// the dispatch entry.
+template <const fanfare_facts& F>
 constexpr std::array<seam_point, 3> fanfare_points{
-    {{.module = profile.titles_overlay,
-      .offset = titles_entry,
-      .run = &start_with_the_titles},
-     {.module = resident_image, .run = &play_what_is_due, .at_moment = true},
-     {.module = resident_image, .offset = dispatch_offset, .run = &give_way}}};
+    {{.module = F.profile.titles_overlay,
+      .offset = F.titles_entry,
+      .run = &start_with_the_titles<F>},
+     {.module = resident_image, .run = &play_what_is_due<F>, .at_moment = true},
+     {.module = resident_image,
+      .offset = F.dispatch_offset,
+      .run = &give_way}}};
 
 constexpr seam_definition fanfare_definition{
     .id = "fanfare",
     .about = "a fanfare on the Tandy chip as soon as the loading is done",
     .fingerprints = fanfare_binaries,
-    .points = fanfare_points,
+    .points = fanfare_points<pool_of_radiance_fanfare>,
     .stop = &switched_off,
     .schema = seam_schema_version};
 
