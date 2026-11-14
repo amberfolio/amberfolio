@@ -483,7 +483,7 @@ lines, at `--speed 386` and `--wall none`:
 | `curse-quiet-font-sans` | `curse-slots` | `font-sans` | `contrast curse-quiet` |
 | `curse-quiet-font-chisel` | `curse-slots` | `font-chisel` | `contrast curse-quiet` |
 | `curse-quiet-message-pause` | `curse-slots` | `message-pause` | `identical curse-quiet` |
-| `curse-quiet-fanfare` | `curse-slots` | `fanfare`, from the titles to their own sound | `contrast curse-quiet` |
+| `curse-quiet-fanfare` | `curse-slots` | `fanfare`, the whole piece, over the titles' own sound | `contrast curse-quiet` |
 | `curse-quiet-controls` | `curse-slots` | `modern-controls` | `contrast curse-quiet` |
 | `curse-quiet-journal` | `curse-slots` | `journal`, `Notes` never chosen | `contrast curse-quiet` |
 | `curse-notes-keys` | `curse-slots` | none | |
