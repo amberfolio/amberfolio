@@ -12,8 +12,9 @@
 // virtual time, so it keeps its tempo at every governor. A key that
 // hurries the titles along does not stop it. The first sound the game
 // makes does: the game's own sound always wins, and the fanfare gives way
-// for good. Switched off while it plays, it stops there and then, and
-// the chip goes quiet. It plays only when the game is sounding through
+// for good, with one exception: on Curse of the Azure Bonds the titles
+// make a sound of their own, and the piece plays on over it. Switched off
+// while it plays, it stops there and then, and the chip goes quiet. It plays only when the game is sounding through
 // the Tandy chip, which every copy is started with here; the piece is
 // written for that chip and nothing else.
 //
@@ -73,7 +74,13 @@
 //     file it reads and 1 after, and `0xFF` at start-up. The titles read a
 //     picture before each screen, so they make that pair between screens.
 //     Their own sound, at the fourth picture, is the first request that is
-//     a sound.
+//     a sound: request `0x0D`, about twenty seconds in at the 386
+//     governor, its far return in the titles overlay.
+//   * The dispatch entry, a `push bp`, takes its one word with `mov bp,sp`
+//     and leaves with `pop bp; retf 2` at `0x6A60`, so a far jump to its
+//     `retf 2` at `0x6A61` from the entry returns to the caller with the
+//     request taken off the stack and nothing done. The titles' call
+//     does not clean up after it.
 //   * Once those have started it, the driver writes the chip at every tick
 //     of its timer, through one routine at image offset `0x7DBF`: with
 //     nothing playing it silences the four voices, about seven hundred
@@ -105,16 +112,20 @@
 // On Curse, the requests that start no sound leave it playing, and while
 // it plays, the driver's chip routine is sent straight to its `retn`, so
 // the piece has the chip; a routine whose `retn` is not there is refused.
-// The titles' own sound ends it, about twenty seconds in at the 386
-// governor.
+// The titles' own sound does not end it: a request whose far return is
+// in the titles overlay, while the piece plays, is sent straight to the
+// entry's `retf 2`, so the piece plays on over the fourth picture and to
+// its end. Any other sound still ends it, and so does the titles' own
+// at an entry whose `retf 2` is not there.
 //
 // **What it costs.** Before the titles it moves nothing. From the titles
 // the chip's registers are the score's until the score ends, gives way or
 // is switched off, and then they are what they were; the writes themselves
 // are in the run's audio record for good. On Curse the driver's own bytes
-// stay as the ticks it missed left them. `fired` counts the titles' entry,
-// every moment, every request the program makes while the seam is on, and
-// on Curse every tick of the driver's.
+// stay as the ticks it missed left them, and the titles' own sound is not
+// heard when the piece is still playing at their fourth picture. `fired`
+// counts the titles' entry, every moment, every request the program makes
+// while the seam is on, and on Curse every tick of the driver's.
 //
 //
 // What it is not yet (docs/seams.md §8.5)
@@ -167,6 +178,10 @@ struct fanfare_facts {
   /// a sound plays.
   std::uint32_t chip_service_offset;
   std::uint32_t chip_service_return;
+  /// The `retf 2` of the dispatch entry, from the image segment, where a
+  /// request the titles make is sent while the piece plays; zero on a
+  /// program whose titles make no sound.
+  std::uint32_t dispatch_return;
   /// The piece.
   std::span<const chip_cue> (*score)() noexcept;
 };
@@ -180,6 +195,7 @@ constexpr fanfare_facts pool_of_radiance_fanfare{.profile = pool_of_radiance,
                                                  .housekeeping_requests = false,
                                                  .chip_service_offset = 0,
                                                  .chip_service_return = 0,
+                                                 .dispatch_return = 0,
                                                  .score = &fanfare_score};
 
 /// Curse of the Azure Bonds (#598): a piece of its own, a sound setting
@@ -192,6 +208,7 @@ constexpr fanfare_facts curse_fanfare{.profile = curse_of_the_azure_bonds,
                                       .housekeeping_requests = true,
                                       .chip_service_offset = 0x7DBF,
                                       .chip_service_return = 0x7E3B,
+                                      .dispatch_return = 0x6A61,
                                       .score = &curse_fanfare_score};
 
 constexpr auto fanfare_binaries =
@@ -199,9 +216,12 @@ constexpr auto fanfare_binaries =
 
 constexpr std::uint8_t push_bp = 0x55;
 constexpr std::uint8_t near_return = 0xC3;
+constexpr std::uint8_t far_return_imm = 0xCA;
+constexpr std::uint16_t request_bytes = 2;
 
-/// At the dispatch entry, before its `push bp`: the request, above the far
-/// return.
+/// At the dispatch entry, before its `push bp`: the far return's segment,
+/// and the request above it.
+constexpr std::uint16_t entry_return_segment = 2;
 constexpr std::uint16_t entry_request = 4;
 
 /// The requests that start no sound, on a program that has them.
@@ -276,20 +296,50 @@ void play_what_is_due(machine& box, seam_context& ctx) {
   ctx.offer_at(start + score[next].at);
 }
 
+/// Whether the request at the dispatch entry comes from the titles: its far
+/// return is in the segment the overlay manager keeps the titles in.
+template <const fanfare_facts& F>
+[[nodiscard]] bool asked_by_the_titles(machine& box, const seam_context& ctx) {
+  cpu::processor& cpu = box.processor();
+  const cpu::registers& regs = cpu.regs();
+  const std::uint16_t caller = cpu.read_word(
+      regs[cpu::sreg::ss],
+      static_cast<std::uint16_t>(regs[cpu::reg16::sp] + entry_return_segment));
+  const std::uint16_t titles = cpu.read_word(
+      static_cast<std::uint16_t>(ctx.image_base() >> 4U),
+      static_cast<std::uint16_t>(F.profile.titles_overlay.load_segment_at));
+  return titles != 0 && caller == titles;
+}
+
 template <const fanfare_facts& F>
 void give_way(machine& box, seam_context& ctx) {
   if (!ctx.offered()) {
     return;
   }
+  cpu::processor& cpu = box.processor();
+  const cpu::registers& regs = cpu.regs();
   if constexpr (F.housekeeping_requests) {
-    cpu::processor& cpu = box.processor();
-    const cpu::registers& regs = cpu.regs();
     const std::uint8_t request = cpu.read_byte(
         regs[cpu::sreg::ss],
         static_cast<std::uint16_t>(regs[cpu::reg16::sp] + entry_request));
     if (request == request_stop || request == request_resume ||
         request == request_off) {
       return;
+    }
+  }
+  if constexpr (F.dispatch_return != 0) {
+    if (asked_by_the_titles<F>(box, ctx)) {
+      const std::uint16_t cs = regs[cpu::sreg::cs];
+      const auto leave = static_cast<std::uint16_t>(
+          regs.ip + (F.dispatch_return - F.dispatch_offset));
+      if (cpu.read_byte(cs, leave) == far_return_imm &&
+          cpu.read_word(cs, static_cast<std::uint16_t>(leave + 1)) ==
+              request_bytes) {
+        ctx.redirect(cs, leave);
+        return;
+      }
+      // Not the driver this is about: the sound goes to it, and the piece
+      // gives way as it does to any other.
     }
   }
   ctx.withdraw_offer();

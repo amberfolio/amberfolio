@@ -4,14 +4,14 @@
 # script with the seam on. Every boot runs the titles, so the piece plays
 # in every run with the seam on and there is no `identical` to record: the
 # pair is a `contrast`, agreeing with `curse-quiet` up to the end of the
-# loading and differing from there on. The titles' own sound, at their
-# fourth picture, ends the piece about twenty seconds in.
+# loading and differing from there on. The piece plays to its end, over
+# the titles' own sound at their fourth picture, about twenty seconds in.
 #
 # Recorded on the Steam copy with its shipped slots A and B (games/curse-slots), at --speed 386 and --wall none.
 
-about fanfare on: the piece from the end of the loading to the titles'
-about own sound, then slot A, the opening event and the innkeeper, as
-about `curse-quiet` does
+about fanfare on: the piece from the end of the loading to its end, over
+about the titles' own sound, then slot A, the opening event and the
+about innkeeper, as `curse-quiet` does
 disk external
 contrast curse-quiet
 

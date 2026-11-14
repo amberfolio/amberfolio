@@ -590,8 +590,8 @@ does not stop it.
   and into the menus.
 - **Curse of the Azure Bonds**: *Five Sigils*, in D minor, about
   thirty-nine seconds. The game sounds once in its titles, at their
-  fourth picture, and that ends the piece: about twenty seconds of it at
-  the 386 speed, less when a key hurries the titles along.
+  fourth picture, and the piece plays on over it: that one sound is not
+  heard while the piece plays, and the piece plays to its end.
 
 **How you turn it on.** `--seam fanfare`, or its toggle in the panel. It
 takes effect at the next boot, because the end of the loading is where
@@ -599,8 +599,8 @@ it starts. Switched off while it plays, it stops there and then, and the
 chip goes quiet.
 
 **What it will not do.** Play over the game. The first sound the game
-makes, a footstep, a door or Curse's own title sound, ends the piece for
-good, and so does the
+makes, a footstep or a door, ends the piece for good (Curse's title
+sound, above, is the one exception), and so does the
 game's sound being turned off (Ctrl-S). It plays only through the Tandy
 chip, which is how every copy is started here.
 

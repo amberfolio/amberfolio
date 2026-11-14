@@ -12,7 +12,7 @@
 // the sound setting holds 1 for the Tandy chip (0 is the speaker), and
 // the piece is its own. **Every byte of program here is this file's
 // own**: a `push bp` at the titles' entry with a far jump behind it to a
-// HLT, and a HLT at the dispatch entry.
+// HLT, a HLT at the dispatch entry and a `retf 2` where it leaves.
 
 #include <array>
 #include <cstddef>
@@ -51,6 +51,9 @@ constexpr std::uint16_t titles_entry = 0x0632;
 /// The driver's dispatch entry, from the image segment, and the requests
 /// that start no sound: 0 and 1 around a file read, and 0xFF.
 constexpr std::uint16_t dispatch_entry = 0x69B0;
+/// Its `retf 2`, and where the titles' call to it returns.
+constexpr std::uint16_t dispatch_return = 0x6A61;
+constexpr std::uint16_t titles_call_return = 0x0734;
 constexpr std::array<std::uint8_t, 3> housekeeping{0x00, 0x01, 0xFF};
 constexpr std::uint8_t a_sound = 0x0D;
 
@@ -70,13 +73,12 @@ constexpr std::uint16_t titles_segment = 0x2000;
 constexpr std::uint16_t idle_segment = 0x3000;
 constexpr std::uint16_t stack_segment = 0x5000;
 
-/// The piece: 2,082 writes on 1,568 ticks, opening with the four voices
-/// silenced and the noise voice set up on its start, its last write
-/// 46,359,494 ticks in. Its closest two ticks are 85 apart.
-constexpr std::size_t piece_writes = 2082;
-constexpr unsigned piece_ticks = 1568;
-constexpr std::array<std::uint8_t, 6> opening{0x9F, 0xBF, 0xDF,
-                                              0xFF, 0xE6, 0xF7};
+/// The piece: 2,072 writes on 1,560 ticks, opening with the four voices
+/// silenced on its start, its last write 46,359,494 ticks in. Its closest
+/// two ticks are 85 apart.
+constexpr std::size_t piece_writes = 2072;
+constexpr unsigned piece_ticks = 1560;
+constexpr std::array<std::uint8_t, 4> opening{0x9F, 0xBF, 0xDF, 0xFF};
 constexpr ticks last_write_at = 46359494;
 constexpr ticks piece_and_then_some = 40 * pit_input_hz;
 
@@ -120,6 +122,14 @@ struct curse_rig {
     put_byte(data_segment, data_sound, sound_tandy);
     put_byte(idle_segment, 0, 0xF4);
     put_byte(image_load_segment, dispatch_entry, 0xF4);
+    put_far_return(image_load_segment, dispatch_return);
+    put_byte(titles_segment, titles_call_return, 0xF4);
+  }
+
+  /// A `retf 2` at `offset`.
+  void put_far_return(std::uint16_t segment, std::uint16_t offset) const {
+    put_byte(segment, offset, 0xCA);
+    put_word(segment, static_cast<std::uint16_t>(offset + 1), 2);
   }
 
   void arm() const {
@@ -149,12 +159,18 @@ struct curse_rig {
     box->step();
   }
 
-  /// The program asks its driver for `request`: a far return and the
-  /// request above it on the stack.
-  void arrive_at_dispatch(std::uint8_t request) const {
+  /// The program asks its driver for `request` from a call in `caller`: a
+  /// far return and the request above it on the stack. Answers where CS:IP
+  /// is after the step, as a linear address.
+  [[nodiscard]] std::uint32_t arrive_at_dispatch(
+      std::uint8_t request, std::uint16_t caller = idle_segment) const {
     stand_at(image_load_segment, dispatch_entry);
+    put_word(stack_segment, stack_top, titles_call_return);
+    put_word(stack_segment, stack_top + 2, caller);
     put_word(stack_segment, stack_top + 4, request);
     box->step();
+    const cpu::registers& regs = box->processor().regs();
+    return cpu::physical_address(regs[cpu::sreg::cs], regs.ip);
   }
 
   /// The driver's timer reaches its chip routine: a HLT at its entry, a
@@ -237,7 +253,7 @@ TEST(SeamFanfareOnCurse, PlaysItsOwnPieceFromTheTitlesToItsEnd) {
 }
 
 TEST(SeamFanfareOnCurse, GivesWayToTheProgramsFirstSound) {
-  // On this program that is the titles' own, at their fourth picture.
+  // Any sound but the titles' own.
   const curse_rig r;
   r.arm();
   r.arrive_at_titles();
@@ -246,12 +262,53 @@ TEST(SeamFanfareOnCurse, GivesWayToTheProgramsFirstSound) {
   ASSERT_GT(played, opening.size());
   ASSERT_LT(played, piece_writes);
 
-  r.arrive_at_dispatch(a_sound);
+  static_cast<void>(r.arrive_at_dispatch(a_sound));
   const std::size_t stopped = r.chip->writes.size();
   ASSERT_GE(stopped, played + hand_back.size());
   EXPECT_EQ(r.chip->writes.back().value, hand_back.back());
   r.play_for(piece_and_then_some);
   EXPECT_EQ(r.chip->writes.size(), stopped);
+}
+
+TEST(SeamFanfareOnCurse, PlaysOnOverTheTitlesOwnSound) {
+  // At their fourth picture, about twenty seconds in: the request leaves
+  // the driver at once and the piece plays to its end.
+  const curse_rig r;
+  r.arm();
+  r.arrive_at_titles();
+  r.play_for(5 * pit_input_hz);
+  const std::uint32_t at = r.arrive_at_dispatch(a_sound, titles_segment);
+  EXPECT_TRUE(at ==
+                  cpu::physical_address(image_load_segment, dispatch_return) ||
+              at == cpu::physical_address(titles_segment, titles_call_return))
+      << "sent to the driver's retf 2, not into the driver: " << at;
+  r.play_for(piece_and_then_some);
+  EXPECT_EQ(r.chip->writes.size(), piece_writes + hand_back.size())
+      << "the whole piece, and the hand-back at its end";
+}
+
+TEST(SeamFanfareOnCurse, GivesWayToTheTitlesSoundWhenTheDriverIsNotItsOwn) {
+  const curse_rig r;
+  r.arm();
+  r.arrive_at_titles();
+  r.play_for(5 * pit_input_hz);
+  r.put_byte(image_load_segment, dispatch_return, 0xCB);
+  const std::uint32_t at = r.arrive_at_dispatch(a_sound, titles_segment);
+  EXPECT_EQ(at, cpu::physical_address(image_load_segment, dispatch_entry + 1))
+      << "into the driver: its HLT";
+  const std::size_t stopped = r.chip->writes.size();
+  EXPECT_EQ(r.chip->writes.back().value, hand_back.back());
+  r.play_for(piece_and_then_some);
+  EXPECT_EQ(r.chip->writes.size(), stopped);
+}
+
+TEST(SeamFanfareOnCurse, LeavesTheTitlesSoundAloneOnceThePieceIsOver) {
+  const curse_rig r;
+  r.arm();
+  r.arrive_at_titles();
+  r.play_for(piece_and_then_some);
+  EXPECT_EQ(r.arrive_at_dispatch(a_sound, titles_segment),
+            cpu::physical_address(image_load_segment, dispatch_entry + 1));
 }
 
 TEST(SeamFanfareOnCurse, PlaysOnThroughTheRequestsThatStartNoSound) {
@@ -262,7 +319,7 @@ TEST(SeamFanfareOnCurse, PlaysOnThroughTheRequestsThatStartNoSound) {
   r.arrive_at_titles();
   r.play_for(2 * pit_input_hz);
   for (const std::uint8_t request : housekeeping) {
-    r.arrive_at_dispatch(request);
+    static_cast<void>(r.arrive_at_dispatch(request));
     r.play_for(pit_input_hz);
   }
   r.play_for(piece_and_then_some);

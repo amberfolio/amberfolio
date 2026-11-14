@@ -731,7 +731,7 @@ and never triggered.
 | `curse-quiet-all-on-sight` | contrast | `curse-quiet-all` (the same with `modern-controls` on: the title's bar is the first highlight drawn) |
 | `curse-fight-pause` | contrast | `curse-fight` (the pause that opens the brawl, and every combat line after it, stand longer) |
 | `quiet-fanfare` | contrast | `quiet` (the piece from the end of the boot's loading on: the chip's writes, and its registers while it plays) |
-| `curse-quiet-fanfare` | contrast | `curse-quiet` (Curse's piece from the end of the boot's loading to the titles' own sound, and the driver's ticks it kept off the chip) |
+| `curse-quiet-fanfare` | contrast | `curse-quiet` (Curse's piece from the end of the boot's loading to its end, the titles' own sound it plays over, and the driver's ticks it kept off the chip) |
 
 **A built-in fix has no pair** (`built_in_fixes()`, seam.h). It is on
 with its program and listed nowhere: no panel, config file, flag or
@@ -2125,7 +2125,7 @@ setting is the byte at DGROUP `0x5372`, 0 the Tandy chip.
 #### On Curse of the Azure Bonds (#598)
 
 A piece of its own, *Five Sigils*, written for this project for the
-Tandy chip: 2,082 writes over 38.9 seconds (`fanfare_score_curse.cpp`).
+Tandy chip: 2,072 writes over 38.9 seconds (`fanfare_score_curse.cpp`).
 One `fanfare_facts` row a program, Pool of Radiance's first.
 
 **What the program does differently.** The titles are overlay 2
@@ -2142,7 +2142,9 @@ driver does not do:
   before every file it reads and 1 after it, and for `0xFF` at start-up,
   so the titles make the request pair at each picture they load. None of
   them is a sound. The first request that is one is the titles' own, at
-  their fourth picture.
+  their fourth picture: `0x0D`, its far return in the titles overlay.
+  The dispatch entry leaves with `pop bp; retf 2` at `0x6A60`, and the
+  titles' call does not clean up after it.
 - **A driver that keeps the chip.** Once those requests have started it,
   the driver's timer writes the chip at every tick, through one routine,
   `0x7DBF`: with nothing playing it silences all four voices, and with a
@@ -2154,22 +2156,25 @@ driver does not do:
 
 | point | what the handler does |
 | --- | --- |
-| `0x69B0`, the dispatch entry | as Pool of Radiance's, except that requests 0, 1 and `0xFF` leave the piece playing |
+| `0x69B0`, the dispatch entry | as Pool of Radiance's, except that requests 0, 1 and `0xFF` leave the piece playing, and that a request whose far return is in the titles overlay moves IP to the entry's `retf 2` at `0x6A61`, so the driver returns with nothing done and the piece plays on; at an entry whose `retf 2` is not there, it gives way |
 | `0x7DBF`, the driver's chip routine | while a moment is outstanding, moves IP to the `retn` at `0x7E3B`, so the routine leaves at once and the piece has the chip; refuses a target that is not a `retn` |
 
-- **How much is heard**: the titles' own sound ends it, at their fourth
-  picture: about 19.5 seconds of the 38.9 at the 386 governor, from 1 to
-  20.5 seconds into the run, then the game's own sound as it always was.
-  A key that hurries the titles along shortens it.
+- **How much is heard**: all of it, from about 2 to 41 seconds into the
+  run at the 386 governor. The titles' own sound, at their fourth
+  picture about 20 seconds in, is not heard when the piece is still
+  playing there; once the piece is over, it is the driver's as it
+  always was.
 - **`fired`** counts the driver's ticks as well, about 750 a second while
   the piece plays.
 - **Fidelity**: before the titles it moves nothing. While the piece plays
-  the driver's routine does not run, so the driver's own bytes are left
-  as the ticks found them, and stay different (`curse-quiet-fanfare`,
-  `contrast curse-quiet`, 1 of 58 checkpoints identical, divergent from
-  tick 2,565,294; `cpu`, `ram`, `devices` and `audio` while it plays,
-  `ram` and `audio` alone from tick 63,655,086 to the end; the screen,
-  DOS and the keyboard never differ).
+  the driver's routine does not run and the titles' own sound never
+  reaches the driver, so the driver's own bytes are left as the ticks
+  found them, and stay different (`curse-quiet-fanfare`, `contrast
+  curse-quiet`, 1 of 58 checkpoints identical, divergent from tick
+  2,565,294; `cpu`, `ram` and `audio` there, `devices` too from
+  5,110,702, `cpu` no longer from 50,928,046, and `ram` and `audio`
+  alone from 79,563,886 to the end, at the checkpoints; the screen, DOS
+  and the keyboard never differ).
 - **Open**: nothing.
 
 ### The timer fix
