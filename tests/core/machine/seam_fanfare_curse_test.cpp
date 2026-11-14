@@ -162,8 +162,8 @@ struct curse_rig {
   /// The program asks its driver for `request` from a call in `caller`: a
   /// far return and the request above it on the stack. Answers where CS:IP
   /// is after the step, as a linear address.
-  std::uint32_t arrive_at_dispatch(std::uint8_t request,
-                                   std::uint16_t caller = idle_segment) const {
+  [[nodiscard]] std::uint32_t arrive_at_dispatch(
+      std::uint8_t request, std::uint16_t caller = idle_segment) const {
     stand_at(image_load_segment, dispatch_entry);
     put_word(stack_segment, stack_top, titles_call_return);
     put_word(stack_segment, stack_top + 2, caller);
@@ -262,7 +262,7 @@ TEST(SeamFanfareOnCurse, GivesWayToTheProgramsFirstSound) {
   ASSERT_GT(played, opening.size());
   ASSERT_LT(played, piece_writes);
 
-  r.arrive_at_dispatch(a_sound);
+  static_cast<void>(r.arrive_at_dispatch(a_sound));
   const std::size_t stopped = r.chip->writes.size();
   ASSERT_GE(stopped, played + hand_back.size());
   EXPECT_EQ(r.chip->writes.back().value, hand_back.back());
@@ -319,7 +319,7 @@ TEST(SeamFanfareOnCurse, PlaysOnThroughTheRequestsThatStartNoSound) {
   r.arrive_at_titles();
   r.play_for(2 * pit_input_hz);
   for (const std::uint8_t request : housekeeping) {
-    r.arrive_at_dispatch(request);
+    static_cast<void>(r.arrive_at_dispatch(request));
     r.play_for(pit_input_hz);
   }
   r.play_for(piece_and_then_some);
