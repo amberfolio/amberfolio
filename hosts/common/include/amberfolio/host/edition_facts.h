@@ -58,6 +58,10 @@
 // copy whose player has changed it ties, and the earlier row, Steam's,
 // is the answer.
 //
+// The fifth row is a third program, Secret of the Silver Blades, as
+// Steam sells it (`secret-steam`, #606): forty files and `BLADES.CFG`,
+// installed at `\SECRET`. It is the one release of it captured so far.
+//
 //
 // Nothing here reproduces anything
 // --------------------------------
@@ -86,7 +90,7 @@ enum class artifact_kind : std::uint8_t {
   /// digest.
   file,
   /// A file the copy is launched with rather than one the release ships
-  /// the same bytes of: POOL.CFG or CURSE.CFG, which each seller's
+  /// the same bytes of: POOL.CFG, CURSE.CFG or BLADES.CFG, which each seller's
   /// launcher writes for its own install. Required **by name**, with no
   /// size, because a player's copy carries whatever their launcher wrote.
   /// It may carry the digest its seller ships it with, and then a file

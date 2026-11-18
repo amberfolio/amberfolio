@@ -67,6 +67,8 @@ const edition_requirements& repack() { return row("por-archive"); }
 /// Curse of the Azure Bonds as Steam sells it, and as GOG does (#551).
 const edition_requirements& curse() { return row("curse-steam"); }
 const edition_requirements& curse_gog() { return row("curse-gog"); }
+/// Secret of the Silver Blades as Steam sells it (#606).
+const edition_requirements& secret() { return row("secret-steam"); }
 
 /// What a player's POOL.CFG hashes to: whatever their launcher wrote,
 /// which is nothing the table knows.
@@ -121,7 +123,7 @@ TEST(EditionFacts, EveryEditionIsOneTheMachineRecognizes) {
 TEST(EditionFacts, TheStoreReleaseIsTheBaselineAndTheRepackKeepsItsId) {
   const std::span<const edition_requirements> table =
       edition_requirements_table();
-  ASSERT_EQ(table.size(), 4U);
+  ASSERT_EQ(table.size(), 5U);
   EXPECT_EQ(&table[0], &store());
   // The site keys on ids and the session library pins this disk, so the
   // repack's id is the one it has always had.
@@ -134,7 +136,54 @@ TEST(EditionFacts, TheStoreReleaseIsTheBaselineAndTheRepackKeepsItsId) {
   EXPECT_EQ(&table[3], &curse_gog());
   EXPECT_NE(curse().fingerprint, store().fingerprint);
   EXPECT_EQ(curse().fingerprint, curse_gog().fingerprint);
-  EXPECT_EQ(machine::known_editions().size(), 2U);
+  // And Secret of the Silver Blades, a third program, in the one release
+  // captured so far.
+  EXPECT_EQ(&table[4], &secret());
+  EXPECT_NE(secret().fingerprint, store().fingerprint);
+  EXPECT_NE(secret().fingerprint, curse().fingerprint);
+  EXPECT_EQ(machine::known_editions().size(), 3U);
+}
+
+TEST(EditionFacts, SecretsSteamRowIsItsFortyFilesAndItsConfiguration) {
+  // Counted on the copy (#606): forty program and data files, and
+  // BLADES.CFG as Steam ships it. No document yet: its journal joins the
+  // document table with the journal's port (#609).
+  std::size_t files = 0;
+  std::size_t configurations = 0;
+  for (const edition_artifact& artifact : secret().artifacts) {
+    switch (artifact.kind) {
+      case artifact_kind::file:
+        ++files;
+        break;
+      case artifact_kind::configuration:
+        ++configurations;
+        EXPECT_EQ(artifact.name, "BLADES.CFG");
+        EXPECT_THAT(artifact.fingerprint, Not(IsEmpty()));
+        break;
+      case artifact_kind::document:
+        ADD_FAILURE() << artifact.about;
+        break;
+    }
+  }
+  EXPECT_EQ(files, 40U);
+  EXPECT_EQ(configurations, 1U);
+  EXPECT_EQ(secret().boot, "START.EXE");
+
+  // A whole copy is that row, complete, and a copy whose player has
+  // changed the configuration file still is.
+  std::vector<offered_file> offered = whole_copy(secret());
+  edition_match match = match_edition(offered);
+  ASSERT_EQ(match.edition, &secret());
+  EXPECT_TRUE(match.complete());
+  EXPECT_THAT(match.unclaimed, IsEmpty());
+  for (offered_file& file : offered) {
+    if (file.name == "BLADES.CFG") {
+      file.digest = digest_of(players_config);
+    }
+  }
+  match = match_edition(offered);
+  ASSERT_EQ(match.edition, &secret());
+  EXPECT_TRUE(match.complete());
 }
 
 TEST(EditionFacts, EachRowStatesWhereItIsInstalled) {
@@ -145,6 +194,7 @@ TEST(EditionFacts, EachRowStatesWhereItIsInstalled) {
   EXPECT_EQ(repack().install, "\\");
   EXPECT_EQ(curse().install, "\\CURSE");
   EXPECT_EQ(curse_gog().install, "\\");
+  EXPECT_EQ(secret().install, "\\SECRET");
   for (const edition_requirements& edition : edition_requirements_table()) {
     ASSERT_THAT(edition.install, Not(IsEmpty())) << edition.id;
     EXPECT_EQ(edition.install.front(), '\\') << edition.id;

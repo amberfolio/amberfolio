@@ -149,6 +149,46 @@ TEST(SaveLayer, CursesSlotIsItsRecordsAndTheirEffects) {
   EXPECT_EQ(row("CURSE\\GAME.OVR").file, nullptr);
 }
 
+TEST(SaveLayer, SecretsSlotIsItsRecordsAndTheirEffects) {
+  // Watched on the Steam copy (#606): a save to slot C writes these.
+  sha256_digest secret;
+  ASSERT_TRUE(parse_digest(
+      "8b937984878ec72aa531335dd381a21bda67675408b5fd8e716a35ccd049999e",
+      secret));
+  const save_layer* layer = save_layer_for(secret);
+  ASSERT_NE(layer, nullptr);
+  const save_layer_places steam{.save_directory = path_of("SECRET\\SAVE"),
+                                .current_directory = path_of("SECRET")};
+  const auto row = [&](std::string_view path) {
+    return match_save_file(*layer, steam, path_of(path));
+  };
+  EXPECT_EQ(row("SECRET\\SAVE\\SAVGAMC.DAT").file->kind, save_file_kind::slot);
+  EXPECT_EQ(row("SECRET\\SAVE\\SAVGAMC.DAT").slot, 'C');
+  const save_layer_row member = row("SECRET\\SAVE\\CHRDATC4.SFX");
+  ASSERT_NE(member.file, nullptr);
+  EXPECT_EQ(member.file->kind, save_file_kind::member);
+  EXPECT_EQ(member.slot, 'C');
+  EXPECT_EQ(member.member, 4);
+  EXPECT_EQ(row("SECRET\\SAVE\\CHRDATC4.SAV").file->kind,
+            save_file_kind::member);
+  EXPECT_EQ(row("SECRET\\BLADES.CFG").file->kind, save_file_kind::config);
+  // A member removed from the party is kept under its own name, with its
+  // effects beside it.
+  EXPECT_EQ(row("SECRET\\SAVE\\HERO.WHO").file->kind,
+            save_file_kind::character);
+  EXPECT_EQ(row("SECRET\\SAVE\\HERO.SFX").file->kind,
+            save_file_kind::character);
+  // The other two programs' names are not this one's, and neither is a
+  // row nobody has seen written yet.
+  EXPECT_EQ(row("SECRET\\SAVE\\HERO.GUY").file, nullptr);
+  EXPECT_EQ(row("SECRET\\SAVE\\HERO.STF").file, nullptr);
+  EXPECT_EQ(row("SECRET\\SAVE\\CHRDATC4.FX").file, nullptr);
+  EXPECT_EQ(row("SECRET\\SAVE\\CHRDATC4.ITM").file, nullptr);
+  EXPECT_EQ(row("SECRET\\SAVE\\CHARLIST.TXT").file, nullptr);
+  EXPECT_EQ(row("SECRET\\SAVE\\BLADES.CFG").file, nullptr);
+  EXPECT_EQ(row("SECRET\\GAME.OVR").file, nullptr);
+}
+
 // --- The rows ------------------------------------------------------------
 
 TEST(SaveLayer, EveryRowIsWellFormed) {
@@ -462,6 +502,23 @@ TEST_F(SaveDirectory, ReadsCursesThirdLine) {
   // With the third line empty it does not say, whatever the fourth holds.
   put("CURSE\\CURSE.CFG", "E\r\nT\r\n\r\nF\r\n");
   EXPECT_EQ(read("CURSE").trouble, save_directory_trouble::too_short);
+}
+
+TEST_F(SaveDirectory, ReadsSecretsFourthLinePastItsInputLine) {
+  // Secret of the Silver Blades' file has the alternate input on its
+  // third line and the save directory on its fourth, with more lines
+  // after the fifth (edition.h, #606).
+  put("SECRET\\BLADES.CFG",
+      "E\r\nT\r\nM\r\nC:\\SECRET\\SAVE\\\r\nF\r\n0\r\n0\r\n");
+  const save_directory_answer answer = read("SECRET");
+  ASSERT_TRUE(answer.ok());
+  EXPECT_EQ(answer.directory, path_of("SECRET\\SAVE"));
+  ASSERT_NE(answer.configuration, nullptr);
+  EXPECT_EQ(answer.configuration->file, "BLADES.CFG");
+
+  // The input line is not the save directory, whatever it holds.
+  put("SECRET\\BLADES.CFG", "E\r\nT\r\nM\r\n\r\nF\r\n");
+  EXPECT_EQ(read("SECRET").trouble, save_directory_trouble::too_short);
 }
 
 TEST_F(SaveDirectory, ARelativeLineIsRelativeToTheStartingDirectory) {

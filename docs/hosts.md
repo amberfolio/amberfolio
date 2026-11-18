@@ -873,19 +873,29 @@ carries the **digest its seller ships the file with**: a copy whose
 `CURSE.CFG` still has those bytes counts it toward that row, and one
 whose player has changed it ties and gets the earlier row, Steam's.
 
+**`secret-steam` is a third program**: Secret of the Silver Blades
+(version 1.30, of May 18, 1990) as Steam sells it, so
+`machine::known_editions()` has a third row and this table a fifth. It
+is forty files and `BLADES.CFG`, which Steam ships naming `T`, the mouse
+and `C:\SECRET\SAVE\`; its row carries that digest, as Curse's do. It
+ships saved games A and B, which are not artifacts. No seam has its
+facts yet, so the toggle panel lists none for it, and its key card is
+the rows that name no program. The GOG copy has not been captured.
+
 **`install` is the directory of the machine's filesystem the copy's files
 live in, which is also the DOS current directory when the program is
 loaded.** DOS spelling, from the root: `\POOLRAD` for the store release,
 where both storefronts' own launchers mount the copy and change into it
 before running START, and `\` for the repack, which is where every
 existing player's copy already is; `\CURSE` for Curse on Steam and `\`
-on GOG. Each launcher
+on GOG; `\SECRET` for Secret of the Silver Blades on Steam. Each launcher
 writes its own configuration file naming paths under that directory.
 
 An artifact is one of three `kind`s. A `file` carries a name, a size and a
 digest. A `configuration` file carries a name, no size, and a digest only
-as its seller ships it (Curse's rows, above): it is
-POOL.CFG or CURSE.CFG, which each seller's launcher writes for its own
+as its seller ships it (Curse's rows and Secret of the Silver Blades',
+above): it is
+POOL.CFG, CURSE.CFG or BLADES.CFG, which each seller's launcher writes for its own
 install (GOG's POOL.CFG is 35 bytes, Steam's 40, the repack's 24), so a
 player's copy carries whatever theirs wrote. A `document` is something the player *holds*
 rather than something the machine runs (`machine/document.h`), so it
@@ -1502,6 +1512,36 @@ is the automap's exploration (#555): with `--seam automap
 squares: `save-sidecars writes=1 reads=0 slot=C trouble=none`), and
 loading C reads it back, the panel at `6,12 N` drawing the room the
 party stood in at the start.
+
+**Secret of the Silver Blades** (#606): slots **A** to **J**, saves in
+the directory line 4 of `BLADES.CFG` names (`\SECRET\SAVE` on Steam).
+The table is what has been watched so far, on the Steam copy.
+
+| pattern | in | kind | required | what it is |
+|---|---|---|---|---|
+| `SAVGAM<S>.DAT` | saves | slot | yes | the saved game (5,469 bytes) |
+| `CHRDAT<S><N>.SAV` | saves | member | yes | one party member's record (439 bytes) |
+| `CHRDAT<S><N>.SFX` | saves | member | no | the effects that member is under |
+| `BLADES.CFG` | start | config | no | the program's settings — **a game file** |
+| `<NAME>.WHO` | saves | character | no | a character kept under a name the player chose |
+| `<NAME>.SFX` | saves | character | no | the effects that character is under |
+
+Watched: the load menu offers the letters whose `SAVGAM<S>.DAT` is
+there, and the save prompt the ten from A to J. `SAVE CURRENT GAME` at
+the party menu, into the empty slot C from a load of slot A, created
+`SAVGAMC.DAT`, six `CHRDATC<N>.SAV` and an `.SFX` for members 1, 2 and
+4, the three slot A has one for, opening each record first to see
+whether it was there; saved over itself, slot A had each `.SFX`
+unlinked and written again. `REMOVE CHARACTER FROM PARTY` on slot A's
+first member created a `.WHO` and an `.SFX` under the first eight
+letters of the member's name. Six members is as many as a shipped party
+has; the bound of eight is the first two games' until a seventh record
+is seen. **Not yet watched, and so not rows**: what a member or a kept
+character carries (the shipped parties carry nothing), and whatever
+else the program keeps beside its saves (#608). A page that writes a
+playthrough back keeps the rows above and nothing else, so until those
+are watched a file of one of those kinds does not survive a reload
+there.
 
 Three placeholders: `<S>` a slot letter, `<N>` a party-member index,
 `<NAME>` a DOS name the player chose and this build cannot enumerate.
