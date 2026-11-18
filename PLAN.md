@@ -99,13 +99,16 @@ special handling beyond working DOS file I/O.
   presents.
 - **Timer** — 8253 PIT, channels 0 (system tick, delivered as the timer
   interrupt) and 2 (speaker tone).
-- **Sound** — the PC speaker (PIT channel 2 plus the port 61h gate) and
+- **Sound** — the PC speaker (PIT channel 2 plus the port 61h gate),
   the Tandy 1000's sound chip (an SN76489-family part at port C0h: three
-  tone voices and a noise voice), both box-filtered into the host audio
-  stream. The program plays its music and effects through the chip only
-  when its configuration file says Tandy, so every host starts every
+  tone voices and a noise voice) and an AdLib card (a YM3812 at ports
+  388h and 389h: nine two-operator FM channels, found by its two
+  timers), all box-filtered into the host audio stream. The first two
+  programs play their music and effects through the Tandy chip only
+  when their configuration file says Tandy, so every host starts every
   copy that way, the way the Steam release's own launcher does (#404).
-  Writes to any other sound hardware are ignored (logged, not faked).
+  A program that knows the card finds it by itself (#616). Writes to
+  any other sound hardware are ignored (logged, not faked).
 - **Input** — BIOS keyboard services (poll / blocking read) and the
   Ctrl-Break path.
 - **DOS/BIOS services** — the small INT 21h subset the game actually
@@ -428,20 +431,26 @@ shells carry it. It exits as **1.3**. Tracking: #611.
   numbers. As shipped it says EGA, Tandy and the mouse.
 - **No new video device.** The program's own setup offers CGA, EGA and
   Tandy, and it draws in the EGA mode the machine already has.
-- **No new sound device.** The setup offers AdLib, Tandy, the PC
-  speaker and silence, and the store copy is set to Tandy. The sound
-  driver is a new one, with a data file of its own. At start it
-  looks for cards this machine does not have, at port `388h` and across
-  `220h`–`2FFh`; nothing claims those ports, which is the true answer.
+- **An AdLib card, which this milestone adds** (#616; §9 had it out of
+  scope). The setup offers AdLib, Tandy, the PC speaker and silence, and
+  the store copy is set to Tandy. The sound driver is a new one, with a
+  data file of its own, and at start it looks for a card at port `388h`
+  and then across `220h`–`2FFh`. Measured with a card in the machine:
+  **the driver plays the title tune through the card whenever it finds
+  one**, whatever the configuration says short of silent, and through
+  the PC speaker when it does not. The effects in play follow the
+  configuration: the Tandy chip under Tandy, the PC speaker under AdLib
+  or speaker. So the card is in every machine, and Tandy is still what
+  every copy is started as.
 - **The boot was unrecognized, and stopped at the mouse.** The
   shipped configuration asks for the mouse, and the program resets the
   mouse driver through `INT 33h` without reading the vector first; that
   was the stop, 79 frames in. The next was `INT 1Ah AH=00h`, the BIOS
   tick count, from the sound driver.
 - **Past those two, nothing stops.** With both answered (#607), the
-  titles run with their tune on the PC speaker, whatever the
-  configuration says; the party menu comes up, with music on the Tandy
-  chip; and a character is created as far as the reroll.
+  titles run, the party menu comes up, and a character is created as
+  far as the reroll. The party menu has no music: the Tandy chip is
+  written continuously from there on, and is silent.
 - **The overlay manager is a later generation.** `GAME.OVR` begins
   `TPOV` where the first two games' begins `FBOV`. Where a seam reads a
   module's load segment (`docs/seams.md` §8.1, #131) is measured again
@@ -509,6 +518,16 @@ there. That is this machine's answer, said once in the log as a notice
 
   *Exit: title → party menu on desktop and web from the store copy,
   with every seam off.*
+- **The AdLib card** (#616), beside the phases and not one of them.
+  - The YM3812's registers and its two timers as a device, and its
+    synthesizer on the audio timeline's consumer side, written here.
+  - Its writes in the state, which is a state-format change: the
+    session library is re-hashed and verified in the same change.
+  - What the game does with it, measured.
+
+  *Exit: the game plays its title music through the card on desktop
+  and web, every committed session verifies, and a person has
+  listened.*
 - **S2 — Playable** (#608).
   - The program profile, begun with the facts the debug cheats read,
     and the cheats first.
@@ -554,7 +573,7 @@ there. That is this machine's answer, said once in the log as a notice
 | `explored` | Only if the game has an overland that is walked. |
 | Encamp (F)ix | Only if the camp has no Fix of its own. |
 | roster fix | Only if the program has the failure. |
-| `fanfare` | Decided by ear: the titles play a tune of their own, on the PC speaker, and the seam exists for titles that play none. |
+| `fanfare` | Decided by ear: the titles play a tune of their own, on the AdLib card, and the seam exists for titles that play none. |
 
 ## 8. Risks and mitigations
 
@@ -604,7 +623,8 @@ there. That is this machine's answer, said once in the log as a notice
   it, in that game's own save directory: Pool of Radiance into Curse,
   Curse into Secret of the Silver Blades. It will be solved through the
   web page, not in a milestone here.
-- Other audio hardware (Ad Lib, Roland), mouse and joystick support,
+- Other audio hardware (the OPL3, a Sound Blaster's digital side,
+  Roland), mouse and joystick support,
   other video modes (CGA/MCGA/Hercules), machine save-states,
   localization, 32-bit builds.
 - A CRT presentation filter. What a frame looks like on the way to a
