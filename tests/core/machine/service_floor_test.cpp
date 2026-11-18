@@ -773,5 +773,65 @@ TEST(timer_service, a_program_hooks_int_1ch_counts_ticks_and_reads_the_bda) {
   EXPECT_EQ(r.regs()[cpu::reg16::ax], wanted);
 }
 
+// --- The BIOS time of day: INT 1Ah --------------------------------------
+
+/// The midnight flag's byte, in the machine's own memory.
+[[nodiscard]] std::uint8_t& rollover_byte(const rig& r) {
+  return r.pc()
+      .memory()
+      .ram()[cpu::physical_address(bda::segment, bda::timer_rollover)];
+}
+
+TEST(time_of_day_service, reads_the_count_the_timer_keeps) {
+  const rig r;
+  r.set_ticks(0x0012'3456);
+
+  //     mov ah, 0 / int 1Ah / hlt
+  r.program({0xB4, 0x00, 0xCD, service::time_of_day_vector, 0xF4});
+  r.regs()[cpu::reg16::ax] = 0xFFFF;
+  r.run();
+
+  ASSERT_FALSE(r.pc().stopped());
+  EXPECT_EQ(r.regs()[cpu::reg16::cx], 0x0012);
+  EXPECT_EQ(r.regs()[cpu::reg16::dx], 0x3456);
+  // No day went by: AL is zero, and AH is the zero it was called with.
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x0000);
+  // A read, and nothing else: the count is where it was.
+  EXPECT_EQ(r.ticks(), 0x0012'3456u);
+}
+
+TEST(time_of_day_service, reports_midnight_once_and_clears_it) {
+  const rig r;
+  r.set_ticks(5);
+  rollover_byte(r) = 1;
+
+  //     mov ah, 0 / int 1Ah / mov bx, ax / mov ah, 0 / int 1Ah / hlt
+  r.program({0xB4, 0x00, 0xCD, service::time_of_day_vector, 0x89, 0xC3, 0xB4,
+             0x00, 0xCD, service::time_of_day_vector, 0xF4});
+  r.run();
+
+  ASSERT_FALSE(r.pc().stopped());
+  EXPECT_EQ(r.regs()[cpu::reg16::bx], 0x0001);  // the first read saw the day
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x0000);  // the second did not
+  EXPECT_EQ(rollover_byte(r), 0);
+  EXPECT_EQ(r.regs()[cpu::reg16::dx], 5);
+  EXPECT_EQ(r.regs()[cpu::reg16::cx], 0);
+}
+
+TEST(time_of_day_service, refuses_every_function_but_the_read) {
+  // AH=02h is the real-time clock this machine does not have. A refusal,
+  // and the count untouched.
+  const rig r;
+  r.set_ticks(7);
+
+  //     mov ah, 2 / int 1Ah / hlt
+  r.program({0xB4, 0x02, 0xCD, service::time_of_day_vector, 0xF4});
+  r.run();
+
+  EXPECT_TRUE(r.pc().stopped());
+  EXPECT_EQ(r.pc().stop().reason, stop_reason::unimplemented_service);
+  EXPECT_EQ(r.ticks(), 7u);
+}
+
 }  // namespace
 }  // namespace amberfolio::machine

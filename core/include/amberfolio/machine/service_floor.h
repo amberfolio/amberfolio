@@ -286,6 +286,13 @@ inline constexpr std::uint8_t video_vector = 0x10;
 /// to hang a periodic routine — and Gold Box code does.
 inline constexpr std::uint8_t user_tick_vector = 0x1C;
 
+/// The BIOS time of day. AH=00h reads the tick count the timer handler
+/// keeps at 40:6C into CX:DX, and reports and clears the midnight flag at
+/// 40:70 in AL. A sound driver paces itself by it. Every other AH is
+/// refused: this machine has no real-time clock behind 02h and up, and
+/// nothing has asked to set the count.
+inline constexpr std::uint8_t time_of_day_vector = 0x1A;
+
 /// The continuation the default timer handler resumes at, once INT 1Ch
 /// has returned. A constant rather than an allocation, so the address is
 /// the same on both sides without either keeping state.
