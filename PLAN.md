@@ -492,8 +492,8 @@ there. That is this machine's answer, said once in the log as a notice
   - The Steam edition row (`data/editions.json`, `machine/edition.cpp`),
     and the GOG one when that copy is captured.
   - `BLADES.CFG` and its line roles in the edition row.
+  - The save-layer rows that have been watched.
   - The snapshot disks.
-  - The program profile's identity for the image.
 
   *Exit: the game is recognized by name, with no seams available, and
   stops cleanly at its first unimplemented service. Pool of Radiance
@@ -506,7 +506,8 @@ there. That is this machine's answer, said once in the log as a notice
   *Exit: title → party menu on desktop and web from the store copy,
   with every seam off.*
 - **S2 — Playable** (#608).
-  - The debug cheats first.
+  - The program profile, begun with the facts the debug cheats read,
+    and the cheats first.
   - How a seam finds an overlay under this overlay manager.
   - The legs, in `docs/playable-secret.md`: a new party, loading saved
     games A and B, the town and a story event, a fight, a shop and the
