@@ -62,6 +62,7 @@ add_library(amberfolio-core STATIC
   src/machine/machine.cpp
   src/machine/memory_map.cpp
   src/machine/memory_vfs.cpp
+  src/machine/opl2.cpp
   src/machine/overlay.cpp
   src/machine/pic.cpp
   src/machine/pit.cpp
