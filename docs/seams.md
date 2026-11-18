@@ -1060,8 +1060,7 @@ in the definition's `programs`:
 | the watch | the string compare's `REPE CMPSB`, image `0xBBB0`, against the word table | the routine's `CMP` of AL, the character typed, with the expected one at `[BP-3]`: overlay 4 `+0x03C4` |
 | the calls stepped over | the boot's, image `0x0122` | the boot's two, image `0x01F1` (after the first title) and `0x0344` (after the demonstration comes back), and the event-script interpreter's, overlay 3 `+0x3263`, a script's own protection command |
 
-- **The store copy accepts any answer** (PLAN.md §7, M9's first
-  question), by its own branch: the jump after the compare goes on to
+- **The store copy accepts any answer** (#566), by its own branch: the jump after the compare goes on to
   the routine's exit when the two characters *differ*. A right answer
   falls through to the program's own `SORRY, THAT'S INCORRECT.` and then
   to the exit as well. GOG and Steam ship the same `START.EXE` and
