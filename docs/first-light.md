@@ -110,6 +110,61 @@ carries one notice Pool of Radiance's does not: a write to ports 00h and
 (about 82,000 writes in the first 45 seconds at `386`); it is heard once,
 as the second title screen comes up. The speaker is silent.
 
+### Secret of the Silver Blades
+
+The Steam copy (version 1.30, of May 18, 1990) runs from `C:\SECRET`
+with its own `BLADES.CFG`, which is where its edition row
+(`secret-steam`) puts it without `--install`. The log names it `Secret
+of the Silver Blades (START.EXE)` and says `save directory
+\SECRET\SAVE`, read off the file's fourth line. No seam is offered for
+it, and every figure below is with every seam off. Virtual time, read
+off `--dump-every 30` stills (to the half second), to where each screen
+first appears:
+
+| `--speed` | loading line | publisher's logo | a picture | series title | title | credits | play or demo | the demo |
+|---|---|---|---|---|---|---|---|---|
+| `xt` | 0:03.5 | 0:39.5 | 1:19 | 2:21 | 3:34 | 4:45.5 | 6:07 | 6:37 |
+| `turbo` | 0:03 | 0:21 | 0:48 | 1:44 | 2:45.5 | 3:51 | 5:11.5 | 5:42 |
+| `at` | 0:02.5 | 0:11.5 | 0:32.5 | 1:25.5 | 2:21 | 3:24 | 4:44.5 | 5:14.5 |
+| `386` | 0:01.5 | 0:03.5 | 0:19.5 | 1:10 | 2:02 | 3:02 | 4:22 | 4:52 |
+
+Each screen from the picture on holds for the program's own timing,
+fifty seconds to a minute for the picture and the titles and eighty
+seconds for the credits, so `--speed` shortens only the computation
+before and between them. The
+last screen offers `PLAY` or `DEMO` and starts the demo by itself after
+thirty seconds. **A key during the titles goes straight to that
+screen**, and `Return` there takes `PLAY`, so at `386`
+`--press Return@600 --press Return@900` has the play-or-demo screen at
+0:10.5 and the party menu at 0:15.5; a third `Return` at frame 1500
+takes the menu's first row into character creation. Nothing asks a
+copy-protection question on the way.
+
+**The menus are lists.** A row is chosen with `Up` and `Down` under a
+highlight and taken with `Return`; a letter does not pick a row. The
+prompts on the bottom line still take a letter (a slot, `Y` or `N`).
+
+The boot log carries what the first two games' do not:
+
+- **`notice absent_driver_called at 00033`**, once. `BLADES.CFG` asks
+  for the mouse on its third line, as Steam ships it, and the program
+  resets the mouse driver through `INT 33h`. This machine has none, and
+  the call comes back as it went (`docs/machine.md` §5). The game is
+  played from the keyboard, and the party menu's own
+  `INITIALIZE MOUSE/JOYSTICK` finds neither.
+- **Unclaimed ports as the sound driver starts**: a read of `388h`, and
+  writes and reads across `220h` to `2FFh`. It is looking for sound
+  cards this machine does not have, and open bus is the true answer.
+- `INT 1Ah AH=00h`, the BIOS tick count, which the sound driver paces
+  itself by.
+
+`BLADES.CFG` says `T`. **The titles' tune is on the speaker all the
+same** (about 50,000 edges in the first two minutes at `386`, and four
+writes to the Tandy chip, which silence it); the chip is first played
+when the titles are over, at the party menu or in the demo (about
+33,000 writes in the first fifty seconds at `386` when the menu is
+reached at 0:15.5).
+
 ### Reading the boot log
 
 A healthy run prints a load line, three notices, and no stop:
