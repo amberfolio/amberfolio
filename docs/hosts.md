@@ -1521,9 +1521,11 @@ The table is what has been watched so far, on the Steam copy.
 |---|---|---|---|---|
 | `SAVGAM<S>.DAT` | saves | slot | yes | the saved game (5,469 bytes) |
 | `CHRDAT<S><N>.SAV` | saves | member | yes | one party member's record (439 bytes) |
+| `CHRDAT<S><N>.STF` | saves | member | no | what that member carries |
 | `CHRDAT<S><N>.SFX` | saves | member | no | the effects that member is under |
 | `BLADES.CFG` | start | config | no | the program's settings — **a game file** |
 | `<NAME>.WHO` | saves | character | no | a character kept under a name the player chose |
+| `<NAME>.STF` | saves | character | no | what that character carries |
 | `<NAME>.SFX` | saves | character | no | the effects that character is under |
 
 Watched: the load menu offers the letters whose `SAVGAM<S>.DAT` is
@@ -1534,14 +1536,17 @@ the party menu, into the empty slot C from a load of slot A, created
 whether it was there; saved over itself, slot A had each `.SFX`
 unlinked and written again. `REMOVE CHARACTER FROM PARTY` on slot A's
 first member created a `.WHO` and an `.SFX` under the first eight
-letters of the member's name. Six members is as many as a shipped party
-has; the bound of eight is the first two games' until a seventh record
-is seen. **Not yet watched, and so not rows**: what a member or a kept
-character carries (the shipped parties carry nothing), and whatever
-else the program keeps beside its saves (#608). A page that writes a
-playthrough back keeps the rows above and nothing else, so until those
-are watched a file of one of those kinds does not survive a reload
-there.
+letters of the member's name. The shipped parties carry nothing, so
+neither wrote an `.STF`. After the first member took two items from the
+treasure the story opens with, `ENCAMP`, `SAVE` into slot C wrote
+`CHRDATC1.STF` (134 bytes) among the eleven files, and removing that
+member from a load of slot C wrote a `.WHO`, an `.STF` of the same size
+and an `.SFX`. Six members is as many as a shipped party has; the bound
+of eight is the first two games' until a seventh record is seen. **Not
+yet watched, and so not a row**: whatever else the program keeps beside
+its saves (#608). A page that writes a playthrough back keeps the rows
+above and nothing else, so a file of a kind that is not a row yet does
+not survive a reload there.
 
 Three placeholders: `<S>` a slot letter, `<N>` a party-member index,
 `<NAME>` a DOS name the player chose and this build cannot enumerate.

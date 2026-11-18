@@ -172,16 +172,24 @@ TEST(SaveLayer, SecretsSlotIsItsRecordsAndTheirEffects) {
   EXPECT_EQ(row("SECRET\\SAVE\\CHRDATC4.SAV").file->kind,
             save_file_kind::member);
   EXPECT_EQ(row("SECRET\\BLADES.CFG").file->kind, save_file_kind::config);
-  // A member removed from the party is kept under its own name, with its
-  // effects beside it.
+  // What a member carries, written once the member carries something
+  // (#608), and the member's own row and not a kept character's.
+  const save_layer_row carried = row("SECRET\\SAVE\\CHRDATC1.STF");
+  ASSERT_NE(carried.file, nullptr);
+  EXPECT_EQ(carried.file->kind, save_file_kind::member);
+  EXPECT_EQ(carried.slot, 'C');
+  EXPECT_EQ(carried.member, 1);
+  // A member removed from the party is kept under its own name, with
+  // what it carries and its effects beside it.
   EXPECT_EQ(row("SECRET\\SAVE\\HERO.WHO").file->kind,
+            save_file_kind::character);
+  EXPECT_EQ(row("SECRET\\SAVE\\HERO.STF").file->kind,
             save_file_kind::character);
   EXPECT_EQ(row("SECRET\\SAVE\\HERO.SFX").file->kind,
             save_file_kind::character);
-  // The other two programs' names are not this one's, and neither is a
-  // row nobody has seen written yet.
+  // The other two programs' names are not this one's.
   EXPECT_EQ(row("SECRET\\SAVE\\HERO.GUY").file, nullptr);
-  EXPECT_EQ(row("SECRET\\SAVE\\HERO.STF").file, nullptr);
+  EXPECT_EQ(row("SECRET\\SAVE\\CHRDATC4.SWG").file, nullptr);
   EXPECT_EQ(row("SECRET\\SAVE\\CHRDATC4.FX").file, nullptr);
   EXPECT_EQ(row("SECRET\\SAVE\\CHRDATC4.ITM").file, nullptr);
   EXPECT_EQ(row("SECRET\\SAVE\\CHARLIST.TXT").file, nullptr);
