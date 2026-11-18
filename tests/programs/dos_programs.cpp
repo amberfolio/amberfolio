@@ -334,6 +334,28 @@ void sum_asciz(assembler& a, std::string_view label, std::string_view tag) {
   return raw_program(a);
 }
 
+// --- A driver that is not there: INT 33h ---------------------------------
+//
+// The mouse reset a program makes when its configuration asks for a
+// mouse (#607). No driver is loaded, so the call comes back as it went:
+// AX still zero, which is how the program learns it, and BX untouched.
+//
+//         xor  ax, ax / mov bx, 1234h / int 33h
+//         <store ax, bx>
+//         <exit 62h>
+
+[[nodiscard]] std::vector<std::uint8_t> nomouse_code() {
+  assembler a;
+  a.db({0x31, 0xC0});  // xor ax, ax
+  a.db({0xBB});
+  a.dw(0x1234);  // mov bx, 1234h
+  a.db({0xCD, 0x33});
+  store(a, 0, reg_ax);
+  store(a, 1, reg_bx);
+  exit_with(a, 0x62);
+  return raw_program(a);
+}
+
 }  // namespace
 
 void append_dos_service_programs(std::vector<machine_program>& list) {
@@ -447,6 +469,20 @@ void append_dos_service_programs(std::vector<machine_program>& list) {
     // The first tick is one whole channel-0 period away, and the program
     // waits for it.
     p.least_time = machine::ticks{0x10000};
+    list.push_back(std::move(p));
+  }
+
+  {
+    machine_program p;
+    p.name = "nomouse";
+    p.about = "INT 33h with no mouse driver loaded comes back as it went";
+    p.setup.code = nomouse_code();
+    p.setup.step_cap = 10'000;
+    p.results = {{.what = "AX after the reset: no driver", .value = 0x0000},
+                 {.what = "BX, untouched", .value = 0x1234}};
+    p.exit_code = 0x62;
+    // The one line that says no driver ran.
+    p.notices = 1;
     list.push_back(std::move(p));
   }
 }

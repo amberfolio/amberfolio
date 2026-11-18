@@ -149,6 +149,7 @@ void machine::reset() {
   pages_noticed_.fill(0);
   ports_noticed_.fill(0);
   video_modes_noticed_.fill(0);
+  absent_drivers_noticed_.fill(0);
 
   // The run's own bookkeeping. `trace_.clear()` forgets what was
   // recorded and deliberately leaves `enabled()` alone: whether anything
@@ -654,6 +655,21 @@ void machine::notice_video_mode(std::uint8_t mode) {
                 .value = mode,
                 .cs = cpu_.regs()[cpu::sreg::cs],
                 .ip = cpu_.current().start_ip});
+}
+
+void machine::notice_absent_driver(std::uint8_t vector, std::uint8_t al) {
+  if (!first_touch(absent_drivers_noticed_, vector) || log_ == nullptr) {
+    return;
+  }
+
+  // The caller's own address, off the frame its INT pushed: the stub this
+  // runs at says nothing a reader wants, and the program's call is the
+  // line's whole value.
+  log_->report({.what = notice_kind::absent_driver_called,
+                .at = vector,
+                .value = al,
+                .cs = services_.caller_cs(),
+                .ip = services_.caller_ip()});
 }
 
 void machine::note_device_fault(device& dev) {

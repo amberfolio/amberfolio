@@ -129,6 +129,15 @@ void time_of_day(service_floor& floor, std::uint8_t /*vector*/) {
   cpu.regs()[cpu::reg16::ax] = static_cast<std::uint16_t>(midnight);
 }
 
+/// A vector no driver is behind: the `IRET` and nothing else, said once
+/// (`service::mouse_vector`). No register is written, which is the
+/// answer.
+void no_driver(service_floor& floor, std::uint8_t vector) {
+  const cpu::processor& cpu = floor.box().processor();
+  floor.box().notice_absent_driver(
+      vector, static_cast<std::uint8_t>(cpu.regs()[cpu::reg16::ax] & 0xFFu));
+}
+
 }  // namespace
 
 service_floor::service_floor(machine& box, diagnostics* log) noexcept
@@ -148,8 +157,10 @@ service_floor::service_floor(machine& box, diagnostics* log) noexcept
   provide_continuation(service::timer_continuation, service::timer_vector,
                        &timer_tick_done);
 
-  // The BIOS's read of the count that handler keeps.
+  // The BIOS's read of the count that handler keeps, and the one vector
+  // this machine answers by having no driver.
   provide(service::time_of_day_vector, &time_of_day);
+  provide(service::mouse_vector, &no_driver);
 }
 
 void service_floor::provide(std::uint8_t vector, service_handler handler) {
