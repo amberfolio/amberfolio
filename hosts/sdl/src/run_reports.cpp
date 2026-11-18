@@ -260,6 +260,11 @@ void report_audio(bool verify, const machine::machine& box,
                                     box.audio().dropped_chip_writes())
                  .c_str(),
              stderr);
+  // And the AdLib card's.
+  std::fputs(sdl::card_traffic_line(box.audio().fm_published(),
+                                    box.audio().dropped_fm_writes())
+                 .c_str(),
+             stderr);
 }
 
 }  // namespace amberfolio::sdl

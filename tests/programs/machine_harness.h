@@ -90,6 +90,7 @@
 #include <string_view>
 #include <vector>
 
+#include "amberfolio/machine/adlib.h"
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/diagnostics.h"
 #include "amberfolio/machine/ega.h"
@@ -477,6 +478,7 @@ class machine_harness {
   std::unique_ptr<machine::ega> video_;
   std::unique_ptr<machine::renderer> screen_;
   std::unique_ptr<machine::tandy_sound> chip_;
+  std::unique_ptr<machine::adlib_card> card_;
 
   /// The harness's own `seam_host_services`, attached when
   /// `machine_setup::host_services` asked for one and left detached

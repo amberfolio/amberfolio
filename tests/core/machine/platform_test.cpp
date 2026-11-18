@@ -35,6 +35,7 @@
 #include <span>
 #include <thread>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "amberfolio/machine/clock.h"
@@ -344,6 +345,124 @@ TEST(AudioState, TheStateCoversTheFirstPinnedWritesAndNoMore) {
     static_cast<void>(fewer.publish_chip(static_cast<ticks>(i * 100), 0x9F));
   }
   EXPECT_NE(audio_state_of(fewer), audio_state_of(at_the_limit));
+}
+
+// --- The AdLib card's writes (#616) ---------------------------------------
+
+/// A sine on channel 0 at full level: the writes a driver makes
+/// for it, at tick `at`.
+void publish_fm_note(audio_timeline& audio, ticks at) {
+  for (const auto& [reg, value] :
+       {std::pair<std::uint8_t, std::uint8_t>{0x20, 0x01},
+        {0x40, 0x3F},
+        {0x60, 0x00},
+        {0x23, 0x21},
+        {0x43, 0x00},
+        {0x63, 0xF0},
+        {0x83, 0x0F},
+        {0xA0, 0x41},
+        {0xB0, 0x32}}) {
+    ASSERT_TRUE(audio.publish_fm(at, reg, value));
+  }
+}
+
+TEST(AudioTimeline, TheCardsNoteIsHeardFromTheTickItWasWritten) {
+  audio_timeline audio;
+  const ticks struck = pit_input_hz / 10;
+  publish_fm_note(audio, struck);
+
+  // Half a second, pulled a twentieth at a time as a host pulls it, so
+  // that playback never falls far enough behind to jump.
+  constexpr unsigned rate = 48000;
+  std::vector<float> out;
+  for (unsigned pull = 1; pull <= 10; ++pull) {
+    audio.advance(pull * (pit_input_hz / 20));
+    std::array<float, rate / 20> some{};
+    const std::size_t got = audio.render(some, rate);
+    out.insert(out.end(), some.begin(),
+               some.begin() + static_cast<std::ptrdiff_t>(got));
+  }
+  ASSERT_GT(out.size(), std::size_t{rate} / 2 - 64);
+
+  // Exact silence up to the write, and a wave of one channel's height
+  // after it: 4,084 of the chip's 32,768, times its share of a sample.
+  const std::size_t first = rate / 10;
+  for (std::size_t i = 0; i + 2 < first; ++i) {
+    ASSERT_EQ(out[i], 0.0F) << i;
+  }
+  const auto [low, high] = std::minmax_element(out.begin() + first, out.end());
+  const float peak = opl2_amplitude * 4084.0F / 32768.0F;
+  EXPECT_NEAR(*high, peak, peak * 0.03F);
+  EXPECT_NEAR(*low, -peak, peak * 0.03F);
+}
+
+TEST(AudioTimeline, ACardNobodyWroteAddsNothing) {
+  // The speaker alone, to the last bit: a run without the card sounds
+  // as it did before the machine had one.
+  audio_timeline audio;
+  ASSERT_TRUE(audio.publish(100, true));
+  audio.advance(pit_input_hz);
+  std::array<float, 64> out{};
+  ASSERT_EQ(audio.render(out, 48000), out.size());
+  for (std::size_t i = 8; i < out.size(); ++i) {
+    ASSERT_EQ(out[i], speaker_amplitude) << i;
+  }
+}
+
+TEST(AudioTimeline, RefusesACardWriteThatGoesBackwards) {
+  audio_timeline audio;
+  EXPECT_TRUE(audio.publish_fm(500, 0x20, 0x01));
+  EXPECT_TRUE(audio.publish_fm(500, 0x40, 0x00));  // The same tick keeps order.
+  EXPECT_FALSE(audio.publish_fm(499, 0x60, 0xF0));
+  EXPECT_EQ(audio.fm_published(), 2u);
+}
+
+TEST(AudioState, TheCardsWritesAreTheSameWhetherOrNotTheyAreDrained) {
+  audio_timeline listened;
+  audio_timeline deaf;
+  constexpr std::size_t total = audio_timeline::fm_write_capacity + 17;
+  for (std::size_t i = 0; i < total; ++i) {
+    const auto at = static_cast<ticks>(i * 100);
+    const auto reg = static_cast<std::uint8_t>(0x40 + (i % 6));
+    const auto value = static_cast<std::uint8_t>(i & 0x3F);
+    ASSERT_TRUE(listened.publish_fm(at, reg, value));
+    static_cast<void>(deaf.publish_fm(at, reg, value));
+    if (i % 64 == 63) {
+      listen(listened, at);
+    }
+  }
+
+  EXPECT_EQ(listened.dropped_fm_writes(), 0u);
+  EXPECT_GT(deaf.dropped_fm_writes(), 0u);
+  EXPECT_EQ(listened.fm_published(), total);
+  EXPECT_EQ(deaf.fm_published(), total);
+  EXPECT_EQ(listened.fm_digest(), deaf.fm_digest());
+  EXPECT_EQ(audio_state_of(listened), audio_state_of(deaf));
+}
+
+TEST(AudioState, ACardWriteIsInTheStateByTickRegisterAndValue) {
+  const auto state_after = [](ticks at, std::uint8_t reg, std::uint8_t value) {
+    audio_timeline audio;
+    static_cast<void>(audio.publish_fm(at, reg, value));
+    return audio_state_of(audio);
+  };
+  const state_hashes base = state_after(100, 0x40, 0x10);
+  EXPECT_EQ(state_after(100, 0x40, 0x10), base);
+  EXPECT_NE(state_after(101, 0x40, 0x10), base);
+  EXPECT_NE(state_after(100, 0x41, 0x10), base);
+  EXPECT_NE(state_after(100, 0x40, 0x11), base);
+  EXPECT_NE(audio_state_of(audio_timeline{}), base);
+}
+
+TEST(AudioState, ARestartForgetsTheCardsWrites) {
+  audio_timeline audio;
+  const state_hashes fresh = audio_state_of(audio);
+  static_cast<void>(audio.publish_fm(100, 0x40, 0x10));
+  audio.restart();
+  EXPECT_EQ(audio.fm_published(), 0u);
+  EXPECT_EQ(audio_state_of(audio), fresh);
+  // And a tick before the forgotten write is accepted again.
+  EXPECT_TRUE(audio.publish_fm(50, 0x40, 0x10));
 }
 
 // The same claim through the device and the machine's own serialization,

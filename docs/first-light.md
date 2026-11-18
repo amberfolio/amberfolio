@@ -152,18 +152,20 @@ The boot log carries what the first two games' do not:
   the call comes back as it went (`docs/machine.md` §5). The game is
   played from the keyboard, and the party menu's own
   `INITIALIZE MOUSE/JOYSTICK` finds neither.
-- **Unclaimed ports as the sound driver starts**: a read of `388h`, and
-  writes and reads across `220h` to `2FFh`. It is looking for sound
-  cards this machine does not have, and open bus is the true answer.
 - `INT 1Ah AH=00h`, the BIOS tick count, which the sound driver paces
   itself by.
+- **`adlib writes=`** at the end of the run. The sound driver looks for
+  an AdLib card as it starts, finds the one this machine has
+  (`docs/hosts.md` §4b), and looks no further.
 
-`BLADES.CFG` says `T`. **The titles' tune is on the speaker all the
-same** (about 50,000 edges in the first two minutes at `386`, and four
-writes to the Tandy chip, which silence it); the chip is first played
-when the titles are over, at the party menu or in the demo (about
-33,000 writes in the first fifty seconds at `386` when the menu is
-reached at 0:15.5).
+`BLADES.CFG` says `T`. **The titles' tune is on the AdLib card all the
+same** (about 3,600 register writes in the first two minutes at `386`,
+no speaker edge, and four writes to the Tandy chip, which silence it):
+the program plays its title music through the card whenever it finds
+one, and through the PC speaker when it does not. From the party menu
+on the Tandy chip is written about 950 times a second with every voice
+at full attenuation, which is silence: the party menu has no music.
+The effects in play are on the Tandy chip.
 
 ### Reading the boot log
 

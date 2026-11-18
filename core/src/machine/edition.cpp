@@ -58,15 +58,24 @@ constexpr std::array<edition, 3> table{{
     {.fingerprint =
          "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd",
      .name = "Pool of Radiance (START.EXE)",
-     .configuration = {.file = "POOL.CFG", .sound_line = 2, .save_line = 4}},
+     .configuration = {.file = "POOL.CFG",
+                       .sound_line = 2,
+                       .save_line = 4,
+                       .sounds = "PTS"}},
     {.fingerprint =
          "42fcefd6785679568b00bc1fb5b1d81ac2773416be4a35e0363920ddf6b78acd",
      .name = "Curse of the Azure Bonds (START.EXE)",
-     .configuration = {.file = "CURSE.CFG", .sound_line = 2, .save_line = 3}},
+     .configuration = {.file = "CURSE.CFG",
+                       .sound_line = 2,
+                       .save_line = 3,
+                       .sounds = "PTS"}},
     {.fingerprint =
          "8b937984878ec72aa531335dd381a21bda67675408b5fd8e716a35ccd049999e",
      .name = "Secret of the Silver Blades (START.EXE)",
-     .configuration = {.file = "BLADES.CFG", .sound_line = 2, .save_line = 4}},
+     .configuration = {.file = "BLADES.CFG",
+                       .sound_line = 2,
+                       .save_line = 4,
+                       .sounds = "ATPS"}},
 }};
 
 }  // namespace

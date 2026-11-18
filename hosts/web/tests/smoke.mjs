@@ -3715,7 +3715,7 @@ if (missing.length === 0 && sessions !== null) {
   );
 
   const lines = [
-    'amberfolio-recording 1 state=2',
+    'amberfolio-recording 1 state=3',
     `program SPIN.EXE ${fingerprint}`,
     'tail',
     `file SPIN.EXE 34 ${recorder.vfsFingerprint('SPIN.EXE')}`,
@@ -3858,7 +3858,7 @@ if (missing.length === 0 && sessions !== null) {
   // under it come before `SPIN.EXE`, and the directory itself carries
   // neither a size nor a digest because it has neither.
   const lines = [
-    'amberfolio-recording 2 state=2',
+    'amberfolio-recording 2 state=3',
     `program SPIN.EXE ${recorder.programFingerprint()}`,
     'tail',
     'dir SAVE',

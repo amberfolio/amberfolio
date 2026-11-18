@@ -114,6 +114,14 @@ constexpr std::uint64_t elapsed_centiseconds(ticks delta) noexcept {
          (delta % pit_input_hz) * centiseconds_per_second / pit_input_hz;
 }
 
+/// What one unit of the AdLib chip's output adds to a sample
+/// (`opl2_amplitude`).
+constexpr float fm_scale = opl2_amplitude / 32768.0F;
+
+/// How much of a skipped stretch the AdLib chip is still run across
+/// (`audio_timeline::skip_fm_to`): half a second.
+constexpr ticks fm_settle_ticks = pit_input_hz / 2;
+
 }  // namespace
 
 // --- framebuffer ------------------------------------------------------
@@ -256,6 +264,40 @@ bool audio_timeline::publish_chip(ticks at, std::uint8_t value) noexcept {
   return true;
 }
 
+bool audio_timeline::publish_fm(ticks at, std::uint8_t reg,
+                                std::uint8_t value) noexcept {
+  if (fm_published_ != 0 && at < last_fm_at_) {
+    return false;
+  }
+  last_fm_at_ = at;
+
+  // The record first, whatever the ring will say, for the reason
+  // `publish()` gives (#444).
+  if (fm_published_ < pinned_fm_writes) {
+    std::uint64_t hash = fm_digest_;
+    for (unsigned i = 0; i < 8; ++i) {
+      hash ^= static_cast<std::uint8_t>(at >> (8U * i));
+      hash *= 1099511628211ULL;
+    }
+    hash ^= reg;
+    hash *= 1099511628211ULL;
+    hash ^= value;
+    hash *= 1099511628211ULL;
+    fm_digest_ = hash;
+  }
+  ++fm_published_;
+
+  const std::uint64_t head = fm_head_.load(std::memory_order_relaxed);
+  const std::uint64_t tail = fm_tail_.load(std::memory_order_acquire);
+  if (head - tail >= fm_write_capacity) {
+    fm_dropped_.fetch_add(1, std::memory_order_relaxed);
+    return false;
+  }
+  fm_writes_[head % fm_write_capacity] = {.at = at, .reg = reg, .value = value};
+  fm_head_.store(head + 1, std::memory_order_release);
+  return true;
+}
+
 std::size_t audio_timeline::read_edge_log(std::span<audio_edge> out) noexcept {
   std::size_t taken = 0;
   while (taken < out.size() && log_count_ > 0) {
@@ -276,6 +318,8 @@ void audio_timeline::save_state(state_sink& out) const {
   out.u64(have_published_ ? pinned_last_ : 0);
   out.u64(std::min(chip_published_, pinned_chip_writes));
   out.u64(chip_digest_);
+  out.u64(std::min(fm_published_, pinned_fm_writes));
+  out.u64(fm_digest_);
 }
 
 void audio_timeline::advance(ticks now) noexcept {
@@ -304,6 +348,9 @@ void audio_timeline::restart() noexcept {
   last_chip_at_ = 0;
   chip_published_ = 0;
   chip_digest_ = 1469598103934665603ULL;
+  last_fm_at_ = 0;
+  fm_published_ = 0;
+  fm_digest_ = 1469598103934665603ULL;
 
   // The log's contents, but not the setting that fills it: what it holds
   // is in-flight traffic from the run that just ended (the same rule
@@ -382,9 +429,55 @@ void audio_timeline::skip_chip_to(ticks at, std::uint64_t chip_head) noexcept {
   chip_at_ = at;
 }
 
+double audio_timeline::integrate_fm(ticks from, ticks to,
+                                    std::uint64_t fm_head) noexcept {
+  double total = 0.0;
+  fm_at_ = from;
+  // `<` rather than `!=`, for the reason `integrate` gives.
+  while (fm_taken_ < fm_head) {
+    const fm_write& next = fm_writes_[fm_taken_ % fm_write_capacity];
+    if (next.at >= to) {
+      break;
+    }
+    if (next.at > fm_at_) {
+      total += fm_synth_.run(next.at - fm_at_);
+      fm_at_ = next.at;
+    }
+    fm_synth_.write(next.reg, next.value);
+    ++fm_taken_;
+  }
+  total += fm_synth_.run(to - fm_at_);
+  fm_at_ = to;
+  return total;
+}
+
+void audio_timeline::skip_fm_to(ticks at, std::uint64_t fm_head) noexcept {
+  // The writes land, as the Tandy chip's do. But where an envelope has
+  // got to is not in any register, so the last stretch before `at` is
+  // run, unheard, and not merely written: half a second, which is longer
+  // than most notes and short enough to do inside an audio callback
+  // however long the consumer was away.
+  const ticks run_from =
+      at > fm_at_ + fm_settle_ticks ? at - fm_settle_ticks : fm_at_;
+  while (fm_taken_ < fm_head) {
+    const fm_write& next = fm_writes_[fm_taken_ % fm_write_capacity];
+    if (next.at > run_from) {
+      break;
+    }
+    fm_synth_.write(next.reg, next.value);
+    ++fm_taken_;
+  }
+  if (at > run_from) {
+    static_cast<void>(integrate_fm(run_from, at, fm_head));
+  }
+  fm_at_ = at;
+}
+
 void audio_timeline::skip_to(ticks at, std::uint64_t head,
-                             std::uint64_t chip_head) noexcept {
+                             std::uint64_t chip_head,
+                             std::uint64_t fm_head) noexcept {
   skip_chip_to(at, chip_head);
+  skip_fm_to(at, fm_head);
   // `<` rather than `!=`, for the reason `integrate` gives.
   while (taken_ < head) {
     const audio_edge& next = edges_[taken_ % edge_capacity];
@@ -399,10 +492,14 @@ void audio_timeline::skip_to(ticks at, std::uint64_t head,
 }
 
 void audio_timeline::restart_playback(std::uint64_t head,
-                                      std::uint64_t chip_head) noexcept {
+                                      std::uint64_t chip_head,
+                                      std::uint64_t fm_head) noexcept {
   chip_taken_ = chip_head;
   chip_at_ = 0;
   synth_.reset();
+  fm_taken_ = fm_head;
+  fm_at_ = 0;
+  fm_synth_.reset();
   // Everything in the ring is stamped with ticks from a clock that no
   // longer exists, so none of it can be integrated — it is dropped
   // wholesale rather than walked, which is the one case `skip_to` cannot
@@ -423,14 +520,15 @@ std::size_t audio_timeline::render(std::span<float> out,
   const ticks limit = horizon_.load(std::memory_order_acquire);
   const std::uint64_t head = head_.load(std::memory_order_acquire);
   const std::uint64_t chip_head = chip_head_.load(std::memory_order_acquire);
+  const std::uint64_t fm_head = fm_head_.load(std::memory_order_acquire);
 
   if (epoch != seen_epoch_) {
     seen_epoch_ = epoch;
-    restart_playback(head, chip_head);
+    restart_playback(head, chip_head, fm_head);
   }
 
   if (limit > cursor_ && limit - cursor_ > max_lag) {
-    skip_to(limit - resync_lag, head, chip_head);
+    skip_to(limit - resync_lag, head, chip_head, fm_head);
     resyncs_.fetch_add(1, std::memory_order_relaxed);
   }
 
@@ -465,17 +563,20 @@ std::size_t audio_timeline::render(std::span<float> out,
       // generated this audio yet; when it does, playback resumes at
       // exactly this tick and nothing is lost.
       underran = true;
-      sample = (level_ ? speaker_amplitude : 0.0F) + synth_.level();
+      sample = (level_ ? speaker_amplitude : 0.0F) + synth_.level() +
+               fm_scale * static_cast<float>(fm_synth_.output());
       continue;
     }
 
     const std::uint64_t high = integrate(cursor_, next, head);
     const double chip = integrate_chip(cursor_, next, chip_head);
+    const double fm = integrate_fm(cursor_, next, fm_head);
     const auto span = static_cast<std::uint64_t>(next - cursor_);
     sample = speaker_amplitude * static_cast<float>(high) /
                  static_cast<float>(span) +
              static_cast<float>(
-                 chip / static_cast<double>(span * psg_clocks_per_tick));
+                 chip / static_cast<double>(span * psg_clocks_per_tick)) +
+             fm_scale * static_cast<float>(fm / static_cast<double>(span));
     cursor_ = next;
     cursor_remainder_ = remainder;
     ++generated;
@@ -490,6 +591,7 @@ std::size_t audio_timeline::render(std::span<float> out,
   // to decide whether it is full, and it has 2048 slots of slack.
   tail_.store(taken_, std::memory_order_release);
   chip_tail_.store(chip_taken_, std::memory_order_release);
+  fm_tail_.store(fm_taken_, std::memory_order_release);
   return generated;
 }
 

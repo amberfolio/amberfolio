@@ -22,6 +22,7 @@
 
 #include "amberfolio/abi_bridge.h"
 #include "amberfolio/cpu/registers.h"
+#include "amberfolio/machine/adlib.h"
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/document.h"
 #include "amberfolio/machine/dos.h"
@@ -363,6 +364,10 @@ struct reference_devices {
   /// timeline (tandy_sound.h, #404).
   amberfolio::machine::tandy_sound chip;
 
+  /// Ports 388h and 389h, the AdLib card, published onto the same
+  /// timeline (adlib.h, #616).
+  amberfolio::machine::adlib_card card;
+
   /// What the program reads the disk through: `fs` with its configuration file's
   /// sound line read the way this machine's launcher writes it
   /// (launcher_view.h, #404). Host puts and reads go to `fs` itself, so
@@ -384,6 +389,7 @@ struct reference_devices {
         render(box, video),
         spk(box, pit_dev),
         chip(box),
+        card(box),
         view(fs) {
     // Every attach() here claims a distinct, non-overlapping memory
     // window or port range (ega.h's 0xA0000 window; pic.h's 20h-21h;
@@ -406,6 +412,7 @@ struct reference_devices {
     box.attach(spk);
     box.attach(video);
     box.attach(chip);
+    box.attach(card);
     box.schedule(pit_dev.channel0_deadline());
     box.schedule(pit_dev.channel2_deadline());
     box.schedule(spk);

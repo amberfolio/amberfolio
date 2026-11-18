@@ -16,7 +16,7 @@ library (`tests/sessions/README.md`) be committed.
 Plain text (`machine/replay.h`), one line per fact:
 
 ```
-amberfolio-recording 5 state=2
+amberfolio-recording 5 state=3
 program BOOT.EXE 3f1c…
 tail 202d4649525354 4c49474854
 cwd GAME
@@ -221,14 +221,15 @@ desktop from its own clock before the first instruction, the page from
 ## 7. Versions
 
 Two, independent, both on a recording's first line
-(`amberfolio-recording 4 state=2`):
+(`amberfolio-recording 4 state=3`):
 
 - **`recording_format_version`** (`machine/replay.h`), the line grammar.
   It is **5** (#531's number on a `seam` line); 4 was #397's `cwd` line, 3 #161's `pull` line and 2 #155's recursing manifest.
 - **`state_format_version`** (`machine/state.h`), the bytes a checkpoint
-  hashes. It is **2** (#404's Tandy chip: its registers among the devices,
-  its writes counted and digested beside the speaker's edges). A player
-  refuses to compare across versions.
+  hashes. It is **3** (#616's AdLib card: its registers and its two
+  timers among the devices, its writes counted and digested beside the
+  speaker's edges and the Tandy chip's writes); 2 was #404's Tandy chip.
+  A player refuses to compare across versions.
 
 **A recording format is read for as long as a recording of it may
 exist.** `recording_format_oldest_read` says which versions a player

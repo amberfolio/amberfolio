@@ -60,7 +60,7 @@ TEST(ReplayGrammar, RoundTripsEveryKindOfLine) {
   e.kind = replay_line::header;
   e.format_version = recording_format_version;
   e.state_version = state_format_version;
-  EXPECT_EQ(line_of(e), "amberfolio-recording 5 state=2\n");
+  EXPECT_EQ(line_of(e), "amberfolio-recording 5 state=3\n");
 
   e = replay_event{};
   e.kind = replay_line::cwd;
@@ -1141,7 +1141,7 @@ TEST(Replay, AVersionOneRecordingStillVerifiesAndPinsOnlyTheRoot) {
   first.start();
   const std::string two = record(first, {}, 40'000, 50'000);
   const std::string one = downgraded_to_version_one(two);
-  EXPECT_TRUE(one.starts_with("amberfolio-recording 1 state=2\n")) << one;
+  EXPECT_TRUE(one.starts_with("amberfolio-recording 1 state=3\n")) << one;
   EXPECT_NE(one.find("\nfile SAVE 0 " +
                      std::string(sha256_digest::text_length, '0') + "\n"),
             std::string::npos)
@@ -1447,12 +1447,12 @@ TEST(Replay, RefusesATextThatIsNotARecording) {
   // is one this build has never written; 1 to 5 it has, and reads all
   // four.
   const std::string other_version =
-      "amberfolio-recording 6 state=2\nprogram A.EXE " + std::string(64, 'a') +
+      "amberfolio-recording 6 state=3\nprogram A.EXE " + std::string(64, 'a') +
       "\n";
   EXPECT_FALSE(player.load(
       std::span<const char>(other_version.data(), other_version.size())));
 
-  const std::string no_program = "amberfolio-recording 1 state=2\nspeed 256\n";
+  const std::string no_program = "amberfolio-recording 1 state=3\nspeed 256\n";
   EXPECT_FALSE(
       player.load(std::span<const char>(no_program.data(), no_program.size())));
   std::array<char, 256> report{};

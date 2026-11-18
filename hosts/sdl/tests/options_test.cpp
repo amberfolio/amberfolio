@@ -209,6 +209,19 @@ TEST(Parse, WallIsNowNoneOrARealDate) {
   EXPECT_THAT(refused({"d", "p", "--wall", "2026-04-31"}), HasSubstr("--wall"));
 }
 
+TEST(Parse, SoundIsOneOfTheFourDevicesAndNotForARecording) {
+  EXPECT_EQ(parse_line({"d", "p"}).sound, 0);
+  EXPECT_EQ(parse_line({"d", "p", "--sound", "adlib"}).sound, 'A');
+  EXPECT_EQ(parse_line({"d", "p", "--sound", "tandy"}).sound, 'T');
+  EXPECT_EQ(parse_line({"d", "p", "--sound", "speaker"}).sound, 'P');
+  EXPECT_EQ(parse_line({"d", "p", "--sound", "silent"}).sound, 'S');
+  EXPECT_THAT(refused({"d", "p", "--sound", "roland"}), HasSubstr("--sound"));
+  EXPECT_THAT(refused({"d", "p", "--sound", "adlib", "--record", "a.rec"}),
+              HasSubstr("--sound cannot be given with --record"));
+  EXPECT_THAT(refused({"d", "p", "--sound", "adlib", "--replay", "a.rec"}),
+              HasSubstr("--sound cannot be given with --replay"));
+}
+
 TEST(Parse, AnUnknownOptionIsNamed) {
   EXPECT_THAT(refused({"d", "p", "--bogus"}),
               HasSubstr("unknown option --bogus"));

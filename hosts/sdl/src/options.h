@@ -567,6 +567,16 @@
 //     against a recording is answering that question and not the
 //     program's. Reaching the recording's `end` is part of passing.
 //
+//   --sound adlib|tandy|speaker|silent
+//                    which sound device to start the copy as
+//
+//     Every copy is started with the best device its program offers, of
+//     the ones this machine has: the AdLib card where the program has
+//     that choice, the Tandy chip where it does not (#404, #616). This
+//     starts it as another, for a person comparing them by ear. Refused
+//     for a device the program's own setup does not offer, and with
+//     `--record` and `--replay`: a recording has no line for it.
+//
 //   --wall now|none|YYYY-MM-DD[THH:MM[:SS[.CC]]]
 //                    what date to tell the machine it is
 //
@@ -863,6 +873,10 @@ struct options {
   /// block at the top of this file for why writing into a player's game
   /// directory is asked for rather than assumed.
   bool save_sidecars{false};
+
+  /// `--sound`: the letter to start the copy's sound line as, or zero
+  /// for its program's own (#616, `machine/launcher_view.h`).
+  std::uint8_t sound{0};
 
   /// `--wall`: where the date this machine is told it is comes from
   /// (#320). The host's own clock unless somebody says otherwise, which

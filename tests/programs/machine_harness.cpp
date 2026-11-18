@@ -162,7 +162,8 @@ machine_harness::machine_harness(const machine_setup& setup)
       sound_(std::make_unique<machine::speaker>(*box_, *timer_)),
       video_(std::make_unique<machine::ega>(*box_)),
       screen_(std::make_unique<machine::renderer>(*box_, *video_)),
-      chip_(std::make_unique<machine::tandy_sound>(*box_)) {
+      chip_(std::make_unique<machine::tandy_sound>(*box_)),
+      card_(std::make_unique<machine::adlib_card>(*box_)) {
   // Attach order is load-bearing since #100: the canonical state hashes
   // attached devices in attach order (machine/state.h,
   // `state_section::devices`), so a recording made against one wiring
@@ -180,6 +181,7 @@ machine_harness::machine_harness(const machine_setup& setup)
   box_->attach(*sound_);
   box_->attach(*video_);
   box_->attach(*chip_);
+  box_->attach(*card_);
 
   // Registration order is the scheduler's tie-break (machine.h), so this
   // is also the order two devices due on the same tick are woken in: the

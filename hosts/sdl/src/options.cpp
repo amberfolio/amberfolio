@@ -348,6 +348,22 @@ void print_usage() {
       opts.replay_path = argv[++i];
     } else if (arg == "--rehash" && i + 1 < argc) {
       opts.rehash_path = argv[++i];
+    } else if (arg == "--sound" && i + 1 < argc) {
+      const std::string_view device = argv[++i];
+      if (device == "adlib") {
+        opts.sound = 'A';
+      } else if (device == "tandy") {
+        opts.sound = 'T';
+      } else if (device == "speaker") {
+        opts.sound = 'P';
+      } else if (device == "silent") {
+        opts.sound = 'S';
+      } else {
+        std::fprintf(stderr,
+                     "amberfolio: --sound wants adlib, tandy, speaker or"
+                     " silent\n");
+        return opts;
+      }
     } else if (arg == "--wall" && i + 1 < argc) {
       const std::string_view spec = argv[++i];
       if (spec == "now") {
@@ -548,6 +564,16 @@ void print_usage() {
     return opts;
   }
 
+  // Which device a copy is started as is the edition's fact, and a
+  // recording has no line that says it was started as another (#616).
+  if (!opts.record_path.empty() && opts.sound != 0) {
+    std::fprintf(stderr,
+                 "amberfolio: a recording cannot say the copy was started"
+                 " as another sound device; --sound cannot be given with"
+                 " --record\n");
+    return opts;
+  }
+
   if (!opts.rehash_path.empty() && opts.replay_path.empty()) {
     std::fprintf(stderr,
                  "amberfolio: --rehash rewrites a recording; name it with"
@@ -582,6 +608,8 @@ void print_usage() {
       also = "--pull";
     } else if (opts.wall != wall_source::host_clock) {
       also = "--wall";
+    } else if (opts.sound != 0) {
+      also = "--sound";
     }
     if (also != nullptr) {
       std::fprintf(stderr,

@@ -92,6 +92,26 @@ TEST(LauncherView, EveryLetterIsReadAsTandy) {
   }
 }
 
+TEST(LauncherView, AHostMayStartACopyAsAnotherDevice) {
+  // For a person comparing two by ear (#616): the letter asked for is
+  // what the program reads, the file is still the player's, and zero
+  // goes back to Tandy.
+  auto owned = std::make_unique<memory_filesystem>();
+  memory_filesystem& disk = *owned;
+  put(disk, "POOL.CFG", with_sound('T'));
+  launcher_view view(disk);
+
+  view.start_as('P');
+  EXPECT_EQ(read_all(view, "POOL.CFG"), with_sound('P'));
+  EXPECT_EQ(read_all(disk, "POOL.CFG"), with_sound('T'));
+  view.start_as('T');
+  EXPECT_EQ(read_all(view, "POOL.CFG"), with_sound('T'));
+  view.start_as('S');
+  EXPECT_EQ(read_all(view, "POOL.CFG"), with_sound('S'));
+  view.start_as(0);
+  EXPECT_EQ(read_all(view, "POOL.CFG"), with_sound('T'));
+}
+
 TEST(LauncherView, AFileThatAlreadySaysTandyIsHandedOverAsItIs) {
   auto owned = std::make_unique<memory_filesystem>();
   memory_filesystem& disk = *owned;

@@ -113,6 +113,7 @@ authority (`docs/machine.md` §5). The SHA-256 is the seam table's key
 | `--keyboard prompt\|name\|full` | open with the on-screen keyboard up, at that layout (#377, §7). Refused with `--headless` and with `--replay`. |
 | `--record FILE`, `--record-every N`, `--replay FILE` | write the run down, checkpoint every N frames, replay a recording and check it (`docs/replay.md`). |
 | `--rehash FILE` | with `--replay`: every input, tick and step count as recorded, the machine's own hash taken at each checkpoint instead of compared, and the recording written to `FILE` with only its header's state version and its hashes changed. What a `state_format_version` bump asks of the session library (`docs/replay.md` §7). |
+| `--sound adlib\|tandy\|speaker\|silent` | start the copy as another sound device than Tandy, which every copy is started as (§4a, §4b), for a person comparing them by ear. Refused for a device the program's own setup does not offer, and with `--record` and `--replay`. |
 | `--wall now\|none\|YYYY-MM-DD[THH:MM[:SS[.CC]]]` | seed the wall clock (#320): this host's clock; unseeded (1 January 1980 plus uptime, which every recording in `tests/sessions/` was made on); or a stated date. Read once before the first instruction, recorded as a `wall` line. Refused with `--replay`. |
 | `--speed xt\|turbo\|at\|386` | which machine to be (`machine/clock.h`): 4, 2, 1 or 51/256 ticks a step, `xt` by default. Not a fast-forward. |
 | `--fast N\|max` | run virtual time N times faster than the wall, or unpaced. Only the loop's sleep changes (`platform.h`); the run is byte-identical. |
@@ -741,6 +742,83 @@ replay) drops what a window would have played, and the two hash alike
 (`AudioState` in `platform_test.cpp`; `docs/replay.md` §2). It should be
 zero in a window; `psg_test.cpp`'s `ChipTimeline` suite pins the
 ring's rules and `PsgSynth` the waveform.
+
+## 4b. The AdLib card (#616)
+
+An AdLib card sits at ports 388h and 389h (`machine/adlib.h`): a Yamaha
+YM3812, the OPL2, clocked at 3,579,545 Hz like the Tandy chip. 388h is
+the register address on a write and the status on a read; 389h is the
+register's data. `machine/opl2.h` is the chip: what a register means,
+and what it sounds like. The machine has both the Tandy chip and the
+card, as a Tandy 1000 with a card in a slot did.
+
+**A program finds the card by its timers.** The status byte's top
+three bits say a timer has run out, and bits 2 and 1 always read as
+ones, the YM3812's own mark. Timer 1 counts every 80 microseconds and
+timer 2 every 320, which are four and sixteen of the chip's samples:
+96 and 384 ticks exactly. They are computed from virtual time and
+never ticked, so the detection a driver makes (mask and clear, start
+timer 1 from FFh, wait, read the status) succeeds at every `--speed`.
+The card's interrupt line is not wired, as on the card itself.
+
+**The writes are the canonical state**, on the same terms as the Tandy
+chip's: the device keeps the register file and the two timers as device
+state, and publishes each register write, at its tick, onto a third
+ring in `audio_timeline` (`publish_fm`), counted and digested for a
+checkpoint. `render()` runs the chip forward on the audio thread and
+box-filters it with the other two. One of the chip's samples is exactly
+24 ticks (49,716 Hz), so nothing rounds. A chip nobody has written is
+exactly 0.0.
+
+| | |
+| --- | --- |
+| channels | nine of two operators, or six and the five rhythm instruments (BD bit 5) |
+| a channel's pitch | `fnum * 49716 / 2^(20 - block)` Hz, times the operator's multiple |
+| a channel at full level | 4,084 of the chip's 32,768, which is 0.0623 of full scale (`opl2_amplitude` is 0.5); the nine are summed and clipped to sixteen bits |
+| the envelope | 0.1875 dB a step; a rate of `4n + f` moves `(4 + f) * 2^n / 32768` steps a sample; the attack takes an eighth of what is left each step |
+| the waveforms | sine, half sine, rectified sine, pulse sine; the last three need register 01 bit 5 |
+| tremolo and vibrato | 3.7 Hz and 6.1 Hz triangles, each at one of two depths (BD bits 7 and 6) |
+
+**What is not the chip** (`opl2.h` has each): the envelope's steps are
+spread evenly, where the chip spreads them through a small fixed
+pattern, and the negative half of a wave is the negation of the
+positive, where the chip's is one unit lower. **What is refused**: a
+test bit of register 01 and the composite sine mode of register 08
+(bit 7) are a loud stop, `unimplemented_device`. A write to an address
+that is not a register is dropped, as the chip drops it, and the OPL3
+and a Sound Blaster's other ports are not here.
+
+**What a program sends it.** The first two games never touch it. Secret
+of the Silver Blades looks for it at every start, and **when it finds
+it plays its title tune through it, whatever its configuration file
+says** short of silent: about 3,600 register writes over the two
+minutes of titles at `386`, no speaker edge, and nothing to the Tandy
+chip. With no card that tune is on the PC speaker. In play the card
+has been quiet as far as anybody has driven (the party menu, the
+story's opening, the adventuring screen: 654 writes, the driver's own
+start); the program's demo plays the tune again. The effects follow
+the sound line: under `T`
+they are on the Tandy chip, and under `A` or `P` on the PC speaker
+(measured over the program's own demo: 3,092 audible writes to the
+Tandy chip and no speaker edge under `T`; 3,498 speaker edges and no
+audible Tandy write under `A` or `P`). So the card adds FM title music
+and changes nothing else, and `T` is still what every copy is started
+as. The Tandy chip is written about 950 times a second from the party
+menu on with every voice at full attenuation, which is the driver
+holding it silent.
+
+```
+amberfolio: adlib writes=3609 dropped=0
+```
+
+is the desktop's line at the end of a run that wrote the card, on the
+Tandy line's terms. **`--sound adlib|tandy|speaker|silent`** starts a
+copy as another device, for a person comparing them by ear; it is
+refused for a device the program's own setup does not offer
+(`launcher_configuration::sounds`) and with `--record` and `--replay`,
+because a recording has no line for it. `opl2_test.cpp` pins the
+waveform, `adlib_test.cpp` the card, and `AudioTimeline` and
+`AudioState` in `platform_test.cpp` the ring and the state.
 
 ---
 

@@ -20,12 +20,14 @@ wired_machine::wired_machine(machine::diagnostics* log)
       spk(*box, timer),
       video(std::make_unique<machine::ega>(*box)),
       render(*box, *video),
-      chip(*box) {
+      chip(*box),
+      card(*box) {
   box->attach(irq);
   box->attach(timer);
   box->attach(spk);
   box->attach(*video);
   box->attach(chip);
+  box->attach(card);
 
   box->schedule(timer.channel0_deadline());
   box->schedule(timer.channel2_deadline());

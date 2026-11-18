@@ -25,8 +25,12 @@ namespace amberfolio::sdl {
 /// directory the program starts in is current. The save directory is quiet at
 /// the root, where every test program lives with no configuration file; a
 /// copy laid out on purpose gets a line.
-void report_copy_facts(machine::filesystem& files,
-                       const machine::dos_path& install);
+///
+/// `start_as` is `--sound`'s letter, or zero (#616). False, with the
+/// reason said, when the copy's program does not offer that device.
+[[nodiscard]] bool report_copy_facts(machine::filesystem& files,
+                                     const machine::dos_path& install,
+                                     std::uint8_t start_as);
 
 /// `--save-layer`'s first half: the table itself, printed with the
 /// edition line (#208).

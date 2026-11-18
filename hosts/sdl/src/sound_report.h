@@ -34,4 +34,9 @@ namespace amberfolio::sdl {
 [[nodiscard]] std::string chip_traffic_line(std::uint64_t writes,
                                             std::uint64_t dropped);
 
+/// The same line for the AdLib card (#616): empty for a run that never
+/// wrote one of its registers and dropped nothing.
+[[nodiscard]] std::string card_traffic_line(std::uint64_t writes,
+                                            std::uint64_t dropped);
+
 }  // namespace amberfolio::sdl
