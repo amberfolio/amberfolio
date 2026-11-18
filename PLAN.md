@@ -1,9 +1,10 @@
 # Amber Folio — Project Plan
 
-*Current milestone: M9, Curse of the Azure Bonds. Last revised 2026-11-01.*
+*Current milestone: M10, Secret of the Silver Blades. Last revised 2026-11-17.*
 
 This is the engineering plan. v1, Pool of Radiance, shipped as 1.0 and
-1.1; M9 brings Curse of the Azure Bonds to the same bar (§1, §7).
+1.1, and Curse of the Azure Bonds as 1.2; M10 brings Secret of the
+Silver Blades to the same bar (§1, §7).
 Governance (license,
 contributions, clean-content rule, trademarks) is settled in the repository
 root documents and is not restated here — but two of its rules shape
@@ -26,19 +27,20 @@ falling back to C++20 where a platform toolchain lags), built with CMake.
 
 **Pool of Radiance** is v1: 1.0 shipped when the gate below was green
 for it, and 1.1 added the controller layer (M8). **Curse of the Azure
-Bonds** is M9, and the goal now: the same game, played to the same bar.
+Bonds** was M9 and shipped as 1.2. **Secret of the Silver Blades** is
+M10, and the goal now: the third game, played to the same bar.
 
 **Release gate, per game:** the game is verifiably playable end-to-end —
 a real playthrough sweep across all major systems, not just a booting
-title screen — and its enhancement set works. For Curse the bar is
-everything Pool of Radiance has, including what it gained past its own
-1.0: the store copy boots, plays and saves as sold; Tandy sound; the
-host surfaces (onboarding, the config file, the toggle panel, the
-document control, the key card, the on-screen keyboard, screen text,
-the scene, per-slot sidecars); and every enhancement M9 ports (§7), off
-by default, each with its session pair. Milestones are ordered by
-dependency, not calendar; M9 ships as **1.2** when the gate is green for
-both games.
+title screen — and its enhancement set works. For a game after the
+first the bar is everything Pool of Radiance has, including what it
+gained past its own 1.0: the store copy boots, plays and saves as sold;
+Tandy sound; the host surfaces (onboarding, the config file, the toggle
+panel, the document control, the key card, the on-screen keyboard,
+screen text, the scene, per-slot sidecars); and every enhancement its
+milestone ports (§7), off by default, each with its session pair.
+Milestones are ordered by dependency, not calendar; M10 ships as
+**1.3** when the gate is green for all three games.
 
 ## 2. What the player supplies
 
@@ -114,9 +116,9 @@ special handling beyond working DOS file I/O.
 The scope is deliberately the surface *this game* exercises — but the
 Gold Box family shares its toolchain and engine lineage, so the machine
 is built as a general small-PC core with the game-specific knowledge
-confined to the seam layer (§5). Curse of the Azure Bonds (M9) is the
-first sibling, and it means new seam facts and a few more DOS services,
-not a new machine.
+confined to the seam layer (§5). Curse of the Azure Bonds (M9) was the
+first sibling and Secret of the Silver Blades (M10) is the second, and
+each means new seam facts and a few more services, not a new machine.
 
 **Discipline rule carried from the machine's design into code review:**
 an unimplemented service or register is a loud log line and a clean
@@ -254,7 +256,7 @@ Design requirements:
 
 ### The v1 seam set
 
-Pool of Radiance's. Which of them Curse gets, and why, is §7, M9.
+Pool of Radiance's. Which of them each later game gets, and why, is §7.
 
 1. **Answer the code wheel once** — **it asks once** (#290, #291). With the seam
    on, the first launch is the machine's own: the challenge appears and
@@ -350,7 +352,7 @@ that line:
 
 Ordered by dependency; each has a crisp exit criterion. Every milestone
 exit is tagged, and a tag is also cut whenever the build is worth
-pinning, so there is always a current, runnable release. M0–M8 are
+pinning, so there is always a current, runnable release. M0–M9 are
 done.
 
 ### Done: Pool of Radiance (M0–M8)
@@ -379,145 +381,175 @@ done.
   controller selects from (`modern-controls`, with the site's pad
   driving real keys). *Exit: 1.1.*
 
-### M9 — Curse of the Azure Bonds (current)
+### Done: Curse of the Azure Bonds (M9)
 
-Bring the second Gold Box game to the bar Pool of Radiance meets (§1):
-the store copy boots, plays and saves as sold; a playthrough sweep
-passes on all targets; every enhancement that fits Curse is ported; and
-the shells carry it. It exits as **1.2**. Tracking: #557.
+The second Gold Box game at the same bar: the Steam and GOG copies
+boot, play and save as sold; a session library and its legs
+(`docs/playable-curse.md`); the shells per game. *Exit: 1.2.* A
+person's look at each port on the web build, and onboarding tried in a
+browser, are what #555 and #556 still hold.
+
+- **Ported:** the debug cheats, `code-wheel`, the host reads (screen
+  text, the scene, the aim, text entry), `modern-controls`, `font-sans`
+  and `font-chisel`, `message-pause`, `automap`, the journal (both
+  stores' editions), per-slot sidecars, and `fanfare` with a piece of
+  its own.
+- **Not ported:** `quick-steps` and the timer fix behind it (at 386 the
+  game is fast enough); `explored` (the overland is a picture travelled
+  from place to place); the Encamp (F)ix (the camp has its own Fix); the
+  roster fix (the program keeps no roster file).
+- **What it left for every later game.** Launcher facts are edition
+  facts: the configuration file's name, which line says what, and the
+  install directory are in the edition row. Facts about a program are
+  in one place, the program profile (`machine/program_profile.h`), with
+  a per-program row in each seam's own table; a seam is available on
+  the programs whose facts it has (§5).
+
+### M10 — Secret of the Silver Blades (current)
+
+Bring the third Gold Box game to the bar the first two meet (§1): the
+store copy boots, plays and saves as sold; a playthrough sweep passes
+on all targets; every enhancement that fits the game is ported; and the
+shells carry it. It exits as **1.3**. Tracking: #611.
 
 **Known at the start.** These facts were measured on the Steam copy on
-2026-11-01.
+2026-11-17.
 
-- The store copy identifies itself as **v1.3**. Its `START.EXE` is
-  EXEPACK-packed and 57,789 bytes. The launcher installs the game at
-  `C:\CURSE` and starts it there. The GOG copy is owned but not yet
-  captured.
-- `CURSE.CFG` has four lines: graphics, sound (already `T` on Steam),
-  **the save directory on line 3**, and a flag. `POOL.CFG` has five,
-  with the save directory on line 4.
+- The store copy identifies itself as **version 1.30**, of May 18,
+  1990. Its `START.EXE` is EXEPACK-packed and 72,097 bytes. The
+  launcher installs the game at `C:\SECRET` and starts it there. Forty
+  program and data files and a configuration file. The GOG copy is not
+  yet captured.
+- `BLADES.CFG` has nineteen lines: graphics, sound, the alternate
+  input, **the save directory on line 4**, a flag, and fourteen
+  numbers. As shipped it says EGA, Tandy and the mouse.
 - **No new video device.** The program's own setup offers CGA, EGA and
-  Tandy, and it draws in the EGA mode the machine already has. A store
-  page's "VGA" means a VGA card running that mode. The program sets
-  text mode 3 at startup, which is a notice and not a stop.
-- **The boot is unrecognized today.** It stops cleanly at
-  `INT 21h AH=1Ah`, the start of a directory enumeration, well under a
-  virtual second in. The program also references `0Eh 19h 2Bh 2Dh 30h
-  36h 3Ah 3Bh 47h 4Eh 4Fh 54h 56h`, none of which is implemented. The
-  roster, the saves and character import all enumerate directories.
-- **The camp has its own Fix command.** The program keeps no roster
-  file; it enumerates its save directory instead.
-- **Characters cross between the games.** The program's own import
-  (`ADD CHARACTER TO PARTY`, `POOL`) reads Pool of Radiance characters
-  from Curse's own save directory and nowhere else: a `<NAME>.CHA`, or a
-  slot's 285-byte `CHRDAT<S><N>.SAV`. It never looks at `C:\POOLRAD`.
-  The shipped `COPYCURS.EXE` stops at a text mode this machine does not
-  show (`docs/playable-curse.md`, leg 8).
-- The shipped `SAVE\` holds slots A and B, six characters each, in
-  422-byte records. The sound driver is Pool of Radiance's, relocated.
-- Steam's Adventurer's Journal for Curse is typeset, with pictures. It
-  takes the text route (#398) and the picture route (#328, #345), and
-  needs no OCR.
+  Tandy, and it draws in the EGA mode the machine already has.
+- **No new sound device.** The setup offers AdLib, Tandy, the PC
+  speaker and silence, and the store copy is set to Tandy. The sound
+  driver is a new one, with its music in a data file. At start it
+  looks for cards this machine does not have, at port `388h` and across
+  `220h`–`2FFh`; nothing claims those ports, which is the true answer.
+- **The boot is unrecognized today, and stops at the mouse.** The
+  shipped configuration asks for the mouse, and the program resets the
+  mouse driver through `INT 33h` without reading the vector first; that
+  is the stop, 79 frames in. The next is `INT 1Ah AH=00h`, the BIOS
+  tick count, from the sound driver.
+- **Past those two, nothing stops.** In a local build that answers
+  both, the titles run with music on the Tandy chip, the party menu
+  comes up and a character is created as far as the reroll.
+- **The overlay manager is a later generation.** `GAME.OVR` begins
+  `TPOV` where the first two games' begins `FBOV`. Where a seam reads a
+  module's load segment (`docs/seams.md` §8.1, #131) is measured again
+  from this image, never assumed.
+- **The menus are lists.** Each row is chosen with the arrow keys under
+  a highlight, over a `SELECT`/`EXIT` bar. The party menu has an
+  `INITIALIZE MOUSE/JOYSTICK` row.
+- The shipped `SAVE\` holds saved games A and B, six characters each:
+  `CHRDAT<S><N>.SAV` at 439 bytes, a `CHRDAT<S><N>.SFX` beside some of
+  them, and `SAVGAM<S>.DAT` at 5,469 bytes.
+- Steam's Adventurer's Journal is typeset, with pictures. It should
+  take the text route (#398) and the picture route (#328, #345), with
+  no OCR.
+- **Not yet known:** where the program asks its copy-protection
+  question (nothing asks between the boot and character creation);
+  where its character import looks; whether the camp has its own Fix;
+  whether there is an overland.
 
-**Carried from Pool of Radiance.**
+**Carried from the first two games.**
 
 - Facts come from the store copies, never from a repack (#396–#398).
   GOG and Steam are compared byte for byte first.
-- **Launcher facts are edition facts.** The config file's name, which
-  line says what, and the install directory move out of code and into
-  the edition row. Today `POOL.CFG` and its line 4 are spelled out in
-  core and in both hosts.
-- **One place per fact** (the program profile, below).
+- Launcher facts are edition facts, and a fact about a program is
+  stated once, in its profile or in its seam's own row.
 - Every fact is checked twice from the artifact and confirmed by a
   driven run. Overlaid points resolve from the program's own
-  load-segment word (`docs/seams.md` §8.1, #131).
+  load-segment word.
 - The snapshot disks are made first and never played in. The shipped
-  slots are read before any leg is planned.
+  saved games are read before any leg is planned.
 - Every seam port brings its `identical`/`contrast` pair, recorded on a
-  Curse disk. With every seam off, Curse is a plain machine, and that
-  is a test.
+  Secret of the Silver Blades disk. With every seam off the game is a
+  plain machine, and that is a test.
+- **A port is decided on this game's evidence.** What the program
+  already does is measured before a seam is ported to do it: this one
+  has list menus under a highlight, and its own title music.
 - Before a visible seam is done, a person looks at it on the web build
   (#263, #345).
 - The site agrees any ABI change before it ships (#375). Nothing
   game-specific goes into a host's `main.cpp`.
 
-**The program profile.** M9 separates mechanism from facts:
-
-- one table per program image for the facts several seams read: the
-  game-mode byte, the party records, the bar highlight, the key-read
-  and box-printer routines, the overlay stub table, the load-segment
-  words, the config layout and the save-file family;
-- a per-program table for each seam's own facts.
-
-A seam is available on the programs whose facts it has, which is §5's
-per-binary rule, unchanged. Mechanism is shared only where the
-programs behave the same; where Curse differs, the seam differs or is
-not ported. The shared table lands alone, before any Curse behaviour
-(#559). A seam's own table lands with its port, in two commits: the
-refactor, with every Pool of Radiance session verifying with unchanged
-hashes, then the Curse row. A seam that is not ported keeps its facts
-as they are.
+**The machine's answer to the mouse.** This machine has no mouse and
+no joystick (§9), and it does not edit the player's configuration file
+to say so. A PC with no mouse driver loaded has DOS's own `IRET` behind
+`INT 33h`: the call comes back with its registers as they went, and
+`AX=0000` after a reset is how a program learns that no driver is
+there. That is this machine's answer, said once in the log as a notice
+(`docs/machine.md` §5). The game is played from the keyboard.
 
 **Phases.** Each may take an interim tag.
 
-- **C0 — Ready** (#551, #552).
-  - Curse edition rows from both stores (`data/editions.json`,
-    `machine/edition.cpp`).
-  - The config file's name and line roles per edition.
+- **S0 — Ready** (#606).
+  - The Steam edition row (`data/editions.json`, `machine/edition.cpp`),
+    and the GOG one when that copy is captured.
+  - `BLADES.CFG` and its line roles in the edition row.
   - The snapshot disks.
-  - The program profile.
+  - The program profile's identity for the image.
 
-  *Exit: Curse is recognized by name, with no seams available, and
-  stops cleanly at its first unimplemented service. Pool of Radiance is
-  byte-identical.*
-- **C1 — First light** (#553).
-  - The DOS services the boot reaches, one per change, each with a
-    `tests/programs` fixture and a synthetic-VFS test.
-  - Directory enumeration in the VFS's own order.
-  - Tandy sound and the speed presets checked on Curse.
+  *Exit: the game is recognized by name, with no seams available, and
+  stops cleanly at its first unimplemented service. Pool of Radiance
+  and Curse of the Azure Bonds are byte-identical.*
+- **S1 — First light** (#607).
+  - The two services the boot reaches, one per change, each with a
+    `tests/programs` fixture and a unit test.
+  - Tandy sound and the speed presets checked on this game.
 
-  *Exit: title → party roster on desktop and web from the store copy,
+  *Exit: title → party menu on desktop and web from the store copy,
   with every seam off.*
-- **C2 — Playable** (#554).
+- **S2 — Playable** (#608).
   - The debug cheats first.
-  - The legs, in `docs/playable-curse.md`: a new party, loading slots
-    A and B, the town and a story event, a fight, a shop and the temple,
-    a camp with the game's own Fix, save and load, and the wilderness.
-  - A Curse session library pinned to the Curse snapshots.
-  - The save-layer row and per-slot sidecars for Curse.
+  - How a seam finds an overlay under this overlay manager.
+  - The legs, in `docs/playable-secret.md`: a new party, loading saved
+    games A and B, the town and a story event, a fight, a shop and the
+    temple, a camp, save and load, and whatever the game has where the
+    first two have a wilderness.
+  - The program's own keys on every screen, written down.
+  - The copy protection and the character import, found.
+  - A session library pinned to the snapshots.
+  - The save-layer row and per-slot sidecars.
 
   *Exit: a playthrough sweep passes on all targets, and the cheats
   toggle end-to-end.*
-- **C3 — Enhanced** (#555). The seams below, in the table's order. *Exit: each
-  works and toggles independently on desktop and web, with its pair,
-  its leg and a person's look.*
-- **C4 — Onboarded** (#556).
-  - Both shells recognize a Curse copy.
-  - The toggle panel, the key card and the controls page are per game.
-  - The document control knows Curse's journals.
+- **S3 — Enhanced** (#609). The seams below, in the table's order.
+  *Exit: each works and toggles independently on desktop and web, with
+  its pair, its leg and a person's look.*
+- **S4 — Onboarded** (#610).
+  - Both shells recognize a copy.
+  - The toggle panel, the key card and the controls page have this
+    game's form.
+  - The document control knows its journals.
 
-  *Exit: a new player goes from a Curse copy to playing without reading
-  source.*
-- **C5 — Release 1.2.** The docs and the release bundle. *Exit: the
-  gate in §1 is green for both games.*
+  *Exit: a new player goes from a Secret of the Silver Blades copy to
+  playing without reading source.*
+- **S5 — Release 1.3.** The docs and the release bundle. *Exit: the
+  gate in §1 is green for all three games.*
 
-**The seams on Curse**, in C3's order:
+**The seams on Secret of the Silver Blades**, in S3's order:
 
-| Seam | On Curse |
+| Seam | On Secret of the Silver Blades |
 |---|---|
-| `code-wheel` | Port. First find whether the store copy accepts any answer, as Pool of Radiance's does (`docs/seams.md` §5). |
+| debug cheats | Port, first (S2). |
+| `code-wheel` | Port if the program asks a question. First find where it asks, and whether the store copy accepts any answer. |
 | screen text, scene, aim, text entry | Port the facts. The controls and the site both read them. |
-| `modern-controls` | Port. It is the largest fact set. |
+| `modern-controls` | Port piece by piece, and only where S2's key table shows a gap: the game's menus are already lists under a highlight. |
 | `font-sans`, `font-chisel` | Port. |
-| `quick-steps`, and the timer fix | **Not ported:** at 386, Curse turns and steps fast enough without it. The timer fix exists only behind `quick-steps`. |
 | `message-pause` | Port, and re-measure the pause. |
 | `automap` | Port. |
-| `explored` | **Not ported:** Curse's overland is a picture travelled from place to place, and the fog is not wanted there. |
 | journal | Port. It is the largest item. |
-| debug cheats | Port, first (C2). |
-| Encamp (F)ix | **Not ported:** the game has its own Fix. |
-| roster fix | Not ported unless Curse has the failure; it keeps no roster file. |
-| `fanfare` | Port, with a piece of its own (#598). |
+| `quick-steps`, and the timer fix | Decided after the maintainer has played at 386, as for Curse. |
+| `explored` | Only if the game has an overland that is walked. |
+| Encamp (F)ix | Only if the camp has no Fix of its own. |
+| roster fix | Only if the program has the failure. |
+| `fanfare` | Decided by ear in S1: the titles play their own music on the Tandy chip, and the seam exists for titles that play none. |
 
 ## 8. Risks and mitigations
 
@@ -535,31 +567,41 @@ as they are.
 - **macOS distribution.** Signing/notarization needs an Apple developer
   account. 1.0 ships no desktop binaries, so the question waits for
   the release that does (below).
-- **A second program perturbing the first.** The program profile (§7,
-  M9) touches every Pool of Radiance seam it ports. Each seam's
-  refactor is a commit of its own, before its Curse row, gated on
-  every session verifying with unchanged hashes.
-- **Curse's DOS surface past its first stop is unknown.** Each stop is
-  one service with its own fixture, never a guessed answer.
-- **The journal's cost is per edition** (#357, #361), though Steam's
-  Curse edition needs no OCR.
-- **Scope creep toward the rest of the family.** Secret of the Silver
-  Blades and Pools of Darkness share the engine lineage, but they start
-  after M9 ships. Pools of Darkness's 256-colour VGA would be a new
+- **A new program perturbing the ones that play.** A seam's third row
+  touches the table two games already read. A seam whose facts are
+  still at file scope gets its refactor as a commit of its own, before
+  the new row, and every port is gated on every committed session
+  verifying with unchanged hashes.
+- **A later overlay manager.** Secret of the Silver Blades' overlay file
+  is a different generation from the first two games' (§7, M10). If its
+  manager moves or reloads a module in a way the load-segment word does
+  not describe, overlaid seam points need a second way to be resolved,
+  and that is found in S2, before any seam is ported.
+- **A player expects the mouse.** The store copy is configured for one
+  and its launcher provides one. This machine answers that there is
+  none (§7, M10), and the shells say the game is played from the
+  keyboard.
+- **The journal's cost is per edition** (#357, #361), though the
+  typeset Steam editions need no OCR.
+- **Scope creep toward the rest of the family.** Pools of Darkness and
+  the Savage Frontier games share the engine lineage, but they start
+  after M10 ships. Pools of Darkness's 256-colour VGA would be a new
   device module.
 
 ## 9. Out of scope
 
 - The amberfolio.org website and hosted player (separate initiative;
   the reference shell here is its future substrate).
-- Gold Box titles past Curse of the Azure Bonds. They start after M9.
+- Gold Box titles past Secret of the Silver Blades. They start after
+  M10.
 - Hillsfar character import into Curse.
-- Putting a Pool of Radiance party where Curse's import reads it, in
-  Curse's own save directory. It will be solved through the web page,
-  not in M9.
-- Other audio hardware (Ad Lib, Roland), mouse support, other
-  video modes (CGA/MCGA/Hercules), machine save-states, localization,
-  32-bit builds.
+- Putting an earlier game's party where the next game's import reads
+  it, in that game's own save directory: Pool of Radiance into Curse,
+  Curse into Secret of the Silver Blades. It will be solved through the
+  web page, not in a milestone here.
+- Other audio hardware (Ad Lib, Roland), mouse and joystick support,
+  other video modes (CGA/MCGA/Hercules), machine save-states,
+  localization, 32-bit builds.
 - A CRT presentation filter. What a frame looks like on the way to a
   screen is a host's to decide, and amberfolio.org has its own; the
   hosts here show the frame the machine drew.
@@ -574,13 +616,16 @@ as they are.
   GOG and Steam (the baseline row) and a third-party repack of it. They
   differ only in two bytes of the copy-protection overlay and in files
   the repack adds, and every seam is valid on both (`docs/seams.md` §5,
-  #396). Curse has the Steam v1.3 copy; the GOG copy is captured in C0
-  (§7, M9). Other builds of either program are open.
+  #396). Curse has its Steam and GOG copies, one v1.3 image in two
+  rows. Secret of the Silver Blades has the Steam version 1.30 copy;
+  the GOG copy is captured in S0 (§7, M10). Other builds of any of the
+  programs are open.
 - Which **document** editions to fingerprint. The table
   (`machine/document.cpp`) has a code wheel (a fact; it gates nothing
   since #290) and an Adventurer's Journal for each of the GOG and Steam
   releases: the GOG journal is scans, read by OCR (#214), and the Steam
   collection's is text, read out of the document (#398). Every other
   journal is refused as unrecognized, which is the fail-closed direction.
-  Curse's journals join the table in M9. Which re-scans or reissues to
-  add is open.
+  Curse has both stores' journals in the table as well, and Secret of
+  the Silver Blades' join it in M10. Which re-scans or reissues to add
+  is open.
