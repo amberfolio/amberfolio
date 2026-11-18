@@ -33,6 +33,24 @@ TEST(SoundReport, AFileThatNamesTheSpeakerIsSaid) {
             "amberfolio: CURSE.CFG sound P, started as T (Tandy sound)\n");
 }
 
+TEST(SoundReport, ACopyStartedAsAnotherDeviceSaysWhich) {
+  // `--sound` (#616): the device asked for is named, and a file that
+  // already says it is quiet.
+  machine::configured_sound said = pool('T');
+  said.started = 'P';
+  EXPECT_EQ(started_sound_line(said),
+            "amberfolio: POOL.CFG sound T, started as P (PC speaker)\n");
+  said.started = 'S';
+  EXPECT_EQ(started_sound_line(said),
+            "amberfolio: POOL.CFG sound T, started as S (silent)\n");
+  said.file = "BLADES.CFG";
+  said.started = 'A';
+  EXPECT_EQ(started_sound_line(said),
+            "amberfolio: BLADES.CFG sound T, started as A (AdLib)\n");
+  said.letter = 'A';
+  EXPECT_EQ(started_sound_line(said), "");
+}
+
 TEST(SoundReport, AFileThatAlreadySaysTandyOrNothingIsQuiet) {
   EXPECT_EQ(started_sound_line(pool('T')), "");
   EXPECT_EQ(started_sound_line(curse('T')), "");
@@ -44,6 +62,13 @@ TEST(SoundReport, TheChipsTrafficOnlyWhenThereWasSome) {
   EXPECT_EQ(chip_traffic_line(1907, 0),
             "amberfolio: tandy writes=1907 dropped=0\n");
   EXPECT_EQ(chip_traffic_line(0, 3), "amberfolio: tandy writes=0 dropped=3\n");
+}
+
+TEST(SoundReport, TheCardsTrafficOnlyWhenThereWasSome) {
+  EXPECT_EQ(card_traffic_line(0, 0), "");
+  EXPECT_EQ(card_traffic_line(3609, 0),
+            "amberfolio: adlib writes=3609 dropped=0\n");
+  EXPECT_EQ(card_traffic_line(0, 2), "amberfolio: adlib writes=0 dropped=2\n");
 }
 
 }  // namespace

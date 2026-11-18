@@ -7,8 +7,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "amberfolio/host/edition_facts.h"
@@ -89,8 +91,9 @@ namespace {
   return {text.data()};
 }
 
-void report_copy_facts(machine::filesystem& files,
-                       const machine::dos_path& install) {
+bool report_copy_facts(machine::filesystem& files,
+                       const machine::dos_path& install,
+                       std::uint8_t start_as) {
   {
     const machine::save_directory_answer saves =
         machine::read_save_directory(files, install);
@@ -106,10 +109,27 @@ void report_copy_facts(machine::filesystem& files,
   }
   // The copy's own sound line, when it is not what the program will
   // read (sound_report.h, #404).
-  std::fputs(
-      sdl::started_sound_line(machine::read_configured_sound(files, install))
-          .c_str(),
-      stderr);
+  std::optional<machine::configured_sound> said =
+      machine::read_configured_sound(files, install);
+  if (start_as != 0) {
+    const machine::found_configuration config =
+        machine::find_configuration_in(files, install);
+    if (!config.found() || config.layout->sounds.find(static_cast<char>(
+                               start_as)) == std::string_view::npos) {
+      std::fprintf(
+          stderr,
+          "amberfolio: --sound: this copy's program does not offer"
+          " that device%s%s\n",
+          config.found() ? "; it offers " : "",
+          config.found() ? std::string(config.layout->sounds).c_str() : "");
+      return false;
+    }
+    if (said) {
+      said->started = start_as;
+    }
+  }
+  std::fputs(sdl::started_sound_line(said).c_str(), stderr);
+  return true;
 }
 
 void report_save_layer_table(const machine::machine& box,

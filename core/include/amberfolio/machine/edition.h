@@ -69,6 +69,11 @@ struct launcher_configuration {
   std::size_t sound_line{0};
   /// The line that names the save directory.
   std::size_t save_line{0};
+  /// Every letter the program's own setup can put on the sound line,
+  /// which is what a host may be asked to start it as (launcher_view.h,
+  /// #616): the speaker, the Tandy chip and silence for the first two
+  /// programs, and `A` as well for one that offers an AdLib card.
+  std::string_view sounds{"PTS"};
 };
 
 /// One known edition: the SHA-256 of its program image, as 64 lowercase

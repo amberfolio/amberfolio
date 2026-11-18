@@ -85,6 +85,21 @@ TEST(EditionTable, KnowsSecretOfTheSilverBladesByItsFingerprint) {
   EXPECT_EQ(found->configuration.save_line, 4U);
 }
 
+TEST(EditionTable, EachProgramSaysWhichSoundDevicesItsSetupOffers) {
+  // The speaker, the Tandy chip and silence for the first two, and an
+  // AdLib card as well for the third (#616). Tandy is among every
+  // program's, which is what every copy is started as.
+  const std::span<const edition> table = known_editions();
+  ASSERT_EQ(table.size(), 3U);
+  EXPECT_EQ(table[0].configuration.sounds, "PTS");
+  EXPECT_EQ(table[1].configuration.sounds, "PTS");
+  EXPECT_EQ(table[2].configuration.sounds, "ATPS");
+  for (const edition& known : table) {
+    EXPECT_NE(known.configuration.sounds.find('T'), std::string_view::npos)
+        << known.name;
+  }
+}
+
 TEST(EditionTable, EachProgramReadsAConfigurationFileOfItsOwn) {
   // The baseline's layout, unchanged: sound on line 2, saves on line 4.
   EXPECT_EQ(baseline().configuration.file, "POOL.CFG");

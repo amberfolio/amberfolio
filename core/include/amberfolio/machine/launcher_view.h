@@ -34,6 +34,15 @@
 //
 // A file with no sound line, or one too big to be a launcher's, is
 // answered unchanged: there is no letter to read differently.
+//
+// **A program that offers an AdLib card is started as `T` too** (#616).
+// Secret of the Silver Blades' setup offers `A` as well, and this
+// machine has the card (adlib.h), but what was measured is that the
+// program plays its title music through a card it finds whatever this
+// line says, and that the line decides only where the effects go: the
+// Tandy chip under `T`, the PC speaker under `A` or `P`. `T` is the
+// better of those on a machine with both. A host may still be asked to
+// start a copy as another (`start_as`), for a person comparing by ear.
 
 #pragma once
 
@@ -53,6 +62,7 @@ namespace amberfolio::machine {
 inline constexpr std::uint8_t configured_sound_speaker = 'P';
 inline constexpr std::uint8_t configured_sound_tandy = 'T';
 inline constexpr std::uint8_t configured_sound_silent = 'S';
+inline constexpr std::uint8_t configured_sound_adlib = 'A';
 
 /// What every copy is started with on this machine.
 inline constexpr std::uint8_t sound_for_this_machine = configured_sound_tandy;
@@ -85,6 +95,9 @@ struct configured_sound {
   std::string_view file;
   /// The sound line's first character, as the file says it.
   std::uint8_t letter{0};
+  /// What this machine starts the program as instead:
+  /// `sound_for_this_machine`, unless a host asked for another.
+  std::uint8_t started{sound_for_this_machine};
 };
 
 /// The sound line of the configuration file in `current_directory`, as
@@ -98,6 +111,13 @@ struct configured_sound {
 class launcher_view final : public filesystem {
  public:
   explicit launcher_view(filesystem& inner) noexcept : inner_(&inner) {}
+
+  /// Start every copy with `letter` on its sound line instead of
+  /// `sound_for_this_machine`; zero goes back to that. A host's
+  /// choice, made before the program is loaded, for a person comparing
+  /// two devices by ear. A recording has no line for it, so a host that
+  /// records or replays does not offer it.
+  void start_as(std::uint8_t letter) noexcept { start_as_ = letter; }
 
   /// How many configuration-file opens may be answered from a changed copy at
   /// once. The program opens it once, reads it and closes it; a fifth
@@ -153,6 +173,7 @@ class launcher_view final : public filesystem {
 
   filesystem* inner_;
   std::array<shown_file, max_shown_files> shown_files_{};
+  std::uint8_t start_as_{0};
   std::uint32_t shown_count_{};
 };
 

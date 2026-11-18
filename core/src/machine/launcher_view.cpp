@@ -117,7 +117,9 @@ vfs_result<file_handle> launcher_view::open(const dos_path& path,
   const std::span<const std::uint8_t> whole(bytes.data(), got.value);
   const std::optional<std::size_t> at =
       configured_line_offset(whole, layout->sound_line);
-  if (!at || bytes[*at] == sound_for_this_machine) {
+  const std::uint8_t wanted =
+      start_as_ != 0 ? start_as_ : sound_for_this_machine;
+  if (!at || bytes[*at] == wanted) {
     static_cast<void>(inner_->seek(inner.value, seek_origin::begin, 0));
     return inner;
   }
@@ -134,7 +136,7 @@ vfs_result<file_handle> launcher_view::open(const dos_path& path,
     for (std::size_t b = 0; b < got.value; ++b) {
       file.bytes[b] = bytes[b];
     }
-    file.bytes[*at] = sound_for_this_machine;
+    file.bytes[*at] = wanted;
     ++shown_count_;
     return {
         .value = {.slot = first_shown_slot + static_cast<std::uint32_t>(i)}};

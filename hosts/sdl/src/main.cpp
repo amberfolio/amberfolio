@@ -256,6 +256,7 @@ int main(int argc, char** argv) try {
   // The program reads the disk through the launcher's view
   // (launcher_view.h, #404); this host reads and writes `files`.
   machine::launcher_view launched(files);
+  launched.start_as(opts.sound);
   box.set_filesystem(launched);
 
   // The directory the program starts in, before the sidecars below look
@@ -271,7 +272,9 @@ int main(int argc, char** argv) try {
     std::fprintf(stderr, "amberfolio: install %s (from %s) is current\n",
                  sdl::spell_vfs_path(install).c_str(), placed.from);
   }
-  sdl::report_copy_facts(files, install);
+  if (!sdl::report_copy_facts(files, install, opts.sound)) {
+    return 2;
+  }
 
   // And now there is a disk to read the exploration sidecar off (M5-E2c,
   // #173). Before the program is loaded, so a panel opened in the first
