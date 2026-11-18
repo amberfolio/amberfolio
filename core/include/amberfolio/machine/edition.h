@@ -81,7 +81,8 @@ struct edition {
 };
 
 /// Every edition this build knows: the baseline (PLAN.md §10, answered
-/// for M4) first, then Curse of the Azure Bonds (PLAN.md §7, M9).
+/// for M4) first, then Curse of the Azure Bonds (PLAN.md §7, M9) and
+/// Secret of the Silver Blades (PLAN.md §7, M10).
 [[nodiscard]] std::span<const edition> known_editions();
 
 /// The configuration of the first known edition whose configuration file

@@ -69,6 +69,22 @@ TEST(EditionTable, KnowsCurseByItsFingerprint) {
   EXPECT_EQ(found->configuration.save_line, 3U);
 }
 
+TEST(EditionTable, KnowsSecretOfTheSilverBladesByItsFingerprint) {
+  // The Steam release's START.EXE, version 1.30 (PLAN.md §7, M10). Its
+  // file has a line the other two do not, the alternate input on the
+  // third, so the save directory is on the fourth again.
+  sha256_digest digest;
+  ASSERT_TRUE(parse_digest(
+      "8b937984878ec72aa531335dd381a21bda67675408b5fd8e716a35ccd049999e",
+      digest));
+  const edition* found = find_edition(digest);
+  ASSERT_NE(found, nullptr);
+  EXPECT_EQ(found->name, "Secret of the Silver Blades (START.EXE)");
+  EXPECT_EQ(found->configuration.file, "BLADES.CFG");
+  EXPECT_EQ(found->configuration.sound_line, 2U);
+  EXPECT_EQ(found->configuration.save_line, 4U);
+}
+
 TEST(EditionTable, EachProgramReadsAConfigurationFileOfItsOwn) {
   // The baseline's layout, unchanged: sound on line 2, saves on line 4.
   EXPECT_EQ(baseline().configuration.file, "POOL.CFG");

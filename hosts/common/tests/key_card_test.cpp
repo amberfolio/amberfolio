@@ -119,9 +119,10 @@ TEST(KeyCard, NoKeyIsListedTwiceInOneContextOfOneProgram) {
 
 TEST(KeyCard, AProgramsWordIsTheStemOfItsConfigurationFile) {
   const auto programs = machine::known_editions();
-  ASSERT_EQ(programs.size(), 2U);
+  ASSERT_EQ(programs.size(), 3U);
   EXPECT_EQ(key_card_program(programs.data()), "pool");
   EXPECT_EQ(key_card_program(&programs[1]), "curse");
+  EXPECT_EQ(key_card_program(&programs[2]), "blades");
   // A program this build does not recognize has no word, and is shown
   // the baseline's card.
   EXPECT_EQ(key_card_program(nullptr), "");

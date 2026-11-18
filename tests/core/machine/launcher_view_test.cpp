@@ -196,6 +196,37 @@ TEST(LauncherView, CursesFileIsReadAsTandyToo) {
   EXPECT_EQ(said.value_or(configured_sound{}).letter, 'P');
 }
 
+// --- Secret of the Silver Blades' file (#606) -------------------------------
+
+/// What a launcher that says AdLib and the mouse would write: the sound
+/// on the second line, the alternate input on the third, the save
+/// directory on the fourth, and the numbers after the fifth.
+constexpr std::string_view secret_adlib_config =
+    "E\r\nA\r\nM\r\nC:\\SECRET\\SAVE\\\r\nF\r\n0\r\n0\r\n0\r\n";
+
+TEST(LauncherView, SecretsFileIsReadAsTandyAndItsInputLineIsLeftAlone) {
+  auto owned = std::make_unique<memory_filesystem>();
+  memory_filesystem& disk = *owned;
+  ASSERT_EQ(disk.mkdir(path_of("SECRET")), vfs_error::none);
+  put(disk, "SECRET\\BLADES.CFG", secret_adlib_config);
+  launcher_view view(disk);
+
+  // Only the sound line's letter is read differently. The line that asks
+  // for the mouse is the player's, and the machine answers it by having
+  // no mouse driver (PLAN.md §7, M10), not by rewriting it.
+  std::string tandy(secret_adlib_config);
+  tandy[3] = 'T';
+  EXPECT_EQ(read_all(view, "SECRET\\BLADES.CFG"), tandy);
+  EXPECT_EQ(view.shown(), 1u);
+  EXPECT_EQ(read_all(disk, "SECRET\\BLADES.CFG"), secret_adlib_config);
+
+  const std::optional<configured_sound> said =
+      read_configured_sound(disk, path_of("SECRET"));
+  ASSERT_TRUE(said.has_value());
+  EXPECT_EQ(said.value_or(configured_sound{}).file, "BLADES.CFG");
+  EXPECT_EQ(said.value_or(configured_sound{}).letter, 'A');
+}
+
 TEST(LauncherView, EachProgramsFileIsFoundWhereItIsStarted) {
   auto owned = std::make_unique<memory_filesystem>();
   memory_filesystem& disk = *owned;

@@ -376,7 +376,7 @@ TEST(SeamPanel, WithNoProgramLoadedListsEverySeam) {
 
 TEST(SeamPanel, ListsOnlyTheLoadedProgramsSeams) {
   const auto programs = machine::known_editions();
-  ASSERT_EQ(programs.size(), 2U);
+  ASSERT_GE(programs.size(), 2U);
 
   // The baseline has every seam this build lists.
   machine::seam_engine pool;
@@ -415,6 +415,24 @@ TEST(SeamPanel, ListsOnlyTheLoadedProgramsSeams) {
     }
   }
   EXPECT_EQ(curse_rows.size() + another_programs, curse.count());
+}
+
+TEST(SeamPanel, AProgramWithNoSeamsYetHasAnEmptyPanel) {
+  // Secret of the Silver Blades is recognized and has no seam's facts
+  // (#606), so every row is another program's and none is listed. The
+  // panel still draws: its title and its header, over no rows.
+  const auto programs = machine::known_editions();
+  ASSERT_EQ(programs.size(), 3U);
+  machine::seam_engine secret;
+  load(secret, programs[2]);
+  ASSERT_NE(secret.known_edition(), nullptr);
+  for (std::size_t i = 0; i < secret.count(); ++i) {
+    EXPECT_EQ(secret.status(i).reason, machine::seam_reason::wrong_binary)
+        << secret.status(i).id;
+  }
+  const std::vector<panel_row> rows = panel_rows(secret);
+  EXPECT_TRUE(rows.empty());
+  EXPECT_FALSE(panel_lines(rows, 0, {}).empty());
 }
 
 TEST(SeamPanel, ListsEverySeamForAProgramItDoesNotRecognize) {

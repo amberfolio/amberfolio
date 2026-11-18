@@ -740,11 +740,13 @@ TEST(JournalStoreName, EachProgramKeepsItsJournalInAFileOfItsOwn) {
   // One file for both games had the reader open one game's entry under
   // the other's citation (#584).
   const std::span<const machine::edition> programs = machine::known_editions();
-  ASSERT_EQ(programs.size(), 2u);
+  ASSERT_EQ(programs.size(), 3u);
   EXPECT_EQ(journal_store_word(programs[0]), "pool");
   EXPECT_EQ(journal_store_word(programs[1]), "curse");
+  EXPECT_EQ(journal_store_word(programs[2]), "blades");
   EXPECT_EQ(journal_store_filename_for(programs[0]), "journal-pool.txt");
   EXPECT_EQ(journal_store_filename_for(programs[1]), "journal-curse.txt");
+  EXPECT_EQ(journal_store_filename_for(programs[2]), "journal-blades.txt");
   for (const machine::edition& program : programs) {
     EXPECT_NE(journal_store_filename_for(program), journal_store_filename)
         << "the one file every store was kept in is read, never written";

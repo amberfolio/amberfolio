@@ -86,7 +86,7 @@ constexpr std::array<save_file, 11> baseline_files{{
      .about = "that character's memorized spells"},
 }};
 
-/// The baseline, Pool of Radiance: the first of the two editions this
+/// The baseline, Pool of Radiance: the first of the three editions this
 /// build has a save layer for (`edition.h`), each named by its program
 /// image the way a seam names one.
 constexpr save_layer baseline{
@@ -173,7 +173,64 @@ constexpr save_layer curse{
     .files = curse_files,
 };
 
-constexpr std::array<const save_layer*, 2> table{{&baseline, &curse}};
+/// Secret of the Silver Blades' save layer (#606), as far as it has been
+/// watched on the Steam copy: the load menu finds `SAVGAM<S>.DAT` for
+/// `S` from `A` to `J`, and a save from the party menu creates
+/// `SAVGAM<S>.DAT` and, per member, `CHRDAT<S><N>.SAV` and — for a member
+/// under an effect — `CHRDAT<S><N>.SFX`, opening each record first to see
+/// whether it is there and unlinking an effects file before writing it
+/// again. The save prompt offers the ten letters. REMOVE CHARACTER FROM
+/// PARTY keeps the member as `<NAME>.WHO`, with a `<NAME>.SFX` when the
+/// member is under an effect. The shipped parties have six members, and
+/// the bound of eight is the first two games' until a seventh record has
+/// been seen. They carry nothing, so the rows for what a member or a kept
+/// character carries are not here: a row is written down when it has
+/// been seen written (#608).
+///
+/// Most specific first, as above: the configuration file, anchored where
+/// the program was started, then the two `<NAME>` rows last.
+constexpr std::array<save_file, 6> secret_files{{
+    {.pattern = "SAVGAM<S>.DAT",
+     .kind = save_file_kind::slot,
+     .required = true,
+     .about = "the saved game; the load menu lists the slots whose file is "
+              "there"},
+    {.pattern = "CHRDAT<S><N>.SAV",
+     .kind = save_file_kind::member,
+     .required = true,
+     .about = "one party member's record, written for every member of the "
+              "party the save was taken from"},
+    {.pattern = "CHRDAT<S><N>.SFX",
+     .kind = save_file_kind::member,
+     .required = false,
+     .about = "the effects that member is under; absent for a member under "
+              "none"},
+    {.pattern = "BLADES.CFG",
+     .kind = save_file_kind::config,
+     .required = false,
+     .about = "the program's settings, read at boot and written by the "
+              "seller's launcher: a game file, not a playthrough's",
+     .anchor = save_file_anchor::current_directory},
+    {.pattern = "<NAME>.WHO",
+     .kind = save_file_kind::character,
+     .required = false,
+     .about = "a character kept under a name the player chose; a member "
+              "removed from the party is written as one"},
+    {.pattern = "<NAME>.SFX",
+     .kind = save_file_kind::character,
+     .required = false,
+     .about = "the effects that character is under"},
+}};
+
+constexpr save_layer secret{
+    .fingerprint =
+        "8b937984878ec72aa531335dd381a21bda67675408b5fd8e716a35ccd049999e",
+    .slots = "ABCDEFGHIJ",
+    .members = 8,
+    .files = secret_files,
+};
+
+constexpr std::array<const save_layer*, 3> table{{&baseline, &curse, &secret}};
 
 /// The whole of one component's text. A `dos_name` is canonical and
 /// upper-cased already, so nothing here folds case.

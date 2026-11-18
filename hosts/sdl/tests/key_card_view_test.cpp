@@ -118,7 +118,7 @@ TEST(KeyCardView, ASeamsRowsAreInTheLinesOnlyWhileItIsOn) {
 
 TEST(KeyCardView, TheCardIsTheRunningProgramsOwn) {
   const auto programs = machine::known_editions();
-  ASSERT_EQ(programs.size(), 2U);
+  ASSERT_GE(programs.size(), 2U);
 
   // No program, and a program this build does not recognize: the
   // baseline's card.

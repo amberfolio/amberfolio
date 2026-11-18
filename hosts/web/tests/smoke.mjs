@@ -832,7 +832,10 @@ if (missing.length === 0) {
   // names one is shown for that one only.
   const programs = card.programs ?? [];
   check(
-    programs.length === 2 && programs[0].word === 'pool' && programs[1].word === 'curse',
+    programs.length === 3 &&
+      programs[0].word === 'pool' &&
+      programs[1].word === 'curse' &&
+      programs[2].word === 'blades',
     `the key card's programs are ${JSON.stringify(programs)}`,
   );
   check(
