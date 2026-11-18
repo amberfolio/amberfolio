@@ -1264,7 +1264,7 @@ constexpr std::uint64_t composite_frame_hash = 0x280E6B18E8FA79B6ULL;
 //         calls it through — whose segment half is a real MZ relocation
 //   0140  the packed payload
 //   0500  where the payload lands, and where it runs
-//   0680  where the overlay module is read to
+//   06C0  where the overlay module is read to
 //   0800  the result block (machine_layout)
 //
 // The payload carries no relocations, which is not an oversight: the
@@ -1278,13 +1278,13 @@ constexpr std::uint16_t boot_handler_offset = 0x0080;
 constexpr std::uint16_t boot_data_offset = 0x0100;
 constexpr std::uint16_t boot_packed_offset = 0x0140;
 constexpr std::uint16_t boot_payload_offset = 0x0500;
-constexpr std::uint16_t boot_overlay_offset = 0x0680;
+constexpr std::uint16_t boot_overlay_offset = 0x06C0;
 
 /// Where the payload points the DTA to find its overlay: past the most
 /// the overlay read can fill, below the result block. AH=47h's 64-byte
 /// buffer follows it.
-constexpr std::uint16_t boot_dta_offset = 0x06C0;
-constexpr std::uint16_t boot_directory_offset = 0x0700;
+constexpr std::uint16_t boot_dta_offset = 0x0700;
+constexpr std::uint16_t boot_directory_offset = 0x0740;
 
 /// The room the payload and its packed form each have. Checked at build
 /// time rather than trusted: a payload that outgrew its landing zone
@@ -1366,6 +1366,8 @@ enum boot_result : std::uint8_t {
   boot_overlay_bytes,
   boot_overlay_ran,
   boot_timer_ticked,
+  boot_bios_midnight,
+  boot_mouse_reset,
   boot_result_count,
 };
 
@@ -1647,6 +1649,13 @@ void interrupt(assembler& a, std::uint8_t vector) { a.db({0xCD, vector}); }
   a.jump(0x74, "wait_tick");
   mov_ax(a, 1);
   store(a, boot_timer_ticked, reg_ax);
+
+  // The count again through the BIOS, and the mouse reset, as Secret of
+  // the Silver Blades' boot makes them (#607).
+  a.db({0xB4, 0x00, 0xCD, 0x1A});  // mov ah, 0 / int 1Ah
+  store(a, boot_bios_midnight, reg_ax);
+  a.db({0x31, 0xC0, 0xCD, 0x33});  // xor ax, ax / int 33h
+  store(a, boot_mouse_reset, reg_ax);
 
   exit_with(a, 0x77);
   return a.assemble();
@@ -4607,7 +4616,9 @@ constexpr std::array<machine::seam_point, 1> door_points{
          .value = static_cast<std::uint16_t>(boot_overlay_module().size())},
         {.what = "the overlay ran and returned", .value = boot_overlay_mark},
         {.what = "40:6C moved without the program programming anything",
-         .value = 1}};
+         .value = 1},
+        {.what = "INT 1Ah's AX: no midnight", .value = 0},
+        {.what = "INT 33h's AX: no mouse driver", .value = 0}};
     p.exit_code = 0x77;
     // The overlay, found in its directory, opened by name and closed by
     // handle - the whole of this program's file activity, and the shape a
@@ -4615,8 +4626,9 @@ constexpr std::array<machine::seam_point, 1> door_points{
     // under Pool of Radiance; Curse's finds the file first, #553).
     p.file_trace = {"find \\", "open \\OVL.BIN", "close \\OVL.BIN"};
     // The two the video BIOS owes: the text mode this machine records and
-    // cannot draw, and the text page nothing answers for.
-    p.notices = 2;
+    // cannot draw, and the text page nothing answers for. And the mouse
+    // driver that is not there.
+    p.notices = 3;
     // The first timer tick is one whole channel-0 period away, and the
     // program waits for it (service_floor.h's `post`).
     p.least_time = machine::ticks{0x10000};

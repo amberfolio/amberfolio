@@ -17,14 +17,17 @@
 
 #include "amberfolio/machine/service_floor.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <initializer_list>
 #include <memory>
 #include <span>
+#include <vector>
 
 #include "amberfolio/cpu/address.h"
 #include "amberfolio/cpu/interrupts.h"
 #include "amberfolio/cpu/registers.h"
+#include "amberfolio/machine/diagnostics.h"
 #include "amberfolio/machine/ega.h"
 #include "amberfolio/machine/font.h"
 #include "amberfolio/machine/machine.h"
@@ -771,6 +774,143 @@ TEST(timer_service, a_program_hooks_int_1ch_counts_ticks_and_reads_the_bda) {
   EXPECT_EQ(r.ticks(), wanted);
   // ...and the program read the same number out of 40:6C for itself.
   EXPECT_EQ(r.regs()[cpu::reg16::ax], wanted);
+}
+
+// --- The BIOS time of day: INT 1Ah --------------------------------------
+
+/// The midnight flag's byte, in the machine's own memory.
+[[nodiscard]] std::uint8_t& rollover_byte(const rig& r) {
+  return r.pc()
+      .memory()
+      .ram()[cpu::physical_address(bda::segment, bda::timer_rollover)];
+}
+
+TEST(time_of_day_service, reads_the_count_the_timer_keeps) {
+  const rig r;
+  r.set_ticks(0x0012'3456);
+
+  //     mov ah, 0 / int 1Ah / hlt
+  r.program({0xB4, 0x00, 0xCD, service::time_of_day_vector, 0xF4});
+  r.regs()[cpu::reg16::ax] = 0xFFFF;
+  r.run();
+
+  ASSERT_FALSE(r.pc().stopped());
+  EXPECT_EQ(r.regs()[cpu::reg16::cx], 0x0012);
+  EXPECT_EQ(r.regs()[cpu::reg16::dx], 0x3456);
+  // No day went by: AL is zero, and AH is the zero it was called with.
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x0000);
+  // A read, and nothing else: the count is where it was.
+  EXPECT_EQ(r.ticks(), 0x0012'3456u);
+}
+
+TEST(time_of_day_service, reports_midnight_once_and_clears_it) {
+  const rig r;
+  r.set_ticks(5);
+  rollover_byte(r) = 1;
+
+  //     mov ah, 0 / int 1Ah / mov bx, ax / mov ah, 0 / int 1Ah / hlt
+  r.program({0xB4, 0x00, 0xCD, service::time_of_day_vector, 0x89, 0xC3, 0xB4,
+             0x00, 0xCD, service::time_of_day_vector, 0xF4});
+  r.run();
+
+  ASSERT_FALSE(r.pc().stopped());
+  EXPECT_EQ(r.regs()[cpu::reg16::bx], 0x0001);  // the first read saw the day
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x0000);  // the second did not
+  EXPECT_EQ(rollover_byte(r), 0);
+  EXPECT_EQ(r.regs()[cpu::reg16::dx], 5);
+  EXPECT_EQ(r.regs()[cpu::reg16::cx], 0);
+}
+
+TEST(time_of_day_service, refuses_every_function_but_the_read) {
+  // AH=02h is the real-time clock this machine does not have. A refusal,
+  // and the count untouched.
+  const rig r;
+  r.set_ticks(7);
+
+  //     mov ah, 2 / int 1Ah / hlt
+  r.program({0xB4, 0x02, 0xCD, service::time_of_day_vector, 0xF4});
+  r.run();
+
+  EXPECT_TRUE(r.pc().stopped());
+  EXPECT_EQ(r.pc().stop().reason, stop_reason::unimplemented_service);
+  EXPECT_EQ(r.ticks(), 7u);
+}
+
+// --- A vector no driver is behind: INT 33h -------------------------------
+
+TEST(absent_driver, the_mouse_reset_comes_back_as_it_went_and_is_said_once) {
+  const rig r;
+
+  //     xor ax, ax / mov bx, 1234h / int 33h / int 33h / hlt
+  r.program({0x31, 0xC0, 0xBB, 0x34, 0x12, 0xCD, service::mouse_vector, 0xCD,
+             service::mouse_vector, 0xF4});
+  r.regs()[cpu::reg16::cx] = 0x5678;
+  r.regs()[cpu::reg16::dx] = 0x9ABC;
+  r.run();
+
+  // Not a stop: a PC with no mouse driver loaded answers exactly this.
+  ASSERT_FALSE(r.pc().stopped());
+  ASSERT_TRUE(r.pc().processor().halted());
+  // AX is still 0000h, which is how a program reads "no driver", and no
+  // other register was written either.
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x0000);
+  EXPECT_EQ(r.regs()[cpu::reg16::bx], 0x1234);
+  EXPECT_EQ(r.regs()[cpu::reg16::cx], 0x5678);
+  EXPECT_EQ(r.regs()[cpu::reg16::dx], 0x9ABC);
+
+  // Both calls were answered, and the machine said why once, naming the
+  // vector, AL and the first caller.
+  ASSERT_EQ(r.log.calls.size(), 2u);
+  EXPECT_EQ(r.log.calls[0].vector, service::mouse_vector);
+  EXPECT_EQ(r.log.calls[0].outcome, service_outcome::handled);
+  EXPECT_EQ(r.log.calls[1].outcome, service_outcome::handled);
+  std::vector<notice> said;
+  for (const notice& what : r.log.notices) {
+    if (what.what == notice_kind::absent_driver_called) {
+      said.push_back(what);
+    }
+  }
+  ASSERT_EQ(said.size(), 1u);
+  EXPECT_EQ(said[0], (notice{.what = notice_kind::absent_driver_called,
+                             .at = service::mouse_vector,
+                             .value = 0x00,
+                             .cs = code_segment,
+                             .ip = 0x0007}));
+}
+
+TEST(absent_driver, a_reset_lets_it_be_said_again) {
+  const rig r;
+  const auto said = [&] {
+    return std::ranges::count_if(r.log.notices, [](const notice& what) {
+      return what.what == notice_kind::absent_driver_called;
+    });
+  };
+
+  r.program({0xCD, service::mouse_vector, 0xF4});
+  r.run();
+  EXPECT_EQ(said(), 1);
+
+  r.pc().reset();
+  r.program({0xCD, service::mouse_vector, 0xF4});
+  r.run();
+  EXPECT_EQ(said(), 2);
+}
+
+TEST(absent_driver, a_program_that_installs_a_driver_is_answered_by_it) {
+  // The vector is real memory: a mouse driver a program brought with it
+  // and hooked is what runs, and the machine says nothing.
+  const rig r;
+  //     0100: mov ax, FFFFh / iret
+  r.poke(0x0100, {0xB8, 0xFF, 0xFF, 0xCF});
+  r.hook(service::mouse_vector, code_segment, 0x0100);
+
+  r.program({0x31, 0xC0, 0xCD, service::mouse_vector, 0xF4});
+  r.run();
+
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0xFFFF);
+  for (const notice& what : r.log.notices) {
+    EXPECT_NE(what.what, notice_kind::absent_driver_called);
+  }
 }
 
 }  // namespace

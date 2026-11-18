@@ -286,6 +286,24 @@ inline constexpr std::uint8_t video_vector = 0x10;
 /// to hang a periodic routine — and Gold Box code does.
 inline constexpr std::uint8_t user_tick_vector = 0x1C;
 
+/// The BIOS time of day. AH=00h reads the tick count the timer handler
+/// keeps at 40:6C into CX:DX, and reports and clears the midnight flag at
+/// 40:70 in AL. A sound driver paces itself by it. Every other AH is
+/// refused: this machine has no real-time clock behind 02h and up, and
+/// nothing has asked to set the count.
+inline constexpr std::uint8_t time_of_day_vector = 0x1A;
+
+/// The mouse driver's vector, and this machine has no mouse (PLAN.md §9).
+/// What is behind it is what DOS leaves behind a vector no driver has
+/// taken: an `IRET`. A call comes back with every register as it went,
+/// and that is the answer a program reads: AX still 0000h after the
+/// reset, AH=00h, says no driver is installed. Not an unimplemented
+/// service, because nothing is missing: a PC with no mouse driver loaded
+/// answers exactly this. The machine says it once, as a notice
+/// (`notice_kind::absent_driver_called`), so a log shows why a program
+/// that asked for a mouse is being played from the keyboard.
+inline constexpr std::uint8_t mouse_vector = 0x33;
+
 /// The continuation the default timer handler resumes at, once INT 1Ch
 /// has returned. A constant rather than an allocation, so the address is
 /// the same on both sides without either keeping state.

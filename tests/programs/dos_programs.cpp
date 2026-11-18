@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The machine programs for the DOS and BIOS services Curse of the Azure
-// Bonds' boot reaches (#553), in the listing-and-bytes convention of
+// Bonds' boot reaches (#553) and Secret of the Silver Blades' adds
+// (#607), in the listing-and-bytes convention of
 // machine_programs.cpp. A file of their own because that one is at the
 // content guard's size cap; their entries join its list through
 // `append_dos_service_programs()`.
@@ -295,6 +296,66 @@ void sum_asciz(assembler& a, std::string_view label, std::string_view tag) {
   return raw_program(a);
 }
 
+// --- The BIOS tick count: INT 1Ah AH=00h --------------------------------
+//
+// What a sound driver paces itself by (#607): wait for the timer to have
+// ticked, then read the count through the BIOS and beside it out of
+// 40:6C, with interrupts off so no tick lands between the two.
+//
+//         sti
+//         mov  ax, 0040h / mov es, ax / mov di, 006Ch
+//  wait:  mov  ax, es:[di] / or ax, ax / jz wait
+//         cli
+//         mov  bx, es:[di]
+//         mov  ah, 00h / int 1Ah
+//         sub  dx, bx                     ; the same number: zero
+//         <store dx, cx, ax>
+//         <exit 61h>
+
+[[nodiscard]] std::vector<std::uint8_t> biosticks_code() {
+  assembler a;
+  a.db({0xFB});  // sti
+  mov_ax(a, 0x0040);
+  a.db({0x8E, 0xC0});  // mov es, ax
+  a.db({0xBF});
+  a.dw(0x006C);  // mov di, 6Ch
+  a.label("wait");
+  a.db({0x26, 0x8B, 0x05});  // mov ax, es:[di]
+  a.db({0x09, 0xC0});        // or ax, ax
+  a.jump(0x74, "wait");
+  a.db({0xFA});              // cli
+  a.db({0x26, 0x8B, 0x1D});  // mov bx, es:[di]
+  a.db({0xB4, 0x00, 0xCD, 0x1A});
+  a.db({0x29, 0xDA});  // sub dx, bx
+  store(a, 0, reg_dx);
+  store(a, 1, reg_cx);
+  store(a, 2, reg_ax);
+  exit_with(a, 0x61);
+  return raw_program(a);
+}
+
+// --- A driver that is not there: INT 33h ---------------------------------
+//
+// The mouse reset a program makes when its configuration asks for a
+// mouse (#607). No driver is loaded, so the call comes back as it went:
+// AX still zero, which is how the program learns it, and BX untouched.
+//
+//         xor  ax, ax / mov bx, 1234h / int 33h
+//         <store ax, bx>
+//         <exit 62h>
+
+[[nodiscard]] std::vector<std::uint8_t> nomouse_code() {
+  assembler a;
+  a.db({0x31, 0xC0});  // xor ax, ax
+  a.db({0xBB});
+  a.dw(0x1234);  // mov bx, 1234h
+  a.db({0xCD, 0x33});
+  store(a, 0, reg_ax);
+  store(a, 1, reg_bx);
+  exit_with(a, 0x62);
+  return raw_program(a);
+}
+
 }  // namespace
 
 void append_dos_service_programs(std::vector<machine_program>& list) {
@@ -391,6 +452,37 @@ void append_dos_service_programs(std::vector<machine_program>& list) {
     // The text mode this machine records and cannot draw, and the page
     // nothing answers for, reported once, on the clear's first blank.
     p.notices = 2;
+    list.push_back(std::move(p));
+  }
+
+  {
+    machine_program p;
+    p.name = "biosticks";
+    p.about = "INT 1Ah AH=00h reads the tick count the timer keeps";
+    p.setup.code = biosticks_code();
+    p.results = {
+        {.what = "the BIOS's low word, less 40:6C's: the same number",
+         .value = 0},
+        {.what = "the high word", .value = 0},
+        {.what = "no midnight went by, and AH is the zero it was", .value = 0}};
+    p.exit_code = 0x61;
+    // The first tick is one whole channel-0 period away, and the program
+    // waits for it.
+    p.least_time = machine::ticks{0x10000};
+    list.push_back(std::move(p));
+  }
+
+  {
+    machine_program p;
+    p.name = "nomouse";
+    p.about = "INT 33h with no mouse driver loaded comes back as it went";
+    p.setup.code = nomouse_code();
+    p.setup.step_cap = 10'000;
+    p.results = {{.what = "AX after the reset: no driver", .value = 0x0000},
+                 {.what = "BX, untouched", .value = 0x1234}};
+    p.exit_code = 0x62;
+    // The one line that says no driver ran.
+    p.notices = 1;
     list.push_back(std::move(p));
   }
 }

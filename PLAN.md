@@ -111,7 +111,10 @@ special handling beyond working DOS file I/O.
 - **DOS/BIOS services** — the small INT 21h subset the game actually
   uses (file open/create/read/write/seek/close/unlink/mkdir, date/time,
   console output, exit) over a virtual filesystem, plus the equally
-  small INT 10h video subset (mode set, palette register set).
+  small INT 10h video subset (mode set, palette register set) and the
+  BIOS tick count. No mouse driver is loaded: the mouse's vector has
+  DOS's own `IRET` behind it, which is how a program that asks learns
+  there is none (§7, M10).
 
 The scope is deliberately the surface *this game* exercises — but the
 Gold Box family shares its toolchain and engine lineage, so the machine
@@ -427,17 +430,18 @@ shells carry it. It exits as **1.3**. Tracking: #611.
   Tandy, and it draws in the EGA mode the machine already has.
 - **No new sound device.** The setup offers AdLib, Tandy, the PC
   speaker and silence, and the store copy is set to Tandy. The sound
-  driver is a new one, with its music in a data file. At start it
+  driver is a new one, with a data file of its own. At start it
   looks for cards this machine does not have, at port `388h` and across
   `220h`–`2FFh`; nothing claims those ports, which is the true answer.
-- **The boot is unrecognized today, and stops at the mouse.** The
+- **The boot was unrecognized, and stopped at the mouse.** The
   shipped configuration asks for the mouse, and the program resets the
   mouse driver through `INT 33h` without reading the vector first; that
-  is the stop, 79 frames in. The next is `INT 1Ah AH=00h`, the BIOS
+  was the stop, 79 frames in. The next was `INT 1Ah AH=00h`, the BIOS
   tick count, from the sound driver.
-- **Past those two, nothing stops.** In a local build that answers
-  both, the titles run with music on the Tandy chip, the party menu
-  comes up and a character is created as far as the reroll.
+- **Past those two, nothing stops.** With both answered (#607), the
+  titles run with their tune on the PC speaker, whatever the
+  configuration says; the party menu comes up, with music on the Tandy
+  chip; and a character is created as far as the reroll.
 - **The overlay manager is a later generation.** `GAME.OVR` begins
   `TPOV` where the first two games' begins `FBOV`. Where a seam reads a
   module's load segment (`docs/seams.md` §8.1, #131) is measured again
@@ -550,7 +554,7 @@ there. That is this machine's answer, said once in the log as a notice
 | `explored` | Only if the game has an overland that is walked. |
 | Encamp (F)ix | Only if the camp has no Fix of its own. |
 | roster fix | Only if the program has the failure. |
-| `fanfare` | Decided by ear in S1: the titles play their own music on the Tandy chip, and the seam exists for titles that play none. |
+| `fanfare` | Decided by ear: the titles play a tune of their own, on the PC speaker, and the seam exists for titles that play none. |
 
 ## 8. Risks and mitigations
 

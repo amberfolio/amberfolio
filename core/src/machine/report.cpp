@@ -226,6 +226,8 @@ const char* notice_kind_name(notice_kind what) noexcept {
       return "video_write_before_mode_set";
     case notice_kind::undisplayable_video_mode:
       return "undisplayable_video_mode";
+    case notice_kind::absent_driver_called:
+      return "absent_driver_called";
   }
   return "unknown";
 }

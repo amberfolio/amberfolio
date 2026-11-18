@@ -605,6 +605,15 @@ class machine final : public cpu::bus {
   /// calls it from outside this class.
   void notice_video_mode(std::uint8_t mode);
 
+  /// The program called a vector no driver is behind
+  /// (diagnostics.h's `absent_driver_called`, `service::mouse_vector`).
+  /// Reported once per vector, on the same first-touch rule: a program
+  /// that polls a driver that is not there should produce one line.
+  /// `al` is AL as the program called it. Where the call came from is
+  /// the floor's `caller_cs()` and `caller_ip()`, as a service's own
+  /// refusal reports it.
+  void notice_absent_driver(std::uint8_t vector, std::uint8_t al);
+
   /// A native service handler's own refusal: it understood the request
   /// and does not support it — an INT 10h video mode this machine does
   /// not have, say. PLAN.md §3's "loud log line and a clean stop," at the
@@ -766,6 +775,11 @@ class machine final : public cpu::bus {
   /// undisplayable (`notice_video_mode`). Thirty-two bytes, cleared by
   /// `reset()` with the other two.
   std::array<std::uint64_t, 256 / 64> video_modes_noticed_{};
+
+  /// One bit per interrupt vector: which have already been reported as
+  /// having no driver behind them (`notice_absent_driver`). Cleared by
+  /// `reset()` with the others.
+  std::array<std::uint64_t, 256 / 64> absent_drivers_noticed_{};
 };
 
 }  // namespace amberfolio::machine

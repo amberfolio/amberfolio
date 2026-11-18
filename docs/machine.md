@@ -128,6 +128,17 @@ The test: **can you state, in the log line, precisely what did not
 happen?** If yes, a notice; if the line would say "handled it somehow",
 a stop.
 
+**A driver that is not loaded is the second notice of this kind.**
+`INT 33h` is the mouse driver's vector, and this machine has no mouse
+(PLAN.md §9). A PC with no mouse driver loaded has DOS's own `IRET`
+behind the vector, so a call comes back with every register as it went,
+and `AX=0000` after the reset is how a program learns that no driver is
+there. That is what `service::mouse_vector` does, and
+`notice_kind::absent_driver_called` says it once per vector, with AL and
+the caller: what did not happen is that no driver ran. It is not a
+model for a service this machine *should* have. A vector is answered
+this way only when the true machine, as scoped, has nothing behind it.
+
 **The refusal a reader sees** is formatted in core (`machine/report.h`)
 so both hosts print the same sentence at the same step:
 

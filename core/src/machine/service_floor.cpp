@@ -104,6 +104,40 @@ void timer_tick_done(service_floor& floor, std::uint8_t /*vector*/) {
   floor.box().write_port8(pic::master_command_port, pic::end_of_interrupt);
 }
 
+/// INT 1Ah, the BIOS time of day (`service::time_of_day_vector`).
+///
+/// AH=00h is a read of what `timer_tick` keeps: the count into CX:DX,
+/// and the midnight flag into AL, cleared by being read, which is the
+/// one way a program learns a day went by. AH is left as it was, as the
+/// PC's own BIOS leaves it. Through the bus for the reason `timer_tick`
+/// gives.
+void time_of_day(service_floor& floor, std::uint8_t /*vector*/) {
+  cpu::processor& cpu = floor.box().processor();
+  const std::uint16_t ax = cpu.regs()[cpu::reg16::ax];
+  if ((ax >> 8u) != 0x00u) {
+    floor.box().stop_unimplemented_service(
+        cpu::physical_address(cpu.regs()[cpu::sreg::cs], cpu.regs().ip));
+    return;
+  }
+
+  cpu.regs()[cpu::reg16::dx] = cpu.read_word(bda::segment, bda::timer_ticks);
+  cpu.regs()[cpu::reg16::cx] =
+      cpu.read_word(bda::segment, offset_past(bda::timer_ticks, 2));
+  const std::uint8_t midnight =
+      cpu.read_byte(bda::segment, bda::timer_rollover);
+  cpu.write_byte(bda::segment, bda::timer_rollover, 0);
+  cpu.regs()[cpu::reg16::ax] = static_cast<std::uint16_t>(midnight);
+}
+
+/// A vector no driver is behind: the `IRET` and nothing else, said once
+/// (`service::mouse_vector`). No register is written, which is the
+/// answer.
+void no_driver(service_floor& floor, std::uint8_t vector) {
+  const cpu::processor& cpu = floor.box().processor();
+  floor.box().notice_absent_driver(
+      vector, static_cast<std::uint8_t>(cpu.regs()[cpu::reg16::ax] & 0xFFu));
+}
+
 }  // namespace
 
 service_floor::service_floor(machine& box, diagnostics* log) noexcept
@@ -122,6 +156,11 @@ service_floor::service_floor(machine& box, diagnostics* log) noexcept
   provide(service::timer_vector, &timer_tick);
   provide_continuation(service::timer_continuation, service::timer_vector,
                        &timer_tick_done);
+
+  // The BIOS's read of the count that handler keeps, and the one vector
+  // this machine answers by having no driver.
+  provide(service::time_of_day_vector, &time_of_day);
+  provide(service::mouse_vector, &no_driver);
 }
 
 void service_floor::provide(std::uint8_t vector, service_handler handler) {

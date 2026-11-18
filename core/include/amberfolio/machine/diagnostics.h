@@ -159,12 +159,20 @@ enum class notice_kind : std::uint8_t {
   /// output nothing was ever going to look at. Reporting it is what turns
   /// "we quietly went along with it" into a worklist line.
   undisplayable_video_mode,
+  /// The program called a driver that is not loaded: a software interrupt
+  /// whose vector has only the `IRET` DOS leaves behind an unused one
+  /// (`service::mouse_vector`). `at` is the vector and `value` is AL as
+  /// the program called it. Every register came back as it went, which
+  /// is the whole of what happened and what the line says did not: no
+  /// driver ran.
+  absent_driver_called,
 };
 
 struct notice {
   notice_kind what{};
 
-  /// The physical address, or the port number.
+  /// The physical address, the port number, the video mode or the
+  /// interrupt vector, as the kind says.
   std::uint32_t at{};
 
   /// The byte a dropped write was carrying. Zero for a read.
