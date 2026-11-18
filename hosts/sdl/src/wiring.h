@@ -11,6 +11,7 @@
 #include <memory>
 
 #include "amberfolio/host/slot_store.h"
+#include "amberfolio/machine/adlib.h"
 #include "amberfolio/machine/diagnostics.h"
 #include "amberfolio/machine/ega.h"
 #include "amberfolio/machine/machine.h"
@@ -36,6 +37,7 @@ struct wired_machine {
   std::unique_ptr<machine::ega> video;
   machine::renderer render;
   machine::tandy_sound chip;
+  machine::adlib_card card;
 };
 
 /// Reports what the core would not fake, to stderr. A host has to have

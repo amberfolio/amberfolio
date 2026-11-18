@@ -356,6 +356,69 @@ void sum_asciz(assembler& a, std::string_view label, std::string_view tag) {
   return raw_program(a);
 }
 
+// --- Finding the AdLib card: ports 388h and 389h -------------------------
+//
+// The detection a sound driver makes at start (#616): mask both timers
+// and clear the flags, read the status; start timer 1 from FFh and read
+// the status until its flag comes up; put it back. The wait is bounded
+// by CX, so a machine with no card ends it with nothing set.
+//
+//         <04 := 60h> <04 := 80h>
+//         mov  dx, 388h / in al, dx / and al, E0h         ; 00h
+//         <02 := FFh> <04 := 21h>
+//         mov  dx, 388h / mov cx, FFFFh
+//  wait:  in   al, dx / test al, 40h / jnz got / loop wait
+//  got:   mov  bl, al / and al, E0h                        ; C0h
+//         mov  al, bl / and al, 06h                        ; 06h
+//         <04 := 60h> <04 := 80h>
+//         mov  dx, 388h / in al, dx / and al, E0h         ; 00h
+//         <exit 63h>
+
+///     mov  dx, 388h / mov al, reg / out dx, al
+///     inc  dx / mov al, value / out dx, al
+void write_card(assembler& a, std::uint8_t reg, std::uint8_t value) {
+  a.db({0xBA, 0x88, 0x03, 0xB0, reg, 0xEE});
+  a.db({0x42, 0xB0, value, 0xEE});
+}
+
+///     mov  dx, 388h / in al, dx / and al, mask / xor ah, ah
+void read_card_status(assembler& a, std::uint8_t mask) {
+  a.db({0xBA, 0x88, 0x03, 0xEC, 0x24, mask, 0x30, 0xE4});
+}
+
+[[nodiscard]] std::vector<std::uint8_t> adlibfind_code() {
+  assembler a;
+  write_card(a, 0x04, 0x60);
+  write_card(a, 0x04, 0x80);
+  read_card_status(a, 0xE0);
+  store(a, 0, reg_ax);
+
+  write_card(a, 0x02, 0xFF);
+  write_card(a, 0x04, 0x21);
+  a.db({0xBA, 0x88, 0x03});  // mov dx, 388h
+  a.db({0xB9});
+  a.dw(0xFFFF);  // mov cx, FFFFh
+  a.label("wait");
+  a.db({0xEC});        // in al, dx
+  a.db({0xA8, 0x40});  // test al, 40h
+  a.jump(0x75, "got");
+  a.jump(0xE2, "wait");  // loop wait
+  a.label("got");
+  a.db({0x88, 0xC3});              // mov bl, al
+  a.db({0x24, 0xE0, 0x30, 0xE4});  // and al, E0h / xor ah, ah
+  store(a, 1, reg_ax);
+  a.db({0x88, 0xD8});              // mov al, bl
+  a.db({0x24, 0x06, 0x30, 0xE4});  // and al, 06h / xor ah, ah
+  store(a, 2, reg_ax);
+
+  write_card(a, 0x04, 0x60);
+  write_card(a, 0x04, 0x80);
+  read_card_status(a, 0xE0);
+  store(a, 3, reg_ax);
+  exit_with(a, 0x63);
+  return raw_program(a);
+}
+
 }  // namespace
 
 void append_dos_service_programs(std::vector<machine_program>& list) {
@@ -483,6 +546,21 @@ void append_dos_service_programs(std::vector<machine_program>& list) {
     p.exit_code = 0x62;
     // The one line that says no driver ran.
     p.notices = 1;
+    list.push_back(std::move(p));
+  }
+
+  {
+    machine_program p;
+    p.name = "adlibfind";
+    p.about = "the AdLib card answers the detection a sound driver makes";
+    p.setup.code = adlibfind_code();
+    p.results = {{.what = "the flags, masked and cleared", .value = 0x00},
+                 {.what = "the flags once timer 1 has run out", .value = 0xC0},
+                 {.what = "the chip's mark in the status", .value = 0x06},
+                 {.what = "the flags, cleared again", .value = 0x00}};
+    p.exit_code = 0x63;
+    // Timer 1 from FFh is one count: 96 ticks.
+    p.least_time = machine::ticks{96};
     list.push_back(std::move(p));
   }
 }

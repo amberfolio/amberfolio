@@ -166,7 +166,7 @@ TEST(SessionLibrary, ASessionWithAWrongCheckpointIsRefused) {
 TEST(SessionLibrary, EveryCommittedRecordingIsAFormatThisBuildStillReads) {
   const std::string text = read_session_file("spin.rec");
   ASSERT_FALSE(text.empty());
-  EXPECT_THAT(text, ::testing::StartsWith("amberfolio-recording 1 state=2\n"))
+  EXPECT_THAT(text, ::testing::StartsWith("amberfolio-recording 1 state=3\n"))
       << "spin.rec is the tree's only format 1 recording and the whole of"
          " what keeps that reader honest; re-recording it is a decision"
          " (tests/sessions/README.md).";
@@ -188,7 +188,7 @@ TEST(SessionLibrary, TheRecordingsMadeSinceFormatThreeAreStillRead) {
         "quiet-explored.rec", "quiet-journal.rec", "subset-map-reader.rec"}) {
     const std::string text = read_session_file(name);
     ASSERT_FALSE(text.empty()) << name;
-    EXPECT_THAT(text, ::testing::StartsWith("amberfolio-recording 3 state=2\n"))
+    EXPECT_THAT(text, ::testing::StartsWith("amberfolio-recording 3 state=3\n"))
         << name;
   }
 }
@@ -199,7 +199,7 @@ TEST(SessionLibrary, TheRecordingsMadeSinceFormatFourAreStillRead) {
        {"quiet-font-sans.rec", "quiet-font-chisel.rec"}) {
     const std::string text = read_session_file(name);
     ASSERT_FALSE(text.empty()) << name;
-    EXPECT_THAT(text, ::testing::StartsWith("amberfolio-recording 4 state=2\n"))
+    EXPECT_THAT(text, ::testing::StartsWith("amberfolio-recording 4 state=3\n"))
         << name;
   }
 }
@@ -214,7 +214,7 @@ TEST(SessionLibrary, TheRecordingsMadeSinceFormatFiveCarryTheirNumbers) {
         "curse-quiet-all-on-sight.rec"}) {
     const std::string text = read_session_file(name);
     ASSERT_FALSE(text.empty()) << name;
-    EXPECT_THAT(text, ::testing::StartsWith("amberfolio-recording 5 state=2\n"))
+    EXPECT_THAT(text, ::testing::StartsWith("amberfolio-recording 5 state=3\n"))
         << name;
     EXPECT_THAT(text, ::testing::HasSubstr("\nseam message-pause 1500\n"))
         << name;

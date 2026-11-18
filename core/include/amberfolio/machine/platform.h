@@ -309,6 +309,7 @@
 #include <span>
 
 #include "amberfolio/machine/clock.h"
+#include "amberfolio/machine/opl2.h"
 #include "amberfolio/machine/psg.h"
 
 namespace amberfolio::machine {
@@ -482,6 +483,16 @@ struct chip_write {
                                    const chip_write&) = default;
 };
 
+/// One byte written to a register of the AdLib card's chip, at tick `at`
+/// (adlib.h, #616). The third part of the canonical audio state.
+struct fm_write {
+  ticks at{};
+  std::uint8_t reg{};
+  std::uint8_t value{};
+
+  friend constexpr bool operator==(const fm_write&, const fm_write&) = default;
+};
+
 class audio_timeline {
  public:
   /// How many unconsumed edges the ring holds. A 1 kHz tone at 60 pulls a
@@ -499,6 +510,12 @@ class audio_timeline {
   /// is seconds of it between pulls. A power of two for the same reason.
   static constexpr std::size_t chip_write_capacity = 1024;
 
+  /// How many unconsumed writes to the AdLib card's chip the third ring
+  /// holds (#616). An instrument is eleven registers and a note two
+  /// more, and a driver may load nine instruments in one tick of its
+  /// own; this is several of those between pulls. A power of two.
+  static constexpr std::size_t fm_write_capacity = 4096;
+
   /// How many edges, and how many chip writes, the canonical state
   /// covers after a restart: the count and the digest fold the first
   /// `pinned_edges` edges and the first `pinned_chip_writes` writes and
@@ -515,6 +532,7 @@ class audio_timeline {
   /// resized without touching either.
   static constexpr std::uint64_t pinned_edges = 2048;
   static constexpr std::uint64_t pinned_chip_writes = 1024;
+  static constexpr std::uint64_t pinned_fm_writes = 4096;
 
   /// The sample rates `render()` will accept. The upper bound is well
   /// under `pit_input_hz`, which is what guarantees a sample interval is
@@ -562,6 +580,15 @@ class audio_timeline {
   /// (`pinned_chip_writes`).
   bool publish_chip(ticks at, std::uint8_t value) noexcept;
 
+  /// A byte was written to register `reg` of the AdLib card's chip at
+  /// tick `at` (#616). The same bargain as `publish_chip()`: what is
+  /// published is what the program did, the consumer runs the chip
+  /// itself (opl2.h) to hear it, writes at one tick keep their order, one
+  /// before the last is refused, and a full ring drops and counts while
+  /// the write is still counted and folded into the state
+  /// (`pinned_fm_writes`).
+  bool publish_fm(ticks at, std::uint8_t reg, std::uint8_t value) noexcept;
+
   /// Everything up to `now` is settled — the horizon. `machine::run()`
   /// calls this when its loop ends.
   ///
@@ -605,6 +632,15 @@ class audio_timeline {
   [[nodiscard]] std::uint64_t chip_digest() const noexcept {
     return chip_digest_;
   }
+
+  /// The same three numbers for the AdLib card's chip.
+  [[nodiscard]] std::uint64_t dropped_fm_writes() const noexcept {
+    return fm_dropped_.load(std::memory_order_relaxed);
+  }
+  [[nodiscard]] std::uint64_t fm_published() const noexcept {
+    return fm_published_;
+  }
+  [[nodiscard]] std::uint64_t fm_digest() const noexcept { return fm_digest_; }
 
   /// How many edges the producer has published since the last restart,
   /// and a running digest of the first `pinned_edges` of them (tick and
@@ -694,7 +730,8 @@ class audio_timeline {
   /// Fill `out` with mono samples at `sample_rate`, box-filtered from the
   /// edge list: each sample is the fraction of its interval the speaker
   /// output spent high, times `speaker_amplitude`, plus the Tandy chip's
-  /// mean output over the same interval, run from its writes (psg.h).
+  /// mean output over the same interval, run from its writes (psg.h),
+  /// plus the AdLib card's, run from its own (opl2.h).
   ///
   /// `out` is **always written in full**. The return value is how many of
   /// those frames came from settled virtual time; the remainder, if any,
@@ -736,12 +773,14 @@ class audio_timeline {
 
   /// Jump the cursor forward to `at`, consuming — and so discarding the
   /// audio of — every edge up to it. The overrun rule.
-  void skip_to(ticks at, std::uint64_t head, std::uint64_t chip_head) noexcept;
+  void skip_to(ticks at, std::uint64_t head, std::uint64_t chip_head,
+               std::uint64_t fm_head) noexcept;
 
   /// A new epoch: throw away every unconsumed edge whatever its tick, and
   /// start again silent at tick 0. The producer's `restart()` seen from
   /// the other side.
-  void restart_playback(std::uint64_t head, std::uint64_t chip_head) noexcept;
+  void restart_playback(std::uint64_t head, std::uint64_t chip_head,
+                        std::uint64_t fm_head) noexcept;
 
   /// Run the chip across `[from, to)`, applying each write inside it at
   /// its tick, and answer its output summed in thirds of a tick.
@@ -751,8 +790,18 @@ class audio_timeline {
   /// Apply, without hearing them, every chip write up to `at`.
   void skip_chip_to(ticks at, std::uint64_t chip_head) noexcept;
 
+  /// The same two for the AdLib card's chip: its output summed over
+  /// `[from, to)`, a sample's value for each tick it was held, and the
+  /// skip. A skip still runs the chip across the end of the stretch,
+  /// unheard, because where an envelope has got to is not in any
+  /// register.
+  [[nodiscard]] double integrate_fm(ticks from, ticks to,
+                                    std::uint64_t fm_head) noexcept;
+  void skip_fm_to(ticks at, std::uint64_t fm_head) noexcept;
+
   std::array<audio_edge, edge_capacity> edges_{};
   std::array<chip_write, chip_write_capacity> chip_writes_{};
+  std::array<fm_write, fm_write_capacity> fm_writes_{};
 
   /// Written by the producer, read by the consumer. `head_` is published
   /// with release *after* the slot it names is written, which is what
@@ -770,6 +819,11 @@ class audio_timeline {
   std::atomic<std::uint64_t> chip_head_{};
   std::atomic<std::uint64_t> chip_tail_{};
   std::atomic<std::uint64_t> chip_dropped_{};
+
+  /// And the third ring's.
+  std::atomic<std::uint64_t> fm_head_{};
+  std::atomic<std::uint64_t> fm_tail_{};
+  std::atomic<std::uint64_t> fm_dropped_{};
 
   std::atomic<std::uint64_t> underruns_{};
   std::atomic<std::uint64_t> resyncs_{};
@@ -794,6 +848,12 @@ class audio_timeline {
   ticks last_chip_at_{};
   std::uint64_t chip_published_{};
   std::uint64_t chip_digest_{1469598103934665603ULL};
+
+  /// The AdLib chip's producer side, on the same terms, folded over
+  /// (tick, register, value).
+  ticks last_fm_at_{};
+  std::uint64_t fm_published_{};
+  std::uint64_t fm_digest_{1469598103934665603ULL};
 
   /// The edge log, and the setting that fills it. Producer-only, all of
   /// it: written by `publish()` and emptied by `read_edge_log()`, both on
@@ -822,6 +882,11 @@ class audio_timeline {
   std::uint64_t chip_taken_{};
   ticks chip_at_{};
   psg_synth synth_{};
+
+  /// And the AdLib card's.
+  std::uint64_t fm_taken_{};
+  ticks fm_at_{};
+  opl2_synth fm_synth_{};
 };
 
 // --- Input in ---------------------------------------------------------

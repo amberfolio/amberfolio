@@ -1736,7 +1736,7 @@ TEST(AbiReplay, ARecordingBuiltFromAbiAnswersVerifiesThroughTheAbi) {
                                        static_cast<std::uint32_t>(hex.size())),
         0u);
 
-    text += "amberfolio-recording 1 state=2\n";
+    text += "amberfolio-recording 1 state=3\n";
     text += "program SPIN.EXE ";
     text += hex.data();
     text += "\ntail\n";
@@ -1833,7 +1833,7 @@ TEST(AbiReplay, ARecordingOfAnotherMachineIsRefusedAndSaysWhy) {
                                  static_cast<std::uint32_t>(digest.size())),
       0u);
 
-  std::string text = "amberfolio-recording 1 state=2\nprogram SPIN.EXE ";
+  std::string text = "amberfolio-recording 1 state=3\nprogram SPIN.EXE ";
   text += hex.data();
   text += "\ntail\nfile SPIN.EXE 34 ";
   text += digest.data();

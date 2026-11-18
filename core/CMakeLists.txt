@@ -41,6 +41,7 @@ add_library(amberfolio-core STATIC
   src/cpu/instructions/sub.cpp
   src/cpu/interrupts.cpp
   src/cpu/processor.cpp
+  src/machine/adlib.cpp
   src/machine/automap.cpp
   src/machine/automap_faces.cpp
   src/machine/automap_overland.cpp
