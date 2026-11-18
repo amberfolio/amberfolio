@@ -181,15 +181,16 @@ constexpr save_layer curse{
 /// whether it is there and unlinking an effects file before writing it
 /// again. The save prompt offers the ten letters. REMOVE CHARACTER FROM
 /// PARTY keeps the member as `<NAME>.WHO`, with a `<NAME>.SFX` when the
-/// member is under an effect. The shipped parties have six members, and
-/// the bound of eight is the first two games' until a seventh record has
-/// been seen. They carry nothing, so the rows for what a member or a kept
-/// character carries are not here: a row is written down when it has
-/// been seen written (#608).
+/// member is under an effect. What a member carries is `.STF`: the
+/// shipped parties carry nothing, and a save from the camp after one
+/// member took two items from the opening's treasure wrote that member's
+/// `CHRDAT<S><N>.STF`, and removing the member then wrote `<NAME>.STF`
+/// (#608). The shipped parties have six members, and the bound of eight
+/// is the first two games' until a seventh record has been seen.
 ///
 /// Most specific first, as above: the configuration file, anchored where
-/// the program was started, then the two `<NAME>` rows last.
-constexpr std::array<save_file, 6> secret_files{{
+/// the program was started, then the three `<NAME>` rows last.
+constexpr std::array<save_file, 8> secret_files{{
     {.pattern = "SAVGAM<S>.DAT",
      .kind = save_file_kind::slot,
      .required = true,
@@ -200,6 +201,11 @@ constexpr std::array<save_file, 6> secret_files{{
      .required = true,
      .about = "one party member's record, written for every member of the "
               "party the save was taken from"},
+    {.pattern = "CHRDAT<S><N>.STF",
+     .kind = save_file_kind::member,
+     .required = false,
+     .about = "what that member carries; absent for a member who carries "
+              "nothing"},
     {.pattern = "CHRDAT<S><N>.SFX",
      .kind = save_file_kind::member,
      .required = false,
@@ -216,6 +222,10 @@ constexpr std::array<save_file, 6> secret_files{{
      .required = false,
      .about = "a character kept under a name the player chose; a member "
               "removed from the party is written as one"},
+    {.pattern = "<NAME>.STF",
+     .kind = save_file_kind::character,
+     .required = false,
+     .about = "what that character carries"},
     {.pattern = "<NAME>.SFX",
      .kind = save_file_kind::character,
      .required = false,
