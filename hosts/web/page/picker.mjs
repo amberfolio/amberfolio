@@ -3,10 +3,13 @@
 // Getting a directory off the player's machine and into the page
 // (M3-F2, #84).
 //
-// Browser-only, like app.mjs and for the same reason: it touches
-// `document`, `DataTransfer` and `File`, none of which exist under node.
-// host.mjs stays DOM-free so `ctest --preset wasm` can import it; this
-// file is the half that cannot be.
+// Browser work, like app.mjs and for the same reason: what it wires is a
+// `<input>`, a drop zone and the `File`s they hand over, none of which
+// exist under node. host.mjs stays DOM-free so `ctest --preset wasm` can
+// import it; this file is the half that reads a browser's own objects.
+// Importing it touches nothing, though, and `readDropped()` asks only
+// the entries it is given, so the smoke check drives the one decision
+// here that is not a browser's: where a dropped item sits (#625).
 //
 // It is a **dev-page affordance and nothing more**. Onboarding and
 // fingerprint UX are M6's reference shell; what this does is read the
@@ -30,7 +33,9 @@
 // is the file's place **relative to the directory the player chose**.
 // That directory is the disk, so it is the root and not a component of
 // anything on it — which is why `webkitRelativePath`'s first component,
-// the chosen directory's own name, comes off.
+// the chosen directory's own name, comes off. A drop of several things
+// at once is what was inside such a directory, so each keeps its own
+// name (`readDropped`).
 //
 // It used to be `{ name, bytes }`, with everything above the leaf thrown
 // away, because the door into the VFS reached the root and no further.
@@ -130,6 +135,33 @@ async function readDroppedChildren(entry, out, prefix) {
   }
 }
 
+/// Everything in one drop, as `{ path, bytes }`: `entries` are the
+/// dropped items' `FileSystemEntry` objects, in the order the browser
+/// listed them.
+///
+/// **One folder dropped alone is the disk**, exactly as a chosen one is,
+/// so its own name is the root rather than a component: its children
+/// start at the empty prefix. **Anything else is what was inside a
+/// folder** — a selection of its files and its directories, dragged out
+/// together — so every item sits at the root under its own name, and a
+/// dropped directory's name is the prefix of what is in it (#625).
+/// Without that a copy's `SAVE` folder, dropped beside the copy's files,
+/// emptied its saved games in among them and the game found none.
+///
+/// It touches only the entry objects it is handed (`isFile`,
+/// `isDirectory`, `name`, `file()`, `createReader()`), never the
+/// document, so the smoke check drives it under node with entries of its
+/// own.
+export async function readDropped(entries) {
+  const out = [];
+  const alone = entries.length === 1 && entries[0].isDirectory;
+  for (const entry of entries) {
+    if (alone) await readDroppedChildren(entry, out, '');
+    else await readDroppedEntry(entry, out, '');
+  }
+  return out;
+}
+
 /// Wire `input` (a `<input type="file" webkitdirectory>`) and `dropZone`
 /// (any element) so that either one calls `onFiles` with the list of
 /// `{ path, bytes }` the player chose.
@@ -176,18 +208,9 @@ export function wireDirectoryPicker({ input, dropZone, onFiles, onError }) {
         .filter(Boolean);
 
       void deliver(async () => {
-        if (entries.length > 0) {
-          const out = [];
-          for (const entry of entries) {
-            // A dropped *folder* is the disk, exactly as a chosen one is,
-            // so its own name is the root rather than a component: its
-            // children start at the empty prefix. A dropped file is
-            // already at the root.
-            if (entry.isDirectory) await readDroppedChildren(entry, out, '');
-            else await readDroppedEntry(entry, out, '');
-          }
-          return out;
-        }
+        // One folder alone is the disk; several items are what was in
+        // one, each under its own name (`readDropped`).
+        if (entries.length > 0) return readDropped(entries);
         // No entry API: plain files, which is what dropping a selection
         // rather than a folder gives.
         return readAll(Array.from(event.dataTransfer?.files ?? []));
