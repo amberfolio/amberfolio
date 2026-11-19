@@ -49,9 +49,9 @@ amberfolio <dir> <program.exe> --journal J.pdf --journal-ocr none
   text (§3a) needs no engine: the host says `journal text read from the
   document itself - no OCR engine needed` and looks for none.
 - The store goes to the file of the game the edition is the journal of,
-  `journal-pool.txt` or `journal-curse.txt`, under the per-user data
-  directory (SDL's `SDL_GetPrefPath`); `--journal-store` says otherwise
-  (§6).
+  `journal-pool.txt`, `journal-curse.txt` or `journal-blades.txt`, under
+  the per-user data directory (SDL's `SDL_GetPrefPath`);
+  `--journal-store` says otherwise (§6).
 - An ingestion that goes wrong is one printed sentence; the run continues.
 - In a browser: the dev page's **read your own journal** file input. Both
   hosts print `journal_trouble_name()`.
@@ -64,7 +64,7 @@ amberfolio <dir> <program.exe> --seam journal
 
 ## 3. Adding an edition
 
-Four editions are in the table:
+Five editions are in the table:
 
 | edition | fingerprint | its words are | pieces | pictures |
 | --- | --- | --- | --- | --- |
@@ -72,11 +72,21 @@ Four editions are in the table:
 | Pool of Radiance, the Steam release's (#398) | `a31368c3…4ac1ee` | text, read out of the document (§3a) | 99 items in 115 pieces | 14 on the same 12 entries |
 | Curse of the Azure Bonds, the Steam release's (#555) | `68bd9d47…fec8031` | text, read out of the document (§3a) | 121 items in 141 pieces | 9 on 9 entries |
 | Curse of the Azure Bonds, the GOG release's (#585) | `7c918ead…d8529bb` | scans, `/DCTDecode` (§4a), read by an engine | 121 items in 255 pieces | 9 on the same 9 entries |
+| Secret of the Silver Blades, the Steam release's (#609) | `153190ec…d9e66c3` | text, read out of the document (§3a) | 72 items in 86 pieces | 19 on 19 entries |
 
 Curse's journal has two numbered sections, fifty-nine entries and
 sixty-two tavern tales. Its two editions have the same 121 items by the
 same numbers and the same nine pictures on the same nine entries, which
 the suite checks row for row.
+
+Secret of the Silver Blades' journal has one numbered section,
+seventy-two entries. Its one edition in the table is the Steam
+release's: a booklet of thirty-three pages that is the game's rules as
+well, with the entries on nine of them. **Its GOG journal is not in the
+table**: it is the printed booklet as page scans (`f26c9062…a9a48a74`),
+thirty-three pages, every one a `/DCTDecode` RGB image, which would need
+an engine and a fact table measured off the scans the way §3 measures
+Curse's.
 
 Pool of Radiance's two have the same ninety-nine items by the same
 numbers — 58 entries, 23 tales, 18 proclamations — which the suite
@@ -274,6 +284,24 @@ measured:
   (`journal_text_font::ornament`, #555). Curse's headings open with a
   dingbat its map reads as a letter, set at the column's margin like the
   text, so no box can leave it out.
+- A font the facts call **composite** is read two bytes to a code, high
+  byte first (`journal_text_font::two_byte`, #609). Secret of the Silver
+  Blades' edition sets its body in one face under two resources, a
+  simple font and a composite one, line by line. A font's map keeps
+  codes below 256, which is every code that composite font uses; a
+  higher code, or a run that is not pairs, is `text_unreadable`.
+- **An edition may set its paragraphs apart instead of indenting them**
+  (`journal_edition::paragraph_gap`, #609): a line more than that many
+  points below the line before it in its box opens a paragraph. Zero,
+  which is every other edition's, means indents alone. Secret's is 13:
+  inside a piece its baselines are 11 or 11.5 points apart within a
+  paragraph and 13.83 to 17.17 where one opens, and nothing lands
+  between.
+- **Where paragraphs are set apart, a boundary's break is tabled**
+  (`journal_text_fragment::begins_paragraph`, #609), because the space
+  that sets a paragraph apart is not there at the head of a column. It
+  is the scans' flag (§3) on a text piece; how it is measured is under
+  Secret's edition below.
 
 Then the digest: an item a byte different is `text_mismatch` and nothing
 is kept for it. That is also what makes the two hosts agree: the store
@@ -307,6 +335,36 @@ then the heading: a walk down one column and then the next gives the
 second column's top to the entry under the map. Its matter outside the
 grid is the introduction and its printed notes, set in another face, the
 two sections' titles and introductions, and the last page.
+
+**Secret of the Silver Blades' edition** (#609) has its entries on pages
+16 to 24, four column bands at 28.35, 211.18, 416.69 and 599.53 points,
+and a measurement has to know four things about it.
+
+- **Headings are `Journal Entry N` after a dingbat**, and most have a
+  title under them in capitals of two sizes, which are runs of two sizes
+  on one baseline and read as one line.
+- **A piece with no heading at its head carries an item on**, and which
+  item is read off the page: fourteen pieces, each at the head of the
+  next column but three, which are under a map set at the head of the
+  column or across the page (entries 33, 37 and 50). Thirteen entries are
+  in more than one piece and entry 44 is in three.
+- **Four frames are set at margins of their own**, 27.64, 210.83, 519.69
+  and 640.63 points, beside or under a picture. A box's left edge is its
+  own frame's margin, so no line in it reads as indented.
+- **Which boundaries are paragraph breaks is ink.** A line is broken
+  where the next word does not fit, so a piece carries its paragraph on
+  unless the word it opens with would have fitted on the line before it.
+  The column's measure is 165.83 points, which is the widest line of the
+  nine pages and what the page's margins leave. At four of the fourteen
+  boundaries the word fits with 16 to 103 points to spare, in entries
+  44, 50, 53 and 55; at the other ten it is 5 to 35 points too wide.
+  Nothing lands between. For a frame set narrower the measure is that
+  frame's own widest line.
+
+Its matter outside the grid is the section's title above entry 1 and the
+folios. Three of its words are hyphenated by hand at a line's end with
+the line's own space after the hyphen, in entries 39, 53 and 55, and
+read with both, as they are set.
 
 **What it read**, by hand, over the real document on both hosts:
 `entries=99 extracted=99 recognized=99`, `pictures=14/14`, and the same
@@ -585,11 +643,11 @@ picture entry 4 0 193 160 10404
 
 **Where it lives** is a host's business (PLAN.md §4). The desktop keeps
 one file for each program, named by the stem of the configuration file
-the program reads (`journal_store_filename_for()`): `journal-pool.txt`
-and `journal-curse.txt`, beside the config. A run reads the running
-program's and writes it back; an ingestion writes the file of the game
-its edition is the journal of, whichever program was started, and then
-reads the running program's again. `journal.txt`, the one file every
+the program reads (`journal_store_filename_for()`): `journal-pool.txt`,
+`journal-curse.txt` and `journal-blades.txt`, beside the config. A run
+reads the running program's and writes it back; an ingestion writes the
+file of the game its edition is the journal of, whichever program was
+started, and then reads the running program's again. `journal.txt`, the one file every
 store was kept in before, is read once more where the running program
 has no file yet and only if its edition is that program's journal; it is
 written under the program's own name and left where it was. A store
@@ -686,6 +744,9 @@ discretionary hyphen, a writer's hyphen, an item flowing into a second
 column, an indented paragraph, a folded look-alike, `TJ`, `'`, `T*`, hex
 and escaped strings, an inline image — and one picture. Its digests are
 taken from the text the generator meant, not from the route's output.
+The rules of #609 are read off runs it sets outside its items' boxes, as
+the refusals are: a composite font's, two bytes to a code, and three
+lines of which the last is set apart.
 `hosts/common/tests/journal_text_test.cpp` reads it and refuses a font
 and a code the facts do not name, a digest that does not match, and a
 stream that is not where the table says; step 8 of
@@ -734,6 +795,21 @@ seven pages, entry 2 opens as one page of text, and entry 20 as its
 heading's page and its picture, drawn whole in the box. The recorded
 pair is over a store of this project's own words (`curse-notes`,
 `docs/seams.md` §10).
+
+**By hand, Secret of the Silver Blades' Steam edition** (#609), through
+the desktop host: `entries=72 extracted=72 recognized=72`,
+`pictures=19/19`, store
+`sha256=1db3fb6628e27fa5d936123cb8c60bb9971d1161af53b3c365885aa09a570600`;
+every item begins with its own heading and the longest is under two
+kilobytes. Read against the printed page: the first and last entries,
+entries 4 and 45 with their pictures decoded out of the store, entry 18
+across two sheets, entry 44 in its three pieces and entry 50 across a
+tabled break; each has the page's words and its paragraphs. The same
+host reads Pool of Radiance's and Curse's Steam editions as before, 99
+of 99 and 121 of 121, each item against its digest. Not done: this
+document through the wasm module or in a browser, and an entry opened in
+the game: the reader is on Pool of Radiance and Curse of the Azure Bonds
+and not on this program.
 
 **By hand, Curse's GOG edition** (#585), through the desktop host, each
 reading scored by §5a's harness against the Steam edition's text put in
@@ -990,6 +1066,15 @@ clip shows; the maps' labels are in the images. Not in the table: the
 introduction's map and the three drawings in its printed notes, which
 belong to no numbered item, and a drawing beside the tales that belongs
 to none of them.
+
+Secret of the Silver Blades' Steam edition has nineteen, on nineteen
+entries, each an image of its own and its rectangle the part the page's
+clip shows. Twelve are maps under their entry's heading, their keys and
+labels in the image, on entries 1, 32, 35, 36, 38, 41, 45, 49, 52, 66,
+68 and 72. Seven are drawings set in their entry's column with its prose
+beside them, on entries 4, 15, 22, 25, 37, 55 and 63. Not in the table:
+the rule drawn across the head of every page, and the pictures on the
+booklet's other pages, which belong to no numbered item.
 
 The Steam edition's fourteen are the same drawings on the same entries,
 each an image of its own. Entry 37's first two maps are one image there,

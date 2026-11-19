@@ -446,7 +446,9 @@ void append_utf8(std::string& out, char32_t c) {
 [[nodiscard]] bool map_code(journal_font_map& out, std::uint32_t code,
                             std::string_view utf16) {
   if (code > 0xFFU) {
-    // A code only a composite font has; nothing here reads one.
+    // A code only a composite font has, and a high one: the map keeps
+    // codes below 256, which is every code the one composite font read
+    // so far uses (`journal_text_font::two_byte`).
     return true;
   }
   std::string text{};
@@ -666,6 +668,7 @@ struct read_font {
   std::string_view resource;
   journal_font_map map;
   bool ornament{false};
+  bool two_byte{false};
 };
 
 /// One page's content, read, and its fonts' maps.
@@ -705,13 +708,19 @@ struct read_page {
     }
     out.fonts.push_back(read_font{.resource = font.resource,
                                   .map = std::move(map),
-                                  .ornament = font.ornament});
+                                  .ornament = font.ornament,
+                                  .two_byte = font.two_byte});
   }
   return journal_trouble::none;
 }
 
 /// A run's codes through its font's map, or false for a font or a code
 /// the facts say nothing about.
+///
+/// A composite font's codes are two bytes each, high byte first (#609).
+/// The map keeps codes below 256, so a pair whose high byte is not zero
+/// is a code it does not name, and so is the odd byte of a run that is
+/// not pairs at all.
 [[nodiscard]] bool decode_run(const read_page& page,
                               const journal_text_run& run, std::string& out) {
   const auto font = std::ranges::find_if(page.fonts, [&](const read_font& one) {
@@ -721,7 +730,15 @@ struct read_page {
     return false;
   }
   out.clear();
-  for (const std::uint8_t code : run.codes) {
+  const std::size_t width = font->two_byte ? 2U : 1U;
+  if (run.codes.size() % width != 0U) {
+    return false;
+  }
+  for (std::size_t at = 0; at < run.codes.size(); at += width) {
+    if (font->two_byte && run.codes[at] != 0U) {
+      return false;
+    }
+    const std::uint8_t code = run.codes[at + width - 1U];
     if (!font->map.mapped.at(code)) {
       return false;
     }
@@ -784,7 +801,11 @@ struct assembly {
   /// writer put there: either way the next line joins with no space.
   bool joins{false};
 
-  void add(const line& one, double margin) {
+  /// One line, joined to what is built. `opens` says the line opens a
+  /// paragraph whatever its indent: it is set apart from the line before
+  /// it, or its piece is tabled as a paragraph's first. False for a line
+  /// with nothing on it, which is not a line of anything.
+  bool add(const line& one, double margin, bool opens) {
     std::size_t count = one.runs.size();
     bool discretionary = false;
     if (count > 1U && one.runs[count - 1U].text == "-") {
@@ -796,10 +817,10 @@ struct assembly {
       text += one.runs[i].text;
     }
     if (blank(text)) {
-      return;
+      return false;
     }
     const bool indented = one.runs.front().x > margin + journal_text_indent;
-    if (paragraphs.empty() || indented) {
+    if (paragraphs.empty() || indented || opens) {
       paragraphs.push_back(std::move(text));
     } else {
       std::string& last = paragraphs.back();
@@ -810,6 +831,7 @@ struct assembly {
     }
     const std::string& now = paragraphs.back();
     joins = discretionary || (!now.empty() && now.back() == '-');
+    return true;
   }
 
   [[nodiscard]] std::string finish() const {
@@ -984,8 +1006,22 @@ journal_trouble read_text_fragments(
         why != journal_trouble::none) {
       return why;
     }
+    // What opens a paragraph besides an indent (#609): a piece the table
+    // says does, at its first line; and, in an edition that sets its
+    // paragraphs apart, a line further below the one before it in this
+    // box than `paragraph_gap`. The head of a box has no line before it,
+    // which is why that boundary is tabled.
+    bool opens = fragment.begins_paragraph;
+    bool any = false;
+    double above = 0.0;
     for (const line& one : lines) {
-      built.add(one, fragment.box.left);
+      const bool apart = any && edition.paragraph_gap != 0U &&
+                         above - one.y > edition.paragraph_gap;
+      if (built.add(one, fragment.box.left, opens || apart)) {
+        opens = false;
+        any = true;
+        above = one.y;
+      }
     }
   }
   out = built.finish();

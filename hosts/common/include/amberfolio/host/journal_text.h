@@ -52,7 +52,8 @@
 //      in a font the page's facts do not name or with a code the font's
 //      map does not, is `text_unreadable`: never a guessed letter. A run
 //      in a font the facts call an ornament is dropped: a dingbat before
-//      a heading is not the item's text.
+//      a heading is not the item's text. A font the facts call composite
+//      is read two bytes to a code (`journal_text_font::two_byte`).
 //   2. **Lines.** Runs whose baselines are within half a point are one
 //      line; a line reads left to right.
 //   3. **The discretionary hyphen.** A typesetter that breaks a word
@@ -67,6 +68,11 @@
 //      always opens one. A fragment boundary is a continuation unless the
 //      line after it is indented — measured, not tabled, which is the
 //      thing `journal_fragment::begins_paragraph` had to be for a scan.
+//      **An edition may set its paragraphs apart instead** (#609): with
+//      a `journal_edition::paragraph_gap`, a line further below the line
+//      before it in its box than that opens a paragraph too. The head of
+//      a box has no line before it, so there the break is tabled after
+//      all (`journal_text_fragment::begins_paragraph`).
 //   5. **Joining.** Within a paragraph a line joins the one before it with
 //      a space, unless that line already ended in one, or in a hyphen, or
 //      in a dropped discretionary hyphen. Runs of spaces become one; a
@@ -108,8 +114,9 @@ namespace amberfolio::host {
 /// of what is safe on both sides.
 inline constexpr double journal_text_indent = 3.0;
 
-/// What one font's one-byte codes read as: each code's UTF-8, and whether
-/// the font's map said anything about it at all.
+/// What one font's codes below 256 read as: each code's UTF-8, and
+/// whether the font's map said anything about it at all. A simple font
+/// has no other codes; a composite font's higher ones are not kept.
 struct journal_font_map {
   std::array<std::string, 256> text{};
   std::array<bool, 256> mapped{};
@@ -117,7 +124,8 @@ struct journal_font_map {
 
 /// A `/ToUnicode` CMap's `bfchar` and `bfrange` entries, into `out`.
 ///
-/// Only codes below 256 are kept, because only a simple font's are read.
+/// Only codes below 256 are kept: every code of a simple font, and the
+/// only codes of a composite one that are read.
 /// Destinations are UTF-16BE and come out as UTF-8, with look-alikes
 /// folded (step 6 above). `text_unreadable` for a CMap that is not one.
 [[nodiscard]] journal_trouble read_to_unicode(

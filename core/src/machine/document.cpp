@@ -46,7 +46,11 @@ namespace {
 /// release's, typeset as text with its pictures placed as images, read
 /// the same way. The GOG release's arrived with #585: the same journal
 /// as page scans, read by an engine out of rectangles measured off them.
-constexpr std::array<document_edition, 6> table{{
+///
+/// **Secret of the Silver Blades' journal** arrived with #609: the Steam
+/// release's, typeset as text with its pictures placed as images. The
+/// GOG release's is page scans and has no row.
+constexpr std::array<document_edition, 7> table{{
     {.fingerprint =
          "0db301aeac4d2ec1e63b409ca6d3c9d39c63381d6712ff2ce7edc0528c6586fd",
      .name = "Pool of Radiance code wheel, archive release (PDF)",
@@ -72,6 +76,11 @@ constexpr std::array<document_edition, 6> table{{
          "7c918ead661b353e7da606b9137929f1dee2c9c203408b0b751cf719cd8529bb",
      .name = "Curse of the Azure Bonds Adventurer's Journal, GOG release "
              "(PDF)",
+     .kind = document_kind::journal},
+    {.fingerprint =
+         "153190ec7189e3cd72cdb608fad54aa89786a5a6b0e959a898c514b45d9e66c3",
+     .name = "Secret of the Silver Blades Adventurer's Journal, Steam "
+             "release (PDF)",
      .kind = document_kind::journal},
 }};
 

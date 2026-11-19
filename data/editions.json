@@ -523,7 +523,8 @@
         {"kind": "file", "name": "WALLDEF1.DAX", "required": true, "size": 5782, "sha256": "ac67d7555f612c78b949180c1407f4a63ec67fa86ca0b9b15bb6e52e3603b392"},
         {"kind": "file", "name": "WALLDEF2.DAX", "required": true, "size": 4266, "sha256": "6c2ee041007daceff958ddff109c4fb9b26ca7550c765b01902f8cf3fe5654c6"},
         {"kind": "file", "name": "WALLDEF3.DAX", "required": true, "size": 3041, "sha256": "542a791dcc269ba2eea9fe2dd3e19ef9782037fcf647cf7893399a1b2efb0b11"},
-        {"kind": "configuration", "name": "BLADES.CFG", "required": true, "sha256": "bc6ff8400bf1d48e9f6488a0b6f3ea05087ca1fadd557c8c67ab53aa16d3874f"}
+        {"kind": "configuration", "name": "BLADES.CFG", "required": true, "sha256": "bc6ff8400bf1d48e9f6488a0b6f3ea05087ca1fadd557c8c67ab53aa16d3874f"},
+        {"kind": "document", "document": "journal", "required": false, "about": "Secret of the Silver Blades Adventurer's Journal, Steam release (PDF)", "sha256": "153190ec7189e3cd72cdb608fad54aa89786a5a6b0e959a898c514b45d9e66c3"}
       ]
     },
     {
@@ -574,7 +575,8 @@
         {"kind": "file", "name": "WALLDEF1.DAX", "required": true, "size": 5782, "sha256": "ac67d7555f612c78b949180c1407f4a63ec67fa86ca0b9b15bb6e52e3603b392"},
         {"kind": "file", "name": "WALLDEF2.DAX", "required": true, "size": 4266, "sha256": "6c2ee041007daceff958ddff109c4fb9b26ca7550c765b01902f8cf3fe5654c6"},
         {"kind": "file", "name": "WALLDEF3.DAX", "required": true, "size": 3041, "sha256": "542a791dcc269ba2eea9fe2dd3e19ef9782037fcf647cf7893399a1b2efb0b11"},
-        {"kind": "configuration", "name": "BLADES.CFG", "required": true, "sha256": "9e857b5bb017c05e258fc1c18eb631f17d18758cad26dd112ef5dde1a19a8e38"}
+        {"kind": "configuration", "name": "BLADES.CFG", "required": true, "sha256": "9e857b5bb017c05e258fc1c18eb631f17d18758cad26dd112ef5dde1a19a8e38"},
+        {"kind": "document", "document": "journal", "required": false, "about": "Secret of the Silver Blades Adventurer's Journal, Steam release (PDF)", "sha256": "153190ec7189e3cd72cdb608fad54aa89786a5a6b0e959a898c514b45d9e66c3"}
       ]
     }
   ]

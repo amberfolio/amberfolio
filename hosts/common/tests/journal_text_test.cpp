@@ -9,6 +9,8 @@
 
 #include "amberfolio/host/journal_text.h"
 
+#include <algorithm>
+#include <array>
 #include <cstdint>
 #include <span>
 #include <string>
@@ -158,6 +160,138 @@ TEST(JournalText, AFontTheFactsCallAnOrnamentIsDroppedInsideABox) {
   EXPECT_EQ(read_text_fragments(journal_text_probe_pdf(), edition, box, text),
             journal_trouble::none);
   EXPECT_TRUE(text.empty());
+}
+
+/// The probe edition with `F3`, the composite font of its second page,
+/// named on that page: read through the simple font's own map, and two
+/// bytes to a code or not as `two_byte` says.
+struct with_third_font {
+  journal_edition edition{journal_text_probe_edition()};
+  std::array<journal_text_font, 2> fonts;
+  std::array<journal_text_page, 2> pages;
+
+  explicit with_third_font(bool two_byte)
+      : fonts{edition.pages[1].fonts[0],
+              journal_text_font{.resource = "F3",
+                                .offset = edition.pages[1].fonts[0].offset,
+                                .length = edition.pages[1].fonts[0].length,
+                                .decoded = edition.pages[1].fonts[0].decoded,
+                                .filter = edition.pages[1].fonts[0].filter,
+                                .two_byte = two_byte}},
+        pages{edition.pages[0], edition.pages[1]} {
+    pages[1].fonts = fonts;
+    edition.pages = pages;
+  }
+};
+
+TEST(JournalText, ACompositeFontIsReadTwoBytesToACode) {
+  // Secret of the Silver Blades' journal is set in one face under two
+  // resources, a simple font and a composite one, line by line (#609). A
+  // composite font's codes are two bytes each, and the facts say which
+  // font is one.
+  const with_third_font named(true);
+  const std::array<journal_text_fragment, 1> box{
+      {{.page = 2, .box = journal_text_probe_two_byte}}};
+  std::string text;
+  EXPECT_EQ(
+      read_text_fragments(journal_text_probe_pdf(), named.edition, box, text),
+      journal_trouble::none);
+  EXPECT_EQ(text, journal_text_probe_two_byte_text);
+
+  // Read a byte to a code, the same run is codes the map does not name.
+  const with_third_font simple(false);
+  EXPECT_EQ(
+      read_text_fragments(journal_text_probe_pdf(), simple.edition, box, text),
+      journal_trouble::text_unreadable);
+}
+
+TEST(JournalText, ACompositeFontsCodeTheMapDoesNotKeepIsRefused) {
+  // A font's map keeps codes below 256, so a code of 256 or more is one
+  // it does not name; and a run that is not pairs is not codes at all.
+  const with_third_font named(true);
+  for (const journal_text_box& where :
+       {journal_text_probe_two_byte_high, journal_text_probe_two_byte_odd}) {
+    const std::array<journal_text_fragment, 1> box{{{.page = 2, .box = where}}};
+    std::string text;
+    EXPECT_EQ(
+        read_text_fragments(journal_text_probe_pdf(), named.edition, box, text),
+        journal_trouble::text_unreadable);
+  }
+}
+
+/// The probe's three lines in a column of their own, as one paragraph
+/// and as two.
+[[nodiscard]] std::string close_and_apart(std::string_view between) {
+  std::string text(journal_text_probe_close_text);
+  text += between;
+  text += journal_text_probe_apart_text;
+  return text;
+}
+
+TEST(JournalText, ALineSetApartOpensAParagraphWhereTheEditionSaysSo) {
+  // An edition that sets its paragraphs apart rather than indenting them
+  // (#609) says how far apart: more than that between two baselines of a
+  // box is a paragraph break. The probe's three lines are ten points and
+  // then sixteen apart, and none is indented.
+  const journal_text_box whole{.left = journal_text_probe_close_lines.left,
+                               .bottom = journal_text_probe_line_apart.bottom,
+                               .right = journal_text_probe_close_lines.right,
+                               .top = journal_text_probe_close_lines.top};
+  const std::array<journal_text_fragment, 1> box{{{.page = 2, .box = whole}}};
+  journal_edition edition = journal_text_probe_edition();
+  std::string text;
+
+  // No gap: paragraphs are indents and nothing else, so it is one.
+  ASSERT_EQ(edition.paragraph_gap, 0U);
+  EXPECT_EQ(read_text_fragments(journal_text_probe_pdf(), edition, box, text),
+            journal_trouble::none);
+  EXPECT_EQ(text, close_and_apart(" "));
+
+  edition.paragraph_gap = 13;
+  EXPECT_EQ(read_text_fragments(journal_text_probe_pdf(), edition, box, text),
+            journal_trouble::none);
+  EXPECT_EQ(text, close_and_apart("\n\n"));
+
+  // Exactly the gap is not more than it.
+  edition.paragraph_gap = 16;
+  EXPECT_EQ(read_text_fragments(journal_text_probe_pdf(), edition, box, text),
+            journal_trouble::none);
+  EXPECT_EQ(text, close_and_apart(" "));
+
+  // And a gap under the leading makes every line a paragraph.
+  edition.paragraph_gap = 9;
+  EXPECT_EQ(read_text_fragments(journal_text_probe_pdf(), edition, box, text),
+            journal_trouble::none);
+  EXPECT_EQ(std::ranges::count(text, '\n'), 4);
+}
+
+TEST(JournalText, APieceTheTableSaysOpensAParagraphDoes) {
+  // The head of a box has no line before it, so where paragraphs are set
+  // apart a boundary between two pieces is tabled (#609): a continuation
+  // unless the row says the piece opens a paragraph.
+  const journal_edition& edition = journal_text_probe_edition();
+  std::array<journal_text_fragment, 2> pieces{
+      {{.page = 2, .box = journal_text_probe_close_lines},
+       {.page = 2, .box = journal_text_probe_line_apart}}};
+  std::string text;
+  EXPECT_EQ(
+      read_text_fragments(journal_text_probe_pdf(), edition, pieces, text),
+      journal_trouble::none);
+  EXPECT_EQ(text, close_and_apart(" "));
+
+  pieces[1].begins_paragraph = true;
+  EXPECT_EQ(
+      read_text_fragments(journal_text_probe_pdf(), edition, pieces, text),
+      journal_trouble::none);
+  EXPECT_EQ(text, close_and_apart("\n\n"));
+
+  // On an item's first piece it says nothing: that line opens the item.
+  pieces[0].begins_paragraph = true;
+  pieces[1].begins_paragraph = false;
+  EXPECT_EQ(
+      read_text_fragments(journal_text_probe_pdf(), edition, pieces, text),
+      journal_trouble::none);
+  EXPECT_EQ(text, close_and_apart(" "));
 }
 
 TEST(JournalText, ACodeTheMapDoesNotNameIsRefusedInsideABox) {

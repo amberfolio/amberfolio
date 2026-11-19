@@ -255,8 +255,8 @@ struct journal_fragment {
 /// codes in a page's content stream, and the one fact that turns a code
 /// into a letter is the font's `/ToUnicode` map — so that stream is
 /// followed by offset like everything else here, and read by
-/// `journal_text.h`. Only a simple font's one-byte codes are read; a
-/// composite font is refused by name the day it is inside a rectangle.
+/// `journal_text.h`. A simple font's codes are one byte each; a composite
+/// font's are two, and are read when the row says so (`two_byte`).
 struct journal_text_font {
   /// The resource name, without its slash: what a content stream's `Tf`
   /// operator names.
@@ -276,6 +276,16 @@ struct journal_text_font {
   /// a picture is: it is not the item's text. Its map is still named, so
   /// a row that points at the wrong stream still fails to inflate.
   bool ornament{false};
+  /// Whether the font is a **composite** one, whose codes are two bytes
+  /// each, high byte first (#609). Secret of the Silver Blades' journal is
+  /// set in one face under two resources, a simple font and a composite
+  /// one, line by line, so half its lines are two bytes to a letter.
+  ///
+  /// Only a code below 256 is read, because that is all a font's map
+  /// keeps (`journal_font_map`) and all that edition's composite font
+  /// uses. A run of an odd number of bytes, or a code of 256 or more, is
+  /// `text_unreadable` like any other code the map does not name.
+  bool two_byte{false};
 };
 
 /// One page of a text edition: where its content stream is, and the
@@ -317,6 +327,19 @@ struct journal_text_box {
 struct journal_text_fragment {
   std::uint16_t page{};
   journal_text_box box{};
+  /// Whether this piece **opens a paragraph** rather than carrying on the
+  /// one the piece before it ended (#609): `journal_fragment`'s flag of
+  /// the same name, for a text edition whose paragraphs are not indented.
+  ///
+  /// Where a paragraph opens with an indent the first line of a piece
+  /// says which it is, and nothing is tabled (`journal_text.h`). Where a
+  /// paragraph is set apart by space instead (`journal_edition::
+  /// paragraph_gap`), the space is not there at the head of a column, so
+  /// the boundary is measured another way and written down here.
+  /// `docs/journal.md` §3a is the method.
+  ///
+  /// Meaningless on the first piece of an item, which the suite checks.
+  bool begins_paragraph{false};
 };
 
 /// Which of the journal's numbered sections an item is in.
@@ -418,6 +441,16 @@ struct journal_edition {
   /// The pages whose content streams hold its words, for an edition that
   /// is **text rather than scans** (#398). Empty for a scanned edition.
   std::span<const journal_text_page> pages{};
+  /// How far below the line before it a line has to be set, in points, to
+  /// open a paragraph, for a text edition whose paragraphs are **set
+  /// apart rather than indented** (#609). Zero for an edition whose
+  /// paragraphs are indents and nothing else.
+  ///
+  /// More than this many points between two baselines in one box is a
+  /// paragraph break. Secret of the Silver Blades' journal sets a
+  /// paragraph's lines 11 or 11.5 points apart and everything that opens
+  /// one 13.83 or more below the line before it, with nothing between.
+  std::uint16_t paragraph_gap{0};
 
   /// Whether this edition's words are read out of the document itself,
   /// with no OCR engine anywhere (`journal_text.h`).
@@ -426,9 +459,10 @@ struct journal_edition {
 
 /// Every journal edition this build knows the insides of. Pool of
 /// Radiance's two: the archive release's, which is scans (#214), and the
-/// Steam release's, which is text (#398). And Curse of the Azure Bonds'
+/// Steam release's, which is text (#398). Curse of the Azure Bonds'
 /// two: the Steam release's, text (#555), and the GOG release's, scans
-/// (#585). Every other journal is reported as an unrecognized edition
+/// (#585). And Secret of the Silver Blades' Steam release's, text
+/// (#609). Every other journal is reported as an unrecognized edition
 /// until somebody sits down with one, which is the fail-closed direction
 /// `machine/document.cpp` describes for the gate.
 [[nodiscard]] std::span<const journal_edition> known_journals();
