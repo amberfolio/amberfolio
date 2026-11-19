@@ -746,6 +746,7 @@ and never triggered.
 | `curse-fight-pause` | contrast | `curse-fight` (the pause that opens the brawl, and every combat line after it, stand longer) |
 | `quiet-fanfare` | contrast | `quiet` (the piece from the end of the boot's loading on: the chip's writes, and its registers while it plays) |
 | `secret-camp-cheats` | identical | `secret-camp` (the three cheats on Secret of the Silver Blades, none pulled) |
+| `secret-boot-font-sans`, `secret-boot-font-chisel` | contrast | `secret-boot` (a face from the first text the program draws) |
 | `secret-camp-wound` | contrast | `secret-camp` (the wound cheat pulled at camp) |
 | `secret-fight-cheat` | contrast | `secret-fight` (invulnerability through a wandering fight) |
 | `secret-fight-kill` | contrast | `secret-fight` (kill-all pulled as the fight begins) |
@@ -2309,13 +2310,18 @@ time out of the copy. So the seam has one point there, with its own
 handler, on one `font_facts` row per program (`seam_font.cpp`) and its
 point in the definitions' `programs`:
 
-| fact | Pool of Radiance | Curse of the Azure Bonds |
-| --- | --- | --- |
-| the font's far pointer | data-segment `0x5E20` | data-segment `0x65AE`, loaded from `8X8D1.DAX` block 201 |
-| what the blitter draws from | the font, through ES:DI | a copy of the glyph at data-segment `0x65B2`, just past the pointer |
-| the points | image `0x749A` and `0x74C0`, after the fetch for each page; DL holds the row | image `0x5A91`, after the EGA path's read out of the copy; AH holds the row, BX its number, and the glyph's index is the path's first argument, the byte at `[BP+4]` |
-| the guard | ES is the pointer's segment and DI falls inside the buffer | DS is the data segment, BX is under 8, the index is under 177, and AH is the font's own row for that index and row |
-| what the handler writes | DL | AH |
+| fact | Pool of Radiance | Curse of the Azure Bonds | Secret of the Silver Blades |
+| --- | --- | --- | --- |
+| the font's far pointer | data-segment `0x5E20` | data-segment `0x65AE`, loaded from `8X8D1.DAX` block 201 | data-segment `0x7DC8`, loaded from `8X8D5.DAX` block 201 |
+| what the blitter draws from | the font, through ES:DI | a copy of the glyph at data-segment `0x65B2`, just past the pointer | a copy at data-segment `0x7DCC`, just past the pointer |
+| the points | image `0x749A` and `0x74C0`, after the fetch for each page; DL holds the row | image `0x5A91`, after the EGA path's read out of the copy; AH holds the row, BX its number, and the glyph's index is the path's first argument, the byte at `[BP+4]` | image `0x62B2`, the same instruction of the same routine |
+| the guard | ES is the pointer's segment and DI falls inside the buffer | DS is the data segment, BX is under 8, the index is under 177, and AH is the font's own row for that index and row | Curse of the Azure Bonds' |
+| what the handler writes | DL | AH | AH |
+
+**Secret of the Silver Blades** (#609) has Curse of the Azure Bonds'
+blitter instruction for instruction, and the same 177 glyphs. Driven on
+the Steam copy from the boot through the opening to a member's sheet at
+camp: the point fires 48,136 times in either face and declines none.
 
 - **The other adapters' paths** (CGA and Tandy, chosen by the program's
   video-mode byte at data-segment `0x5000`) read the same copy and are

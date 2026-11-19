@@ -24,7 +24,8 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
 
 No `--install`: the Steam copy is recognized and laid out at `\SECRET`
 (`docs/hosts.md` §2c). No seam is needed to play, and the ones available
-on this program are the three debug cheats (`docs/seams.md` §10). Sixty
+on this program are the three debug cheats and the two text faces
+(`docs/seams.md` §10). Sixty
 frames to the virtual second; `TICKS = FRAME * 19,886` at `--speed 386`
 is close enough for `--until`.
 
@@ -221,7 +222,7 @@ where that mechanism is (`docs/seams.md` §10).
 
 ## The sessions
 
-Seven, `secret-*`, each on the Steam copy with its shipped slots (the
+Nine, `secret-*`, each on the Steam copy with its shipped slots (the
 `secret-slots` snapshot) at `--speed 386` and `--wall none`.
 
 | session | seams | relation | what it is |
@@ -232,4 +233,5 @@ Seven, `secret-*`, each on the Steam copy with its shipped slots (the
 | `secret-camp-wound` | cheat-wound-party, pulled | `contrast secret-camp` | 93 of 106 identical, divergent from tick 169,050,886, the pull |
 | `secret-fight` | | | leg 4 |
 | `secret-fight-cheat` | cheat-invulnerable | `contrast secret-fight` | 339 of 371 identical, divergent from tick 514,192,302 |
+| `secret-boot-font-sans`, `secret-boot-font-chisel` | a text face | `contrast secret-boot` | 1 of 15 identical: the face is seen from the first text on |
 | `secret-fight-kill` | cheat-kill-all, pulled | `contrast secret-fight` | 324 of 371 identical, divergent from tick 491,204,086, the pull |
