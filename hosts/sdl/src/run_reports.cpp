@@ -22,13 +22,14 @@
 #include "amberfolio/machine/trace.h"
 #include "amberfolio/sha256.h"
 #include "dump.h"
+#include "memory_dump.h"
 #include "screen_text_dump.h"
 #include "sound_report.h"
 
 namespace amberfolio::sdl {
 
 void write_still(const std::string& prefix, std::uint64_t frame,
-                 const machine::machine& box) {
+                 const machine::machine& box, bool memory) {
   std::array<char, 32> suffix{};
   std::snprintf(suffix.data(), suffix.size(), "-%06llu",
                 static_cast<unsigned long long>(frame));
@@ -37,6 +38,9 @@ void write_still(const std::string& prefix, std::uint64_t frame,
                        box.display().pixels(), box.display().palette());
   sdl::write_screen_text(stem + ".txt", box);
   sdl::write_scene(stem + ".scene.json", box);
+  if (memory) {
+    (void)sdl::write_memory(stem, box);
+  }
 }
 
 void drain_console(machine::machine& box) {
@@ -169,6 +173,10 @@ void report_dump(const options& opts, const machine::machine& box,
     const std::filesystem::path ppm(opts.dump_prefix + ".ppm");
     sdl::write_screen_text(opts.dump_prefix + ".txt", box);
     sdl::write_scene(opts.dump_prefix + ".scene.json", box);
+    if (opts.dump_memory && !sdl::write_memory(opts.dump_prefix, box)) {
+      std::fprintf(stderr, "amberfolio: dump could not write %s.ram\n",
+                   opts.dump_prefix.c_str());
+    }
     if (sdl::write_ppm(ppm, box.display().pixels(), box.display().palette())) {
       std::fprintf(stderr, "amberfolio: dump frame=%s generation=%llu\n",
                    ppm.string().c_str(),

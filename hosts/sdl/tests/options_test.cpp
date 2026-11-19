@@ -247,6 +247,8 @@ TEST(Parse, AHeadlessRunHasNoWindowAndNoSpeakerToTellWhatToDo) {
 TEST(Parse, ACompanionNeedsWhatItIsAboutTo) {
   EXPECT_THAT(refused({"d", "p", "--dump-every", "5"}),
               HasSubstr("--dump-every needs --dump"));
+  EXPECT_THAT(refused({"d", "p", "--dump-memory"}),
+              HasSubstr("--dump-memory needs --dump"));
   EXPECT_THAT(refused({"d", "p", "--record-every", "5"}),
               HasSubstr("--record-every needs --record"));
   EXPECT_THAT(refused({"d", "p", "--rehash", "x.rec"}),

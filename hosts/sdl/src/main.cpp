@@ -729,7 +729,7 @@ int main(int argc, char** argv) try {
     // frame should be the screen that frame's keystroke was answered
     // against, not the one after it.
     if (opts.dump_every != 0 && frame_index % opts.dump_every == 0) {
-      sdl::write_still(opts.dump_prefix, frame_index, box);
+      sdl::write_still(opts.dump_prefix, frame_index, box, opts.dump_memory);
     }
 
     // The scripted pulls this frame owes (#161). Outside the windowed

@@ -22,6 +22,10 @@ compile_commands.json
 __pycache__/
 *.py[cod]
 
+# `--dump-memory`'s file: the running program's memory, which is the
+# player's and never this repository's (CONTRIBUTING.md, #134, #619).
+*.ram
+
 # Editors and OS droppings.
 .vs/
 .vscode/

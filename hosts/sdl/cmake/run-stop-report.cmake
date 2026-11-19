@@ -21,8 +21,9 @@
 #      the failure this host previously could not report at all;
 #   3. the dump, which is the file a person looks at when "the title
 #      renders" is the claim being made;
-#   4. and `--dump-every`'s refusal when `--dump` gave it no prefix
-#      (M4-G1, #102).
+#   4. `--dump-every`'s refusal when `--dump` gave it no prefix
+#      (M4-G1, #102);
+#   5. and `--dump-memory`'s two files, and its refusal likewise (#619).
 
 if(NOT HOST OR NOT DISK OR NOT OUT)
   message(FATAL_ERROR
@@ -191,5 +192,50 @@ if(NOT lonely_err MATCHES "amberfolio: --dump-every needs --dump")
     "--dump-every without --dump did not say why.\nstderr: ${lonely_err}")
 endif()
 
+# --- 5. --dump-memory: the machine's memory and registers (#619) --------
+#
+# A megabyte, byte N of it linear address N, and one line of registers.
+# The size is the claim a script can check: a file of any other length is
+# not the address space.
+
+file(REMOVE "${OUT}-memory.ram" "${OUT}-memory.regs")
+
+execute_process(
+  COMMAND "${HOST}" --no-config "${DISK}" HELLO.EXE --headless
+          --dump "${OUT}-memory" --dump-memory
+  RESULT_VARIABLE memory_code
+  ERROR_VARIABLE memory_err)
+
+if(NOT memory_code EQUAL 7)
+  message(FATAL_ERROR
+    "--dump-memory changed the exit code the program chose: "
+    "${memory_code}\nstderr: ${memory_err}")
+endif()
+if(NOT EXISTS "${OUT}-memory.ram" OR NOT EXISTS "${OUT}-memory.regs")
+  message(FATAL_ERROR "--dump-memory wrote no memory.\nstderr: ${memory_err}")
+endif()
+file(SIZE "${OUT}-memory.ram" _ram_size)
+if(NOT _ram_size EQUAL 1048576)
+  message(FATAL_ERROR
+    "the dumped memory is ${_ram_size} bytes; the address space is 1048576.")
+endif()
+file(READ "${OUT}-memory.regs" _regs)
+if(NOT _regs MATCHES "^cs=[0-9A-F]+ ip=[0-9A-F]+ ds=[0-9A-F]+ es=[0-9A-F]+ ss=[0-9A-F]+ sp=[0-9A-F]+ bp=[0-9A-F]+ ax=[0-9A-F]+ bx=[0-9A-F]+ cx=[0-9A-F]+ dx=[0-9A-F]+ si=[0-9A-F]+ di=[0-9A-F]+\n$")
+  message(FATAL_ERROR "the dumped registers are not the line: ${_regs}")
+endif()
+
+# Without `--dump` there is nowhere to put it, and it says so.
+execute_process(
+  COMMAND "${HOST}" --no-config "${DISK}" HELLO.EXE --headless --dump-memory
+  RESULT_VARIABLE homeless_code
+  ERROR_VARIABLE homeless_err)
+if(homeless_code EQUAL 0 OR
+   NOT homeless_err MATCHES "amberfolio: --dump-memory needs --dump")
+  message(FATAL_ERROR
+    "--dump-memory without --dump was not refused with its reason.\n"
+    "stderr: ${homeless_err}")
+endif()
+
 message(STATUS
-  "sdl host stop report: refusal named, budget bounded, frames dumped")
+  "sdl host stop report: refusal named, budget bounded, frames and "
+  "memory dumped")

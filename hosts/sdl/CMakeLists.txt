@@ -39,6 +39,8 @@ add_executable(amberfolio-sdl
   # `--dump`'s edge list, written as the run makes it (#472).
   src/edge_dump.cpp
   src/install.cpp
+  # `--dump-memory`: the machine's memory and registers beside a dump (#619).
+  src/memory_dump.cpp
   # A document the player holds, and the journal read out of one (#472).
   src/journal_host.cpp
   # The config file and the one place flag > config > default happens

@@ -334,6 +334,8 @@ void print_usage() {
                      "count\n");
         return opts;
       }
+    } else if (arg == "--dump-memory") {
+      opts.dump_memory = true;
     } else if (arg == "--record" && i + 1 < argc) {
       opts.record_path = argv[++i];
     } else if (arg == "--record-every" && i + 1 < argc) {
@@ -521,6 +523,12 @@ void print_usage() {
   // The stills share `--dump`'s prefix, so without one there is nowhere
   // to put them. Refused for the reason above: an option that silently
   // did nothing is worse than one that says why it cannot.
+  if (opts.dump_memory && opts.dump_prefix.empty()) {
+    std::fprintf(stderr,
+                 "amberfolio: --dump-memory needs --dump, whose prefix it"
+                 " writes under\n");
+    return opts;
+  }
   if (opts.dump_every != 0 && opts.dump_prefix.empty()) {
     std::fprintf(stderr,
                  "amberfolio: --dump-every needs --dump, whose prefix it"
