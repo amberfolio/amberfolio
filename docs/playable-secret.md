@@ -215,9 +215,9 @@ its files as sold, each is stepped over by an unconditional jump.
 | a word after a heading of the rule book, by page | the camp's `SAVE`, in overlay 19 (file offset 106597, 13089 bytes): the command counts itself in a word of the area record (`+0x278`; the record's far pointer is at `67C6`), compares the count with thirty, and the call to the question is at `+0x320B` | the instruction after that compare, at `+0x3208`, is a jump over the call and the count's reset |
 
 So no seam answers anything on this copy, and no leg types a word.
-Driven: the boot (leg 0) and a save at camp ask nothing. A copy from
-another seller is measured when one is here (#606); a copy whose two
-jumps are conditional would ask, and the code-wheel seam's two games are
+Driven: the boot (leg 0) and a save at camp ask nothing. The GOG copy's
+program and overlay file are Steam's byte for byte, so it asks neither
+question either. A copy whose two jumps are conditional would ask, and the code-wheel seam's two games are
 where that mechanism is (`docs/seams.md` §10).
 
 ## The sessions

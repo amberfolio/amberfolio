@@ -394,6 +394,8 @@ program loaded yet reads whichever of them is in the current directory.
 | Pool of Radiance, Steam | `\POOLRAD` | `C:\POOLRAD\SAVE\` | `\POOLRAD\SAVE` |
 | Curse of the Azure Bonds, Steam | `\CURSE` | `C:\CURSE\SAVE\` | `\CURSE\SAVE` |
 | Curse of the Azure Bonds, GOG | `\` | `C:\SAVE\` | `\SAVE` |
+| Secret of the Silver Blades, Steam | `\SECRET` | `C:\SECRET\SAVE\` | `\SECRET\SAVE` |
+| Secret of the Silver Blades, GOG | `\` | `C:\SAVE\` | `\SAVE` |
 
 So a host puts the files where the edition row's `install` directory says
 (`data/editions.json`) and makes that directory **current** before the
@@ -952,14 +954,19 @@ carries the **digest its seller ships the file with**: a copy whose
 `CURSE.CFG` still has those bytes counts it toward that row, and one
 whose player has changed it ties and gets the earlier row, Steam's.
 
-**`secret-steam` is a third program**: Secret of the Silver Blades
-(version 1.30, of May 18, 1990) as Steam sells it, so
-`machine::known_editions()` has a third row and this table a fifth. It
-is forty files and `BLADES.CFG`, which Steam ships naming `T`, the mouse
-and `C:\SECRET\SAVE\`; its row carries that digest, as Curse's do. It
-ships saved games A and B, which are not artifacts. The debug cheats are
-the only seams with its facts, so they are its toggle panel, and its key
-card is the rows that name no program. The GOG copy has not been captured.
+**`secret-steam` and `secret-gog` are a third program**: Secret of the
+Silver Blades (version 1.30, of May 18, 1990) as Steam and GOG sell it,
+so `machine::known_editions()` has a third row and this table two more
+with one `fingerprint`. Each is forty files and `BLADES.CFG`, and every
+one of the forty is byte-identical between the two. They differ as
+Curse's two do: in `install` (`C:\SECRET` on Steam, the root on GOG),
+and in the `BLADES.CFG` each ships (Steam's names `T`, the mouse and
+`C:\SECRET\SAVE\`; GOG's names `A`, the mouse and `C:\SAVE\`), whose
+digest each row carries. Steam ships saved games A and B in its save
+directory. **GOG ships saved game A beside the program, not in the
+`SAVE` directory its configuration names**, which it ships empty, so the
+program's `LOAD SAVED GAME` finds nothing on that copy as sold. Saved
+games are not artifacts. Its key card is the rows that name no program.
 
 **`install` is the directory of the machine's filesystem the copy's files
 live in, which is also the DOS current directory when the program is
@@ -967,7 +974,8 @@ loaded.** DOS spelling, from the root: `\POOLRAD` for the store release,
 where both storefronts' own launchers mount the copy and change into it
 before running START, and `\` for the repack, which is where every
 existing player's copy already is; `\CURSE` for Curse on Steam and `\`
-on GOG; `\SECRET` for Secret of the Silver Blades on Steam. Each launcher
+on GOG; `\SECRET` for Secret of the Silver Blades on Steam and `\` on
+GOG. Each launcher
 writes its own configuration file naming paths under that directory.
 
 An artifact is one of three `kind`s. A `file` carries a name, a size and a
@@ -1593,7 +1601,8 @@ loading C reads it back, the panel at `6,12 N` drawing the room the
 party stood in at the start.
 
 **Secret of the Silver Blades** (#606): slots **A** to **J**, saves in
-the directory line 4 of `BLADES.CFG` names (`\SECRET\SAVE` on Steam).
+the directory line 4 of `BLADES.CFG` names (`\SECRET\SAVE` on Steam,
+`\SAVE` on GOG).
 The table is what has been watched so far, on the Steam copy.
 
 | pattern | in | kind | required | what it is |
