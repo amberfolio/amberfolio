@@ -146,10 +146,11 @@ TEST(EditionFacts, TheStoreReleaseIsTheBaselineAndTheRepackKeepsItsId) {
 
 TEST(EditionFacts, SecretsSteamRowIsItsFortyFilesAndItsConfiguration) {
   // Counted on the copy (#606): forty program and data files, and
-  // BLADES.CFG as Steam ships it. No document yet: its journal joins the
-  // document table with the journal's port (#609).
+  // BLADES.CFG as Steam ships it. And one document, the journal Steam
+  // ships beside it (#609).
   std::size_t files = 0;
   std::size_t configurations = 0;
+  std::size_t documents = 0;
   for (const edition_artifact& artifact : secret().artifacts) {
     switch (artifact.kind) {
       case artifact_kind::file:
@@ -161,12 +162,14 @@ TEST(EditionFacts, SecretsSteamRowIsItsFortyFilesAndItsConfiguration) {
         EXPECT_THAT(artifact.fingerprint, Not(IsEmpty()));
         break;
       case artifact_kind::document:
-        ADD_FAILURE() << artifact.about;
+        ++documents;
+        EXPECT_EQ(artifact.document, machine::document_kind::journal);
         break;
     }
   }
   EXPECT_EQ(files, 40U);
   EXPECT_EQ(configurations, 1U);
+  EXPECT_EQ(documents, 1U);
   EXPECT_EQ(secret().boot, "START.EXE");
 
   // A whole copy is that row, complete, and a copy whose player has
@@ -240,7 +243,8 @@ TEST(EditionFacts, EveryDocumentIsOneTheMachineKnowsAndNoneIsRequired) {
       EXPECT_EQ(known->name, artifact.about);
     }
   }
-  // Both releases run one program, so both carry the same documents.
+  // Two releases of one program carry the same documents, and no
+  // document the machine knows is missing from every row.
   EXPECT_EQ(documents.size(), machine::known_documents().size());
 }
 

@@ -46,6 +46,10 @@
 //   * outside every box, and so harmless there: a run in a font the facts
 //     do not name, and one with a code the map does not — which is what
 //     the refusals are tested against, by rows that point a box at them;
+//   * outside every box too, on page two (#609): runs in a **composite
+//     font**, two bytes to a code, one of them with a code of 256 or more
+//     and one a byte short of a pair; and three lines of which the third
+//     is **set apart** from the two above it rather than indented;
 //   * a picture, on the first item, so a text edition's drawings go the
 //     scanned route's way (`journal_picture.h`).
 
@@ -80,5 +84,33 @@ inline constexpr journal_text_box journal_text_probe_unnamed_font{
     .left = 20, .bottom = 280, .right = 200, .top = 295};
 inline constexpr journal_text_box journal_text_probe_unmapped_code{
     .left = 20, .bottom = 0, .right = 200, .top = 15};
+
+/// Boxes on the probe's second page around what the rules of #609 are
+/// tested against. Three runs in the composite font `F3`, which no row of
+/// the probe names: one that reads through the simple font's own map as
+/// `journal_text_probe_two_byte_text`, one with a code of 256 or more,
+/// and one of three bytes.
+inline constexpr journal_text_box journal_text_probe_two_byte{
+    .left = 20, .bottom = 195, .right = 200, .top = 210};
+inline constexpr journal_text_box journal_text_probe_two_byte_high{
+    .left = 20, .bottom = 175, .right = 200, .top = 190};
+inline constexpr journal_text_box journal_text_probe_two_byte_odd{
+    .left = 20, .bottom = 155, .right = 200, .top = 170};
+inline constexpr std::string_view journal_text_probe_two_byte_text =
+    "Amber folio";
+
+/// And three lines in a column of their own: two set ten points apart,
+/// which `journal_text_probe_close_lines` holds, and a third sixteen
+/// points under them, which `journal_text_probe_line_apart` holds. None
+/// is indented, so only a `paragraph_gap` between ten and sixteen, or a
+/// tabled break, makes the third a paragraph.
+inline constexpr journal_text_box journal_text_probe_close_lines{
+    .left = 220, .bottom = 185, .right = 400, .top = 210};
+inline constexpr journal_text_box journal_text_probe_line_apart{
+    .left = 220, .bottom = 165, .right = 400, .top = 185};
+inline constexpr std::string_view journal_text_probe_close_text =
+    "Lines set close are one paragraph.";
+inline constexpr std::string_view journal_text_probe_apart_text =
+    "A line set apart opens another.";
 
 }  // namespace amberfolio::host

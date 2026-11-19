@@ -81,11 +81,22 @@ constexpr std::string_view probe_page_one =
     "Q\n";
 
 /// Page two: a tale in one piece, unfiltered, positioned by `TD` and `T*`
-/// and opened with a hex string.
+/// and opened with a hex string. Under it, outside the tale's box, what
+/// the rules of #609 are tested against: three runs in a composite font
+/// (`F3`), two bytes to a code, the second with a code of 256 or more and
+/// the third a byte short of a pair; and three lines in a column of
+/// their own, the third set apart from the two above it.
 constexpr std::string_view probe_page_two =
     "BT /F1 9 Tf 1 0 0 1 20 260 Tm"
     " <54616C6520313A2041 20666F6C696F206F6620616D62657220> Tj"
-    " 0 -10 TD (pages sings when ) Tj T* (opened.) Tj ET\n";
+    " 0 -10 TD (pages sings when ) Tj T* (opened.) Tj ET\n"
+    "BT /F3 9 Tf 1 0 0 1 20 200 Tm"
+    " <0041006D00620065007200200066006F006C0069006F> Tj ET\n"
+    "BT /F3 9 Tf 1 0 0 1 20 180 Tm <01410042> Tj ET\n"
+    "BT /F3 9 Tf 1 0 0 1 20 160 Tm <004100> Tj ET\n"
+    "BT /F1 9 Tf 1 0 0 1 220 200 Tm (Lines set close ) Tj"
+    " 0 -10 Td (are one paragraph.) Tj"
+    " 0 -16 Td (A line set apart opens another.) Tj ET\n";
 
 /// The picture on entry one: a small gray ramp, eight bits, no predictor.
 constexpr std::uint32_t probe_art_width = 16;
@@ -147,7 +158,7 @@ struct text_probe_document {
 
 void build(text_probe_document& doc) {
   std::vector<std::uint8_t>& out = doc.bytes;
-  std::array<std::uint64_t, 11> object_at{};
+  std::array<std::uint64_t, 12> object_at{};
   append(out, "%PDF-1.4\n");
   out.insert(out.end(), {'%', 0xE2, 0xE3, 0xCF, 0xD3, '\n'});
 
@@ -164,8 +175,8 @@ void build(text_probe_document& doc) {
   object_at[4] = out.size();
   append(out,
          "4 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300]"
-         " /Resources << /Font << /F1 5 0 R >> >> /Contents 8 0 R >>\n"
-         "endobj\n");
+         " /Resources << /Font << /F1 5 0 R /F3 11 0 R >> >>"
+         " /Contents 8 0 R >>\nendobj\n");
   object_at[5] = out.size();
   append(out,
          "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica"
@@ -207,13 +218,23 @@ void build(text_probe_document& doc) {
                                        journal_probe_zlib_stored(cmap),
                                        static_cast<std::uint32_t>(cmap.size()));
 
+  // The composite font page two's `F3` names: two bytes to a code, read
+  // through the same map as the simple one.
+  object_at[11] = out.size();
+  append(out,
+         "11 0 obj\n<< /Type /Font /Subtype /Type0 /BaseFont /Helvetica"
+         " /Encoding /Identity-H /DescendantFonts [<< /Type /Font"
+         " /Subtype /CIDFontType2 /BaseFont /Helvetica /CIDSystemInfo"
+         " << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> >>]"
+         " /ToUnicode 10 0 R >>\nendobj\n");
+
   const std::uint64_t xref_at = out.size();
-  append(out, "xref\n0 11\n0000000000 65535 f \n");
+  append(out, "xref\n0 12\n0000000000 65535 f \n");
   for (std::size_t object = 1; object < object_at.size(); ++object) {
     append(out, xref_offset(object_at[object]));
     append(out, " 00000 n \n");
   }
-  append(out, "trailer\n<< /Size 11 /Root 1 0 R >>\nstartxref\n");
+  append(out, "trailer\n<< /Size 12 /Root 1 0 R >>\nstartxref\n");
   append(out, std::to_string(xref_at));
   append(out, "\n%%EOF\n");
 

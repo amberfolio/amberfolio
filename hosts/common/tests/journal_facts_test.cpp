@@ -37,20 +37,23 @@
 namespace amberfolio::host {
 namespace {
 
-TEST(JournalTable, HasTheFourEditionsSomebodySatDownWith) {
+TEST(JournalTable, HasTheFiveEditionsSomebodySatDownWith) {
   // It was empty until M5-E3b (#214), and the header said why at length:
   // these are facts about a document somebody has to sit down with. The
   // archive edition is first and the tests about scans below read it as
   // `front()`; the Steam edition, typeset as text, is second (#398);
   // Curse of the Azure Bonds' Steam edition, typeset as text, is third
-  // (#555); and its GOG edition, scans again, is fourth (#585).
-  ASSERT_EQ(known_journals().size(), 4U)
+  // (#555); its GOG edition, scans again, is fourth (#585); and Secret of
+  // the Silver Blades' Steam edition, typeset as text, is fifth (#609).
+  ASSERT_EQ(known_journals().size(), 5U)
       << "an edition came or went; the rules below are what a row has to"
-         " satisfy, and #214, #398, #555 and #585 are where these came from";
+         " satisfy, and #214, #398, #555, #585 and #609 are where these"
+         " came from";
   EXPECT_FALSE(known_journals().front().reads_own_text());
   EXPECT_TRUE(known_journals()[1].reads_own_text());
   EXPECT_TRUE(known_journals()[2].reads_own_text());
   EXPECT_FALSE(known_journals()[3].reads_own_text());
+  EXPECT_TRUE(known_journals()[4].reads_own_text());
   EXPECT_EQ(known_journals().front().entries.size(), 99U)
       << "the archive release's journal has fifty-eight entries,"
          " twenty-three tales and eighteen proclamations";
@@ -254,8 +257,12 @@ void CheckTextRows(const journal_edition& edition) {
         << " this build does not decode, and a content stream is read";
     EXPECT_FALSE(page.fonts.empty())
         << edition.name << " page " << page.page << " names no font";
+    std::set<std::string_view> resources;
     for (const journal_text_font& font : page.fonts) {
       EXPECT_FALSE(font.resource.empty());
+      EXPECT_TRUE(resources.insert(font.resource).second)
+          << edition.name << " page " << page.page << " names " << font.resource
+          << " twice, and only the first would be read";
       EXPECT_NE(font.length, 0U);
       EXPECT_NE(font.decoded, 0U);
       EXPECT_TRUE(journal_filter_decoded(font.filter));
@@ -276,6 +283,13 @@ void CheckTextRows(const journal_edition& edition) {
         << " has no digest, so nothing would check its text";
     for (const char c : fact.text_sha256) {
       EXPECT_TRUE((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'));
+    }
+    // A boundary is what carries a paragraph break (#609), as it is for a
+    // scan (#361): the first piece has nothing before it to break from.
+    if (!fact.text.empty()) {
+      EXPECT_FALSE(fact.text.front().begins_paragraph)
+          << journal_kind_name(fact.kind) << ' ' << fact.number
+          << " opens on a paragraph break";
     }
     for (const journal_text_fragment& piece : fact.text) {
       EXPECT_TRUE(pages.contains(piece.page))
@@ -539,6 +553,140 @@ TEST(JournalTable, CursesEditionsPiecesAreInReadingOrder) {
       EXPECT_TRUE(later_sheet || later_column || further_down)
           << journal_kind_name(fact.kind) << ' ' << fact.number
           << " has a piece that does not follow the one before it";
+    }
+  }
+}
+
+TEST(JournalTable, TheEditionsBeforeSecretsAreReadByIndentsAlone) {
+  // The three facts #609 added are Secret of the Silver Blades' edition's
+  // and nobody else's: Pool of Radiance's and Curse of the Azure Bonds'
+  // text editions indent their paragraphs, so they state no gap, table
+  // no break and name no composite font. Each item's digest was measured
+  // that way, and a row that gained one of these would read as something
+  // its digest does not name.
+  for (const std::size_t which : {std::size_t{1}, std::size_t{2}}) {
+    const journal_edition& edition = known_journals()[which];
+    EXPECT_EQ(edition.paragraph_gap, 0U) << edition.name;
+    for (const journal_text_page& page : edition.pages) {
+      for (const journal_text_font& font : page.fonts) {
+        EXPECT_FALSE(font.two_byte) << edition.name << ' ' << font.resource;
+      }
+    }
+    for (const journal_entry_fact& fact : edition.entries) {
+      for (const journal_text_fragment& piece : fact.text) {
+        EXPECT_FALSE(piece.begins_paragraph)
+            << edition.name << ' ' << journal_kind_name(fact.kind) << ' '
+            << fact.number;
+      }
+    }
+  }
+}
+
+TEST(JournalTable, SecretsEditionHasItsSeventyTwoEntriesWithoutAGap) {
+  // Secret of the Silver Blades' journal has one numbered section,
+  // seventy-two entries, a chain read off the printed headings (#609): a
+  // gap or a repeat is the one way that reading could have gone wrong
+  // quietly.
+  const journal_edition& secret = known_journals()[4];
+  EXPECT_EQ(secret.program, machine::secret_of_the_silver_blades.fingerprint);
+  ASSERT_EQ(secret.entries.size(), 72U);
+  std::uint16_t expected = 1;
+  std::size_t pieces = 0;
+  std::size_t in_pieces = 0;
+  std::size_t breaks = 0;
+  std::size_t entries_with_art = 0;
+  std::size_t pictures = 0;
+  for (const journal_entry_fact& fact : secret.entries) {
+    EXPECT_EQ(fact.kind, journal_kind::entry) << "it has no other section";
+    EXPECT_EQ(fact.number, expected) << "the entries are not in order";
+    ++expected;
+    EXPECT_FALSE(fact.text.empty());
+    EXPECT_TRUE(fact.fragments.empty()) << "a text edition has no scans";
+    pieces += fact.text.size();
+    in_pieces += fact.text.size() > 1U ? 1U : 0U;
+    for (const journal_text_fragment& piece : fact.text) {
+      breaks += piece.begins_paragraph ? 1U : 0U;
+    }
+    entries_with_art += fact.art.empty() ? 0U : 1U;
+    pictures += fact.art.size();
+  }
+  // The counts the prose quotes: `journal_facts.cpp`'s own header and
+  // `docs/journal.md` both say them.
+  EXPECT_EQ(pieces, 86U);
+  EXPECT_EQ(in_pieces, 13U);
+  EXPECT_EQ(breaks, 4U) << "four of its fourteen boundaries open a paragraph";
+  EXPECT_EQ(entries_with_art, 19U);
+  EXPECT_EQ(pictures, 19U);
+}
+
+TEST(JournalTable, SecretsEditionSetsItsParagraphsApartInOneFaceUnderTwoFonts) {
+  // What its row asks of the route that no other row does (#609): a gap
+  // that opens a paragraph, and on every page a composite font beside the
+  // simple one, with the heading's dingbat an ornament as in Curse's.
+  const journal_edition& secret = known_journals()[4];
+  EXPECT_EQ(secret.paragraph_gap, 13U);
+  EXPECT_EQ(secret.pages.size(), 9U);
+  for (const journal_text_page& page : secret.pages) {
+    std::size_t composite = 0;
+    std::size_t ornaments = 0;
+    std::size_t plain = 0;
+    for (const journal_text_font& font : page.fonts) {
+      EXPECT_FALSE(font.two_byte && font.ornament) << font.resource;
+      composite += font.two_byte ? 1U : 0U;
+      ornaments += font.ornament ? 1U : 0U;
+      plain += !font.two_byte && !font.ornament ? 1U : 0U;
+    }
+    EXPECT_EQ(composite, 1U) << "page " << page.page;
+    EXPECT_EQ(ornaments, 1U) << "page " << page.page;
+    EXPECT_EQ(plain, 2U) << "page " << page.page << ": the body's face and"
+                         << " the headings'";
+  }
+}
+
+TEST(JournalTable, SecretsEditionsPiecesAreInReadingOrder) {
+  // Down a column, then the next column, then the next sheet. Four
+  // columns to a sheet, whose margins are under 205, 400, 595 and 790
+  // points; a frame set at a margin of its own is still in one of them.
+  const auto band = [](std::int32_t left) {
+    return left < 205 ? 0 : left < 400 ? 1 : left < 595 ? 2 : 3;
+  };
+  for (const journal_entry_fact& fact : known_journals()[4].entries) {
+    for (std::size_t i = 1; i < fact.text.size(); ++i) {
+      const journal_text_fragment& before = fact.text[i - 1];
+      const journal_text_fragment& after = fact.text[i];
+      const bool later_sheet = after.page > before.page;
+      const bool later_column = after.page == before.page &&
+                                band(after.box.left) > band(before.box.left);
+      EXPECT_TRUE(later_sheet || later_column)
+          << "entry " << fact.number
+          << " has a piece that does not follow the one before it";
+    }
+  }
+}
+
+TEST(JournalTable, NoTwoBoxesOfSecretsEditionOverlap) {
+  // A run belongs to a box when its origin is inside, so two boxes of one
+  // page that overlapped would give one line to two items.
+  struct placed {
+    std::uint16_t entry;
+    journal_text_fragment piece;
+  };
+  std::vector<placed> all;
+  for (const journal_entry_fact& fact : known_journals()[4].entries) {
+    for (const journal_text_fragment& piece : fact.text) {
+      all.push_back({.entry = fact.number, .piece = piece});
+    }
+  }
+  for (std::size_t i = 0; i < all.size(); ++i) {
+    for (std::size_t j = i + 1; j < all.size(); ++j) {
+      const journal_text_box& a = all[i].piece.box;
+      const journal_text_box& b = all[j].piece.box;
+      const bool apart = all[i].piece.page != all[j].piece.page ||
+                         a.right <= b.left || b.right <= a.left ||
+                         a.top <= b.bottom || b.top <= a.bottom;
+      EXPECT_TRUE(apart) << "entries " << all[i].entry << " and "
+                         << all[j].entry << " share a part of page "
+                         << all[i].piece.page;
     }
   }
 }
@@ -849,6 +997,8 @@ TEST(JournalTable, EveryEditionIsTheJournalOfAProgramThisBuildKnows) {
 TEST(JournalOwner, AnEditionIsItsOwnProgramsAndNoOthers) {
   const std::string_view pool = machine::pool_of_radiance.fingerprint;
   const std::string_view curse = machine::curse_of_the_azure_bonds.fingerprint;
+  const std::string_view secret =
+      machine::secret_of_the_silver_blades.fingerprint;
 
   for (const journal_edition& edition : known_journals()) {
     const std::string_view other = edition.program == pool ? curse : pool;
@@ -862,10 +1012,11 @@ TEST(JournalOwner, AnEditionIsItsOwnProgramsAndNoOthers) {
               journal_owner::another_program)
         << edition.name;
   }
-  // Both games have a journal in the table, or the loop above proved
-  // half of what it says.
+  // All three games have a journal in the table, or the loop above
+  // proved less than it says.
   EXPECT_EQ(journal_of(pool).program, pool);
   EXPECT_EQ(journal_of(curse).program, curse);
+  EXPECT_EQ(journal_of(secret).program, secret);
 }
 
 TEST(JournalOwner, AStoreOfNoKnownEditionIsNobodys) {
