@@ -29,8 +29,10 @@ namespace amberfolio::sdl {
 /// run that stopped to complain about a full disk in the middle of the
 /// thing being observed would have destroyed what it was there to show;
 /// the missing file is the report.
+///
+/// With `memory`, also `PREFIX-NNNNNN.ram` and `.regs` (memory_dump.h).
 void write_still(const std::string& prefix, std::uint64_t frame,
-                 const machine::machine& box);
+                 const machine::machine& box, bool memory);
 
 /// Drain whatever DOS console output has accumulated to stdout.
 ///

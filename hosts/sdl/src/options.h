@@ -67,6 +67,16 @@
 //     the caller is the only one who knows how fast the thing they are
 //     watching moves.
 //
+//   --dump-memory    also write PREFIX.ram and PREFIX.regs
+//
+//     The machine's memory, a megabyte with byte N at linear address N,
+//     and the processor's registers on one line: at the end of the run,
+//     and beside every `--dump-every` still (memory_dump.h, #619). What a
+//     program's facts are found with: `--watch` reads one word of the
+//     data segment, and this is everything else at the same moment.
+//     Needs `--dump`. **The file holds the program that was running**,
+//     so it is the player's and stays where it was written.
+//
 //   --watch OFF[:N]  print a data word every time it changes
 //
 //     The third instrument of the same kind, and it arrived for the same
@@ -865,6 +875,10 @@ struct options {
   /// Where `--dump` writes. Empty when it was not asked for; the two
   /// files are this plus `.ppm` and `.wav`.
   std::string dump_prefix;
+
+  /// `--dump-memory`: the machine's memory and registers beside every
+  /// frame `--dump` and `--dump-every` write (memory_dump.h, #619).
+  bool dump_memory{false};
 
   bool trace{false};
 

@@ -821,6 +821,12 @@ Three decisions first, because each decides what the next step may be:
   match.
   **Prefer a fact derived from the artifact over one inferred from a
   trace** (§10, "How a wrong fact was found").
+- **The instruments.** `--watch` prints a word of the data segment when
+  it changes; `--dump --dump-memory` writes the whole of the machine's
+  memory and the registers beside a still (`docs/hosts.md` §2), which is
+  how a load-segment word is confirmed (the segment it names holds the
+  module's bytes) and how a record or a pointer is found on a screen
+  where its value is known. The file is the player's and stays local.
 - **Argument frames**: reverse of source order, segment before offset
   (§3). Confirm on each new routine from its first few argument reads.
 
