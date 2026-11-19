@@ -427,8 +427,9 @@ TEST(SeamPanel, AProgramWithAFewSeamsListsThoseAndNoOther) {
   load(secret, programs[2]);
   ASSERT_NE(secret.known_edition(), nullptr);
   const std::vector<panel_row> rows = panel_rows(secret);
-  for (const std::string_view ported : {"cheat-invulnerable", "cheat-kill-all",
-                                        "cheat-wound-party", "message-pause"}) {
+  for (const std::string_view ported :
+       {"cheat-invulnerable", "cheat-kill-all", "cheat-wound-party",
+        "font-sans", "font-chisel", "message-pause"}) {
     EXPECT_TRUE(lists(rows, ported)) << ported;
   }
   for (const std::string_view absent : {"encamp-fix", "explored"}) {

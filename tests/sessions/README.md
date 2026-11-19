@@ -215,14 +215,15 @@ the sweep and on the wasm module (`drive.mjs --install '\CURSE'
 
 ### Secret of the Silver Blades
 
-Seven sessions, `secret-*`, on the Steam copy at `--speed 386` and
-`--wall none` (#608), each `disk external` and pinned to the copy with
+Nine sessions, `secret-*`, on the Steam copy at `--speed 386` and
+`--wall none` (#608, #609), each `disk external` and pinned to the copy with
 its shipped slots A and B (`secret-slots`). `docs/playable-secret.md`
 has the legs and the table: the boot, a camp and a wandering fight with
 no seam, and the cheats' pairs, `secret-camp-cheats` `identical
 secret-camp` (all three on, none pulled) and `secret-camp-wound`,
 `secret-fight-cheat` and `secret-fight-kill` each a `contrast` with the
-run it differs from. Each verifies on the desktop host through the
+run it differs from; and the text faces', `secret-boot-font-sans` and
+`secret-boot-font-chisel`, each a `contrast` with `secret-boot`. Each verifies on the desktop host through the
 sweep.
 
 ## The matrix, by seam
@@ -241,7 +242,7 @@ sweep.
 | `quick-steps` | `walk-quick` | `menu-letters-quick`. Not in `quiet-all`: `quiet`'s movement keys click |
 | `message-pause` | `fight-pause`; on Curse `curse-fight-pause` | `quiet-message-pause`, and `quiet-all`; on Curse `curse-quiet-message-pause`, and `curse-quiet-all` |
 | `fanfare` | `quiet-fanfare` (a `contrast`); on Curse `curse-quiet-fanfare` (a `contrast`) | none can exist: every boot runs the titles, where it starts. Not in `quiet-all` or `curse-quiet-all` |
-| `font-sans`, `font-chisel` | `quiet-font-sans`, `quiet-font-chisel` (on is exercised: text is drawn from the first screen); on Curse `curse-quiet-font-sans`, `curse-quiet-font-chisel` | none can exist; the pair is a `contrast` |
+| `font-sans`, `font-chisel` | `quiet-font-sans`, `quiet-font-chisel` (on is exercised: text is drawn from the first screen); on Curse `curse-quiet-font-sans`, `curse-quiet-font-chisel`; on Secret `secret-boot-font-sans`, `secret-boot-font-chisel` | none can exist; the pair is a `contrast` |
 
 **`modern-controls` is in `quiet-all-on-sight` and not in `quiet-all`.**
 `quiet-all` is the claim that seams which draw nothing until used add
