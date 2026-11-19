@@ -213,6 +213,18 @@ overland map, and the rest. Each verifies on the desktop host through
 the sweep and on the wasm module (`drive.mjs --install '\CURSE'
 --replay`, told a descriptor's store by hand).
 
+### Secret of the Silver Blades
+
+Seven sessions, `secret-*`, on the Steam copy at `--speed 386` and
+`--wall none` (#608), each `disk external` and pinned to the copy with
+its shipped slots A and B (`secret-slots`). `docs/playable-secret.md`
+has the legs and the table: the boot, a camp and a wandering fight with
+no seam, and the cheats' pairs, `secret-camp-cheats` `identical
+secret-camp` (all three on, none pulled) and `secret-camp-wound`,
+`secret-fight-cheat` and `secret-fight-kill` each a `contrast` with the
+run it differs from. Each verifies on the desktop host through the
+sweep.
+
 ## The matrix, by seam
 
 | Seam | On and exercised | On and never triggered |
@@ -224,7 +236,7 @@ the sweep and on the wasm module (`drive.mjs --install '\CURSE'
 | `automap` | `walk-map`; on Curse `curse-town-map`, `curse-temple-map`, `curse-map-reader` | `quiet-automap`; on Curse `curse-quiet-automap` and `curse-quiet-all` |
 | `journal` | `reader`, `notes`, `cite`; on Curse `curse-notes`, `curse-cite`, `curse-map-reader` | `quiet-journal` (a `contrast`); on Curse `curse-quiet-journal` (a `contrast`) and `curse-journey-journal` (an `identical`: the party's bar is never drawn) |
 | `explored` | `wild-trail` | `quiet-explored` |
-| the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party`; on Curse `curse-fight-cheat`, `curse-fight-kill`, `curse-camp-wound` | `quiet-cheats`; on Curse `curse-quiet-cheats` and `curse-quiet-all` |
+| the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party`; on Curse `curse-fight-cheat`, `curse-fight-kill`, `curse-camp-wound`; on Secret `secret-fight-cheat`, `secret-fight-kill`, `secret-camp-wound` | `quiet-cheats`; on Curse `curse-quiet-cheats` and `curse-quiet-all`; on Secret `secret-camp-cheats` |
 | `modern-controls` | `list-down-arrows`, `camp-down-arrows`, `camp-pad-arrows`, `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys`, `bar-esc-keys`, `bar-script-keys`, `bar-portrait-keys`, `menu-down-cursor`, `move-walk-mode`, `door-pick-3`, `list-keys-yellow`, `name-arrows-edit` (each a `contrast`; `door-pick-3` has the seam on at both ends and differs by its keys); on Curse `curse-camp-arrows`, `curse-name-arrows`, `curse-menu-cursor`, `curse-modify-arrows`, `curse-move-walk-mode`, `curse-door-arrows`, `curse-script-esc` | none can exist: three of its pieces draw on sight, so `quiet-modern-controls`, `menu-letters-cursor` and `quiet-all-on-sight` are `contrast`s too (the pair is a `contrast`, as the faces' is). On Curse the same three draw on sight, the menu cursor, the hero keys and the selection block, so `curse-quiet-controls` is a `contrast curse-quiet` and `curse-quiet-all-on-sight` a `contrast curse-quiet-all` |
 | `quick-steps` | `walk-quick` | `menu-letters-quick`. Not in `quiet-all`: `quiet`'s movement keys click |
 | `message-pause` | `fight-pause`; on Curse `curse-fight-pause` | `quiet-message-pause`, and `quiet-all`; on Curse `curse-quiet-message-pause`, and `curse-quiet-all` |
