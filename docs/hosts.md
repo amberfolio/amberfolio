@@ -1948,7 +1948,8 @@ hosts. None of them is decoration.
 describe another program, core's `wrong_binary`, is not listed once the
 program is one this build recognizes: on Curse of the Azure Bonds the
 panel has no row for `encamp-fix`, `explored` or `quick-steps`, and on
-Secret of the Silver Blades its rows are the three debug cheats. Every
+Secret of the Silver Blades its rows are the seams ported to it so far
+(`docs/playable-secret.md` lists them). Every
 other reason stays on its row, a module not loaded yet
 and a document not presented among them. For a program this build does
 not recognize every seam reads `wrong_binary` and every row is listed,
