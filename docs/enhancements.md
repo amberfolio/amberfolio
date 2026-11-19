@@ -645,6 +645,9 @@ at camp). Each writes through the path the program's own routines use.
 **How you turn them on.** `--seam cheat-…`; the last two are pulled
 (`--pull`, or the button beside the toggle) rather than left on.
 
+**Where.** All three games: they are the first seams a game gets,
+because driving its fights and camps is what they are for.
+
 **What they are.** Test tooling, not a player feature.
 `cheat-wound-party` exists so the Encamp Fix could be driven on a hurt
 party. The numbers 120 and one hit point per member per day are chosen,

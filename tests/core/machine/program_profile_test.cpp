@@ -48,10 +48,29 @@ TEST(ProgramProfile, IsAnEditionThisBuildKnows) {
   }
 }
 
+TEST(ProgramProfile, SecretsIsThePartItsCheatsAndItsScreenTextRead) {
+  const program_profile& secret = secret_of_the_silver_blades;
+  EXPECT_NE(secret.dgroup_paragraphs, 0U);
+  EXPECT_NE(secret.data_game_mode, 0U);
+  EXPECT_NE(secret.data_roster_head, 0U);
+  EXPECT_TRUE(secret.combat_overlay.has_load_segment());
+  EXPECT_LT(secret.record_next, secret.record_status);
+  EXPECT_LT(secret.record_side, secret.record_hit_points);
+  // The screen text's (screen_text.h): the far pointer to the font.
+  EXPECT_NE(secret.data_font_pointer, 0U);
+  // And nothing pretending to be a fact: what no seam or read available
+  // on this program uses is zero until somebody measures it.
+  EXPECT_EQ(secret.data_map_pointer, 0U);
+  EXPECT_EQ(secret.command_bar_entry, 0U);
+  EXPECT_EQ(secret.key_read_entry, 0U);
+  EXPECT_FALSE(secret.menu_overlay.has_load_segment());
+}
+
 TEST(ProgramProfile, TheBaselineAndCurseHaveOne) {
-  ASSERT_EQ(program_profiles().size(), 2U);
+  ASSERT_EQ(program_profiles().size(), 3U);
   EXPECT_EQ(program_profiles().front(), &pool_of_radiance);
-  EXPECT_EQ(program_profiles().back(), &curse_of_the_azure_bonds);
+  EXPECT_EQ(program_profiles()[1], &curse_of_the_azure_bonds);
+  EXPECT_EQ(program_profiles().back(), &secret_of_the_silver_blades);
   EXPECT_EQ(pool_of_radiance.dgroup_offset(),
             std::uint32_t{pool_of_radiance.dgroup_paragraphs} * 16U);
   // The facts the cheats and the host reads use on Curse (#554, #555), and

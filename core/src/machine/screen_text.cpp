@@ -26,8 +26,8 @@ namespace {
 
 /// The program whose font this read finds (program_profile.h): any program
 /// whose profile has the far pointer to it in the data segment, which is
-/// where the seams read it from (seams.md §10, the zone label). Both the
-/// programs with a profile draw every menu and message from one table of
+/// where the seams read it from (seams.md §10, the zone label). Every
+/// program with a profile draws every menu and message from one table of
 /// sixty-four 8x8 glyphs, indexed by the character upper-cased modulo
 /// sixty-four.
 [[nodiscard]] const program_profile* font_profile(

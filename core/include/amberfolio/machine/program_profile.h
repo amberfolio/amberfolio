@@ -18,11 +18,12 @@
 // acts on these facts names the profiles it was checked against, and its
 // `fingerprints` are theirs. A program without a profile has no seam.
 //
-// **Two programs have a profile**: the baseline edition (edition.h), in
-// full, and Curse of the Azure Bonds, in the part its seams so far read.
-// A second program is a second instance of this struct, filled in from
-// its own image, with every fact checked twice and confirmed by a driven
-// run; nothing here is ever assumed to carry over.
+// **Three programs have a profile**: the baseline edition (edition.h), in
+// full, and Curse of the Azure Bonds and Secret of the Silver Blades, each
+// in the part its seams and reads so far use. Another program is another
+// instance of this struct, filled in from its own image, with every fact
+// checked twice and confirmed by a driven run; nothing here is ever
+// assumed to carry over.
 //
 // The members are named for what the program does with a fact, not for
 // where it is, so that a second program's profile answers the same
@@ -745,6 +746,124 @@ inline constexpr program_profile curse_of_the_azure_bonds{
     .record_held = 0x196,
     .record_side = 0x197,
     .record_hit_points = 0x1A4,
+};
+
+/// Secret of the Silver Blades' overlay modules, which its profile below
+/// names. Numbered, like the other two programs', by their place in the
+/// program's own stub table, which has thirty-seven records.
+///
+/// **A later overlay manager, the same record.** The overlay file begins
+/// `TPOV` where the first two programs' begins `FBOV`, and its modules
+/// follow that word with no length between. The record a stub begins with
+/// is unchanged: the module's file offset and length four bytes in, and
+/// the load-segment word sixteen bytes in, zero while the module is out.
+/// A driven run confirmed the word for every one of the thirty-seven that
+/// was in memory at eight moments between the titles and a fight: each
+/// names a segment where that module's bytes are, all but the words its
+/// fix-ups relocate (`docs/seams.md` §4).
+namespace secret_of_the_silver_blades_modules {
+
+/// Overlay 11: tactical combat's round loop and its end check. The stub's
+/// record is at image `0x0890`.
+inline constexpr seam_module combat{
+    .file = "GAME.OVR",
+    .file_offset = 46059,
+    .length = 6681,
+    .digest =
+        "43295e82b663b4690b5aac90cf7b3a1592dd2ee2fdcf6adf3b26358c013eec86",
+    .load_segment_at = 0x8A0};
+
+}  // namespace secret_of_the_silver_blades_modules
+
+/// Secret of the Silver Blades, the program Steam sells (v1.30;
+/// edition.h), **in part** (#608). Only the members the seams and reads
+/// available on it use are filled in, each found in the program's own
+/// image and confirmed by a driven run (`docs/seams.md` §10,
+/// `docs/playable-secret.md`). Every other member is zero, which is not a
+/// fact about this program but the absence of one, and nothing available
+/// on this program reads it.
+///
+/// The record is the one the first two programs keep, longer again: the
+/// same fields in the same order, further in.
+inline constexpr program_profile secret_of_the_silver_blades{
+    .name = "Secret of the Silver Blades",
+    .fingerprint =
+        "8b937984878ec72aa531335dd381a21bda67675408b5fd8e716a35ccd049999e",
+    .dgroup_paragraphs = 0xDE2,
+    .screen_paragraph = {},
+    .roster_draw_offset = {},
+    .screen_composer_offset = {},
+    .key_pending_entry = {},
+    .key_read_entry = {},
+    .clear_region_entry = {},
+    .clear_screen_entry = {},
+    .draw_frame_entry = {},
+    .draw_string_entry = {},
+    .command_bar_entry = {},
+    .roster_drawn_return = {},
+    .titles_overlay = {},
+    .interpreter_overlay = {},
+    .combat_overlay = secret_of_the_silver_blades_modules::combat,
+    .aim_overlay = {},
+    .adventure_overlay = {},
+    .camp_overlay = {},
+    .roster_overlay = {},
+    .slots_overlay = {},
+    .view_overlay = {},
+    .menu_overlay = {},
+    .summary_overlay = {},
+    .temple_load_segment_at = {},
+    .post_combat_load_segment_at = {},
+    .shop_load_segment_at = {},
+    .script_runner_load_segment_at = {},
+    .rest_load_segment_at = {},
+    .appraise_load_segment_at = {},
+    .death_load_segment_at = {},
+    .menu_key_read_call = {},
+    .menu_local_bar = {},
+    .menu_bar_capacity = {},
+    .pick_list_bar_return = {},
+    .selection_colour = {},
+    .area_bar_call = {},
+    .area_bar_return = {},
+    .view_bar_call = {},
+    .view_bar_return = {},
+    .data_game_mode = 0x67E7,
+    .mode_camp = 2,
+    .mode_travel = {},
+    .mode_adventure = 4,
+    .mode_combat = 5,
+    .data_view_kind = {},
+    .view_kind_grid = {},
+    .view_kind_first_overland = {},
+    .view_kind_last_overland = {},
+    .data_in_transition = {},
+    .data_disk_number = {},
+    .data_area_id = {},
+    .data_party_x = {},
+    .data_party_y = {},
+    .data_party_facing = {},
+    .data_wall_set = {},
+    .data_map_pointer = {},
+    .data_area_record = {},
+    .area_overland_column = {},
+    .area_overland_row = {},
+    .area_geometry_block = {},
+    .area_shown_in_3d = {},
+    .data_area_bar = {},
+    .data_view_bar = {},
+    .data_current_member = {},
+    .data_roster_head = 0x7D3C,
+    .data_bar_highlight = {},
+    .data_key_pushback = {},
+    .data_font_pointer = 0x7DC8,
+    .data_view_column_bias = {},
+    .data_sound_busy = {},
+    .record_next = 0x19D,
+    .record_status = 0x1A6,
+    .record_held = 0x1A7,
+    .record_side = 0x1A8,
+    .record_hit_points = 0x1B5,
 };
 
 /// Every program with a profile.

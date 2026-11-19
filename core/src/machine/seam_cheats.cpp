@@ -394,8 +394,25 @@ constexpr cheat_facts curse_cheats{.profile = curse_of_the_azure_bonds,
                                    .damage_routine_offset = 0x0F72,
                                    .end_check_offset = 0x09B3};
 
+/// Secret of the Silver Blades' (#608). The same mechanism again, at the
+/// same shape: the damage routine is the one Curse of the Azure Bonds has,
+/// instruction for instruction, with this program's offsets in it, and so
+/// is the end check, the continue-the-battle question included.
+///
+/// **The damage routine is overlaid** here too (overlay 27, `+0x2953`),
+/// and every caller reaches it through its stub's entry in the resident
+/// image, at `0x15C1` (the stub's record is at `0x1510`, and this is its
+/// thirtieth entry). The end check is in overlay 11 (the profile's
+/// `combat_overlay`).
+constexpr cheat_facts secret_cheats{.profile = secret_of_the_silver_blades,
+                                    .rec_scratch_offset = 0x1A1,
+                                    .data_side_counts = 0x87CC,
+                                    .damage_routine_offset = 0x15C1,
+                                    .end_check_offset = 0x0F61};
+
 constexpr auto cheat_binaries =
-    fingerprints_of(std::array{&pool_of_radiance, &curse_of_the_azure_bonds});
+    fingerprints_of(std::array{&pool_of_radiance, &curse_of_the_azure_bonds,
+                               &secret_of_the_silver_blades});
 
 // --- The handlers ------------------------------------------------------------
 
@@ -830,15 +847,21 @@ constexpr std::array<seam_point, 1> wound_party_points{
 
 /// Each seam's points on every program but the baseline, whose points are
 /// the definition's own `points` (seam.h, schema 9).
-constexpr std::array<seam_program_points, 1> invulnerable_programs{
+constexpr std::array<seam_program_points, 2> invulnerable_programs{
     {{.fingerprint = curse_of_the_azure_bonds.fingerprint,
-      .points = invulnerable_points<curse_cheats>}}};
-constexpr std::array<seam_program_points, 1> kill_all_programs{
+      .points = invulnerable_points<curse_cheats>},
+     {.fingerprint = secret_of_the_silver_blades.fingerprint,
+      .points = invulnerable_points<secret_cheats>}}};
+constexpr std::array<seam_program_points, 2> kill_all_programs{
     {{.fingerprint = curse_of_the_azure_bonds.fingerprint,
-      .points = kill_all_points<curse_cheats>}}};
-constexpr std::array<seam_program_points, 1> wound_party_programs{
+      .points = kill_all_points<curse_cheats>},
+     {.fingerprint = secret_of_the_silver_blades.fingerprint,
+      .points = kill_all_points<secret_cheats>}}};
+constexpr std::array<seam_program_points, 2> wound_party_programs{
     {{.fingerprint = curse_of_the_azure_bonds.fingerprint,
-      .points = wound_party_points<curse_cheats>}}};
+      .points = wound_party_points<curse_cheats>},
+     {.fingerprint = secret_of_the_silver_blades.fingerprint,
+      .points = wound_party_points<secret_cheats>}}};
 
 constexpr seam_definition invulnerable_definition{
     .id = "cheat-invulnerable",

@@ -417,22 +417,32 @@ TEST(SeamPanel, ListsOnlyTheLoadedProgramsSeams) {
   EXPECT_EQ(curse_rows.size() + another_programs, curse.count());
 }
 
-TEST(SeamPanel, AProgramWithNoSeamsYetHasAnEmptyPanel) {
-  // Secret of the Silver Blades is recognized and has no seam's facts
-  // (#606), so every row is another program's and none is listed. The
-  // panel still draws: its title and its header, over no rows.
+TEST(SeamPanel, AProgramWithThreeSeamsListsThoseThree) {
+  // Secret of the Silver Blades has the debug cheats' facts and no other
+  // seam's (#608), so the cheats are its panel and every other row is
+  // another program's.
   const auto programs = machine::known_editions();
   ASSERT_EQ(programs.size(), 3U);
   machine::seam_engine secret;
   load(secret, programs[2]);
   ASSERT_NE(secret.known_edition(), nullptr);
-  for (std::size_t i = 0; i < secret.count(); ++i) {
-    EXPECT_EQ(secret.status(i).reason, machine::seam_reason::wrong_binary)
-        << secret.status(i).id;
-  }
   const std::vector<panel_row> rows = panel_rows(secret);
-  EXPECT_TRUE(rows.empty());
-  EXPECT_FALSE(panel_lines(rows, 0, {}).empty());
+  ASSERT_EQ(rows.size(), 3U);
+  for (const std::string_view cheat :
+       {"cheat-invulnerable", "cheat-kill-all", "cheat-wound-party"}) {
+    EXPECT_TRUE(lists(rows, cheat)) << cheat;
+  }
+  std::size_t another_programs = 0;
+  for (std::size_t i = 0; i < secret.count(); ++i) {
+    if (secret.status(i).reason == machine::seam_reason::wrong_binary) {
+      ++another_programs;
+    }
+  }
+  EXPECT_EQ(rows.size() + another_programs, secret.count());
+}
+
+TEST(SeamPanel, DrawsItsTitleAndHeaderOverNoRows) {
+  EXPECT_FALSE(panel_lines({}, 0, {}).empty());
 }
 
 TEST(SeamPanel, ListsEverySeamForAProgramItDoesNotRecognize) {

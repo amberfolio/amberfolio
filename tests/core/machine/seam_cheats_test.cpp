@@ -1322,5 +1322,154 @@ TEST(SeamCheatsOnCurse, WoundPartyLeavesThePartyOnOneAtCamp) {
   EXPECT_EQ(r.pc().seams().status("cheat-wound-party").fired, 1u);
 }
 
+// --- Secret of the Silver Blades (#608) -------------------------------------
+//
+// The third program's row (seam_cheats.cpp, `secret_cheats`): the same
+// three seams at its own points, in a record longer again.
+
+/// Secret's record offsets and data-segment facts, as its profile has them.
+namespace secret {
+constexpr std::uint16_t rec_next = 0x19D;
+constexpr std::uint16_t rec_scratch = 0x1A1;
+constexpr std::uint16_t rec_status = 0x1A6;
+constexpr std::uint16_t rec_held = 0x1A7;
+constexpr std::uint16_t rec_side = 0x1A8;
+constexpr std::uint16_t rec_hp = 0x1B5;
+constexpr std::uint16_t data_mode = 0x67E7;
+constexpr std::uint16_t data_roster_head = 0x7D3C;
+constexpr std::uint16_t data_side_counts = 0x87CC;
+constexpr std::uint16_t damage_entry = 0x15C1;
+constexpr std::uint16_t end_check = 0x0F61;
+constexpr std::uint16_t combat_load_word = 0x08A0;
+}  // namespace secret
+
+[[nodiscard]] sha256_digest secret_digest() {
+  sha256_digest digest;
+  EXPECT_TRUE(parse_digest(
+      "8b937984878ec72aa531335dd381a21bda67675408b5fd8e716a35ccd049999e",
+      digest));
+  return digest;
+}
+
+/// A machine told Secret of the Silver Blades is running.
+struct secret_rig : rig {
+  secret_rig() { box->seams().loaded(secret_digest(), image_load_segment); }
+
+  void secret_record(std::uint16_t offset, std::uint8_t side, bool standing,
+                     std::uint8_t hp, std::uint16_t scratch_offset,
+                     std::uint16_t next_offset) const {
+    const auto at = [offset](std::uint16_t field) {
+      return static_cast<std::uint16_t>(offset + field);
+    };
+    put_byte(record_segment, at(secret::rec_side), side);
+    put_byte(record_segment, at(secret::rec_held), standing ? 1 : 0);
+    put_byte(record_segment, at(secret::rec_hp), hp);
+    put_byte(record_segment, at(secret::rec_status), standing ? 0 : 6);
+    put_word(record_segment, at(secret::rec_scratch), scratch_offset);
+    put_word(record_segment, at(secret::rec_scratch + 2),
+             scratch_offset == 0 ? 0 : scratch_segment);
+    put_word(record_segment, at(secret::rec_next), next_offset);
+    put_word(record_segment, at(secret::rec_next + 2),
+             next_offset == 0 ? 0 : record_segment);
+  }
+};
+
+TEST(SeamCheatsOnSecret, AreAvailableWithPointsOfTheirOwn) {
+  const secret_rig r;
+  for (const std::string_view id :
+       {"cheat-invulnerable", "cheat-kill-all", "cheat-wound-party"}) {
+    const seam_definition& seam = r.seam(id);
+    const std::span<const seam_point> mine = points_on(seam, secret_digest());
+    ASSERT_EQ(mine.size(), seam.points.size()) << id;
+    EXPECT_NE(mine.data(), seam.points.data()) << id;
+    EXPECT_NE(mine.data(), points_on(seam, curse_digest()).data()) << id;
+    EXPECT_EQ(r.pc().seams().enable(id), seam_reason::none) << id;
+  }
+  EXPECT_EQ(
+      points_on(r.seam("cheat-invulnerable"), secret_digest()).front().offset,
+      secret::damage_entry);
+  const seam_point end =
+      points_on(r.seam("cheat-kill-all"), secret_digest()).back();
+  EXPECT_EQ(end.offset, secret::end_check);
+  EXPECT_EQ(end.module.load_segment_at, secret::combat_load_word);
+}
+
+TEST(SeamCheatsOnSecret, InvulnerableZeroesAPartyMembersDamage) {
+  const secret_rig r;
+  ASSERT_EQ(r.pc().seams().enable("cheat-invulnerable"), seam_reason::none);
+  r.secret_record(0x0100, 0, true, 20, 0, 0);
+  constexpr std::uint16_t sp = 0x0400;
+  r.put_word(data_segment, sp + 4, 7);
+  r.put_word(data_segment, sp + 6, 0x0100);
+  r.put_word(data_segment, sp + 8, record_segment);
+  r.halt_at(image_load_segment, secret::damage_entry, data_segment,
+            data_segment, sp);
+  r.pc().step();
+  EXPECT_EQ(r.word_at(data_segment, sp + 4), 0u);
+
+  // An enemy's, at the same entry, is left alone.
+  r.secret_record(0x0100, 1, true, 20, 0, 0);
+  r.put_word(data_segment, sp + 4, 7);
+  r.halt_at(image_load_segment, secret::damage_entry, data_segment,
+            data_segment, sp);
+  r.pc().step();
+  EXPECT_EQ(r.word_at(data_segment, sp + 4), 7u);
+}
+
+TEST(SeamCheatsOnSecret, CursesEntryIsNotAPointHere) {
+  const secret_rig r;
+  ASSERT_EQ(r.pc().seams().enable("cheat-invulnerable"), seam_reason::none);
+  r.secret_record(0x0100, 0, true, 20, 0, 0);
+  constexpr std::uint16_t sp = 0x0400;
+  r.put_word(data_segment, sp + 4, 7);
+  r.put_word(data_segment, sp + 6, 0x0100);
+  r.put_word(data_segment, sp + 8, record_segment);
+  r.halt_at(image_load_segment, curse::damage_entry, data_segment, data_segment,
+            sp);
+  r.pc().step();
+  EXPECT_EQ(r.word_at(data_segment, sp + 4), 7u);
+}
+
+TEST(SeamCheatsOnSecret, KillAllDownsTheEnemiesAtTheEndCheck) {
+  const secret_rig r;
+  r.arm_kill_all();
+  r.put_word(image_load_segment, secret::combat_load_word, overlay_segment);
+
+  r.put_byte(data_segment, secret::data_mode, 5);
+  r.put_word(data_segment, secret::data_roster_head, 0x0100);
+  r.put_word(data_segment, secret::data_roster_head + 2, record_segment);
+  r.put_byte(data_segment, secret::data_side_counts + 0, 1);
+  r.put_byte(data_segment, secret::data_side_counts + 1, 1);
+  r.secret_record(0x0100, 0, true, 20, 0, 0x0300);
+  r.secret_record(0x0300, 1, true, 9, 0x0040, 0);
+  r.put_byte(scratch_segment, 0x0040 + 3, 0x55);
+
+  r.halt_at(overlay_segment, secret::end_check, data_segment, data_segment,
+            0x0400);
+  r.pc().step();
+
+  EXPECT_EQ(r.byte_at(record_segment, 0x0300 + secret::rec_status), 6u);
+  EXPECT_EQ(r.byte_at(record_segment, 0x0300 + secret::rec_held), 0u);
+  EXPECT_EQ(r.byte_at(record_segment, 0x0300 + secret::rec_hp), 0u);
+  EXPECT_EQ(r.byte_at(scratch_segment, 0x0040 + 3), 0u);
+  EXPECT_EQ(r.byte_at(data_segment, secret::data_side_counts + 1), 0u);
+  EXPECT_EQ(r.byte_at(record_segment, 0x0100 + secret::rec_hp), 20u);
+  EXPECT_EQ(r.byte_at(data_segment, secret::data_side_counts + 0), 1u);
+}
+
+TEST(SeamCheatsOnSecret, WoundPartyLeavesThePartyOnOneAtCamp) {
+  const secret_rig r;
+  r.arm_wound_party();
+  r.put_byte(data_segment, secret::data_mode, 2);
+  r.put_word(data_segment, secret::data_roster_head, 0x0100);
+  r.put_word(data_segment, secret::data_roster_head + 2, record_segment);
+  r.secret_record(0x0100, 0, true, 30, 0, 0x0300);
+  r.secret_record(0x0300, 0, true, 12, 0, 0);
+  r.step_anywhere();
+  EXPECT_EQ(r.byte_at(record_segment, 0x0100 + secret::rec_hp), 1u);
+  EXPECT_EQ(r.byte_at(record_segment, 0x0300 + secret::rec_hp), 1u);
+  EXPECT_EQ(r.pc().seams().status("cheat-wound-party").fired, 1u);
+}
+
 }  // namespace
 }  // namespace amberfolio::machine
