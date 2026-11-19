@@ -424,8 +424,9 @@ shells carry it. It exits as **1.3**. Tracking: #611.
 - The store copy identifies itself as **version 1.30**, of May 18,
   1990. Its `START.EXE` is EXEPACK-packed and 72,097 bytes. The
   launcher installs the game at `C:\SECRET` and starts it there. Forty
-  program and data files and a configuration file. The GOG copy is not
-  yet captured.
+  program and data files and a configuration file. The GOG copy is the
+  same forty files byte for byte, installed at the root, with its own
+  configuration file (AdLib, and `C:\SAVE\`).
 - `BLADES.CFG` has nineteen lines: graphics, sound, the alternate
   input, **the save directory on line 4**, a flag, and fourteen
   numbers. As shipped it says EGA, Tandy and the mouse.
@@ -469,7 +470,7 @@ shells carry it. It exits as **1.3**. Tracking: #611.
   two, a journal word at the boot and a rule-book word at the camp's
   `SAVE`, and in this copy's files each is stepped over by a jump
   (`docs/playable-secret.md`). So the code-wheel seam is not ported for
-  it; another seller's copy is measured when one is here.
+  it. The GOG copy's program files are Steam's byte for byte.
 - **The camp has its own Fix**, and the adventuring bar its own move
   mode.
 - **Not yet known:** where its character import looks; whether there is
@@ -508,8 +509,8 @@ there. That is this machine's answer, said once in the log as a notice
 **Phases.** Each may take an interim tag.
 
 - **S0 — Ready** (#606).
-  - The Steam edition row (`data/editions.json`, `machine/edition.cpp`),
-    and the GOG one when that copy is captured.
+  - The Steam and GOG edition rows (`data/editions.json`,
+    `machine/edition.cpp`).
   - `BLADES.CFG` and its line roles in the edition row.
   - The save-layer rows that have been watched.
   - The snapshot disks.
@@ -646,9 +647,8 @@ there. That is this machine's answer, said once in the log as a notice
   differ only in two bytes of the copy-protection overlay and in files
   the repack adds, and every seam is valid on both (`docs/seams.md` §5,
   #396). Curse has its Steam and GOG copies, one v1.3 image in two
-  rows. Secret of the Silver Blades has the Steam version 1.30 copy;
-  the GOG copy is captured in S0 (§7, M10). Other builds of any of the
-  programs are open.
+  rows, and so has Secret of the Silver Blades, one version 1.30 image
+  in two rows. Other builds of any of the programs are open.
 - Which **document** editions to fingerprint. The table
   (`machine/document.cpp`) has a code wheel (a fact; it gates nothing
   since #290) and an Adventurer's Journal for each of the GOG and Steam
