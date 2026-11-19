@@ -67,8 +67,9 @@ const edition_requirements& repack() { return row("por-archive"); }
 /// Curse of the Azure Bonds as Steam sells it, and as GOG does (#551).
 const edition_requirements& curse() { return row("curse-steam"); }
 const edition_requirements& curse_gog() { return row("curse-gog"); }
-/// Secret of the Silver Blades as Steam sells it (#606).
+/// Secret of the Silver Blades as Steam sells it, and as GOG does (#606).
 const edition_requirements& secret() { return row("secret-steam"); }
+const edition_requirements& secret_gog() { return row("secret-gog"); }
 
 /// What a player's POOL.CFG hashes to: whatever their launcher wrote,
 /// which is nothing the table knows.
@@ -123,7 +124,7 @@ TEST(EditionFacts, EveryEditionIsOneTheMachineRecognizes) {
 TEST(EditionFacts, TheStoreReleaseIsTheBaselineAndTheRepackKeepsItsId) {
   const std::span<const edition_requirements> table =
       edition_requirements_table();
-  ASSERT_EQ(table.size(), 5U);
+  ASSERT_EQ(table.size(), 6U);
   EXPECT_EQ(&table[0], &store());
   // The site keys on ids and the session library pins this disk, so the
   // repack's id is the one it has always had.
@@ -136,11 +137,13 @@ TEST(EditionFacts, TheStoreReleaseIsTheBaselineAndTheRepackKeepsItsId) {
   EXPECT_EQ(&table[3], &curse_gog());
   EXPECT_NE(curse().fingerprint, store().fingerprint);
   EXPECT_EQ(curse().fingerprint, curse_gog().fingerprint);
-  // And Secret of the Silver Blades, a third program, in the one release
-  // captured so far.
+  // And Secret of the Silver Blades, a third program, in two releases of
+  // one program image.
   EXPECT_EQ(&table[4], &secret());
+  EXPECT_EQ(&table[5], &secret_gog());
   EXPECT_NE(secret().fingerprint, store().fingerprint);
   EXPECT_NE(secret().fingerprint, curse().fingerprint);
+  EXPECT_EQ(secret().fingerprint, secret_gog().fingerprint);
   EXPECT_EQ(machine::known_editions().size(), 3U);
 }
 
@@ -195,6 +198,7 @@ TEST(EditionFacts, EachRowStatesWhereItIsInstalled) {
   EXPECT_EQ(curse().install, "\\CURSE");
   EXPECT_EQ(curse_gog().install, "\\");
   EXPECT_EQ(secret().install, "\\SECRET");
+  EXPECT_EQ(secret_gog().install, "\\");
   for (const edition_requirements& edition : edition_requirements_table()) {
     ASSERT_THAT(edition.install, Not(IsEmpty())) << edition.id;
     EXPECT_EQ(edition.install.front(), '\\') << edition.id;
@@ -564,6 +568,44 @@ TEST(EditionMatch, TheShippedConfigurationTellsCursesTwoReleasesApart) {
   const edition_match lost = match_edition(renamed);
   ASSERT_EQ(lost.edition, &curse());
   EXPECT_TRUE(misses(lost, "CURSE.CFG"));
+}
+
+TEST(EditionMatch, TheShippedConfigurationTellsSecretsTwoReleasesApart) {
+  // As for Curse of the Azure Bonds: every file but BLADES.CFG is the
+  // same in both, the two install in different places, and the
+  // configuration file as each seller ships it decides (#606).
+  for (const edition_requirements* edition : {&secret(), &secret_gog()}) {
+    const edition_match match = match_edition(whole_copy(*edition));
+    ASSERT_EQ(match.edition, edition) << edition->id;
+    EXPECT_TRUE(match.complete()) << edition->id;
+    EXPECT_THAT(match.unclaimed, IsEmpty()) << edition->id;
+  }
+  for (const edition_artifact& artifact : secret().artifacts) {
+    if (artifact.kind == artifact_kind::file) {
+      EXPECT_TRUE(std::ranges::any_of(secret_gog().artifacts,
+                                      [&](const edition_artifact& other) {
+                                        return other.name == artifact.name &&
+                                               other.fingerprint ==
+                                                   artifact.fingerprint &&
+                                               other.size == artifact.size;
+                                      }))
+          << artifact.name;
+    }
+  }
+  EXPECT_EQ(secret().artifacts.size(), secret_gog().artifacts.size());
+
+  // A file the player has changed answers for either row by name, and
+  // the earlier row is the answer, complete.
+  std::vector<offered_file> changed = whole_copy(secret_gog());
+  for (offered_file& file : changed) {
+    if (file.name == "BLADES.CFG") {
+      file.digest = digest_of(players_config);
+    }
+  }
+  const edition_match match = match_edition(changed);
+  ASSERT_EQ(match.edition, &secret());
+  EXPECT_TRUE(match.complete());
+  EXPECT_THAT(match.unclaimed, IsEmpty());
 }
 
 TEST(EditionMatch, KnowsNothingRatherThanGuessingWhenNothingBelongs) {
