@@ -71,16 +71,23 @@ now and then, and a line with another `ds` is not this table's.
 **The map** is at the far pointer at `89CE` (offset, then segment): four
 planes of 256 bytes, a byte a square at `row * 16 + column`. Plane 0
 holds the north and east walls as its high and low nibbles and plane 1
-the south and west; a zero nibble is no wall. Plane 3 holds two bits a
-side (north in bits 0 and 1, then east, south, west): on a side with a
-wall, 0 is shut and 1 lets the party through, a door. A route computed
-from those planes, eighteen keys from the mayor's house to the east
-gate, walked square for square.
+the south and west; a zero nibble is no wall, and any other is the kind
+of wall drawn there. Plane 3 holds two bits a side (north in bits 0 and
+1, then east, south, west), and a side with a wall and a 1 there lets
+the party through. **A 0 there is not always shut**: walls of kinds 3
+and 4 with a 0 stopped the party, and a wall of kind 8, drawn as a
+wooden door, let it through with a 0. Which kinds are doors has not been
+worked out past those. A route computed from the planes, eighteen keys
+from the mayor's house to the east gate with no wall on the way, walked
+square for square.
 
 **The status line's square is not always the stored one.** In the town
-the two agree. In the ruins the line reads the stored column less eleven
-and the stored row plus thirteen: the party arrives at stored `11,2` and
-the line says `0,15`.
+the two agree. The ruins are wider than sixteen squares, and the map at
+the pointer is a part of them that the program changes as the party
+crosses out of it: the party arrives at stored `11,2` with the line
+saying `0,15`; at stored `14,2` the line says `3,15`; and one step east
+of that, through a door, the party is at stored `10,3`, and a step
+further at stored `11,3` with the line saying `5,15`.
 
 ---
 
@@ -151,8 +158,10 @@ Movement keys are 150 frames apart. Two signs go by on the street and
 neither stops the walk. The thirteenth step is into the gate, where the
 program asks whether to leave the town, and `Y` puts the party in the
 ruins: stored `11,2` facing east, `0,15` on the status line. From there
-the party can walk eleven squares without opening anything, and nothing
-else of the ruins has been driven.
+eleven squares are joined by sides the map marks as letting the party
+through. A door it does not mark opens to a step all the same, and the
+one east of stored `14,2` leads out to a street. Nothing further of the
+ruins has been driven.
 
 ## Leg 4: a fight
 
