@@ -48,7 +48,8 @@ namespace {
 /// as page scans, read by an engine out of rectangles measured off them.
 ///
 /// **Secret of the Silver Blades' journal** arrived with #609: the Steam
-/// release's, typeset as text with its pictures placed as images.
+/// release's, typeset as text with its pictures placed as images. The
+/// GOG release's is page scans and has no row.
 constexpr std::array<document_edition, 7> table{{
     {.fingerprint =
          "0db301aeac4d2ec1e63b409ca6d3c9d39c63381d6712ff2ce7edc0528c6586fd",

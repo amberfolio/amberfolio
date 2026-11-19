@@ -150,29 +150,37 @@ TEST(EditionFacts, TheStoreReleaseIsTheBaselineAndTheRepackKeepsItsId) {
 TEST(EditionFacts, SecretsSteamRowIsItsFortyFilesAndItsConfiguration) {
   // Counted on the copy (#606): forty program and data files, and
   // BLADES.CFG as Steam ships it. And one document, the journal Steam
-  // ships beside it (#609).
-  std::size_t files = 0;
-  std::size_t configurations = 0;
-  std::size_t documents = 0;
-  for (const edition_artifact& artifact : secret().artifacts) {
-    switch (artifact.kind) {
-      case artifact_kind::file:
-        ++files;
-        break;
-      case artifact_kind::configuration:
-        ++configurations;
-        EXPECT_EQ(artifact.name, "BLADES.CFG");
-        EXPECT_THAT(artifact.fingerprint, Not(IsEmpty()));
-        break;
-      case artifact_kind::document:
-        ++documents;
-        EXPECT_EQ(artifact.document, machine::document_kind::journal);
-        break;
+  // ships beside it (#609), which the GOG row names too, as both of
+  // Curse's rows name both of its journals: either serves the one
+  // program.
+  for (const edition_requirements* edition : {&secret(), &secret_gog()}) {
+    std::size_t files = 0;
+    std::size_t configurations = 0;
+    std::size_t documents = 0;
+    for (const edition_artifact& artifact : edition->artifacts) {
+      switch (artifact.kind) {
+        case artifact_kind::file:
+          ++files;
+          break;
+        case artifact_kind::configuration:
+          ++configurations;
+          EXPECT_EQ(artifact.name, "BLADES.CFG");
+          EXPECT_THAT(artifact.fingerprint, Not(IsEmpty()));
+          break;
+        case artifact_kind::document:
+          ++documents;
+          EXPECT_EQ(artifact.document, machine::document_kind::journal);
+          EXPECT_EQ(
+              artifact.fingerprint,
+              "153190ec7189e3cd72cdb608fad54aa89786a5a6b0e959a898c514b45d9e"
+              "66c3");
+          break;
+      }
     }
+    EXPECT_EQ(files, 40U) << edition->id;
+    EXPECT_EQ(configurations, 1U) << edition->id;
+    EXPECT_EQ(documents, 1U) << edition->id;
   }
-  EXPECT_EQ(files, 40U);
-  EXPECT_EQ(configurations, 1U);
-  EXPECT_EQ(documents, 1U);
   EXPECT_EQ(secret().boot, "START.EXE");
 
   // A whole copy is that row, complete, and a copy whose player has

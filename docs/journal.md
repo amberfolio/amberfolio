@@ -82,7 +82,11 @@ the suite checks row for row.
 Secret of the Silver Blades' journal has one numbered section,
 seventy-two entries. Its one edition in the table is the Steam
 release's: a booklet of thirty-three pages that is the game's rules as
-well, with the entries on nine of them.
+well, with the entries on nine of them. **Its GOG journal is not in the
+table**: it is the printed booklet as page scans (`f26c9062…a9a48a74`),
+thirty-three pages, every one a `/DCTDecode` RGB image, which would need
+an engine and a fact table measured off the scans the way §3 measures
+Curse's.
 
 Pool of Radiance's two have the same ninety-nine items by the same
 numbers — 58 entries, 23 tales, 18 proclamations — which the suite

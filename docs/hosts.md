@@ -2179,7 +2179,8 @@ worth, the same four `document` artifacts on both of its rows of
 `data/editions.json`, because any of them serves the one program; the
 GOG release's two are named `archive release` in the table. Curse of the
 Azure Bonds has two journals, on both of its rows for the same reason.
-Secret of the Silver Blades has one, on its one row:
+Secret of the Silver Blades has one, the Steam release's journal, on
+both of its rows:
 
 | document | kind | sha256 |
 | --- | --- | --- |
