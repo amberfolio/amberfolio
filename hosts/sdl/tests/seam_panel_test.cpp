@@ -417,9 +417,9 @@ TEST(SeamPanel, ListsOnlyTheLoadedProgramsSeams) {
   EXPECT_EQ(curse_rows.size() + another_programs, curse.count());
 }
 
-TEST(SeamPanel, AProgramWithThreeSeamsListsThoseThree) {
-  // Secret of the Silver Blades has the debug cheats' facts and no other
-  // seam's (#608), so the cheats are its panel and every other row is
+TEST(SeamPanel, AProgramWithAFewSeamsListsThoseAndNoOther) {
+  // Secret of the Silver Blades has the facts of the seams ported to it
+  // so far (#608, #609), so those are its panel and every other row is
   // another program's.
   const auto programs = machine::known_editions();
   ASSERT_EQ(programs.size(), 3U);
@@ -427,10 +427,13 @@ TEST(SeamPanel, AProgramWithThreeSeamsListsThoseThree) {
   load(secret, programs[2]);
   ASSERT_NE(secret.known_edition(), nullptr);
   const std::vector<panel_row> rows = panel_rows(secret);
-  ASSERT_EQ(rows.size(), 3U);
-  for (const std::string_view cheat :
-       {"cheat-invulnerable", "cheat-kill-all", "cheat-wound-party"}) {
-    EXPECT_TRUE(lists(rows, cheat)) << cheat;
+  for (const std::string_view ported :
+       {"cheat-invulnerable", "cheat-kill-all", "cheat-wound-party",
+        "font-sans", "font-chisel"}) {
+    EXPECT_TRUE(lists(rows, ported)) << ported;
+  }
+  for (const std::string_view absent : {"encamp-fix", "explored"}) {
+    EXPECT_FALSE(lists(rows, absent)) << absent;
   }
   std::size_t another_programs = 0;
   for (std::size_t i = 0; i < secret.count(); ++i) {

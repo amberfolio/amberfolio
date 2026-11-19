@@ -150,8 +150,19 @@ constexpr font_facts curse_font{.profile = curse_of_the_azure_bonds,
                                 .row_copied_offset = 0x5A91,
                                 .index_above_bp = 4};
 
+/// Secret of the Silver Blades (#609). Curse of the Azure Bonds' blitter,
+/// instruction for instruction: the glyph copied into eight bytes just
+/// past the font's far pointer, and the EGA path called with the glyph's
+/// index. The font is the same 177 glyphs, in a file of its own.
+constexpr font_facts secret_font{.profile = secret_of_the_silver_blades,
+                                 .buffer_glyphs = 177,
+                                 .row_fetched_offsets = {},
+                                 .row_copied_offset = 0x62B2,
+                                 .index_above_bp = 4};
+
 constexpr auto font_binaries =
-    fingerprints_of(std::array{&pool_of_radiance, &curse_of_the_azure_bonds});
+    fingerprints_of(std::array{&pool_of_radiance, &curse_of_the_azure_bonds,
+                               &secret_of_the_silver_blades});
 
 /// Swap the row in DL for `Which`'s, if the glyph is one it replaces.
 template <const font_facts& F, text_face::face Which>
@@ -256,14 +267,21 @@ constexpr std::array<seam_point, 1> copied_row_points{
 
 /// The points on every program but the baseline, whose points are the
 /// definition's own (seam.h, schema 9).
-constexpr std::array<seam_program_points, 1> sans_programs{
+constexpr std::array<seam_program_points, 2> sans_programs{
     {{.fingerprint = curse_of_the_azure_bonds.fingerprint,
       .points = copied_row_points<
-          curse_font, &swap_copied_row<curse_font, text_face::face::sans>>}}};
-constexpr std::array<seam_program_points, 1> chisel_programs{
+          curse_font, &swap_copied_row<curse_font, text_face::face::sans>>},
+     {.fingerprint = secret_of_the_silver_blades.fingerprint,
+      .points = copied_row_points<
+          secret_font, &swap_copied_row<secret_font, text_face::face::sans>>}}};
+constexpr std::array<seam_program_points, 2> chisel_programs{
     {{.fingerprint = curse_of_the_azure_bonds.fingerprint,
       .points = copied_row_points<
-          curse_font, &swap_copied_row<curse_font, text_face::face::chisel>>}}};
+          curse_font, &swap_copied_row<curse_font, text_face::face::chisel>>},
+     {.fingerprint = secret_of_the_silver_blades.fingerprint,
+      .points = copied_row_points<
+          secret_font,
+          &swap_copied_row<secret_font, text_face::face::chisel>>}}};
 
 /// The group the faces share: at most one is on.
 constexpr std::string_view font_group = "font";
