@@ -763,6 +763,16 @@ inline constexpr program_profile curse_of_the_azure_bonds{
 /// fix-ups relocate (`docs/seams.md` §4).
 namespace secret_of_the_silver_blades_modules {
 
+/// Overlay 4: the event-script interpreter (`seam_message_pause.cpp`). The
+/// stub's record is at image `0x0500`.
+inline constexpr seam_module interpreter{
+    .file = "GAME.OVR",
+    .file_offset = 3083,
+    .length = 16637,
+    .digest =
+        "323091fdc3954c6f9a4e8fb70eb337b69e7ff9211679c52bfab225414f8dfc34",
+    .load_segment_at = 0x510};
+
 /// Overlay 11: tactical combat's round loop and its end check. The stub's
 /// record is at image `0x0890`.
 inline constexpr seam_module combat{
@@ -794,7 +804,7 @@ inline constexpr program_profile secret_of_the_silver_blades{
     .roster_draw_offset = {},
     .screen_composer_offset = {},
     .key_pending_entry = {},
-    .key_read_entry = {},
+    .key_read_entry = 0xBA9C,
     .clear_region_entry = {},
     .clear_screen_entry = {},
     .draw_frame_entry = {},
@@ -802,7 +812,7 @@ inline constexpr program_profile secret_of_the_silver_blades{
     .command_bar_entry = {},
     .roster_drawn_return = {},
     .titles_overlay = {},
-    .interpreter_overlay = {},
+    .interpreter_overlay = secret_of_the_silver_blades_modules::interpreter,
     .combat_overlay = secret_of_the_silver_blades_modules::combat,
     .aim_overlay = {},
     .adventure_overlay = {},
@@ -818,7 +828,7 @@ inline constexpr program_profile secret_of_the_silver_blades{
     .script_runner_load_segment_at = {},
     .rest_load_segment_at = {},
     .appraise_load_segment_at = {},
-    .death_load_segment_at = {},
+    .death_load_segment_at = 0x18C0,  // overlay 34
     .menu_key_read_call = {},
     .menu_local_bar = {},
     .menu_bar_capacity = {},
