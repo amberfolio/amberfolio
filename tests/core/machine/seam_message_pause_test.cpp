@@ -885,7 +885,7 @@ constexpr std::uint16_t death_word = 0x18C0;
 constexpr std::uint16_t death_in_a_fight = 0x1074;
 constexpr std::uint16_t death_elsewhere = 0x0E06;
 constexpr std::uint16_t data_state_block = 0x67CA;
-/// The game's pause at the game speed the shipped saves hold, 4.
+/// The game's pause at the game speed the program starts with, 4.
 constexpr std::uint16_t speed_four = 400;
 constexpr held_facts facts{.fingerprint = fingerprint,
                            .push_point = push_point,

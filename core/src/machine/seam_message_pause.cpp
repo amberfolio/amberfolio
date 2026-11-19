@@ -151,11 +151,13 @@
 // 100; the runtime measures its millisecond the same way, and it is the
 // same 0.6 of one at the 386 governor, so a pause is held to a moment
 // here too; the script has the same animation step; and the death
-// routine's two pauses keep their length for Curse's reason, a sound
-// that runs on until the next one takes the chip. One thing is this
-// program's compiler's: it restores SP from BP before every `pop bp`, so
-// a call that is a routine's last statement returns to that `mov sp,bp`
-// and not to the `pop bp` the same call returns to on Curse.
+// routine's two pauses keep their length, because the pause is how much
+// of the death's sound is heard: the program cuts the sound off a
+// little after it, at about a third of its length, and lengthened the
+// sound plays whole. One thing is this program's compiler's: it restores
+// SP from BP before every `pop bp`, so a call that is a routine's last
+// statement returns to that `mov sp,bp` and not to the `pop bp` the same
+// call returns to on Curse.
 //
 //
 // What it is not yet (docs/seams.md §8.5)

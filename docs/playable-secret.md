@@ -24,8 +24,8 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
 
 No `--install`: the Steam copy is recognized and laid out at `\SECRET`
 (`docs/hosts.md` §2c). No seam is needed to play, and the ones available
-on this program are the three debug cheats and the two text faces
-(`docs/seams.md` §10). Sixty
+on this program are the three debug cheats, the two text faces and the
+message pause (`docs/seams.md` §10). Sixty
 frames to the virtual second; `TICKS = FRAME * 19,886` at `--speed 386`
 is close enough for `--until`.
 
@@ -43,7 +43,7 @@ from this table.
 
 | screen | what it is | keys |
 |---|---|---|
-| the titles | pictures and credits, then `PLAY DEMO` | any key skips to `PLAY DEMO`; `Return` takes `PLAY` |
+| the titles | pictures and credits, then `PLAY DEMO` | any key skips to `PLAY DEMO`; `Return` takes `PLAY`, and `D` plays the demonstration |
 | the party menu | a list with a highlight over a `SELECT` bar | `Up` and `Down` move the highlight, `Return` takes the row. **A letter is not a command here** |
 | a prompt on the bottom line | `LOAD WHICH GAME: A B`, `YES NO` | the letter |
 | a page of story | text under a picture, `PRESS <ENTER>/<RETURN> TO CONTINUE` | `Return` |
@@ -204,6 +204,23 @@ Each is the leg above with one seam (`docs/seams.md` §10):
 own in a recording, and a `contrast` pair has to checkpoint at the same
 ticks (`tests/sessions/README.md`).
 
+## The message pause on this program
+
+The program's own pause after a message is 241 ms at `--speed 386` and
+the game speed slot A holds, 4 (`docs/seams.md` §10 has the
+measurement). A line of a fight stands for that pause and no longer, 14
+frames. Leg 4 makes 49 pauses, the first two as the encounter opens and
+the rest in the fight.
+
+| run | what it shows |
+|---|---|
+| leg 2 with `--seam message-pause` | no pause is reached: the opening's pages wait for `Return`, the script's print is reached 37 times, and the run is leg 2's |
+| leg 4 with `--seam message-pause` | each line of the fight stands 90 frames, 1,500 ms, and the death of an enemy keeps its 241 ms. **Leg 4's keys no longer fit the fight**: a key pressed during a pause ends that pause and is used up, so eight of them (a step of the pacing, three `Q` and the four that answer the fight's end) do that and nothing else, and the fight is still being fought at the leg's last frame |
+| `--press Return@600 --press D@900`, with `--seam message-pause` | the demonstration plays to its end, by frame 7,600 where it ends by frame 4,400 without the seam. The program runs it at game speed 9, so its own pauses are 540 ms, and each of its lines is held by a few of them in a row |
+
+A script written for the seam leaves a second and a half after each
+line, or presses a key to end the pause and another for the command.
+
 ## The copy protection
 
 The program has two questions, and **the Steam copy asks neither**: in
@@ -222,7 +239,7 @@ where that mechanism is (`docs/seams.md` §10).
 
 ## The sessions
 
-Nine, `secret-*`, each on the Steam copy with its shipped slots (the
+Eleven, `secret-*`, each on the Steam copy with its shipped slots (the
 `secret-slots` snapshot) at `--speed 386` and `--wall none`.
 
 | session | seams | relation | what it is |
@@ -235,3 +252,5 @@ Nine, `secret-*`, each on the Steam copy with its shipped slots (the
 | `secret-fight-cheat` | cheat-invulnerable | `contrast secret-fight` | 339 of 371 identical, divergent from tick 514,192,302 |
 | `secret-boot-font-sans`, `secret-boot-font-chisel` | a text face | `contrast secret-boot` | 1 of 15 identical: the face is seen from the first text on |
 | `secret-fight-kill` | cheat-kill-all, pulled | `contrast secret-fight` | 324 of 371 identical, divergent from tick 491,204,086, the pull |
+| `secret-camp-message-pause` | message-pause | `identical secret-camp` | no pause is reached: all 106 checkpoints |
+| `secret-fight-pause` | message-pause | `contrast secret-fight` | 315 of 371 identical, divergent from tick 476,011,182, in the two pauses that open the encounter |
