@@ -465,10 +465,15 @@ shells carry it. It exits as **1.3**. Tracking: #611.
 - Steam's Adventurer's Journal is typeset, with pictures. It should
   take the text route (#398) and the picture route (#328, #345), with
   no OCR.
-- **Not yet known:** where the program asks its copy-protection
-  question (nothing asks between the boot and character creation);
-  where its character import looks; whether the camp has its own Fix;
-  whether there is an overland.
+- **The Steam copy asks no copy-protection question.** The program has
+  two, a journal word at the boot and a rule-book word at the camp's
+  `SAVE`, and in this copy's files each is stepped over by a jump
+  (`docs/playable-secret.md`). So the code-wheel seam is not ported for
+  it; another seller's copy is measured when one is here.
+- **The camp has its own Fix**, and the adventuring bar its own move
+  mode.
+- **Not yet known:** where its character import looks; whether there is
+  an overland.
 
 **Carried from the first two games.**
 
@@ -540,7 +545,8 @@ there. That is this machine's answer, said once in the log as a notice
     temple, a camp, save and load, and whatever the game has where the
     first two have a wilderness.
   - The program's own keys on every screen, written down.
-  - The copy protection and the character import, found.
+  - The copy protection, found: this copy asks nothing. The character
+    import, still to find.
   - A session library pinned to the snapshots.
   - The save-layer row and per-slot sidecars.
 
@@ -565,7 +571,7 @@ there. That is this machine's answer, said once in the log as a notice
 | Seam | On Secret of the Silver Blades |
 |---|---|
 | debug cheats | Port, first (S2). |
-| `code-wheel` | Port if the program asks a question. First find where it asks, and whether the store copy accepts any answer. |
+| `code-wheel` | Not ported for the Steam copy, which asks nothing: both of the program's questions are stepped over in its files. Port it if a copy that asks turns up. |
 | screen text, scene, aim, text entry | Port the facts. The controls and the site both read them. |
 | `modern-controls` | Port piece by piece, and only where S2's key table shows a gap: the game's menus are already lists under a highlight. |
 | `font-sans`, `font-chisel` | Port. |

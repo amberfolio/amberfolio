@@ -8,8 +8,7 @@ menu. Nothing in this repository can run any of it (PLAN.md §6).
 
 The legs here are the ones driven so far. What is still to be driven is
 on #608: a new party, the shops, the temple and the training hall, the
-ruins past their first doors, where the program asks its copy-protection
-question, and where its import looks.
+ruins past their first street, and where its import looks.
 
 ---
 
@@ -203,6 +202,22 @@ Each is the leg above with one seam (`docs/seams.md` §10):
 **Pull on a frame a key is pressed in.** A pull is a checkpoint of its
 own in a recording, and a `contrast` pair has to checkpoint at the same
 ticks (`tests/sessions/README.md`).
+
+## The copy protection
+
+The program has two questions, and **the Steam copy asks neither**: in
+its files as sold, each is stepped over by an unconditional jump.
+
+| question | where the program would ask | what the Steam copy has there |
+|---|---|---|
+| a word of a journal entry, by entry and word number | the boot, between the titles and the party menu: a far call at image `0x02C9` into overlay 6 (file offset 22470, 766 bytes) at `+0x0112`, its answer compared with 1 | the instruction before the call, at image `0x02C7`, is a jump over it and over a four-entry check that follows it |
+| a word after a heading of the rule book, by page | the camp's `SAVE`, in overlay 19 (file offset 106597, 13089 bytes): the command counts itself in a word of the area record (`+0x278`; the record's far pointer is at `67C6`), compares the count with thirty, and the call to the question is at `+0x320B` | the instruction after that compare, at `+0x3208`, is a jump over the call and the count's reset |
+
+So no seam answers anything on this copy, and no leg types a word.
+Driven: the boot (leg 0) and a save at camp ask nothing. A copy from
+another seller is measured when one is here (#606); a copy whose two
+jumps are conditional would ask, and the code-wheel seam's two games are
+where that mechanism is (`docs/seams.md` §10).
 
 ## The sessions
 
