@@ -956,9 +956,9 @@ whose player has changed it ties and gets the earlier row, Steam's.
 `machine::known_editions()` has a third row and this table a fifth. It
 is forty files and `BLADES.CFG`, which Steam ships naming `T`, the mouse
 and `C:\SECRET\SAVE\`; its row carries that digest, as Curse's do. It
-ships saved games A and B, which are not artifacts. No seam has its
-facts yet, so the toggle panel lists none for it, and its key card is
-the rows that name no program. The GOG copy has not been captured.
+ships saved games A and B, which are not artifacts. The debug cheats are
+the only seams with its facts, so they are its toggle panel, and its key
+card is the rows that name no program. The GOG copy has not been captured.
 
 **`install` is the directory of the machine's filesystem the copy's files
 live in, which is also the DOS current directory when the program is
@@ -1946,7 +1946,8 @@ hosts. None of them is decoration.
 **The rows are the loaded program's seams** (#556). A seam whose facts
 describe another program, core's `wrong_binary`, is not listed once the
 program is one this build recognizes: on Curse of the Azure Bonds the
-panel has no row for `encamp-fix`, `explored` or `quick-steps`. Every
+panel has no row for `encamp-fix`, `explored` or `quick-steps`, and on
+Secret of the Silver Blades its rows are the three debug cheats. Every
 other reason stays on its row, a module not loaded yet
 and a document not presented among them. For a program this build does
 not recognize every seam reads `wrong_binary` and every row is listed,
@@ -2244,8 +2245,9 @@ and that reading counts only when it is one character or a blank. Nothing about 
   character in the middle of a picture is worth a second look.
 - **Per program.** The font's location is a fact about a binary, like a
   seam's addresses: the profile's `data_font_pointer`, `0x5E20` on Pool
-  of Radiance and `0x65AE` on Curse of the Azure Bonds, whose font is the
-  same sixty-four glyphs drawn the same way (#555). A program this build
+  of Radiance, `0x65AE` on Curse of the Azure Bonds and `0x7DC8` on
+  Secret of the Silver Blades, whose fonts are the same sixty-four glyphs
+  drawn the same way (#555, #608). A program this build
   has no location for answers `wrong_binary`; one that has not installed
   its font yet, `no_font`; no program at all, `no_program`.
 - **Measured, not assumed.** The grid was checked on every screen from

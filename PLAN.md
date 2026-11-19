@@ -451,10 +451,11 @@ shells carry it. It exits as **1.3**. Tracking: #611.
   titles run, the party menu comes up, and a character is created as
   far as the reroll. The party menu has no music: the Tandy chip is
   written continuously from there on, and is silent.
-- **The overlay manager is a later generation.** `GAME.OVR` begins
-  `TPOV` where the first two games' begins `FBOV`. Where a seam reads a
-  module's load segment (`docs/seams.md` §8.1, #131) is measured again
-  from this image, never assumed.
+- **The overlay manager is a later generation, and keeps the same
+  record.** `GAME.OVR` begins `TPOV` where the first two games' begins
+  `FBOV`. Where a seam reads a module's load segment was measured again
+  from this image and confirmed by a driven run: the word is where the
+  first two games keep it (`docs/seams.md` §4).
 - **The menus are lists.** Each row is chosen with the arrow keys under
   a highlight, over a `SELECT`/`EXIT` bar. The party menu has an
   `INITIALIZE MOUSE/JOYSTICK` row.
@@ -530,8 +531,10 @@ there. That is this machine's answer, said once in the log as a notice
   listened.*
 - **S2 — Playable** (#608).
   - The program profile, begun with the facts the debug cheats read,
-    and the cheats first.
-  - How a seam finds an overlay under this overlay manager.
+    and the cheats first. Done: the three cheats, and the screen's
+    text, work on this game.
+  - How a seam finds an overlay under this overlay manager. Done: as
+    under the first two games'.
   - The legs, in `docs/playable-secret.md`: a new party, loading saved
     games A and B, the town and a story event, a fight, a shop and the
     temple, a camp, save and load, and whatever the game has where the
@@ -596,11 +599,6 @@ there. That is this machine's answer, said once in the log as a notice
   still at file scope gets its refactor as a commit of its own, before
   the new row, and every port is gated on every committed session
   verifying with unchanged hashes.
-- **A later overlay manager.** Secret of the Silver Blades' overlay file
-  is a different generation from the first two games' (§7, M10). If its
-  manager moves or reloads a module in a way the load-segment word does
-  not describe, overlaid seam points need a second way to be resolved,
-  and that is found in S2, before any seam is ported.
 - **A player expects the mouse.** The store copy is configured for one
   and its launcher provides one. This machine answers that there is
   none (§7, M10), and the shells say the game is played from the

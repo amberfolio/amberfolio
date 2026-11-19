@@ -39,7 +39,7 @@ style every seam in the tree follows.
 | `about` | one line for a listing |
 | `fingerprints` | the SHA-256s of the program images the addresses below are facts about |
 | `points` | interception points: a module, an offset in it, a handler |
-| `programs` | the points on a program whose points are not `points`, one entry per such program (schema 9); `points_on()` picks by the running program. The debug cheats use it for Curse of the Azure Bonds |
+| `programs` | the points on a program whose points are not `points`, one entry per such program (schema 9); `points_on()` picks by the running program. The debug cheats use it for Curse of the Azure Bonds and Secret of the Silver Blades |
 | `trigger` | whether this seam is **pulled** rather than left on (§3a) |
 | `gate` | a document the player must present before it arms (§5); unused by every shipped seam |
 | `group` | seams that are **alternatives** share one: enabling one disables the others (§6); the text faces |
@@ -477,6 +477,19 @@ The read's facts say *which* module (check them against the overlay
 file's own table); the word says *where it is now*. A real seam carries
 both. An overlaid point with no `load_segment_at` is unfinished.
 
+**All three programs keep that word in the same place.** Secret of the
+Silver Blades was built with a later overlay manager: its overlay file
+begins `TPOV` where the first two programs' begins `FBOV`, and its
+modules follow those four bytes with no length between. The record each
+stub begins with is the one the first two have: the module's file offset
+and length four bytes in, the load-segment word sixteen bytes in, and
+zero in that word while the module is out. Measured on the image
+(thirty-seven records, each a module whose offset and lengths chain to
+the next one's) and confirmed by a driven run: at eight moments between
+the titles and a fight, every non-zero word named a segment holding that
+module's bytes, all but the words its fix-ups relocate, and a module the
+manager had dropped read zero.
+
 ---
 
 ## 5. Identity: fingerprints and editions
@@ -504,10 +517,11 @@ watches or calls (the keyboard's two entries, the clears, the frame and
 string drawers, the command-bar thunk, the roster drawer and the screen
 composer), the overlay modules with their load-segment words, and the
 menu-bar routine's and the adventuring loop's shared offsets. Each is
-stated once. Pool of Radiance has a profile (`pool_of_radiance`) and
-Curse of the Azure Bonds a partial one (`curse_of_the_azure_bonds`, the
-members its ported seams and reads use); `find_program_profile()` answers
-null for anything else.
+stated once. Pool of Radiance has a profile (`pool_of_radiance`), and
+Curse of the Azure Bonds and Secret of the Silver Blades a partial one
+each (`curse_of_the_azure_bonds`, `secret_of_the_silver_blades`: the
+members the seams and reads available on that program use);
+`find_program_profile()` answers null for anything else.
 
 A seam's `fingerprints` are the fingerprints of the profiles its facts
 are about (`fingerprints_of()`): each seam file names its program once
@@ -731,6 +745,10 @@ and never triggered.
 | `curse-quiet-all-on-sight` | contrast | `curse-quiet-all` (the same with `modern-controls` on: the title's bar is the first highlight drawn) |
 | `curse-fight-pause` | contrast | `curse-fight` (the pause that opens the brawl, and every combat line after it, stand longer) |
 | `quiet-fanfare` | contrast | `quiet` (the piece from the end of the boot's loading on: the chip's writes, and its registers while it plays) |
+| `secret-camp-cheats` | identical | `secret-camp` (the three cheats on Secret of the Silver Blades, none pulled) |
+| `secret-camp-wound` | contrast | `secret-camp` (the wound cheat pulled at camp) |
+| `secret-fight-cheat` | contrast | `secret-fight` (invulnerability through a wandering fight) |
+| `secret-fight-kill` | contrast | `secret-fight` (kill-all pulled as the fight begins) |
 | `curse-quiet-fanfare` | contrast | `curse-quiet` (Curse's piece from the end of the boot's loading to its end, the titles' own sound it plays over, and the driver's ticks it kept off the chip) |
 
 **A built-in fix has no pair** (`built_in_fixes()`, seam.h). It is on
@@ -2385,6 +2403,30 @@ one of the party stands and no enemy does), and `N` ends the fight
 won. `cheat-invulnerable` on through a quick-fought brawl fires 58
 times and no party member loses a hit point; `cheat-wound-party` pulled
 at camp leaves all six on one.
+
+**On Secret of the Silver Blades** (#608) it is the same mechanism a
+third time, and the same code: the damage routine and the end check are
+Curse of the Azure Bonds' instruction for instruction, with this
+program's offsets in them.
+
+| fact | Secret of the Silver Blades |
+| --- | --- |
+| data segment (paragraphs from the image) | `0xDE2` |
+| game mode byte; camp, combat | `0x67E7`; 2, 5 |
+| roster head | `0x7D3C` |
+| side counts, a byte each | `0x87CC` |
+| record: next, scratch, status, held, side, hit points | `0x19D`, `0x1A1`, `0x1A6`, `0x1A7`, `0x1A8`, `0x1B5` |
+| damage point | its overlay's stub entry, image `0x15C1` (the stub's record at `0x1510`, its thirtieth entry); the routine is overlay 27 `+0x2953` |
+| end check | overlay 11 (file offset 46059, 6681 bytes, load-segment word `0x08A0`) `+0x0F61` |
+
+Driven on the Steam copy, slot A, in a wandering fight in the ruins
+(`docs/playable-secret.md`): `--watch 87CC:2` reads `0406` (four
+enemies, six of the party) at the fight's start and `0006` at the frame
+of a pull (`fired=1`); the end check is reached at the end of the round
+and asks the **continue battle** question. `cheat-invulnerable` on
+through the same fight fires 28 times and no member loses a hit point,
+where three do without it. `cheat-wound-party` pulled at camp leaves all
+six on one, which the roster shows the next time the program draws it.
 
 **Host services**: none. **State**: none but the latch. **Keys**: none.
 

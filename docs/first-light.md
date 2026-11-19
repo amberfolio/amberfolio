@@ -116,8 +116,8 @@ The Steam copy (version 1.30, of May 18, 1990) runs from `C:\SECRET`
 with its own `BLADES.CFG`, which is where its edition row
 (`secret-steam`) puts it without `--install`. The log names it `Secret
 of the Silver Blades (START.EXE)` and says `save directory
-\SECRET\SAVE`, read off the file's fourth line. No seam is offered for
-it, and every figure below is with every seam off. Virtual time, read
+\SECRET\SAVE`, read off the file's fourth line. Every figure below is
+with every seam off. Virtual time, read
 off `--dump-every 30` stills (to the half second), to where each screen
 first appears:
 
