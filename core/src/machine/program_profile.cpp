@@ -14,8 +14,8 @@
 namespace amberfolio::machine {
 namespace {
 
-constexpr std::array<const program_profile*, 2> profiles{
-    &pool_of_radiance, &curse_of_the_azure_bonds};
+constexpr std::array<const program_profile*, 3> profiles{
+    &pool_of_radiance, &curse_of_the_azure_bonds, &secret_of_the_silver_blades};
 
 }  // namespace
 
