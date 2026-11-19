@@ -750,6 +750,8 @@ and never triggered.
 | `secret-camp-wound` | contrast | `secret-camp` (the wound cheat pulled at camp) |
 | `secret-fight-cheat` | contrast | `secret-fight` (invulnerability through a wandering fight) |
 | `secret-fight-kill` | contrast | `secret-fight` (kill-all pulled as the fight begins) |
+| `secret-camp-message-pause` | identical | `secret-camp` (the opening's pages wait for a key, and no pause is reached) |
+| `secret-fight-pause` | contrast | `secret-fight` (the pause as the encounter opens, and every combat line after it, stand longer) |
 | `curse-quiet-fanfare` | contrast | `curse-quiet` (Curse's piece from the end of the boot's loading to its end, the titles' own sound it plays over, and the driver's ticks it kept off the chip) |
 
 **A built-in fix has no pair** (`built_in_fixes()`, seam.h). It is on
@@ -2004,21 +2006,21 @@ with that program's facts, one `message_pause_facts` row per program
 (`seam_message_pause.cpp`) and its points in the definition's
 `programs`:
 
-| fact | Pool of Radiance | Curse of the Azure Bonds |
-| --- | --- | --- |
-| data segment (paragraphs from the image) | `0xC7C` | `0xABE` |
-| the pause: entry, `push ax`, far return of its `Delay` | `0x7E4E`, `0x7E5B`, `0x7E61` | `0x57F9`, `0x5806`, `0x580C` |
-| its length | game speed (DGROUP `0x49E2`) times 225 | game speed (DGROUP `0x4FC2`) times 100 |
-| `Delay`: entry, `dec dx`; paragraph:offset | `0xA69C`, `0xA6B7`; `0xA40:0x029C` | `0x868C`, `0x86A9`; `0x83F:0x029C` |
-| `ReadKey` | `0xA70F` | `0x86FD` |
-| interpreter overlay | overlay 3, load-segment word `0x200` | overlay 3 (file offset 2313, 14858 bytes), word `0x3D0` |
-| script pause's far return | `0x272B` | `0x2917` |
-| print opcode's calls (append, clear); its line | `0x0A69`, `0x0A91`; DGROUP `0x70C8` | `0x0A7F`, `0x0AAA`; DGROUP `0x7762` |
-| encounter menu's call (clear flag at `[SP+4]`) | `0x2176` | `0x235F` |
-| game-state block's far pointer; approach count | DGROUP `0x49D6`; `+0x582` | DGROUP `0x4FB6`; `+0x582` |
-| death routine; its far returns (fight, elsewhere) | overlay 31, word `0x3E10`; `0x1018`, `0x0E34` | overlay 33 (file offset 262204, 5061 bytes), word `0x1220`; `0x10D4`, `0x0E8A` |
-| a script's animation step, its far return | none | overlay 3 `0x3090` |
-| `Delay`'s millisecond at `386` | a millisecond | 0.6 of one |
+| fact | Pool of Radiance | Curse of the Azure Bonds | Secret of the Silver Blades |
+| --- | --- | --- | --- |
+| data segment (paragraphs from the image) | `0xC7C` | `0xABE` | `0xDE2` |
+| the pause: entry, `push ax`, far return of its `Delay` | `0x7E4E`, `0x7E5B`, `0x7E61` | `0x57F9`, `0x5806`, `0x580C` | `0x5FF7`, `0x6004`, `0x600A` |
+| its length | game speed (DGROUP `0x49E2`) times 225 | game speed (DGROUP `0x4FC2`) times 100 | game speed (data-segment `0x67D6`) times 100 |
+| `Delay`: entry, `dec dx`; paragraph:offset | `0xA69C`, `0xA6B7`; `0xA40:0x029C` | `0x868C`, `0x86A9`; `0x83F:0x029C` | `0xBA2E`, `0xBA48`; `0xB79:0x029E` |
+| `ReadKey` | `0xA70F` | `0x86FD` | `0xBA9C` |
+| interpreter overlay | overlay 3, load-segment word `0x200` | overlay 3 (file offset 2313, 14858 bytes), word `0x3D0` | overlay 4 (file offset 3083, 16637 bytes), word `0x510` |
+| script pause's far return | `0x272B` | `0x2917` | `0x2D62` |
+| print opcode's calls (append, clear); its line | `0x0A69`, `0x0A91`; DGROUP `0x70C8` | `0x0A7F`, `0x0AAA`; DGROUP `0x7762` | `0x0AC6`, `0x0AF1`; data-segment `0x90AC` |
+| encounter menu's call (clear flag at `[SP+4]`) | `0x2176` | `0x235F` | `0x27B6` |
+| game-state block's far pointer; approach count | DGROUP `0x49D6`; `+0x582` | DGROUP `0x4FB6`; `+0x582` | data-segment `0x67CA`; `+0x582` |
+| death routine; its far returns (fight, elsewhere) | overlay 31, word `0x3E10`; `0x1018`, `0x0E34` | overlay 33 (file offset 262204, 5061 bytes), word `0x1220`; `0x10D4`, `0x0E8A` | overlay 34 (file offset 268240, 4986 bytes), word `0x18C0`; `0x1074`, `0x0E06` |
+| a script's animation step, its far return | none | overlay 3 `0x3090` | overlay 4 `0x3527` |
+| `Delay`'s millisecond at `386` | a millisecond | 0.6 of one | 0.6 of one |
 
 Each address is checked against the bytes of the Steam copy: the
 pause's `push bp`, `mov bp,sp`, the speed byte times 100, `push ax` and
@@ -2091,6 +2093,79 @@ baseline's stand a quarter, so the brawl is still being fought at the
 run's end, and five of the baseline's keys end a pause instead of
 answering what they answered there. In `curse-quiet-all`, which is
 `identical curse-quiet-journal`. Tests: `SeamMessagePauseCurse.*` in
+`tests/core/machine/seam_message_pause_test.cpp`.
+
+**On Secret of the Silver Blades** (#609) it is Curse of the Azure
+Bonds' row again with this program's facts, the table's third column:
+the same routines, the same short millisecond and so a pause held to a
+moment, the same animation step, and the death routine's two calls left
+at their length. Each address is read in the Steam copy's image and
+overlay file: the pause's `push bp`, `mov bp,sp`, the speed byte times
+100, `push ax` and the far call to `0B79:029E`; the interpreter's three
+calls to the box printer (paragraph `0x540`, offset `0x04B9`) with the
+clear flag pushed fourth, the encounter menu's followed by the program's
+own read of the approach count through `0x67CA`; the death routine's
+test of the game mode byte for combat before its two calls to the pause.
+
+- **The pause, measured again.** The game speed is 4 in the shipped
+  slot A and before a slot is loaded, so the count is 400. The runtime
+  calibrates as Curse's does, a sixteen-bit count of spins over one BIOS
+  tick, and at the `386` governor it saturates at the same 1,191
+  (data-segment `0xA6E4`). Driven through the wandering fight
+  (`docs/playable-secret.md` leg 4) with the seam off: 49 pauses, each
+  285,658 to 288,564 ticks, 239 to 242 ms. **A combat line stands for
+  the pause and nothing more**, 14 frames, about 0.24 s: the next thing
+  is drawn at once. With the seam on, every pause no key ends is 1,500 ms
+  of virtual time to within one (1,789,775 to 1,790,381 ticks), and a
+  combat line stands 90 frames.
+- **This compiler restores SP before every `pop bp`.** The pause ends
+  `mov sp,bp`, `pop bp`, `retf`, and multiplies with `imul cx`; nothing
+  the handlers read moves. At its `push ax` BP is SP and the caller's far
+  return is at `[BP+2]`; `Delay` pushes nothing before its `dec dx` and
+  leaves BP alone. What moves is where a caller's call returns: the
+  script opcode's call to the pause is its routine's last statement, and
+  its far return is the `mov sp,bp` at `0x2D62`, not the `pop bp` two
+  bytes on that the same call returns to on Curse. The animation step's
+  and the death routine's are found the same way, by the call.
+- **Who calls it.** The overlay file has 34 far calls to the pause in
+  eleven modules. Four are the interpreter's: the pause opcode, the
+  animation step, and two after a line an opcode of its own prints
+  (returning to `0x385A` and `0x3927`), which are a message's. The
+  fight's 49 arrive from overlay 16 (`0x053B`, `0x0542`; 32 of them),
+  overlay 27 (`0x1728`, `0x181D`; 11), the death routine in a fight
+  (`0x1074`; one for each of the four enemies) and the script opcode
+  (`0x2D62`; two, as the encounter opens).
+- **A death's pause is how much of its sound is heard**, as on the other
+  two programs. The sound is 1,589 ms whole. With the seam off the chip
+  sounds from about 95 ms before the death's pause to between 200 and
+  300 ms past its end, where the program cuts it off: 541, 617 and
+  596 ms in all for the first three deaths of the fight, and whole for
+  the fourth, which ends the fight. Driven on a build that lengthened
+  the death's pause with the rest, every death sounded for the whole
+  1,589 ms; so the routine's two calls keep their length. With the seam
+  on, each death the run reaches pauses 241.6 ms and the chip sounds for
+  the same 541, 617 and 596 ms.
+- **An approach's beats** are met in the demonstration (`D` at the
+  title's bar), which the program runs at game speed 9, a count of 900
+  and about 540 ms a pause. Of its 62 pauses, 33 are the script opcode's, a
+  few in a row after each of its lines, and two of those come while the
+  approach's count is not zero and are taken as its beats; three are a
+  death's.
+- **Reached by no driven run**: the encounter menu's call (the
+  wandering fight opens without that menu), the animation step (not in
+  either leg, nor among the demonstration's pauses) and the death
+  routine's call outside a fight. Each is read in the overlay file and
+  held by the unit suite.
+
+**Fidelity**: `secret-camp-message-pause` `identical secret-camp` (all
+106 checkpoints: the opening's pages wait for a key, the print opcode's
+calls are reached 37 times and the leg makes no pause), and
+`secret-fight-pause` `contrast secret-fight`, 315 of 371 identical,
+divergent from tick 476,011,182, in the two pauses that open the
+encounter. The fight's keys are at the baseline's ticks, so eight of
+them end a pause instead of answering what they answered there, and the
+fight is still being fought at the run's end. Tests:
+`SeamMessagePauseSecret.*` in
 `tests/core/machine/seam_message_pause_test.cpp`.
 
 ### The fanfare (#538)
