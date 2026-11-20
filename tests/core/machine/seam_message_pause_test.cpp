@@ -546,6 +546,26 @@ TEST(SeamMessagePause, IsUnavailableOnAnyOtherBinary) {
 // governor, so a lengthened pause is held to a moment of virtual time,
 // one more of `Delay`'s milliseconds at a time.
 
+/// What the rig of such a program stands the machine on: that program's
+/// facts, restated in its own namespace below.
+struct held_facts {
+  std::string_view fingerprint;
+  std::uint16_t push_point;
+  std::uint16_t pause_return;
+  std::uint16_t countdown;
+  std::uint16_t delay_entry;
+  std::uint16_t data_segment;
+  std::uint16_t script_word;
+  std::uint16_t death_word;
+  std::uint16_t data_state_block;
+  std::uint16_t print_clear;
+  std::uint16_t encounter_print;
+  std::uint16_t data_print_line;
+};
+
+/// Somewhere to let virtual time go by: a `jmp $`.
+constexpr std::uint16_t idle_segment = 0x6000;
+
 namespace curse {
 constexpr std::string_view fingerprint =
     "42fcefd6785679568b00bc1fb5b1d81ac2773416be4a35e0363920ddf6b78acd";
@@ -569,20 +589,29 @@ constexpr std::uint16_t death_elsewhere = 0x0E8A;
 constexpr std::uint16_t data_state_block = 0x4FB6;
 /// The game's pause at the game speed the shipped saves hold, 4.
 constexpr std::uint16_t speed_four = 400;
-/// Somewhere to let virtual time go by: a `jmp $`.
-constexpr std::uint16_t idle_segment = 0x6000;
+constexpr held_facts facts{.fingerprint = fingerprint,
+                           .push_point = push_point,
+                           .pause_return = pause_return,
+                           .countdown = countdown,
+                           .delay_entry = delay_entry,
+                           .data_segment = data_segment,
+                           .script_word = script_word,
+                           .death_word = death_word,
+                           .data_state_block = data_state_block,
+                           .print_clear = print_clear,
+                           .encounter_print = encounter_print,
+                           .data_print_line = data_print_line};
 }  // namespace curse
 
-struct curse_rig : rig {
-  curse_rig() {
+struct held_rig : rig {
+  explicit held_rig(const held_facts& facts) : p(facts) {
     sha256_digest digest;
-    EXPECT_TRUE(parse_digest(curse::fingerprint, digest));
+    EXPECT_TRUE(parse_digest(p.fingerprint, digest));
     box->seams().loaded(digest, image_load_segment);
-    put_word(image_load_segment, curse::script_word, script_segment);
-    put_word(image_load_segment, curse::death_word, death_segment);
-    put_word(curse::data_segment, curse::data_state_block, block_offset);
-    put_word(curse::data_segment,
-             static_cast<std::uint16_t>(curse::data_state_block + 2),
+    put_word(image_load_segment, p.script_word, script_segment);
+    put_word(image_load_segment, p.death_word, death_segment);
+    put_word(p.data_segment, p.data_state_block, block_offset);
+    put_word(p.data_segment, static_cast<std::uint16_t>(p.data_state_block + 2),
              block_segment);
   }
 
@@ -590,16 +619,15 @@ struct curse_rig : rig {
       std::uint16_t ax, std::uint16_t from_segment = other_segment,
       std::uint16_t from_offset = other_return) const {
     box->memory()
-        .ram()[cpu::physical_address(image_load_segment, curse::push_point)] =
-        0xF4;
+        .ram()[cpu::physical_address(image_load_segment, p.push_point)] = 0xF4;
     put_word(stack_segment, static_cast<std::uint16_t>(frame + 2), from_offset);
     put_word(stack_segment, static_cast<std::uint16_t>(frame + 4),
              from_segment);
     box->processor().reset();
     cpu::registers& r = box->processor().regs();
     r[cpu::sreg::cs] = image_load_segment;
-    r.ip = curse::push_point;
-    r[cpu::sreg::ds] = curse::data_segment;
+    r.ip = p.push_point;
+    r[cpu::sreg::ds] = p.data_segment;
     r[cpu::sreg::ss] = stack_segment;
     r[cpu::reg16::sp] = frame;
     r[cpu::reg16::bp] = frame;
@@ -612,9 +640,8 @@ struct curse_rig : rig {
       std::uint16_t dx, std::uint16_t from_segment = other_segment,
       std::uint16_t from_offset = other_return) const {
     box->memory()
-        .ram()[cpu::physical_address(image_load_segment, curse::countdown)] =
-        0xF4;
-    put_word(stack_segment, frame, curse::pause_return);
+        .ram()[cpu::physical_address(image_load_segment, p.countdown)] = 0xF4;
+    put_word(stack_segment, frame, p.pause_return);
     put_word(stack_segment, static_cast<std::uint16_t>(frame + 2),
              image_load_segment);
     put_word(stack_segment, static_cast<std::uint16_t>(frame + 8), from_offset);
@@ -623,8 +650,8 @@ struct curse_rig : rig {
     box->processor().reset();
     cpu::registers& r = box->processor().regs();
     r[cpu::sreg::cs] = image_load_segment;
-    r.ip = curse::countdown;
-    r[cpu::sreg::ds] = curse::data_segment;
+    r.ip = p.countdown;
+    r[cpu::sreg::ds] = p.data_segment;
     r[cpu::sreg::ss] = stack_segment;
     r[cpu::reg16::sp] = frame;
     r[cpu::reg16::bp] = static_cast<std::uint16_t>(frame + 6);
@@ -635,34 +662,33 @@ struct curse_rig : rig {
 
   /// Let `milliseconds` of virtual time go by somewhere no point is.
   void elapse(unsigned milliseconds) const {
-    box->memory().ram()[cpu::physical_address(curse::idle_segment, 0)] = 0xEB;
-    box->memory().ram()[cpu::physical_address(curse::idle_segment, 1)] = 0xFE;
+    box->memory().ram()[cpu::physical_address(idle_segment, 0)] = 0xEB;
+    box->memory().ram()[cpu::physical_address(idle_segment, 1)] = 0xFE;
     box->processor().reset();
     cpu::registers& r = box->processor().regs();
-    r[cpu::sreg::cs] = curse::idle_segment;
+    r[cpu::sreg::cs] = idle_segment;
     r.ip = 0;
     static_cast<void>(box->run(
         box->time() + (ticks{milliseconds} * pit_input_hz) / 1000U + 1U));
   }
 
   void script_prints(std::string_view line) const {
-    box->memory().ram()[cpu::physical_address(curse::data_segment,
-                                              curse::data_print_line)] =
+    box->memory()
+        .ram()[cpu::physical_address(p.data_segment, p.data_print_line)] =
         static_cast<std::uint8_t>(line.size());
     for (std::size_t i = 0; i < line.size(); ++i) {
       box->memory().ram()[cpu::physical_address(
-          curse::data_segment,
-          static_cast<std::uint16_t>(curse::data_print_line + 1 + i))] =
+          p.data_segment,
+          static_cast<std::uint16_t>(p.data_print_line + 1 + i))] =
           static_cast<std::uint8_t>(line[i]);
     }
-    box->memory()
-        .ram()[cpu::physical_address(script_segment, curse::print_clear)] =
+    box->memory().ram()[cpu::physical_address(script_segment, p.print_clear)] =
         0xF4;
     box->processor().reset();
     cpu::registers& r = box->processor().regs();
     r[cpu::sreg::cs] = script_segment;
-    r.ip = curse::print_clear;
-    r[cpu::sreg::ds] = curse::data_segment;
+    r.ip = p.print_clear;
+    r[cpu::sreg::ds] = p.data_segment;
     r[cpu::sreg::ss] = stack_segment;
     r[cpu::reg16::sp] = frame;
     box->step();
@@ -674,27 +700,26 @@ struct curse_rig : rig {
   [[nodiscard]] unsigned menu_waits(unsigned each,
                                     unsigned key_after = 0) const {
     const std::uint32_t delay =
-        cpu::physical_address(image_load_segment, curse::delay_entry);
+        cpu::physical_address(image_load_segment, p.delay_entry);
     box->memory().ram()[delay] = 0x90;
     box->memory().ram()[delay + 1] = 0xCA;
     box->memory().ram()[delay + 2] = 0x02;
     box->memory().ram()[delay + 3] = 0x00;
     box->memory()
-        .ram()[cpu::physical_address(script_segment, curse::encounter_print)] =
-        0xF4;
+        .ram()[cpu::physical_address(script_segment, p.encounter_print)] = 0xF4;
     put_word(stack_segment, static_cast<std::uint16_t>(frame + 4), 1);
     box->processor().reset();
     cpu::registers& r = box->processor().regs();
     r[cpu::sreg::cs] = script_segment;
-    r.ip = curse::encounter_print;
-    r[cpu::sreg::ds] = curse::data_segment;
+    r.ip = p.encounter_print;
+    r[cpu::sreg::ds] = p.data_segment;
     r[cpu::sreg::ss] = stack_segment;
     r[cpu::reg16::sp] = frame;
     unsigned calls = 0;
     for (int step = 0; step < 10000; ++step) {
       const cpu::registers& now = box->processor().regs();
       if (now[cpu::sreg::cs] == script_segment &&
-          now.ip == static_cast<std::uint16_t>(curse::encounter_print + 1)) {
+          now.ip == static_cast<std::uint16_t>(p.encounter_print + 1)) {
         break;
       }
       if (cpu::physical_address(now[cpu::sreg::cs], now.ip) == delay + 1) {
@@ -712,6 +737,12 @@ struct curse_rig : rig {
     }
     return calls;
   }
+
+  held_facts p;
+};
+
+struct curse_rig : held_rig {
+  curse_rig() : held_rig(curse::facts) {}
 };
 
 TEST(SeamMessagePauseCurse, HasItsOwnSixPoints) {
@@ -825,6 +856,213 @@ TEST(SeamMessagePauseCurse, AKeyEndsTheWaitBeforeTheMenu) {
   r.script_prints("A LINE THE MENU WOULD WIPE");
   EXPECT_EQ(r.menu_waits(30, 3), 3U);
   EXPECT_EQ(r.keys_waiting(), 0U);
+}
+
+// --- On Secret of the Silver Blades (#609) -----------------------------------
+//
+// Curse of the Azure Bonds' mechanism on a third program's facts: the
+// same short millisecond, the same animation step, and a compiler that
+// puts a `mov sp,bp` between a routine's last call and its `pop bp`.
+
+namespace secret {
+constexpr std::string_view fingerprint =
+    "8b937984878ec72aa531335dd381a21bda67675408b5fd8e716a35ccd049999e";
+constexpr std::uint16_t push_point = 0x6004;
+constexpr std::uint16_t pause_return = 0x600A;
+constexpr std::uint16_t countdown = 0xBA48;
+constexpr std::uint16_t read_key = 0xBA9C;
+constexpr std::uint16_t delay_entry = 0xBA2E;
+constexpr std::uint16_t data_segment =
+    static_cast<std::uint16_t>(image_load_segment + 0xDE2);
+constexpr std::uint16_t script_word = 0x510;
+constexpr std::uint16_t script_return = 0x2D62;
+constexpr std::uint16_t animation_return = 0x3527;
+constexpr std::uint16_t print_append = 0x0AC6;
+constexpr std::uint16_t print_clear = 0x0AF1;
+constexpr std::uint16_t encounter_print = 0x27B6;
+constexpr std::uint16_t data_print_line = 0x90AC;
+constexpr std::uint16_t death_word = 0x18C0;
+constexpr std::uint16_t death_in_a_fight = 0x1074;
+constexpr std::uint16_t death_elsewhere = 0x0E06;
+constexpr std::uint16_t data_state_block = 0x67CA;
+/// The game's pause at the game speed the program starts with, 4.
+constexpr std::uint16_t speed_four = 400;
+constexpr held_facts facts{.fingerprint = fingerprint,
+                           .push_point = push_point,
+                           .pause_return = pause_return,
+                           .countdown = countdown,
+                           .delay_entry = delay_entry,
+                           .data_segment = data_segment,
+                           .script_word = script_word,
+                           .death_word = death_word,
+                           .data_state_block = data_state_block,
+                           .print_clear = print_clear,
+                           .encounter_print = encounter_print,
+                           .data_print_line = data_print_line};
+}  // namespace secret
+
+struct secret_rig : held_rig {
+  secret_rig() : held_rig(secret::facts) {}
+};
+
+TEST(SeamMessagePauseSecret, HasItsOwnSixPoints) {
+  const secret_rig r;
+  const seam_definition* s = r.box->seams().find(seam_id);
+  ASSERT_NE(s, nullptr);
+  sha256_digest digest;
+  ASSERT_TRUE(parse_digest(secret::fingerprint, digest));
+  const std::span<const seam_point> points = points_on(*s, digest);
+  ASSERT_EQ(points.size(), 6U);
+  EXPECT_TRUE(points[0].module.is_resident_image());
+  EXPECT_EQ(points[0].offset, secret::push_point);
+  EXPECT_TRUE(points[1].module.is_resident_image());
+  EXPECT_EQ(points[1].offset, secret::countdown);
+  EXPECT_TRUE(points[2].module.is_resident_image());
+  EXPECT_EQ(points[2].offset, secret::read_key);
+  for (std::size_t i = 3; i < 6; ++i) {
+    EXPECT_EQ(points[i].module.load_segment_at, secret::script_word);
+    EXPECT_EQ(points[i].module.file_offset, 3083U);
+    EXPECT_EQ(points[i].module.length, 16637U);
+  }
+  EXPECT_EQ(points[3].offset, secret::print_append);
+  EXPECT_EQ(points[4].offset, secret::print_clear);
+  EXPECT_EQ(points[5].offset, secret::encounter_print);
+  EXPECT_EQ(r.box->seams().enable(seam_id), seam_reason::none);
+}
+
+TEST(SeamMessagePauseSecret, IsOffByDefault) {
+  const secret_rig r;
+  EXPECT_EQ(r.hold(secret::speed_four), secret::speed_four);
+  EXPECT_EQ(r.tick_down(1), 1U);
+  r.type(0x1C0D);
+  EXPECT_EQ(r.tick_down(900), 900U);
+  EXPECT_EQ(r.keys_waiting(), 1U);
+}
+
+TEST(SeamMessagePauseSecret, HoldsThePauseToTheSettingInVirtualTime) {
+  const secret_rig r;
+  r.arm();
+  EXPECT_EQ(r.hold(secret::speed_four), 1500U) << "the count, raised";
+  EXPECT_EQ(r.tick_down(900), 900U) << "not the count's last millisecond";
+  EXPECT_EQ(r.tick_down(1), 2U)
+      << "the count ran out before the moment: one millisecond more";
+  r.elapse(1500);
+  EXPECT_EQ(r.tick_down(1), 1U) << "the moment has come: the count ends it";
+}
+
+TEST(SeamMessagePauseSecret, HoldsALongerGameSpeedToTheSettingToo) {
+  const secret_rig r;
+  r.arm();
+  EXPECT_EQ(r.hold(2000), 2000U) << "the game speed's count is left";
+  EXPECT_EQ(r.tick_down(1), 2U);
+}
+
+TEST(SeamMessagePauseSecret, ASettingOfZeroAddsNothing) {
+  const secret_rig r;
+  r.arm();
+  ASSERT_EQ(r.box->seams().set_setting(seam_id, 0), seam_reason::none);
+  EXPECT_EQ(r.hold(secret::speed_four), secret::speed_four);
+  EXPECT_EQ(r.tick_down(1), 1U);
+}
+
+TEST(SeamMessagePauseSecret, AKeyEndsThePauseAndIsTaken) {
+  const secret_rig r;
+  r.arm();
+  EXPECT_EQ(r.hold(secret::speed_four), 1500U);
+  r.type(0x1C0D);
+  EXPECT_EQ(r.tick_down(900), 1U);
+  EXPECT_EQ(r.keys_waiting(), 0U);
+  EXPECT_EQ(r.tick_down(1), 1U) << "and the moment is gone with it";
+}
+
+TEST(SeamMessagePauseSecret, LeavesTheBeatsItKeeps) {
+  const secret_rig r;
+  r.arm();
+  EXPECT_EQ(r.hold(secret::speed_four, death_segment, secret::death_in_a_fight),
+            secret::speed_four)
+      << "a death's pause is the program's";
+  EXPECT_EQ(r.tick_down(1, death_segment, secret::death_in_a_fight), 1U);
+  r.type(0x1C0D);
+  EXPECT_EQ(r.tick_down(300, death_segment, secret::death_in_a_fight), 300U)
+      << "and a key does not cut it";
+  EXPECT_EQ(r.keys_waiting(), 1U);
+  EXPECT_EQ(r.hold(secret::speed_four, death_segment, secret::death_elsewhere),
+            secret::speed_four);
+  EXPECT_EQ(
+      r.hold(secret::speed_four, script_segment, secret::animation_return),
+      secret::speed_four)
+      << "a frame of a script's animation";
+  r.set_approach(2);
+  EXPECT_EQ(r.hold(secret::speed_four, script_segment, secret::script_return),
+            secret::speed_four)
+      << "a beat of an approach";
+  r.set_approach(0);
+  EXPECT_EQ(r.hold(secret::speed_four, script_segment, secret::script_return),
+            1500U)
+      << "the script's pause after the approach is a message's";
+}
+
+TEST(SeamMessagePauseSecret, TheScriptsPauseReturnsToTheFramesRestore) {
+  const secret_rig r;
+  r.arm();
+  r.set_approach(2);
+  EXPECT_EQ(r.hold(secret::speed_four, script_segment,
+                   static_cast<std::uint16_t>(secret::script_return + 2)),
+            1500U)
+      << "the `pop bp` two bytes on is where Curse's call returns, not this";
+}
+
+TEST(SeamMessagePauseSecret, CursesPointsAreNotItsPoints) {
+  const secret_rig r;
+  r.arm();
+  EXPECT_EQ(r.hold(secret::speed_four, death_segment, curse::death_in_a_fight),
+            1500U)
+      << "Curse's death routine is not where this program's is";
+  EXPECT_EQ(r.hold(secret::speed_four, script_segment, curse::animation_return),
+            1500U);
+  r.put_word(image_load_segment, curse::death_word, death_segment);
+  r.put_word(image_load_segment, secret::death_word, 0x3100);
+  EXPECT_EQ(r.hold(secret::speed_four, death_segment, secret::death_in_a_fight),
+            1500U)
+      << "nor is its load-segment word Curse's";
+}
+
+TEST(SeamMessagePauseSecret, WaitsBeforeTheMenuInVirtualTime) {
+  const secret_rig r;
+  r.arm();
+  r.script_prints("A LINE THE MENU WOULD WIPE");
+  EXPECT_EQ(r.unread(), 1U);
+  EXPECT_EQ(r.menu_waits(30), 50U)
+      << "thirty milliseconds a slice, as the runtime's fifty are at 386";
+  EXPECT_EQ(r.unread(), 0U);
+  EXPECT_EQ(r.menu_waits(30), 0U) << "once per line";
+}
+
+TEST(SeamMessagePauseSecret, AKeyEndsTheWaitBeforeTheMenu) {
+  const secret_rig r;
+  r.arm();
+  r.script_prints("A LINE THE MENU WOULD WIPE");
+  EXPECT_EQ(r.menu_waits(30, 3), 3U);
+  EXPECT_EQ(r.keys_waiting(), 0U);
+}
+
+TEST(SeamMessagePauseSecret, AKeyReadIsTimeTheLineHad) {
+  const secret_rig r;
+  r.arm();
+  r.script_prints("A LINE THE MENU WOULD WIPE");
+  r.box->memory()
+      .ram()[cpu::physical_address(image_load_segment, secret::read_key)] =
+      0xF4;
+  r.box->processor().reset();
+  cpu::registers& regs = r.box->processor().regs();
+  regs[cpu::sreg::cs] = image_load_segment;
+  regs.ip = secret::read_key;
+  regs[cpu::sreg::ds] = secret::data_segment;
+  regs[cpu::sreg::ss] = stack_segment;
+  regs[cpu::reg16::sp] = frame;
+  r.box->step();
+  EXPECT_EQ(r.unread(), 0U) << "the program took a key after it";
+  EXPECT_EQ(r.menu_waits(30), 0U);
 }
 
 // --- The setting, through the engine (#531) --------------------------------

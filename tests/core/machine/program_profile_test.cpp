@@ -58,11 +58,15 @@ TEST(ProgramProfile, SecretsIsThePartItsCheatsAndItsScreenTextRead) {
   EXPECT_LT(secret.record_side, secret.record_hit_points);
   // The screen text's (screen_text.h): the far pointer to the font.
   EXPECT_NE(secret.data_font_pointer, 0U);
+  // The message pause's (seam_message_pause.cpp, #609): the runtime's key
+  // read, the interpreter's module and the death routine's word.
+  EXPECT_NE(secret.key_read_entry, 0U);
+  EXPECT_TRUE(secret.interpreter_overlay.has_load_segment());
+  EXPECT_NE(secret.death_load_segment_at, 0U);
   // And nothing pretending to be a fact: what no seam or read available
   // on this program uses is zero until somebody measures it.
   EXPECT_EQ(secret.data_map_pointer, 0U);
   EXPECT_EQ(secret.command_bar_entry, 0U);
-  EXPECT_EQ(secret.key_read_entry, 0U);
   EXPECT_FALSE(secret.menu_overlay.has_load_segment());
 }
 

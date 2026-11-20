@@ -143,6 +143,23 @@
 // it would be heard far longer than the program ever plays it.
 //
 //
+// On Secret of the Silver Blades (#609)
+// -------------------------------------
+//
+// Curse of the Azure Bonds' routines once more, at this program's own
+// addresses (`secret_message_pause`). The pause is the game speed times
+// 100; the runtime measures its millisecond the same way, and it is the
+// same 0.6 of one at the 386 governor, so a pause is held to a moment
+// here too; the script has the same animation step; and the death
+// routine's two pauses keep their length, because the pause is how much
+// of the death's sound is heard: the program cuts the sound off a
+// little after it, at about a third of its length, and lengthened the
+// sound plays whole. One thing is this program's compiler's: it restores
+// SP from BP before every `pop bp`, so a call that is a routine's last
+// statement returns to that `mov sp,bp` and not to the `pop bp` the same
+// call returns to on Curse.
+//
+//
 // What it is not yet (docs/seams.md §8.5)
 // ---------------------------------------
 //
@@ -277,8 +294,36 @@ constexpr message_pause_facts curse_message_pause{
     .animation_return_offset = 0x3090,
     .delay_runs_short = true};
 
+/// Secret of the Silver Blades (#609). Curse of the Azure Bonds' routines
+/// at its own addresses, the game speed times 100 again, with the same
+/// short millisecond and the same animation step. Its compiler restores
+/// SP from BP before every `pop bp`, so a call that is a routine's last
+/// returns to that `mov sp,bp` and not to the `pop bp`.
+constexpr message_pause_facts secret_message_pause{
+    .profile = secret_of_the_silver_blades,
+    .push_offset = 0x6004,
+    .pause_return_offset = 0x600A,
+    .countdown_offset = 0xBA48,
+    .delay_paragraphs = 0xB79,
+    .delay_offset = 0x029E,
+    .script_return_offset = 0x2D62,
+    .print_append_call = 0x0AC6,
+    .print_clear_call = 0x0AF1,
+    .encounter_print_call = 0x27B6,
+    .data_print_line = 0x90AC,
+    .data_state_block = 0x67CA,
+    .state_approach_frames = 0x582,
+    .death_return_offsets =
+        {
+            0x1074,  // in a fight
+            0x0E06,  // anywhere else
+        },
+    .animation_return_offset = 0x3527,
+    .delay_runs_short = true};
+
 constexpr auto message_pause_binaries =
-    fingerprints_of(std::array{&pool_of_radiance, &curse_of_the_azure_bonds});
+    fingerprints_of(std::array{&pool_of_radiance, &curse_of_the_azure_bonds,
+                               &secret_of_the_silver_blades});
 
 /// The encounter menu's call: the clear flag is the fourth word pushed.
 constexpr std::uint16_t call_clear_flag = 4;
@@ -627,9 +672,11 @@ constexpr std::array<seam_point, 6> message_pause_points{{
 
 /// The points on every program but the baseline, whose points are the
 /// definition's own (seam.h, schema 9).
-constexpr std::array<seam_program_points, 1> message_pause_programs{
+constexpr std::array<seam_program_points, 2> message_pause_programs{
     {{.fingerprint = curse_of_the_azure_bonds.fingerprint,
-      .points = message_pause_points<curse_message_pause>}}};
+      .points = message_pause_points<curse_message_pause>},
+     {.fingerprint = secret_of_the_silver_blades.fingerprint,
+      .points = message_pause_points<secret_message_pause>}}};
 
 constexpr seam_definition message_pause_definition{
     .id = "message-pause",
