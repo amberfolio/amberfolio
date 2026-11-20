@@ -1611,6 +1611,7 @@ The table is what has been watched so far, on the Steam copy.
 | `CHRDAT<S><N>.SAV` | saves | member | yes | one party member's record (439 bytes) |
 | `CHRDAT<S><N>.STF` | saves | member | no | what that member carries |
 | `CHRDAT<S><N>.SFX` | saves | member | no | the effects that member is under |
+| `VAULT.DAT` | saves | vault | no | what has been deposited at the town's vault: one file for every slot, written at a deposit (28 bytes after a first one) |
 | `BLADES.CFG` | start | config | no | the program's settings — **a game file** |
 | `<NAME>.WHO` | saves | character | no | a character kept under a name the player chose |
 | `<NAME>.STF` | saves | character | no | what that character carries |
@@ -1630,11 +1631,15 @@ treasure the story opens with, `ENCAMP`, `SAVE` into slot C wrote
 `CHRDATC1.STF` (134 bytes) among the eleven files, and removing that
 member from a load of slot C wrote a `.WHO`, an `.STF` of the same size
 and an `.SFX`. Six members is as many as a shipped party has; the bound
-of eight is the first two games' until a seventh record is seen. **Not
-yet watched, and so not a row**: whatever else the program keeps beside
-its saves (#608). A page that writes a playthrough back keeps the rows
-above and nothing else, so a file of a kind that is not a row yet does
-not survive a reload there.
+of eight is the first two games' until a seventh record is seen. A
+character created and kept wrote a `.WHO` and an `.SFX` under its name,
+and a first deposit at the town's vault created `VAULT.DAT`, 28 bytes,
+in the save directory: one file whichever slot is loaded, so a host
+that splits a playthrough by slot keeps it with all of them. **Not a
+row**: a Curse of the Azure Bonds character (`*.GUY`) put there for the
+program's `ADD` to list, which is that game's file. A page that writes
+a playthrough back keeps the rows above and nothing else, so a file
+that is not a row does not survive a reload there.
 
 Three placeholders: `<S>` a slot letter, `<N>` a party-member index,
 `<NAME>` a DOS name the player chose and this build cannot enumerate.
