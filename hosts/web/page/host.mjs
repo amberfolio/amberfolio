@@ -254,6 +254,39 @@ export const SPEED_PRESETS = Object.freeze({
   386: AF_SPEED_PC_386,
 });
 
+/// The speed a page kept from a previous visit (#626), as one of those
+/// four names, or null.
+///
+/// Fail-closed, like every other stored choice a page reads back: a
+/// record that is missing, is not a string, or names no preset this
+/// build has answers null, and null is the machine's own default — a
+/// page puts nothing on its control for a value it cannot honour.
+export function storedSpeed(value) {
+  return typeof value === 'string' && Object.hasOwn(SPEED_PRESETS, value)
+    ? value
+    : null;
+}
+
+/// What a page says about the code wheel and the copy it is running
+/// (#629), or null when it has nothing to say that it has not said.
+///
+/// Two facts decide whether the program asks its question: whether this
+/// copy has **answered** it (`Machine.codeWheelAnswered()`), and whether
+/// the `code-wheel` seam is **on** — the seam is the only thing that
+/// steps the program past its challenge, and a seam that is off is not
+/// consulted (`docs/seams.md` §10). A page that reported the first alone
+/// told a player the game would not ask while it was asking.
+///
+/// A copy that has not answered is asked either way and has its own
+/// lines on a page (nothing kept yet, a browser that keeps nothing), so
+/// that case answers null and leaves them standing.
+export function codeWheelLine({ answered, seamOn }) {
+  if (!answered) return null;
+  return seamOn
+    ? 'this copy has answered; it will not be asked'
+    : 'this copy has answered; with the code-wheel seam off the game still asks';
+}
+
 /// How a run ended, for `Machine.stopReport()`. `STOPPED` means the
 /// machine stopped of its own accord and the report prints its reason;
 /// the others are the *host's* reason, for a run this side cut short.

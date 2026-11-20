@@ -79,6 +79,15 @@
 //      and this drives them: which side of the save layer a file is kept
 //      on, what a refused write says, and that the synchronous drawer
 //      `journal.mjs` is handed stays owed until the database takes it.
+//  11. **Where a copy sits and what it opens on** (#624, #625, #626,
+//      #629). The page's drop zone, its program select and its two
+//      remembered choices cannot be driven here either, so each of
+//      their decisions is a function this drives: where a dropped item
+//      sits (`picker.mjs`), which directory a recognized copy is laid
+//      out under and which program it opens on (`editions.mjs`, over
+//      the real table and over files the module itself fingerprints),
+//      which speed a stored record names, and what the code wheel's
+//      line says with the seam on and off (`host.mjs`).
 
 import { spawnSync } from 'node:child_process';
 import {
@@ -135,13 +144,23 @@ import {
   AF_LATCH_CTRL,
   screenTextRows,
   SCREEN_TEXT_CELL_BYTES,
+  storedSpeed,
+  codeWheelLine,
+  SPEED_PRESETS,
 } from './host.mjs';
 import {
   encodePpm,
   keyNameToScancode,
   parseArgs as parseDriveArgs,
 } from './drive.mjs';
-import { matchEdition, readEditions } from './editions.mjs';
+import {
+  matchEdition,
+  placeUnder,
+  programChoice,
+  readEditions,
+  settleInstall,
+} from './editions.mjs';
+import { readDropped } from './picker.mjs';
 import {
   cacheDrawer,
   describeRefusal,
@@ -3453,6 +3472,336 @@ if (missing.length === 0) {
   check(row()?.setting?.value === 2750, `a reset put message-pause back to ${row()?.setting?.value}`);
   machine.destroy();
   console.log('smoke: message-pause lists, sets, refuses and keeps its number across a reset');
+}
+
+// --- Where a copy sits, and what it opens on (#624, #625, #626, #629) ------
+//
+// Four things a browser run found the page getting wrong, each of them a
+// decision and none of them the DOM's, so each is a function and each is
+// driven here.
+//
+//   * A drop of a folder's contents emptied its `SAVE` folder in among
+//     its files (#625). One folder dropped alone is the disk; several
+//     items are what was in one, each under its own name.
+//   * A storefront copy given as its own folder sat at the root while
+//     its configuration file named saves under its launcher's directory
+//     (#624). A recognized, whole copy whose boot file is at the root of
+//     what was given is laid out under its edition row's `install`, as
+//     the desktop host mounts one; a copy already inside a folder, one
+//     whose row installs at the root, an incomplete one and an
+//     unrecognized one are left where they are.
+//   * A reload opened on the first `.EXE` rather than the program last
+//     booted, and so did a first drop (#626): the page offered a program
+//     under one spelling at a drop and another at a restore. It lists
+//     what landed now, both times, so a remembered program is found by
+//     being equal; a record in another spelling is resolved by core's
+//     own reading of it; and a recognized copy opens on its edition's
+//     boot file. The speed is remembered, fail-closed.
+//   * The code wheel's line said a copy that had answered would not be
+//     asked with the seam off, when it is (#629).
+//
+// Every name and byte below is this file's own (CONTRIBUTING.md); the
+// table is the build's, and what is read from it is names and digests.
+
+if (missing.length === 0) {
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+
+  // --- #625: where a dropped item sits ---------------------------------
+  //
+  // Entries of this check's own, with the two things the real ones do
+  // that are easy to get wrong: a file is handed over through a
+  // callback, and a directory's reader answers in batches until it
+  // answers an empty one.
+  const dropped = (name, bytes = [name.length]) => ({
+    isFile: true,
+    isDirectory: false,
+    name,
+    file: (resolve) =>
+      resolve({ arrayBuffer: async () => Uint8Array.from(bytes).buffer }),
+  });
+  const droppedFolder = (name, children) => ({
+    isFile: false,
+    isDirectory: true,
+    name,
+    createReader() {
+      const left = [...children];
+      return { readEntries: (resolve) => resolve(left.splice(0, 2)) };
+    },
+  });
+  const copy = () => [
+    dropped('START.EXE', [7, 7, 7]),
+    dropped('GAME.OVR'),
+    droppedFolder('SAVE', [dropped('A.DAT'), dropped('B.DAT'), dropped('C.DAT')]),
+  ];
+  const sits = async (entries) =>
+    (await readDropped(entries)).map((file) => file.path).join(' ');
+
+  const alone = await sits([droppedFolder('MYCOPY', copy())]);
+  check(
+    alone === 'START.EXE GAME.OVR SAVE/A.DAT SAVE/B.DAT SAVE/C.DAT',
+    `one folder dropped alone is the disk, and it landed as: ${alone}`,
+  );
+  const contents = await sits(copy());
+  check(
+    contents === 'START.EXE GAME.OVR SAVE/A.DAT SAVE/B.DAT SAVE/C.DAT',
+    "a folder's contents, dropped, did not keep the dropped directory's " +
+      `name in front of what is in it: ${contents}`,
+  );
+  const two = await sits([
+    droppedFolder('ONE', [dropped('A.EXE')]),
+    droppedFolder('TWO', [dropped('B.EXE'), droppedFolder('DEEP', [dropped('C.DAT')])]),
+  ]);
+  check(
+    two === 'ONE/A.EXE TWO/B.EXE TWO/DEEP/C.DAT',
+    `two folders dropped together did not each keep their name: ${two}`,
+  );
+  check(
+    (await sits([dropped('README.TXT')])) === 'README.TXT',
+    'a single dropped file is not at the root under its own name',
+  );
+  const bytesOf = (await readDropped(copy()))[0].bytes;
+  check(
+    bytesOf instanceof Uint8Array && bytesOf.join(',') === '7,7,7',
+    'a dropped file did not arrive with its bytes',
+  );
+
+  // --- #624: the build's own table --------------------------------------
+  const table = readEditions(
+    JSON.parse(
+      readFileSync(fileURLToPath(new URL('./editions.json', import.meta.url)), 'utf8'),
+    ),
+  );
+  const atRoot = (edition) => edition.install.replace(/[\\/]/g, '') === '';
+  check(
+    table.some((edition) => !atRoot(edition)) && table.some(atRoot),
+    'the table no longer has both a row installed at the root and one that is not',
+  );
+  for (const edition of table) {
+    // A whole copy of the row, each file under `prefix`.
+    const whole = (prefix) =>
+      edition.artifacts
+        .filter((artifact) => artifact.kind === 'file' || artifact.kind === 'configuration')
+        .map((artifact) => ({
+          name: `${prefix}${artifact.name}`,
+          sha256: artifact.sha256 ?? 'e'.repeat(64),
+        }));
+    const expected = atRoot(edition) ? null : edition.install;
+
+    // Given as its own folder, as a picker spells it and as core does.
+    const own = settleInstall(table, whole(''));
+    check(
+      own.edition === edition && own.complete && own.boot === edition.boot,
+      `${edition.id}: a whole copy given as its own folder was read as ` +
+        `${own.edition?.id}, complete=${own.complete}, boot=${own.boot}`,
+    );
+    check(
+      own.install === expected,
+      `${edition.id}: a copy given as its own folder is laid out under ` +
+        `${own.install}, and its row says ${edition.install}`,
+    );
+    const listed = settleInstall(table, whole('\\'));
+    check(
+      listed.install === expected && listed.boot === `\\${edition.boot}`,
+      `${edition.id}: the same copy, as the filesystem lists it, settled ` +
+        `differently (${listed.install}, ${listed.boot})`,
+    );
+
+    // Given as a folder that holds the copy's own: left where it is.
+    const inside = settleInstall(table, whole('GAME/'));
+    check(
+      inside.edition === edition &&
+        inside.install === null &&
+        inside.boot === `GAME/${edition.boot}`,
+      `${edition.id}: a copy already inside a folder was moved to ` +
+        `${inside.install} (boot ${inside.boot})`,
+    );
+
+    // One required file short: a closest match is not a layout.
+    const dropOne = edition.artifacts.find(
+      (artifact) =>
+        artifact.kind === 'file' && artifact.required === true && artifact.name !== edition.boot,
+    );
+    if (dropOne !== undefined) {
+      const short = settleInstall(
+        table,
+        whole('').filter((file) => file.name !== dropOne.name),
+      );
+      check(
+        short.install === null && !short.complete,
+        `${edition.id}: a copy missing a required file was laid out under ${short.install}`,
+      );
+    }
+  }
+  const stranger = settleInstall(table, [{ name: 'README.TXT', sha256: 'c'.repeat(64) }]);
+  check(
+    stranger.edition === null && stranger.install === null && stranger.boot === null,
+    'files of no edition were given an install directory or a boot file',
+  );
+  check(
+    placeUnder('\\CURSE', 'SAVE/SAVGAMA.DAT') === '\\CURSE\\SAVE/SAVGAMA.DAT' &&
+      placeUnder('\\CURSE\\', '\\START.EXE') === '\\CURSE\\START.EXE',
+    'a path is not joined under an install directory as given',
+  );
+
+  // --- #624 and #626: through the module ---------------------------------
+  //
+  // A copy of this check's own, in the shape that failed: a tool whose
+  // name sorts ahead of the boot file, a configuration file, a save
+  // directory. Its edition row is made of the digests the module itself
+  // answers, which is where a page gets them.
+  const machine = new Machine(module);
+  check(
+    machine.attachReferenceDevices() === AF_OK,
+    'attaching the reference devices failed',
+  );
+  machine.reset();
+  const given = [
+    { path: 'AARDVARK.EXE', bytes: makeMzImage(new Uint8Array([0x90, 0xf4])) },
+    { path: 'BOOT.EXE', bytes: makeMzImage(new Uint8Array([0xf4])) },
+    { path: 'DATA.DAX', bytes: new Uint8Array([1, 2, 3]) },
+    { path: 'PROBE.CFG', bytes: new Uint8Array([0x45, 0x0d, 0x0a]) },
+    { path: 'SAVE/SLOT.DAT', bytes: new Uint8Array([9]) },
+  ];
+  const landed = () =>
+    machine.vfsList().map((entry) => ({
+      path: entry.path,
+      name: entry.path,
+      size: entry.size,
+      sha256: machine.vfsFingerprint(entry.path) ?? '',
+    }));
+  for (const file of given) {
+    check(machine.vfsPut(file.path, file.bytes) === AF_OK, `${file.path} was refused`);
+  }
+  const print = (name) => machine.vfsFingerprint(name);
+  const probe = [
+    {
+      id: 'probe',
+      name: 'a copy this check made',
+      boot: 'BOOT.EXE',
+      fingerprint: print('BOOT.EXE'),
+      install: '\\PROBE',
+      artifacts: [
+        { kind: 'file', name: 'BOOT.EXE', required: true, sha256: print('BOOT.EXE') },
+        { kind: 'file', name: 'AARDVARK.EXE', required: true, sha256: print('AARDVARK.EXE') },
+        { kind: 'file', name: 'DATA.DAX', required: true, sha256: print('DATA.DAX') },
+        { kind: 'configuration', name: 'PROBE.CFG', required: true },
+      ],
+    },
+  ];
+
+  const first = settleInstall(probe, landed());
+  check(
+    first.install === '\\PROBE' && first.boot === '\\BOOT.EXE',
+    `a copy at the root settled as install=${first.install} boot=${first.boot}`,
+  );
+  check(machine.vfsClear() === AF_OK, 'clearing the filesystem failed');
+  for (const file of given) {
+    check(
+      machine.vfsPut(placeUnder(first.install, file.path), file.bytes) === AF_OK,
+      `${file.path} was refused under ${first.install}`,
+    );
+  }
+  const listing = landed();
+  const paths = listing.map((file) => file.path).sort().join(' ');
+  check(
+    paths ===
+      '\\PROBE\\AARDVARK.EXE \\PROBE\\BOOT.EXE \\PROBE\\DATA.DAX ' +
+        '\\PROBE\\PROBE.CFG \\PROBE\\SAVE\\SLOT.DAT',
+    `the copy was laid out as: ${paths}`,
+  );
+  const second = settleInstall(probe, listing);
+  check(
+    second.complete && second.install === null && second.boot === '\\PROBE\\BOOT.EXE',
+    `a copy under its install directory settled as install=${second.install} ` +
+      `boot=${second.boot}`,
+  );
+  check(
+    machine.setCurrentDirectory('\\PROBE') === AF_OK &&
+      machine.currentDirectory() === '\\PROBE',
+    `the install directory did not become current (${machine.currentDirectory()})`,
+  );
+
+  // The select's order, programs first, and what it opens on.
+  const isProgram = (file) => /\.(exe|com)$/i.test(file.path);
+  const options = [...listing.filter(isProgram), ...listing.filter((file) => !isProgram(file))];
+  check(
+    options[0].path === '\\PROBE\\AARDVARK.EXE',
+    'the tool no longer sorts ahead of the boot file, so the checks below prove nothing',
+  );
+  check(
+    programChoice(options, { boot: second.boot }) === '\\PROBE\\BOOT.EXE',
+    'a recognized copy did not open on its boot file',
+  );
+  check(
+    programChoice(options, { remembered: '\\PROBE\\AARDVARK.EXE', boot: second.boot }) ===
+      '\\PROBE\\AARDVARK.EXE',
+    'the program remembered from the last boot was not chosen again',
+  );
+  // A record in another spelling of the same path: core says what it
+  // reads as, and the option holding those bytes is the one.
+  const older = 'Probe/Aardvark.exe';
+  check(
+    programChoice(options, {
+      remembered: older,
+      rememberedSha256: machine.vfsFingerprint(older),
+      boot: second.boot,
+    }) === '\\PROBE\\AARDVARK.EXE',
+    `a program remembered as ${older} was not found again`,
+  );
+  check(
+    programChoice(options, {
+      remembered: '\\GONE.EXE',
+      rememberedSha256: machine.vfsFingerprint('\\GONE.EXE'),
+      boot: second.boot,
+    }) === '\\PROBE\\BOOT.EXE',
+    'a remembered program that is gone did not fall back to the boot file',
+  );
+  check(
+    programChoice(options) === '\\PROBE\\AARDVARK.EXE' && programChoice([]) === null,
+    'with nothing remembered and no edition the first program is not the choice',
+  );
+  machine.destroy();
+
+  // --- #626: the speed, remembered ---------------------------------------
+  for (const name of Object.keys(SPEED_PRESETS)) {
+    check(storedSpeed(name) === name, `a stored speed of ${name} was not read back`);
+  }
+  for (const nothing of [null, undefined, '', 'warp', 3, 386, ['386'], { speed: 'at' }, 'toString']) {
+    check(
+      storedSpeed(nothing) === null,
+      `a stored speed of ${JSON.stringify(nothing)} named a preset`,
+    );
+  }
+
+  // --- #629: the code wheel's line ---------------------------------------
+  const asked = codeWheelLine({ answered: true, seamOn: false });
+  const skipped = codeWheelLine({ answered: true, seamOn: true });
+  check(
+    typeof skipped === 'string' && /will not be asked/.test(skipped),
+    `an answered copy with the seam on reads: ${skipped}`,
+  );
+  check(
+    typeof asked === 'string' &&
+      asked !== skipped &&
+      !/will not be asked/.test(asked) &&
+      /code-wheel seam off/.test(asked) &&
+      /asks/.test(asked),
+    `an answered copy with the seam off reads: ${asked}`,
+  );
+  check(
+    codeWheelLine({ answered: false, seamOn: true }) === null &&
+      codeWheelLine({ answered: false, seamOn: false }) === null,
+    'a copy that has not answered was given a line of its own',
+  );
+
+  console.log(
+    'smoke: a dropped directory keeps its name, a recognized copy is laid' +
+      ' out under its install directory and opens on its boot file, a' +
+      ' remembered program and speed are found again, and the code' +
+      " wheel's line follows the seam",
+  );
 }
 
 // --- The one permission this page asks for (M6, #385) ---------------------

@@ -143,6 +143,121 @@ export function matchEdition(editions, offered) {
   return { edition, matched, missing, unclaimed, complete: missing.length === 0 };
 }
 
+/// Where a copy belongs on the machine's drive, and which of its files
+/// boots it (#624, #626).
+///
+/// The storefront copies are laid out for a launcher that mounts their
+/// folder at the edition row's `install` directory and changes into it,
+/// and each one's configuration file names its save directory under
+/// that (`docs/hosts.md` §2c). A page is that launcher. This is the
+/// desktop host's own decision (`hosts/sdl/src/install.cpp`), made over
+/// the same table: a copy is moved to its row's `install` only when
+///
+///   * a file **at the root of what was given** is a boot file some
+///     edition names, by digest — the folder given is the copy's own;
+///   * the files given hold **every artifact that edition requires**,
+///     because a layout is a fact about one edition and a closest match
+///     is not one;
+///   * and the row's `install` is not the root.
+///
+/// So a copy given as the folder that holds `CURSE\` is left where it
+/// is — its boot file is a directory down, which is already where its
+/// launcher would have put it — and so is one whose row installs at the
+/// root, and so is anything this build does not recognise.
+///
+/// `offered` is `matchEdition`'s: `{ name, sha256 }` per file, the name
+/// with whatever directories the file sits in, either separator, with or
+/// without a leading one.
+///
+/// Answers `{ edition, complete, boot, install }`: the row matched (or
+/// null), whether the copy is whole, the name **as offered** of the file
+/// that boots it (or null when none here carries the row's fingerprint),
+/// and the `install` directory to lay the copy out under — **null for
+/// "leave it where it was given"**.
+export function settleInstall(editions, offered) {
+  const digest = (value) => (typeof value === 'string' ? value.toLowerCase() : '');
+  const leaf = (name) => String(name).split(/[\\/]/).pop().toUpperCase();
+  const atRoot = (name) => !/[\\/]/.test(String(name).replace(/^[\\/]+/, ''));
+
+  const match = matchEdition(editions, offered);
+  const answer = {
+    edition: match.edition,
+    complete: match.complete,
+    boot: null,
+    install: null,
+  };
+  if (match.edition === null) return answer;
+
+  const wanted = digest(match.edition.fingerprint);
+  const boots = offered.filter(
+    (file) => wanted !== '' && digest(file.sha256) === wanted,
+  );
+  if (boots.length === 0) return answer;
+  // One that sits at the root and carries the row's own name for it,
+  // then either alone, then whatever has the bytes: a renamed boot file
+  // is still the boot file, which is `matchEdition`'s rule too.
+  const named = (file) =>
+    leaf(file.name) === String(match.edition.boot ?? '').toUpperCase();
+  const boot =
+    boots.find((file) => atRoot(file.name) && named(file)) ??
+    boots.find((file) => atRoot(file.name)) ??
+    boots.find(named) ??
+    boots[0];
+  answer.boot = boot.name;
+
+  const install =
+    typeof match.edition.install === 'string' ? match.edition.install : '\\';
+  const installsAtRoot = install.replace(/[\\/]/g, '') === '';
+  if (match.complete && atRoot(boot.name) && !installsAtRoot) {
+    answer.install = install;
+  }
+  return answer;
+}
+
+/// `path`, as given, under the directory `install`: `SAVE/SAVGAMA.DAT`
+/// under `\CURSE` is `\CURSE\SAVE/SAVGAMA.DAT`. Joined and nothing more —
+/// what either separator means, and every other rule about a name, is
+/// core's when the path crosses the ABI (`picker.mjs`'s own top comment).
+export function placeUnder(install, path) {
+  return `${String(install).replace(/[\\/]+$/, '')}\\${String(path).replace(/^[\\/]+/, '')}`;
+}
+
+/// Which program the page's select opens on (#626): one of `options`'
+/// paths, or null when there are none.
+///
+/// `options` are `{ path, sha256 }` in the order the select lists them.
+/// In order of preference:
+///
+///   1. the program **remembered** from the last boot, when it is one of
+///      the options as spelled;
+///   2. the option holding the bytes the remembered name reads as
+///      (`rememberedSha256`, core's own answer for that name), when
+///      exactly one does — a setting written in another spelling of the
+///      same path names the same file, and it is core that says which
+///      file a name is, never this page;
+///   3. the edition's **boot** file (`settleInstall`'s `boot`), so a
+///      recognised copy opens on the program its launcher runs and not
+///      on whichever `.EXE` sorts first;
+///   4. the first option.
+export function programChoice(
+  options,
+  { remembered = null, rememberedSha256 = null, boot = null } = {},
+) {
+  const digest = (value) => (typeof value === 'string' ? value.toLowerCase() : '');
+  const paths = options.map((option) => option.path);
+  if (typeof remembered === 'string' && paths.includes(remembered)) {
+    return remembered;
+  }
+  if (digest(rememberedSha256) !== '') {
+    const same = options.filter(
+      (option) => digest(option.sha256) === digest(rememberedSha256),
+    );
+    if (same.length === 1) return same[0].path;
+  }
+  if (typeof boot === 'string' && paths.includes(boot)) return boot;
+  return paths[0] ?? null;
+}
+
 /// How many artifacts of `edition` a copy is incomplete without.
 export function requiredCount(edition) {
   return (edition?.artifacts ?? []).filter((artifact) => artifact.required === true)

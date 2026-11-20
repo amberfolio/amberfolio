@@ -46,6 +46,8 @@ import {
   HeldKeys,
   decodeConsoleBytes,
   SPEED_PRESETS,
+  storedSpeed,
+  codeWheelLine,
   AF_OK,
   AF_INVALID,
   AF_NO_ROOM,
@@ -71,7 +73,14 @@ import {
   AF_NAV_DOWN,
 } from './host.mjs';
 import { wireDirectoryPicker } from './picker.mjs';
-import { describeMatch, loadEditions, matchEdition } from './editions.mjs';
+import {
+  describeMatch,
+  loadEditions,
+  matchEdition,
+  placeUnder,
+  programChoice,
+  settleInstall,
+} from './editions.mjs';
 import {
   ingestJournal,
   journalKind,
@@ -102,6 +111,7 @@ import {
   TEXT_STORE,
   SETTINGS_STORE,
   PROGRAM_SETTING,
+  SPEED_SETTING,
   SEAMS_SETTING,
   SEAM_SETTINGS_SETTING,
 } from './persist.mjs';
@@ -396,6 +406,49 @@ export function runDevPage() {
   // week should not have to press anything to get it.
   let keptReady = openKeptStore();
 
+  // The speed this player last chose (#626), onto the control as soon as
+  // the database can say. Before the machine, because `ensureMachine()`
+  // applies whatever the control reads when it makes one; a browser with
+  // no record leaves the control where the page put it, the machine's
+  // own default (`storedSpeed()`).
+  const speedReady = keptReady.then(async () => {
+    const speed = storedSpeed(await readSetting(SPEED_SETTING));
+    if (speed !== null && speedSelect) speedSelect.value = speed;
+  });
+
+  // The edition table (#207), fetched once, when a copy first arrives:
+  // where a recognized copy sits and which of its files boots it are in
+  // its row (#624, #626). Null when it could not be fetched, said once;
+  // a missing table is not a reason to refuse somebody a run, so the
+  // copy is then left where it was given and opens on its first program.
+  let editionsAsked = null;
+  const editionsTable = () => {
+    editionsAsked ??= loadEditions().catch((why) => {
+      appendConsole(
+        `[host] edition table unavailable (${why.message}) - the copy is ` +
+          'left where it was given\n',
+      );
+      return null;
+    });
+    return editionsAsked;
+  };
+
+  /// What is on the machine's filesystem, as core spells it, each file
+  /// with its digest: `{ path, name, size, sha256 }`, `name` the path
+  /// again because that is the word `matchEdition()` reads.
+  ///
+  /// Read back off the machine rather than taken from what a picker
+  /// handed over, for `keepDisk()`'s reason and one more (#626): a drop
+  /// and a visit after one then offer a program under the same spelling,
+  /// so the one remembered at a boot is found again by being equal.
+  const landedFiles = (box) =>
+    box.vfsList().map((entry) => ({
+      path: entry.path,
+      name: entry.path,
+      size: entry.size,
+      sha256: box.vfsFingerprint(entry.path) ?? '',
+    }));
+
   const ensureMachine = async () => {
     if (machine) return machine;
     // The database first, always: the journal, the code wheel and the
@@ -403,6 +456,7 @@ export function runDevPage() {
     // made before it would come up with an empty one. What it had to say
     // was said at page load, below.
     await keptReady;
+    await speedReady;
     setStatus('loading the wasm module...');
     loaded = await loadAmberfolio({ print: appendConsole, printErr: appendConsole });
     for (const line of loaded.output) appendConsole(`${line}\n`);
@@ -488,21 +542,23 @@ export function runDevPage() {
     return machine;
   };
 
-  /// What to offer as bootable, out of `files` (`{ path, bytes }`).
+  /// What to offer as bootable, out of `files` (`landedFiles()`), and
+  /// which of them the select opens on.
   ///
-  /// What went in, not `vfsList()`: the root listing is the root's, and
-  /// since #146 an entry in it may be a directory `vfsPut` made on the
-  /// way to a file below (abi.h). This page knows which of the things it
-  /// handed over were files, because it handed them over — and since
-  /// #381 the other caller is the restore, which knows for the same
-  /// reason.
+  /// What landed on the machine's filesystem, as core spells it: every
+  /// file wherever it sits (`vfsList()` has walked the whole tree since
+  /// #170), and the same spelling at a drop as at the visit after one,
+  /// which is what lets a remembered program be found again (#626).
   ///
   /// Programs first, everything else after: a player wants the .EXE and
   /// should not have to hunt for it, and the rest is still offered
   /// because nothing here should be deciding what is and is not bootable.
-  /// Ordering is the whole of what this looks at — the name itself goes
-  /// to `loadFromVfs` as the player spelled it, for core to canonicalize.
-  function offerPrograms(files) {
+  ///
+  /// `choice` is `programChoice()`'s: the program remembered from the
+  /// last boot, then the one the copy's edition boots, then the first
+  /// listed. A recognized copy therefore opens on the program its own
+  /// launcher runs, and not on whichever `.EXE` sorts first.
+  function offerPrograms(files, choice = {}) {
     const isProgram = (path) => /\.(exe|com)$/i.test(path);
     const ordered = [
       ...files.filter((file) => isProgram(file.path)),
@@ -512,10 +568,13 @@ export function runDevPage() {
       ...ordered.map((file) => {
         const option = document.createElement('option');
         option.value = file.path;
-        option.textContent = `${file.path} (${file.bytes.length} bytes)`;
+        option.textContent = `${file.path} (${file.size} bytes)`;
         return option;
       }),
     );
+    const chosen = programChoice(ordered, choice);
+    if (chosen !== null) programSelect.value = chosen;
+    if (programSelect.value === '') programSelect.selectedIndex = 0;
     programSelect.disabled = ordered.length === 0;
     bootButton.disabled = ordered.length === 0;
     return ordered;
@@ -651,18 +710,25 @@ export function runDevPage() {
           'this browser was keeping. Drop your game directory again.\n',
       );
     }
-    offerPrograms(taken);
-    // The program last booted, chosen again if it is still there.
+    // The program last booted, chosen again if it is still there, and
+    // otherwise the one this copy's edition boots (#626).
     //
-    // The *browser* decides whether it is still there: a `<select>` given
-    // a value that matches no option answers the empty string, and that
-    // is the whole of the matching. A page comparing the two names itself
-    // would be deciding whether `Start.exe` and `\START.EXE` are one
-    // file, which is core's rule and not a thing to have a second
-    // implementation of (abi.h, #146).
-    const last = await kept.get(SETTINGS_STORE, PROGRAM_SETTING);
-    if (typeof last === 'string') programSelect.value = last;
-    if (programSelect.value === '') programSelect.selectedIndex = 0;
+    // Found by being **equal** to an option, both being core's spelling
+    // of a path. A setting written in another spelling of one (an older
+    // visit kept the picker's) is not compared by this page at all: a
+    // page deciding whether `Start.exe` and `\START.EXE` are one file
+    // would be a second implementation of core's rule (abi.h, #146). Core
+    // is asked what bytes that name reads as, and the option holding
+    // those bytes is the one (`programChoice()`).
+    const listing = landedFiles(box);
+    const table = await editionsTable();
+    const last = await readSetting(PROGRAM_SETTING);
+    offerPrograms(listing, {
+      remembered: typeof last === 'string' ? last : null,
+      rememberedSha256:
+        typeof last === 'string' ? box.vfsFingerprint(last) : null,
+      boot: table ? settleInstall(table, listing).boot : null,
+    });
     setStatus(
       `${taken.length} files came back from this browser - choose a program` +
         ' and press boot.',
@@ -842,7 +908,19 @@ export function runDevPage() {
     machine.setSpeed(preset);
     appendConsole(`[host] speed ${speedSelect.value}\n`);
   }
-  if (speedSelect) speedSelect.addEventListener('change', applySpeed);
+  //
+  // And remembered (#626): a person moving the control is a person
+  // choosing, so the choice is written down and is on the control again
+  // at the next visit (`speedReady`, above). Only here, at the control's
+  // own event, so that a speed the page itself put there is never
+  // mistaken for one somebody chose.
+  if (speedSelect) {
+    speedSelect.addEventListener('change', () => {
+      applySpeed();
+      const chosen = storedSpeed(speedSelect.value);
+      if (chosen !== null) void rememberSetting(SPEED_SETTING, chosen);
+    });
+  }
 
   const claimTheRun = () => {
     if (started) return false;
@@ -1421,19 +1499,56 @@ export function runDevPage() {
       // the disk they are about to boot*, and saying those two in one
       // sentence is how a browser came to run an installation with seven
       // data files missing from it.
-      const unnameable = [];
-      const noRoom = [];
-      const otherwise = [];
-      const taken = [];
-      for (const file of files) {
-        // The path goes across as the player's own text and core decides
-        // what it means, separators included (abi.h, #146).
-        const status = box.vfsPut(file.path, file.bytes);
-        if (status === AF_OK) taken.push(file);
-        else if (status === AF_NO_ROOM) noRoom.push(file.path);
-        else if (status === AF_INVALID) unnameable.push(file.path);
-        else otherwise.push(`${file.path} (${describeSkip(status)})`);
+      const putAll = (install) => {
+        const put = { unnameable: [], noRoom: [], otherwise: [], taken: [] };
+        for (const file of files) {
+          // The path goes across as the player's own text and core decides
+          // what it means, separators included (abi.h, #146). Under the
+          // copy's install directory when it has one (below), which is a
+          // join and still no opinion about a name.
+          const status = box.vfsPut(
+            install === null ? file.path : placeUnder(install, file.path),
+            file.bytes,
+          );
+          if (status === AF_OK) put.taken.push(file);
+          else if (status === AF_NO_ROOM) put.noRoom.push(file.path);
+          else if (status === AF_INVALID) put.unnameable.push(file.path);
+          else put.otherwise.push(`${file.path} (${describeSkip(status)})`);
+        }
+        return put;
+      };
+      let put = putAll(null);
+
+      // Where this copy sits (#624, `docs/hosts.md` §2c). The storefront
+      // copies are laid out for a launcher that mounts their folder at
+      // the edition row's `install` directory, and each one's
+      // configuration file names its saves under that; this page is the
+      // launcher. So a recognized copy given as its own folder — its boot
+      // file at the root of what was handed over, every file its edition
+      // requires here — is put again under that directory, as the desktop
+      // host mounts one (`settleInstall()` has the rule, which is
+      // `hosts/sdl/src/install.cpp`'s). Decided on what landed, because
+      // the digests are core's and so is the spelling. A copy given as
+      // the folder that holds `CURSE\`, one whose row installs at the
+      // root, and anything unrecognized stay exactly where they were put.
+      const table = await editionsTable();
+      let listing = landedFiles(box);
+      let settled = table ? settleInstall(table, listing) : null;
+      if (settled !== null && settled.install !== null) {
+        const install = settled.install;
+        box.vfsClear();
+        put = putAll(install);
+        listing = landedFiles(box);
+        appendConsole(
+          `[host] install ${install} (from the edition row) - this copy is ` +
+            `${settled.edition.name}, laid out where its own launcher ` +
+            'mounts it\n',
+        );
+        // Again over what landed: the boot file's path is under the
+        // directory now, and that is the one to offer.
+        settled = settleInstall(table, listing);
       }
+      const { unnameable, noRoom, otherwise, taken } = put;
 
       appendConsole(
         `[host] filesystem: ${taken.length} files, ` +
@@ -1461,7 +1576,10 @@ export function runDevPage() {
         );
       }
 
-      const ordered = offerPrograms(taken);
+      // What landed, opened on the program this copy's edition boots
+      // (#626) — `START.EXE`, where a copy also ships a tool of its own
+      // whose name sorts ahead of it.
+      const ordered = offerPrograms(listing, { boot: settled?.boot ?? null });
 
       // Into this browser, so the next visit needs no drop (#381). After
       // the puts and before the boot: what is kept is what landed on the
@@ -1517,8 +1635,10 @@ export function runDevPage() {
       // made a program's folder current by itself; a shell did, and here
       // this page is the shell. Before the sidecars, which look for the
       // save directory in it, and before the load.
+      // A program at the root is listed as `\START.EXE`, so what is in
+      // front of its last separator is nothing, and nothing is the root.
       const cut = Math.max(program.lastIndexOf('/'), program.lastIndexOf('\\'));
-      const folder = cut === -1 ? '\\' : program.slice(0, cut);
+      const folder = cut <= 0 ? '\\' : program.slice(0, cut);
       if (box.setCurrentDirectory(folder) !== AF_OK) {
         throw new Error(`${folder} is not a directory on this disk`);
       }
@@ -1601,14 +1721,9 @@ export function runDevPage() {
       // fingerprint and there is nothing to look up before one is
       // loaded; before the run, because a machine told after its first
       // step would have drawn the challenge already.
-      if (box.codeWheelApply()) {
-        appendConsole(
-          '[host] code wheel answered on this copy already - the challenge ' +
-            'will not be drawn\n',
-        );
-        const status = el(CODE_WHEEL_STATUS_ID);
-        if (status) status.textContent = 'this copy has answered; it will not be asked';
-      }
+      // What it means for this run is said below, once the seams this
+      // player chose are on: an answer steps nothing by itself (#629).
+      const answeredAlready = box.codeWheelApply();
 
       // The seams this player chose in the panel on a previous visit
       // (#383). After the load, because a seam is keyed on the program's
@@ -1657,11 +1772,51 @@ export function runDevPage() {
         }
       }
 
+      // The code wheel's line (#629). Whether the program asks its
+      // question is two facts and not one: this copy has answered, **and**
+      // the `code-wheel` seam is on, because the seam is what steps the
+      // program past its challenge and a seam that is off is not
+      // consulted. So the line and the console say what will happen with
+      // the seams as they stand, after the stored ones are applied, and
+      // the line follows the seam from then on (`codeWheelLine()`).
+      //
+      // Written again only when the seam's state moves: the frame loop
+      // has sentences of its own for this line (an answer just given, a
+      // database that would not keep it), and a refresh that rewrote it
+      // every half second would wipe them.
+      const codeWheelSeamOn = () =>
+        box
+          .seamList()
+          .some((seam) => seam.id === 'code-wheel' && seam.state === AF_SEAM_ON);
+      if (answeredAlready) {
+        appendConsole(
+          codeWheelSeamOn()
+            ? '[host] code wheel answered on this copy already - the challenge ' +
+                'will not be drawn\n'
+            : '[host] code wheel answered on this copy already, but the ' +
+                'code-wheel seam is off - the program asks its question\n',
+        );
+      }
+      let codeWheelPainted = null;
+      const paintCodeWheel = () => {
+        const seamOn = codeWheelSeamOn();
+        if (seamOn === codeWheelPainted) return;
+        codeWheelPainted = seamOn;
+        const line = codeWheelLine({ answered: box.codeWheelAnswered(), seamOn });
+        const status = el(CODE_WHEEL_STATUS_ID);
+        if (line !== null && status) status.textContent = line;
+      };
+      paintCodeWheel();
+
       const refreshSeams = renderSeams(
         box,
         el(SEAMS_ID),
         appendConsole,
-        (ids) => rememberSetting(SEAMS_SETTING, ids),
+        (ids) => {
+          // A toggle in the panel may be the code wheel's.
+          paintCodeWheel();
+          return rememberSetting(SEAMS_SETTING, ids);
+        },
         (numbers) => rememberSetting(SEAM_SETTINGS_SETTING, numbers),
       );
       // And where the document control can reach it (#384): a document
@@ -1674,6 +1829,7 @@ export function runDevPage() {
       const refreshBoth = () => {
         refreshSeams();
         refreshCard();
+        paintCodeWheel();
       };
       refreshSeamRows = refreshBoth;
 

@@ -442,6 +442,19 @@ the moment the files are in, with no program loaded: `\POOLRAD\SAVE`, or
 makes the chosen program's folder current, which is what the storefront
 launchers do.
 
+**Where the dev page puts a copy** (#624) is the desktop's rule over the
+same table, `settleInstall()` in `page/editions.mjs`: a copy whose boot
+file is at the root of what was given, by digest, and which holds every
+file its edition requires is put under that row's `install`, and the
+console says `install \CURSE (from the edition row)`. So a Steam copy
+given as its own folder, by the input or by a drop, has its saves where
+its `CURSE.CFG` says. A copy given as the folder that holds `CURSE\`, a
+copy whose row installs at the root, an incomplete copy and an
+unrecognized one stay where they were given. The decision is made at the
+drop over what landed (`vfsList()`, `vfsFingerprint()`), and the files
+are put a second time under the directory. A copy this browser kept is
+put back where it was kept.
+
 **A recording names the directory** as a `cwd` line in its preamble, and a
 replay started anywhere else is refused before the first instruction
 (`docs/replay.md`). The desktop host is given the same `--install` to
@@ -1186,6 +1199,18 @@ visits is below; onboarding beyond this is M6's (#265).
   text and goes through `machine::canonicalize()`. The picker keeps
   `webkitRelativePath` (#146), `/` and `\` are one separator here, and core
   makes the directories, so a copy with a `\SAVE\` arrives with its slots.
+- One folder dropped alone is the disk, as a chosen one is: its name comes
+  off. Several things dropped together are what was in a folder, so each
+  sits at the root under its own name and a dropped directory's name is
+  in front of what it holds (#625, `readDropped()` in `page/picker.mjs`).
+- The program select lists what landed on the machine's filesystem, as
+  core spells it (`\CURSE\START.EXE`), programs first, at a drop and at a
+  visit after one alike. It opens on the program last booted when that is
+  still listed, otherwise on the file the copy's edition boots, otherwise
+  on the first (#626, `programChoice()` in `page/editions.mjs`). A
+  remembered name that is not a listed spelling is resolved by core:
+  `vfsFingerprint()` says what bytes it reads as, and the one option
+  holding them is chosen.
 - A refused file says which kind (#158): a path DOS could never name is
   skipped, and one the filesystem had no room for is `AF_NO_ROOM` with its
   own console line, being a hole in the disk about to be booted. Both hosts
@@ -1202,8 +1227,13 @@ visits is below; onboarding beyond this is M6's (#265).
   holds a make for, in ascending scancode order, through `postKey()` like
   any `keyup` (`HeldKeys` in `host.mjs`, checked by `smoke.mjs`).
 - The speed preset is a control, not a build option (#107, #108), with the
-  same four names as `--speed`; the volume slider and mute box are the
-  page's (#148), applied inside the worklet (§4).
+  same four names as `--speed`, and the one a person chose is on it again
+  at the next visit (#626, `storedSpeed()`); the volume slider and mute
+  box are the page's (#148), applied inside the worklet (§4).
+- The code wheel's line says what the program will do (#629,
+  `codeWheelLine()` in `host.mjs`): a copy that has answered is not asked
+  while the `code-wheel` seam is on, and is asked while it is off, and the
+  line and the boot's console line follow the seam.
 
 ### What this browser keeps (#381)
 
@@ -1216,7 +1246,7 @@ it; `app.mjs` uses it and no other file knows the schema.
 | `disk` | the file's canonical path (`\SAVE\SAVGAMA.DAT`) | its bytes | at the drop, and for a `config` row that changed |
 | `play` | the same | the same | when `af_machine_vfs_generation()` moves |
 | `text` | the `localStorage` key it had; a journal store's has the fingerprint of the game it is the journal of after it (#584) | one string | at an ingestion, a correction, a *Forget*, an answered code wheel |
-| `settings` | a name | JSON | the program last booted; whether this build may keep sidecars beside the saves (#385, §2b); the seams turned on in the panel and the numbers given them (§8) |
+| `settings` | a name | JSON | the program last booted, as the filesystem lists it; the speed last chosen (#626); whether this build may keep sidecars beside the saves (#385, §2b); the seams turned on in the panel and the numbers given them (§8) |
 
 **The save layer draws the line between the first two** (§6). On a
 generation change the page walks `vfsList()` and asks
