@@ -1487,5 +1487,591 @@ TEST(SceneOnCurse, InManualAnEmptySquareInSightHasARangeAndNoOne) {
   EXPECT_FALSE(s.aim.target);
 }
 
+// --- Secret of the Silver Blades (#609) --------------------------------------
+//
+// The third row of the read's facts, restated: the program's own data
+// segment, its area record's shown square and its aim bar's frames, none of
+// them where either earlier program keeps them.
+
+namespace secret {
+constexpr std::uint32_t dgroup_offset = 0xDE20;
+constexpr std::uint16_t data_game_mode = 0x67E7;
+constexpr std::uint16_t data_in_transition = 0x59B5;
+constexpr std::uint16_t data_disk = 0x7420;
+constexpr std::uint16_t data_area = 0xA4C2;
+constexpr std::uint16_t data_x = 0x89D7;
+constexpr std::uint16_t data_y = 0x89D8;
+constexpr std::uint16_t data_facing = 0x89D9;
+constexpr std::uint16_t data_wall_set = 0x89D8;
+constexpr std::uint16_t data_map = 0x89CE;
+constexpr std::uint16_t data_record = 0x67C6;
+constexpr std::uint16_t record_geo = 0x18A;
+/// In the area record: the square the status line prints, where a script
+/// gives it one; `0xFF` in the column's word says it prints the stored one.
+constexpr std::uint16_t area_shown_column = 0x3FA;
+constexpr std::uint16_t area_shown_row = 0x3FC;
+constexpr std::uint16_t shown_none = 0xFF;
+
+constexpr std::uint16_t data_slot_records = 0x8571;
+constexpr std::uint16_t data_slot_squares = 0x7EDF;
+constexpr std::uint16_t data_bodies = 0x868E;
+constexpr std::uint16_t data_body_count = 0x86CD;
+constexpr std::uint16_t data_combat_block = 0x86CE;
+constexpr std::uint16_t data_ground_cost = 0x1A9E;
+constexpr std::uint16_t data_actor = 0x7D38;
+constexpr std::uint16_t record_status = 0x1A6;
+constexpr std::uint16_t record_in_fight = 0x1A7;
+constexpr std::uint16_t record_side = 0x1A8;
+constexpr std::uint16_t record_computer = 0x1A9;
+constexpr std::uint16_t record_ac = 0x1AB;
+constexpr std::uint16_t record_hp = 0x1B5;
+constexpr std::uint16_t record_bytes = 0x1B7;
+
+// The aim bar's (seam_aim_watch.cpp), restated: the word the overlay
+// manager keeps overlay 16's segment in, the two meeting points and their
+// waits' returns, manual's halving, and both frames from BP. The manual
+// cursor is two bytes of the data segment, and the line's byte is the
+// caller's, through a far pointer in the frame.
+constexpr std::uint32_t word_aim = 0xCA0;
+constexpr std::uint16_t target_decided = 0x2DE8;
+constexpr std::uint16_t target_returned = 0x2E70;
+constexpr std::uint16_t manual_line_ends = 0x31CB;
+constexpr std::uint16_t manual_decided = 0x337C;
+constexpr std::uint16_t manual_returned = 0x33DA;
+constexpr int target_row = 0x06;
+constexpr int target_column = 0x08;
+constexpr int target_attack = 0x10;
+constexpr int target_reach = 0x12;
+constexpr int target_record = 0x14;
+constexpr int target_actor = 0x18;
+constexpr int target_range = -0x31;
+constexpr int target_bar = -0x2A;
+constexpr int manual_attack = 0x1A;
+constexpr int manual_record = 0x1E;
+constexpr int manual_line_pointer = 0x12;
+constexpr int manual_range = -0x38;
+constexpr std::uint16_t data_manual_column = 0x8E1F;
+constexpr std::uint16_t data_manual_row = 0x8E20;
+
+/// Where this test puts the overlay, the aim routine's frame and the byte
+/// of its caller's the frame points at.
+constexpr std::uint16_t aim_segment = 0x7000;
+constexpr std::uint16_t stack_segment = 0x5800;
+constexpr std::uint16_t frame_base = 0x0600;
+constexpr std::uint16_t caller_line = 0x0700;
+constexpr std::uint8_t frame_filler = 0xEE;
+}  // namespace secret
+
+struct secret_rig : rig {
+  secret_rig() {
+    sha256_digest digest;
+    EXPECT_TRUE(parse_digest(
+        "8b937984878ec72aa531335dd381a21bda67675408b5fd8e716a35ccd049999e",
+        digest));
+    box->seams().loaded(digest, image_segment);
+  }
+  [[nodiscard]] static std::uint32_t secret_base() {
+    return (std::uint32_t{image_segment} * 16U) + secret::dgroup_offset;
+  }
+  void sdata(std::uint16_t offset, std::uint8_t value) const {
+    ram()[secret_base() + offset] = value;
+  }
+  void sword(std::uint16_t offset, std::uint16_t value) const {
+    sdata(offset, static_cast<std::uint8_t>(value & 0xFFU));
+    sdata(static_cast<std::uint16_t>(offset + 1),
+          static_cast<std::uint8_t>(value >> 8U));
+  }
+  void sfar(std::uint16_t offset, std::uint32_t linear) const {
+    sword(offset, static_cast<std::uint16_t>(linear & 0x0FU));
+    sword(static_cast<std::uint16_t>(offset + 2),
+          static_cast<std::uint16_t>(linear >> 4U));
+  }
+  /// The grid with the party at (x, y) facing `facing`, in area `area`
+  /// with geometry block `geo` loaded and the status line printing the
+  /// stored square.
+  void grid(std::uint8_t x, std::uint8_t y, std::uint8_t facing,
+            std::uint8_t area, std::uint8_t geo) const {
+    sdata(secret::data_game_mode, 4);
+    sdata(secret::data_disk, 1);
+    sdata(secret::data_area, area);
+    sdata(secret::data_x, x);
+    sdata(secret::data_y, y);
+    sdata(secret::data_facing, facing);
+    sword(secret::data_record, 0);
+    sword(secret::data_record + 2, record_segment);
+    record_word(secret::record_geo, geo);
+    record_word(secret::area_shown_column, secret::shown_none);
+    record_word(secret::area_shown_row, 0);
+    sword(secret::data_map, 0);
+    sword(secret::data_map + 2, map_segment);
+    for (std::uint16_t slot = 1; slot <= 3; ++slot) {
+      sword(static_cast<std::uint16_t>(secret::data_wall_set + (slot * 4U)),
+            0xFFFF);
+    }
+  }
+
+  /// A fight with no one in it yet: the window's top-left at (x, y) and
+  /// every square open ground that costs one.
+  void fight(std::uint8_t x, std::uint8_t y) const {
+    sdata(secret::data_game_mode, 5);
+    sdata(secret::data_disk, 1);
+    sdata(secret::data_area, 0x20);
+    sword(secret::data_combat_block, 0);
+    sword(secret::data_combat_block + 2, combat_block_segment);
+    const std::uint32_t block = std::uint32_t{combat_block_segment} * 16U;
+    ram()[block + 2] = x;
+    ram()[block + 3] = y;
+    for (unsigned i = 0; i < 50U * 25U; ++i) {
+      ram()[block + 7 + i] = ground_open;
+    }
+    sdata(static_cast<std::uint16_t>(secret::data_ground_cost +
+                                     (ground_open * 4U)),
+          1);
+    sdata(secret::data_slot_squares + 3, 0);
+  }
+
+  [[nodiscard]] static std::uint32_t fighter_record(unsigned slot) {
+    return (std::uint32_t{combat_records_segment} * 16U) +
+           (slot * secret::record_bytes);
+  }
+
+  /// One figure in the next slot, of `shape`, in the fight; its slot.
+  [[nodiscard]] unsigned fighter(std::string_view name, bool enemy,
+                                 std::uint8_t x, std::uint8_t y,
+                                 std::uint8_t shape = 1) const {
+    const unsigned slot =
+        static_cast<unsigned>(
+            ram()[secret_base() + secret::data_slot_squares + 3]) +
+        1U;
+    sdata(secret::data_slot_squares + 3, static_cast<std::uint8_t>(slot));
+    const std::uint32_t record = fighter_record(slot);
+    ram()[record] = static_cast<std::uint8_t>(name.size());
+    for (std::size_t i = 0; i < name.size(); ++i) {
+      ram()[record + 1 + i] = static_cast<std::uint8_t>(name[i]);
+    }
+    ram()[record + secret::record_in_fight] = 1;
+    ram()[record + secret::record_side] = enemy ? 1 : 0;
+    ram()[record + secret::record_computer] = enemy ? 1 : 0;
+    ram()[record + secret::record_ac] = 0x3C - 6;
+    ram()[record + secret::record_hp] = 78;
+    sfar(static_cast<std::uint16_t>(secret::data_slot_records + (slot * 4U)),
+         record);
+    const auto squares =
+        static_cast<std::uint16_t>(secret::data_slot_squares + (slot * 4U));
+    sdata(squares, x);
+    sdata(static_cast<std::uint16_t>(squares + 1), y);
+    sdata(static_cast<std::uint16_t>(squares + 2),
+          static_cast<std::uint8_t>(slot));
+    sdata(static_cast<std::uint16_t>(squares + 3), shape);
+    return slot;
+  }
+
+  void turn_of(unsigned slot) const {
+    sfar(secret::data_actor, fighter_record(slot));
+  }
+
+  /// `modern-controls` on, overlay 16 where the manager says it is, the
+  /// frame nothing but filler, and no cursor on the grid.
+  void watch_the_aim() const {
+    ASSERT_EQ(box->seams().enable("modern-controls"), seam_reason::none);
+    const std::uint32_t word =
+        (std::uint32_t{image_segment} * 16U) + secret::word_aim;
+    ram()[word] = static_cast<std::uint8_t>(secret::aim_segment & 0xFFU);
+    ram()[word + 1] = static_cast<std::uint8_t>(secret::aim_segment >> 8U);
+    for (int offset = -0x40; offset < 0x28; ++offset) {
+      frame_byte(offset, secret::frame_filler);
+    }
+    sdata(secret::data_manual_column, secret::frame_filler);
+    sdata(secret::data_manual_row, secret::frame_filler);
+  }
+
+  void frame_byte(int offset, std::uint8_t value) const {
+    ram()[(std::uint32_t{secret::stack_segment} * 16U) +
+          static_cast<std::uint16_t>(secret::frame_base + offset)] = value;
+  }
+  void frame_word(int offset, std::uint16_t value) const {
+    frame_byte(offset, static_cast<std::uint8_t>(value & 0xFFU));
+    frame_byte(offset + 1, static_cast<std::uint8_t>(value >> 8U));
+  }
+  /// A far pointer in the frame to `slot`'s record, or to nothing.
+  void frame_record(int offset, unsigned slot) const {
+    const std::uint32_t linear = slot == 0 ? 0 : fighter_record(slot);
+    frame_word(offset, static_cast<std::uint16_t>(linear & 0x0FU));
+    frame_word(offset + 2, static_cast<std::uint16_t>(linear >> 4U));
+  }
+  /// Manual's line byte: its caller's, which the frame points at.
+  void line_byte(std::uint8_t value) const {
+    frame_word(secret::manual_line_pointer, secret::caller_line);
+    frame_word(secret::manual_line_pointer + 2, secret::stack_segment);
+    ram()[(std::uint32_t{secret::stack_segment} * 16U) + secret::caller_line] =
+        value;
+  }
+
+  /// Stand on `offset` in overlay 16 with BP on the frame, and take one
+  /// step; the instruction there is a NOP.
+  void arrive(std::uint16_t offset) const {
+    ram()[(std::uint32_t{secret::aim_segment} * 16U) + offset] = 0x90;
+    cpu::registers& regs = box->processor().regs();
+    regs[cpu::sreg::cs] = secret::aim_segment;
+    regs.ip = offset;
+    regs[cpu::sreg::ss] = secret::stack_segment;
+    regs[cpu::reg16::bp] = secret::frame_base;
+    regs[cpu::reg16::sp] =
+        static_cast<std::uint16_t>(secret::frame_base - 0x300);
+    box->step();
+  }
+};
+
+TEST(SceneOnSecret, SaysWhereThePartyIsAndNamesTheAreaByItsNumber) {
+  const secret_rig r;
+  r.grid(3, 8, east, 0x10, 0x10);
+  r.face(3, 8, north, 1, 0);
+  r.face(3, 8, south, 2, 1);
+  r.face(3, 8, west, 3, 2);
+  const scene s = r.read();
+  ASSERT_EQ(r.last, scene_trouble::none) << r.json();
+  EXPECT_EQ(s.screen, scene_screen::explore);
+  EXPECT_EQ(s.disk, 1U);
+  EXPECT_EQ(s.area, 0x10U);
+  EXPECT_EQ(s.x, 3);
+  EXPECT_EQ(s.y, 8);
+  EXPECT_EQ(s.facing, east);
+  // Nobody has named this program's maps.
+  EXPECT_EQ(std::string_view(s.zone.data(), s.zone_length), "AREA 16");
+  ASSERT_GT(s.view_count, 0U);
+  EXPECT_EQ(s.view[0].face(north), scene_face::wall);
+  EXPECT_EQ(s.view[0].face(east), scene_face::open);
+  // No table names a door graphic: the kind this map has shut is a door,
+  // and another way through is an opening.
+  EXPECT_EQ(s.view[0].face(south), scene_face::opening);
+  EXPECT_EQ(s.view[0].face(west), scene_face::shut);
+  EXPECT_FALSE(s.map_kept) << "no automap on this program";
+}
+
+TEST(SceneOnSecret, NeverUsesAnotherProgramsNameForTheSameNumbers) {
+  // Curse of the Azure Bonds calls disk 2 area 1 a town.
+  const secret_rig r;
+  r.grid(3, 3, north, 1, 1);
+  r.sdata(secret::data_disk, 2);
+  const scene s = r.read();
+  ASSERT_EQ(r.last, scene_trouble::none);
+  EXPECT_EQ(std::string_view(s.zone.data(), s.zone_length), "AREA 1");
+}
+
+TEST(SceneOnSecret, TheTitlesInTheAdventuringModeAreNoScene) {
+  // In its adventuring mode from start-up, with no area's script loaded.
+  const secret_rig r;
+  r.grid(7, 13, north, 0, 0);
+  EXPECT_EQ(r.read().screen, scene_screen::none);
+  EXPECT_EQ(r.last, scene_trouble::elsewhere);
+}
+
+TEST(SceneOnSecret, AScriptWithNoGeometryLoadedIsNoScene) {
+  // The opening's pages: a script's block is up and no grid is.
+  const secret_rig r;
+  r.grid(7, 13, north, 0x11, 0);
+  EXPECT_EQ(r.read().screen, scene_screen::none);
+  EXPECT_EQ(r.last, scene_trouble::elsewhere);
+}
+
+TEST(SceneOnSecret, AScriptedMoveIsNoScene) {
+  const secret_rig r;
+  r.grid(3, 8, east, 0x10, 0x10);
+  r.sdata(secret::data_in_transition, 1);
+  EXPECT_EQ(r.read().screen, scene_screen::none);
+}
+
+TEST(SceneOnSecret, WhereTheStatusLinePrintsAScriptsSquareTheGridIsNoScene) {
+  // The ruins: the line prints the area record's two words, not the
+  // stored square, and this read does not say either yet.
+  const secret_rig r;
+  r.grid(11, 2, east, 0x20, 0x20);
+  ASSERT_EQ(r.read().screen, scene_screen::explore);
+  r.record_word(secret::area_shown_column, 0);
+  r.record_word(secret::area_shown_row, 15);
+  EXPECT_EQ(r.read().screen, scene_screen::none);
+  EXPECT_EQ(r.last, scene_trouble::elsewhere);
+  EXPECT_EQ(r.json(), "null");
+}
+
+TEST(SceneOnSecret, AFightThereStillReads) {
+  const secret_rig r;
+  r.grid(11, 0, north, 0x20, 0x20);
+  r.record_word(secret::area_shown_column, 0);
+  r.record_word(secret::area_shown_row, 13);
+  r.fight(24, 10);
+  const unsigned dominic = r.fighter("DOMINIC", false, 29, 14);
+  std::ignore = r.fighter("HIPPOGRIFF", true, 27, 12, 3);
+  r.turn_of(dominic);
+
+  const scene s = r.read();
+  ASSERT_EQ(r.last, scene_trouble::none) << r.json();
+  EXPECT_EQ(s.screen, scene_screen::combat);
+  EXPECT_EQ(s.area, 0x20U);
+  EXPECT_EQ(std::string_view(s.zone.data(), s.zone_length), "AREA 32");
+  EXPECT_EQ(s.window_x, 24);
+  EXPECT_EQ(s.window_y, 10);
+  ASSERT_EQ(s.combatant_count, 2U);
+  const scene_combatant& who = s.combatants[0];
+  EXPECT_EQ(std::string_view(who.name.data(), who.name_length), "DOMINIC");
+  EXPECT_EQ(who.side, scene_side::party);
+  EXPECT_TRUE(who.player);
+  EXPECT_TRUE(who.standing);
+  EXPECT_EQ(who.x, 29);
+  EXPECT_EQ(who.y, 14);
+  EXPECT_EQ(who.hp, 78);
+  EXPECT_EQ(who.ac, 6);
+  EXPECT_EQ(s.turn, 0);
+  EXPECT_TRUE(s.waiting);
+  const scene_combatant& beast = s.combatants[1];
+  EXPECT_EQ(beast.side, scene_side::enemy);
+  EXPECT_FALSE(beast.player);
+  EXPECT_EQ(beast.width, 2U);
+  EXPECT_EQ(beast.height, 1U);
+  EXPECT_EQ(beast.range, 2);
+  EXPECT_FALSE(beast.health_shown);
+  EXPECT_EQ(s.nearest, 1);
+  EXPECT_EQ(s.ground[0].terrain, ground_open);
+  EXPECT_EQ(s.ground[0].cost, 1U);
+  EXPECT_FALSE(s.aim_kept) << "nothing watches the aim while the seam is off";
+}
+
+TEST(SceneOnSecret, AFigureGivenToTheComputerIsNotThePlayers) {
+  const secret_rig r;
+  r.fight(24, 10);
+  const unsigned guy = r.fighter("GUY", false, 27, 13);
+  r.turn_of(guy);
+  r.ram()[secret_rig::fighter_record(guy) + secret::record_computer] = 1;
+  const scene s = r.read();
+  ASSERT_EQ(s.combatant_count, 1U);
+  EXPECT_FALSE(s.combatants[0].player);
+  EXPECT_FALSE(s.waiting);
+}
+
+TEST(SceneOnSecret, AFallenEnemyLeavesTheListAndAFallenMemberLiesWhereItFell) {
+  const secret_rig r;
+  r.fight(24, 10);
+  const unsigned paine = r.fighter("PAINE", false, 28, 13);
+  const unsigned bugbear = r.fighter("BUGBEAR", true, 26, 12);
+  r.turn_of(r.fighter("EPONA", false, 26, 13));
+  // The bugbear is dying: out of the fight, and off the grid.
+  r.ram()[secret_rig::fighter_record(bugbear) + secret::record_in_fight] = 0;
+  r.ram()[secret_rig::fighter_record(bugbear) + secret::record_status] = 5;
+  // Paine is down: off the grid, with a body where he stood.
+  r.ram()[secret_rig::fighter_record(paine) + secret::record_in_fight] = 0;
+  r.ram()[secret_rig::fighter_record(paine) + secret::record_status] = 4;
+  r.sdata(
+      static_cast<std::uint16_t>(secret::data_slot_squares + (paine * 4U) + 3U),
+      0);
+  r.sdata(secret::data_body_count, 1);
+  r.sfar(secret::data_bodies, secret_rig::fighter_record(paine));
+  r.sdata(secret::data_bodies + 4, 28);
+  r.sdata(secret::data_bodies + 5, 13);
+
+  const scene s = r.read();
+  ASSERT_EQ(r.last, scene_trouble::none) << r.json();
+  ASSERT_EQ(s.combatant_count, 2U);
+  const scene_combatant& down = s.combatants[0];
+  EXPECT_EQ(std::string_view(down.name.data(), down.name_length), "PAINE");
+  EXPECT_FALSE(down.standing);
+  EXPECT_EQ(down.status, scene_status::unconscious);
+  EXPECT_TRUE(down.placed);
+  EXPECT_EQ(down.x, 28);
+  EXPECT_EQ(down.y, 13);
+  EXPECT_EQ(std::string_view(s.combatants[1].name.data(),
+                             s.combatants[1].name_length),
+            "EPONA");
+}
+
+// The aim bar's frames are this program's own. Each is laid out whole over
+// filler, so a read at another program's offset, or out of the frame where
+// this program keeps a thing in its data segment, finds something else.
+
+TEST(SceneOnSecret, FromTargetToTargetTheAimIsReadOutOfItsFrame) {
+  const secret_rig r;
+  r.watch_the_aim();
+  r.fight(24, 10);
+  const unsigned dominic = r.fighter("DOMINIC", false, 29, 14);
+  const unsigned bugbear = r.fighter("BUGBEAR", true, 26, 12);
+  r.turn_of(dominic);
+  r.frame_word(secret::target_attack, 1);
+  r.frame_word(secret::target_reach, 1);
+  r.frame_record(secret::target_record, bugbear);
+  r.frame_record(secret::target_actor, dominic);
+  r.frame_word(secret::target_range, 3);
+  r.frame_byte(secret::target_bar, 6);
+  r.arrive(secret::target_decided);
+
+  scene s = r.read();
+  ASSERT_EQ(r.last, scene_trouble::none) << r.json();
+  ASSERT_EQ(s.screen, scene_screen::combat);
+  ASSERT_TRUE(s.aim_kept);
+  EXPECT_EQ(s.aim.mode, scene_aim_mode::target);
+  EXPECT_EQ(s.aim.x, 26U);
+  EXPECT_EQ(s.aim.y, 12U);
+  EXPECT_EQ(s.aim.under, 1);
+  EXPECT_EQ(s.aim.range, 3);
+  EXPECT_TRUE(s.aim.target);
+  EXPECT_NE(r.json().find(R"("aim":{"mode":"target","x":26,"y":12,"under":1,)"
+                          R"("range":3,"target":true})"),
+            std::string::npos)
+      << r.json();
+
+  r.arrive(secret::target_returned);
+  s = r.read();
+  EXPECT_TRUE(s.aim_kept);
+  EXPECT_EQ(s.aim.mode, scene_aim_mode::none);
+}
+
+TEST(SceneOnSecret, ASpellsAimFromTargetToTargetPrintsNoRange) {
+  const secret_rig r;
+  r.watch_the_aim();
+  r.fight(24, 10);
+  const unsigned morgaine = r.fighter("MORGAINE", false, 27, 14);
+  r.turn_of(morgaine);
+  r.frame_word(secret::target_attack, 0);
+  r.frame_record(secret::target_record, morgaine);
+  r.frame_record(secret::target_actor, morgaine);
+  r.frame_word(secret::target_range, 0);
+  r.frame_byte(secret::target_bar, 0);
+  r.arrive(secret::target_decided);
+
+  const scene s = r.read();
+  EXPECT_EQ(s.aim.mode, scene_aim_mode::target);
+  EXPECT_EQ(s.aim.under, 0);
+  EXPECT_EQ(s.aim.range, -1);
+  EXPECT_FALSE(s.aim.target);
+}
+
+TEST(SceneOnSecret, AfterManualsExitTheTargetIsASquareAndNobody) {
+  // The routine is handed the square it was on and no record: the bar
+  // prints that square's range, offers no Target and draws no sheet.
+  const secret_rig r;
+  r.watch_the_aim();
+  r.fight(24, 10);
+  const unsigned dominic = r.fighter("DOMINIC", false, 29, 14);
+  std::ignore = r.fighter("PAINE", false, 28, 13);
+  r.turn_of(dominic);
+  r.frame_word(secret::target_row, 13);
+  r.frame_word(secret::target_column, 28);
+  r.frame_word(secret::target_attack, 1);
+  r.frame_word(secret::target_reach, 1);
+  r.frame_record(secret::target_record, 0);
+  r.frame_record(secret::target_actor, dominic);
+  r.frame_word(secret::target_range, 1);
+  r.frame_byte(secret::target_bar, 0);
+  r.arrive(secret::target_decided);
+
+  const scene s = r.read();
+  ASSERT_EQ(r.last, scene_trouble::none) << r.json();
+  EXPECT_EQ(s.aim.mode, scene_aim_mode::target);
+  EXPECT_EQ(s.aim.x, 28U);
+  EXPECT_EQ(s.aim.y, 13U);
+  EXPECT_EQ(s.aim.under, -1)
+      << "a figure stands there, and the panel is not its";
+  EXPECT_EQ(s.aim.range, 1);
+  EXPECT_FALSE(s.aim.target);
+}
+
+TEST(SceneOnSecret, ATargetThatIsNoFigureOnTheGridSaysNothing) {
+  const secret_rig r;
+  r.watch_the_aim();
+  r.fight(24, 10);
+  const unsigned dominic = r.fighter("DOMINIC", false, 29, 14);
+  r.turn_of(dominic);
+  r.frame_word(secret::target_row, 13);
+  r.frame_word(secret::target_column, 28);
+  // A far pointer to somewhere that is nobody's record.
+  r.frame_word(secret::target_record, 0x0010);
+  r.frame_word(secret::target_record + 2, 0x6000);
+  r.arrive(secret::target_decided);
+  const scene s = r.read();
+  EXPECT_TRUE(s.aim_kept);
+  EXPECT_EQ(s.aim.mode, scene_aim_mode::none);
+}
+
+TEST(SceneOnSecret, InManualTheCursorIsReadOutOfTheDataSegment) {
+  const secret_rig r;
+  r.watch_the_aim();
+  r.fight(24, 10);
+  const unsigned dominic = r.fighter("DOMINIC", false, 29, 14);
+  const unsigned bugbear = r.fighter("BUGBEAR", true, 26, 12);
+  r.turn_of(dominic);
+  r.frame_word(secret::manual_attack, 1);
+  r.sdata(secret::data_manual_column, 26);
+  r.sdata(secret::data_manual_row, 12);
+  r.frame_word(secret::manual_range, 3);
+  r.line_byte(1);
+  r.frame_record(secret::manual_record, 0);
+  r.arrive(secret::manual_line_ends);
+  // The panel's record is put in the frame after the halving.
+  r.frame_record(secret::manual_record, bugbear);
+  r.arrive(secret::manual_decided);
+
+  const scene s = r.read();
+  ASSERT_EQ(r.last, scene_trouble::none) << r.json();
+  ASSERT_EQ(s.screen, scene_screen::combat);
+  EXPECT_EQ(s.aim.mode, scene_aim_mode::manual);
+  EXPECT_EQ(s.aim.x, 26U);
+  EXPECT_EQ(s.aim.y, 12U);
+  EXPECT_EQ(s.aim.under, 1);
+  EXPECT_EQ(s.aim.range, 3);
+  EXPECT_TRUE(s.aim.target);
+  EXPECT_NE(r.json().find(R"("aim":{"mode":"manual","x":26,"y":12,"under":1,)"
+                          R"("range":3,"target":true})"),
+            std::string::npos)
+      << r.json();
+
+  r.arrive(secret::manual_returned);
+  EXPECT_EQ(r.read().aim.mode, scene_aim_mode::none);
+}
+
+TEST(SceneOnSecret, InManualAnEmptySquareInSightHasARangeAndNoOne) {
+  const secret_rig r;
+  r.watch_the_aim();
+  r.fight(24, 10);
+  r.turn_of(r.fighter("DOMINIC", false, 29, 14));
+  r.frame_word(secret::manual_attack, 1);
+  r.sdata(secret::data_manual_column, 28);
+  r.sdata(secret::data_manual_row, 16);
+  r.frame_word(secret::manual_range, 2);
+  r.line_byte(1);
+  r.frame_record(secret::manual_record, 0);
+  r.arrive(secret::manual_line_ends);
+  // Nothing to aim at: the line's byte is cleared before the bar is built.
+  r.line_byte(0);
+  r.arrive(secret::manual_decided);
+
+  const scene s = r.read();
+  EXPECT_EQ(s.aim.mode, scene_aim_mode::manual);
+  EXPECT_EQ(s.aim.x, 28U);
+  EXPECT_EQ(s.aim.y, 16U);
+  EXPECT_EQ(s.aim.under, -1);
+  EXPECT_EQ(s.aim.range, 2);
+  EXPECT_FALSE(s.aim.target);
+}
+
+TEST(SceneOnSecret, InManualOutOfSightTheBarPrintsNoRange) {
+  const secret_rig r;
+  r.watch_the_aim();
+  r.fight(24, 10);
+  r.turn_of(r.fighter("DOMINIC", false, 29, 14));
+  r.frame_word(secret::manual_attack, 1);
+  r.sdata(secret::data_manual_column, 24);
+  r.sdata(secret::data_manual_row, 10);
+  r.frame_word(secret::manual_range, 0x7F);
+  r.line_byte(0);
+  r.frame_record(secret::manual_record, 0);
+  r.arrive(secret::manual_line_ends);
+  r.arrive(secret::manual_decided);
+
+  const scene s = r.read();
+  EXPECT_EQ(s.aim.mode, scene_aim_mode::manual);
+  EXPECT_EQ(s.aim.x, 24U);
+  EXPECT_EQ(s.aim.y, 10U);
+  EXPECT_EQ(s.aim.range, -1);
+  EXPECT_FALSE(s.aim.target);
+}
+
 }  // namespace
 }  // namespace amberfolio::machine

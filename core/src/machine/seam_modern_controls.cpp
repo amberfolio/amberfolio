@@ -48,7 +48,10 @@
 //   * **The binary is the one the six already named**, the baseline
 //     edition (edition.h), and Curse of the Azure Bonds for the eight
 //     pieces ported to it (#555): all of them, with points of their own
-//     in the definition's `programs`.
+//     in the definition's `programs`. On Secret of the Silver Blades it
+//     is the two pieces that observe, `text-entry` and `aim-watch`
+//     (#609): the seam is there for a host to read through, and switching
+//     it on changes no key and no pixel of that program.
 //     Every piece's addresses are facts about the program they name, and a
 //     seam is unavailable against any other.
 //   * **A piece no longer asks whether another is on.** `menu-cursor` took
@@ -78,11 +81,12 @@ namespace amberfolio::machine {
 namespace {
 
 /// The programs this seam's facts are about (program_profile.h): the
-/// baseline edition, every piece; and Curse of the Azure Bonds, the pieces
-/// ported to it (#555). The seam is available on these and on no other
-/// binary.
+/// baseline edition, every piece; Curse of the Azure Bonds, the pieces
+/// ported to it (#555); and Secret of the Silver Blades, the two that
+/// observe (#609). The seam is available on these and on no other binary.
 constexpr auto modern_controls_binaries =
-    fingerprints_of(std::array{&pool_of_radiance, &curse_of_the_azure_bonds});
+    fingerprints_of(std::array{&pool_of_radiance, &curse_of_the_azure_bonds,
+                               &secret_of_the_silver_blades});
 
 constexpr std::size_t point_total =
     list_arrows_point_count + bar_keys_point_count + menu_cursor_point_count +
@@ -125,6 +129,21 @@ struct curse_point_table {
   }
 };
 
+/// Secret's: the two pieces that observe, in the same order.
+struct secret_point_table {
+  std::array<seam_point, secret_modern_controls_point_count> point{};
+
+  secret_point_table() {
+    std::size_t next = 0;
+    for (const std::span<const seam_point> piece :
+         {secret_text_entry_points(), secret_aim_watch_points()}) {
+      for (const seam_point& each : piece) {
+        point[next++] = each;
+      }
+    }
+  }
+};
+
 }  // namespace
 
 const seam_definition& modern_controls_seam() noexcept {
@@ -133,9 +152,12 @@ const seam_definition& modern_controls_seam() noexcept {
   // statics.
   static const point_table points;
   static const curse_point_table curse_points;
-  static const std::array<seam_program_points, 1> programs{
+  static const secret_point_table secret_points;
+  static const std::array<seam_program_points, 2> programs{
       {{.fingerprint = curse_of_the_azure_bonds.fingerprint,
-        .points = curse_points.point}}};
+        .points = curse_points.point},
+       {.fingerprint = secret_of_the_silver_blades.fingerprint,
+        .points = secret_points.point}}};
   static const seam_definition definition{
       .id = modern_controls_id,
       .about =
