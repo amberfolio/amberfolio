@@ -1845,6 +1845,42 @@ own bar.
   and `curse-map-back.leg`. Tests:
   `JournalOnCurse.*`, `JournalReaderOnCurse.*`.
 
+**On Secret of the Silver Blades** (#609) the seam is **the citation
+watch alone**, one point, its row `secret_journal`: the message box at
+image `0x58B9` (`0540:04B9`), the string's far pointer at SP+4 and SP+6
+and the flag at SP+8, read as a byte, since the script's print pushes it
+as `mov al, n` and `push ax` as Curse's does. The routine is Curse's with
+a mouse-cursor call added at its head, and 40 far calls in the program
+reach it, the interpreter's (overlay 4) among them. A citation goes on
+the log and from there into the slot's `AFSEEN<S>.DAT`
+(`docs/journal.md` §6a).
+
+**The reader is not on this program, because `Notes` does not fit.** The
+party's bar is a constant of the adventuring loop's own module (overlay
+17, file offset 102484, 3913 bytes, load word `0xD70`), thirty-eight
+characters, copied before each call (`+0x0928`) to a stack temporary of
+exactly its own length and handed to the menu-bar routine (overlay 29,
+through `016B:002F`), which copies at most forty characters into its
+frame; forty is the screen's width. ` Notes` is six more. The camp's bar
+is thirty-five characters, so it has no room either, and the move mode's bar, `Exit` alone, is another constant on
+the stack with no spare byte. `Notes` is the reader's only way in
+(#346), so where the command goes here is a decision rather than a fact,
+and none of the reader's points is listed for this program.
+
+- **Driven** on the Steam copy, slot A (`docs/playable-secret.md` leg
+  1): the opening's page that says to record it in journal entry 37 puts
+  entry 37 on the log, unread, and nothing is drawn; the box is reached
+  39 times by the end of leg 2, with one `journal-seen` callout. With
+  `--save-sidecars`, `E`, `S`, `C` at the camp write `AFSEENC.DAT`, one
+  row, entry 37 unread (`save-sidecars writes=1`); a load of C reads it
+  back (`reads=1`), and a save of that party to D from the party menu
+  writes the same row into `AFSEEND.DAT`.
+- **Fidelity**: the watch writes nothing the machine holds, so both of
+  the pair are `identical`: `secret-boot-journal` `identical
+  secret-boot` (the box never reached, all 15 checkpoints) and
+  `secret-camp-journal` `identical secret-camp` (entry 37 cited and
+  logged, all 106). Tests: `JournalOnSecret.*`.
+
 ### The explored overlay (#179, M5-E5a to M5-E5g)
 
 PLAN.md §5 item 5 (`seam_explored.cpp`), the one enhancement with no

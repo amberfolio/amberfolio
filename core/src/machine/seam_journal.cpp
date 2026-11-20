@@ -436,8 +436,34 @@ constexpr seam_module curse_summary_overlay{
     .load_segment_at = 0x0EE0};
 constexpr std::uint16_t curse_roster_drawn_return = 0x092E;
 
+/// Secret of the Silver Blades (#609): **the citation watch alone**. The
+/// message box is the same routine with the same frame, the flag a byte
+/// pushed as `mov al, n` and `push ax` by the script's print command, so a
+/// citation goes on the log as it does on Curse, and from there into the
+/// slot's sidecar.
+///
+/// **The reader is not on this program, because `Notes` does not fit on
+/// its bar.** The party's bar is a constant in the adventuring loop's own
+/// module, thirty-eight characters, copied to a stack temporary of exactly
+/// that length before every call; the menu-bar routine copies at most forty
+/// characters of what it is handed, and forty is the screen's width. Six
+/// more do not fit there, nor on the camp's bar, thirty-five characters,
+/// and `Notes` is the reader's only way in (#346). Where the command goes
+/// on this program is a decision, not a fact (`docs/seams.md` §10), so
+/// every member below the watch's is zero.
+constexpr journal_facts secret_journal{.profile = secret_of_the_silver_blades,
+                                       .message_box_entry = 0x58B9,
+                                       .box_frame_string_offset = 4,
+                                       .box_frame_string_segment = 6,
+                                       .box_frame_clear = 8,
+                                       .box_clear_is_byte = true,
+                                       .frame_out_flag = {},
+                                       .outer_frame_entry = {},
+                                       .string_takes_background = false};
+
 constexpr auto journal_binaries =
-    fingerprints_of(std::array{&pool_of_radiance, &curse_of_the_azure_bonds});
+    fingerprints_of(std::array{&pool_of_radiance, &curse_of_the_azure_bonds,
+                               &secret_of_the_silver_blades});
 
 /// The longest Pascal string there can be, which is what the box takes.
 constexpr std::size_t longest_message = 255;
@@ -3326,11 +3352,21 @@ constexpr std::array<seam_point, 8> curse_journal_points{
       .offset = curse_of_the_azure_bonds.view_bar_return,
       .run = &at_view_bar_after<curse_journal>}}};
 
+/// On Secret of the Silver Blades, the message box alone: the citation
+/// watch, with no way into the reader (`secret_journal`), so no key, bar,
+/// clear or roster point either.
+constexpr std::array<seam_point, 1> secret_journal_points{
+    {{.module = resident_image,
+      .offset = secret_journal.message_box_entry,
+      .run = &at_message_box<secret_journal>}}};
+
 /// The points on every program but the baseline, whose points are the
 /// definition's own (seam.h, schema 9).
-constexpr std::array<seam_program_points, 1> journal_programs{
+constexpr std::array<seam_program_points, 2> journal_programs{
     {{.fingerprint = curse_of_the_azure_bonds.fingerprint,
-      .points = curse_journal_points}}};
+      .points = curse_journal_points},
+     {.fingerprint = secret_of_the_silver_blades.fingerprint,
+      .points = secret_journal_points}}};
 
 /// **Ungated**, and that is a decision rather than an omission.
 ///
