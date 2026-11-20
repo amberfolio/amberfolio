@@ -7,8 +7,8 @@ and has the method in full; `docs/first-light.md` stops at the party
 menu. Nothing in this repository can run any of it (PLAN.md §6).
 
 The legs here are the ones driven so far. What is still to be driven is
-on #608: a new party, the shops, the temple and the training hall, the
-ruins past their first street, and where its import looks.
+on #608: a cure and a training carried through, the ruins past their
+first street, and what the program wants of a character it imports.
 
 ---
 
@@ -54,6 +54,13 @@ from this table.
 | a character's view | a sheet over `HEAL CURE EXIT` (what a member can do varies) | `E` leaves |
 | a fight | the field, the member whose turn it is, `MOVE VIEW AIM QUICK DONE` | `Q` gives that member to the computer for the fight, so a party of six takes six |
 | the end of a fight | `CONTINUE BATTLE: YES NO`, when no enemy stands | `N` takes the win |
+| a pick list | `PICK RACE` and the like in a character's creation, an item list in a shop: rows with one lit as a block, over a short bar (`SELECT EXIT`, `ITEMS: BUY EXIT`) | `Up` and `Down` move the block, `Return` takes the bar's lit word for that row. `Home` and `End` do nothing |
+| a line of text | `CHARACTER NAME:`, `HOW MUCH GEMS WILL YOU DEPOSIT?` | the characters, then `Return`. **An arrow key types nothing here** |
+| a shop's bar | `BUY VIEW POOL APPRAISE EXIT` (the temple's begins `HEAL`, the vault's is `DEPOSIT WITHDRAW TRADE EXIT`) | the letter. `Return` takes the lit word, which is not always the first after coming back from one |
+
+At any bar `Left` and `Right` move the lit word and `Escape` leaves a
+view; at the adventuring bar `Up` and `Down` change which member is the
+current one. The number row does nothing.
 
 ## The watch list
 
@@ -190,6 +197,110 @@ ruins has been driven.
 
 `secret-fight` is this leg, 371 checkpoints.
 
+## Leg 5: a new party
+
+```
+... leg 0 ...
+--press Return@1500                                   # CREATE NEW CHARACTER
+--press Return@1800 --press Return@2100               # the lit race, the lit gender
+--press Return@2400 --press Return@2700               # the lit class, the lit alignment
+--press N@3000                                        # do not reroll
+--press T@3300 --press O@3500 --press Return@3700     # the name
+--press E@4000 --press Y@4300 --press Y@4600          # leave the icon editor, keep it, save
+--press Down@5000 --press Return@5150 --press S@5450  # ADD CHARACTER TO PARTY, from SECRET
+--press Return@5750 --press E@6200                    # ADD, and leave the list
+--press Down@6600 ... six, 60 frames apart            # to BEGIN ADVENTURING
+--press Return@7200
+--press Return@7700 ... every 300 frames ... --press Return@9800
+```
+
+- A new character is made at the fifth level, with 200,000 experience
+  points. `Return` at `REROLL STATS? YES NO` is `YES` and rolls again.
+- After the name comes an editor for the figure a fight draws, a bar of
+  its own; `E` leaves it and two questions follow, whether the figure
+  will do and whether to save the character. `Y` to the second writes
+  `<NAME>.WHO` and `<NAME>.SFX` in the save directory and goes back to
+  the party menu with nobody in the party.
+- `ADD CHARACTER TO PARTY` asks `ADD FROM WHERE? SECRET CURSE EXIT`.
+  `S` lists the kept characters; `Return` on one marks it with an
+  asterisk, and `E` leaves. The party menu then has nine rows and its
+  highlight on the second, so `BEGIN ADVENTURING` is six `Down` away.
+- The opening is the one a loaded party gets, to its treasure.
+
+`secret-new-party` is this leg, 116 checkpoints. Shipped slot B is a
+second party of six at this same point of the story.
+
+**The other answer, `CURSE`**, lists the Curse of the Azure Bonds
+characters (`*.GUY`) in the same save directory. With one put there the
+list names it; taking it read the name and one byte at offset 132 of
+the file and added nobody, with no message. The character was a new
+one of the first level. What the program wants of one is not known.
+
+## Leg 6: the town
+
+New Verdigris is one map of sixteen squares a side, and its doors are
+found by routing over the map's planes (the watch list). From the
+mayor's house at `3,3`:
+
+| square | what is there | what it offers |
+|---|---|---|
+| `14,6` | the armoury | `BUY VIEW POOL APPRAISE EXIT` |
+| `14,11` | a wizard's house, where trinkets are sold | a `YES NO` first |
+| `10,6` | a pub | `HAVE A DRINK RELAX LEAVE` |
+| `10,9` | a temple | `HEAL VIEW POOL APPRAISE EXIT`; `HEAL` lists the cures for the current member |
+| `7,6` | the training hall | the party menu with `TRAIN CHARACTER` and `HUMAN CHANGE CLASSES` among its rows |
+| `7,9` | the vault | `DEPOSIT WITHDRAW TRADE EXIT` |
+| `15,8` | the east gate | leg 3 |
+
+Each door has a sign the walk passes without stopping, and stepping in
+brings a greeting that waits for `Y`, or for `Return` at the vault.
+
+**The party starts with gems, not coins.** The opening's treasure
+screen has `SHARE`, which deals its gems out (`S`, before `E` and `N`),
+and a shop's `APPRAISE` is where a gem becomes coins: `GEMS`, then
+`SELL` at `YOU CAN : SELL KEEP`, fifty platinum for one.
+
+## Leg 7: the armoury
+
+```
+... leg 1, with --press S@6400 before its E@6700 and N@7000, and its
+    last three Returns at 7300, 7600 and 7900 ...
+--press Return@8200                                   # MOVE
+--press Up@8350 ... the route, 150 frames apart: four Up, Left,
+    eleven Up, Left, Up ...                           # to 14,6
+--press Y@11350                                       # yes, buy something
+--press A@11650 --press Return@11950 --press Return@12250 --press E@12550
+                                                      # APPRAISE, GEMS, SELL, and out
+--press B@12850                                       # BUY
+--press Down@13150 --press Down@13450 --press Down@13750 --press Return@14050
+--press Escape@14350
+--press V@14650 --press I@14950 --press E@15250 --press E@15550
+```
+
+The fourth row of the list is bought for ten of the fifty platinum, the
+first member's encumbrance goes from 4 to 126, and `VIEW` and `ITEMS`
+show the purchase among what the member carries, not readied.
+`secret-buy` is this leg, 188 checkpoints.
+
+## Leg 8: the vault
+
+```
+... leg 7's opening ...
+--press Return@8200
+--press Up@8350 ... four Up, Left, four Up, Right, two Up ...   # to 7,9
+--press Return@10450                                  # past the greeting
+--press D@10750 --press V@11050 --press D@11350       # DEPOSIT, a member's VIEW, DEPOSIT
+--press Return@11650 --press 2@11950 --press Return@12250   # gems, two of them
+--press E@12550 --press E@12850 --press E@13150
+```
+
+The deposit is what writes `VAULT.DAT` in the save directory, 28 bytes
+after this one: one file, no slot's own (`docs/hosts.md` §6).
+`secret-vault` is this leg, 158 checkpoints.
+
+**After a save at camp the program asks `QUIT TO DOS YES NO`**; `N`
+goes on.
+
 ## The cheats on this program
 
 Each is the leg above with one seam (`docs/seams.md` §10):
@@ -239,13 +350,16 @@ where that mechanism is (`docs/seams.md` §10).
 
 ## The sessions
 
-Eleven, `secret-*`, each on the Steam copy with its shipped slots (the
+Fourteen, `secret-*`, each on the Steam copy with its shipped slots (the
 `secret-slots` snapshot) at `--speed 386` and `--wall none`.
 
 | session | seams | relation | what it is |
 |---|---|---|---|
 | `secret-boot` | | | leg 0 |
 | `secret-camp` | | | leg 2 |
+| `secret-new-party` | | | leg 5 |
+| `secret-buy` | | | leg 7 |
+| `secret-vault` | | | leg 8 |
 | `secret-camp-cheats` | the three cheats, none pulled | `identical secret-camp` | no point acts: all 106 checkpoints |
 | `secret-camp-wound` | cheat-wound-party, pulled | `contrast secret-camp` | 93 of 106 identical, divergent from tick 169,050,886, the pull |
 | `secret-fight` | | | leg 4 |

@@ -172,6 +172,10 @@ enum class save_file_kind : std::uint8_t {
   /// A file of this build's own, beside the program's saves and never
   /// inside one (`host::slot_store`).
   sidecar,
+  /// What a party has put in store with the game's own keeper: one file
+  /// beside the saves, shared by every slot and written when something
+  /// is deposited, not when a game is saved.
+  vault,
 };
 
 /// The printable name of a `save_file_kind` — `slot`, `member`,
