@@ -226,14 +226,19 @@ page with no item on them. The items are on twelve of the spreads.
 **What an engine makes of a heading depends on how it is handed the
 page** (#585). The linked engine reads each rectangle on its own and
 reads all 121 headings. An engine handed the whole spread segments the
-page itself: the desktop's Tesseract run as a program reads nothing at
-all where three of this edition's headings are, and runs the checkbox
-into the first letter of eight more. The hosts differ on what follows a
-piece that read nothing: the page drops it and keeps the rest of the
-item (`journal.mjs`), and the desktop's program-driven engine fails the
-item (`hosts/sdl/src/tesseract_ocr.cpp`), so that engine reports 118 of
-121 (§7). The browser's engine is handed the whole spread too, drawn
-twice the size, and has not read this edition.
+page before it recognizes anything, and a heading set close above a
+drawing can go into the drawing's region, where nothing is read: the
+desktop's Tesseract run as a program reads no word where the headings
+of entries 9, 39 and 55 are, and tesseract.js on the page none where
+entry 39's and tale 14's are. The rectangle is right; the engine never
+looked inside it. So both of those engines read **a piece the page's
+reading kept nothing of again on its own**, the rectangle handed over
+as one block the way the linked engine reads every piece (§5), and with
+it each reads all 121 (§7). The program-driven engine also runs the
+checkbox into the first letter of eight headings. Where a piece reads
+nothing even so, the hosts differ: the page drops it and keeps the rest
+of the item (`journal.mjs`), and the desktop's program-driven engine
+fails the item (`hosts/sdl/src/tesseract_ocr.cpp`).
 
 ## 3a. An edition typeset as text (#398)
 
@@ -569,6 +574,19 @@ segmentation mode must match the picture. Whole-page paths (the
 `/DCTDecode` carry) ask for automatic; the decoded path and the linked
 engine's `SetRectangle` hand over one block and keep single block.
 
+**A piece the whole page's reading kept nothing of is read again on
+its own** (#585), because automatic segmentation can file a heading
+under the drawing below it and read nothing there (§3). The second
+reading is the rectangle alone at single block: on the page,
+tesseract.js's `rectangle` option over the page as drawn; on the
+desktop, a zone file beside the page (`entry.uzn`, `tesseract_zone` in
+`hosts/sdl/src/tsv_words.h`), which the CLI reads zone by zone at
+`--psm 6`. Neither crops or decodes anything, and both answer words in
+the page's coordinates, so the same filter keeps them. Only a piece that
+read nothing is read twice, so every other piece reads exactly as it
+did: Pool of Radiance's GOG edition comes out of a browser as the same
+store with this rule as without it.
+
 Rejected, measured: `user_defined_dpi=300`, `preserve_interword_spaces=1`
 and reading the region as grey changed not one character; a
 `--user-words` list would fix two misreadings in 341 words for a table to
@@ -577,7 +595,8 @@ errors while putting noise in front of a reader, so confidence is a
 per-entry score instead.
 
 **The asymmetry.** Drawing the page 2x needs it decoded. The browser does
-that (`createImageBitmap` and a canvas, one recognition per scan); the
+that (`createImageBitmap` and a canvas, one recognition per scan and one
+for each piece read again); the
 program-driven desktop engine hands the CLI a file and Tesseract's CLI
 has no crop or scale flag, so a default desktop ingestion reads worse
 than a browser one, and the linked engine (#216) is the way to close
@@ -811,28 +830,33 @@ document through the wasm module or in a browser, and an entry opened in
 the game: the reader is on Pool of Radiance and Curse of the Azure Bonds
 and not on this program.
 
-**By hand, Curse's GOG edition** (#585), through the desktop host, each
-reading scored by §5a's harness against the Steam edition's text put in
-the store as every item's correction:
+**By hand, Curse's GOG edition** (#585), through the desktop host and
+on the built page in a browser (Chromium, headless, the page's own
+document control), each reading scored by §5a's harness against the
+Steam edition's text put in the store as every item's correction:
 
 | engine | read | characters | words |
 | --- | --- | --- | --- |
 | linked, Tesseract 5.5.1 (`AMBERFOLIO_LINK_TESSERACT`) | `entries=121 extracted=121 recognized=121`, `pictures=9/9` | 2.07% | 6.67% |
-| the same Tesseract run as a program (`--journal-ocr`) | `entries=121 extracted=121 recognized=118`, `pictures=9/9` | 2.17% | 7.13% |
+| the same Tesseract run as a program (`--journal-ocr`) | `entries=121 extracted=121 recognized=121`, `pictures=9/9` | 2.15% | 7.06% |
+| tesseract.js 6.0.1, on the page | `121 of 121 entries`, `9 of 9 pictures` | 1.71% | 5.70% |
 
 The harness counts every curly quotation mark and every word hyphenated
 at a line's end, which the reader folds and joins (§9); with those two
-folded the linked reading differs in 0.87% of its characters. All 121 of
-the linked engine's items begin with their own heading, and the three
+folded the linked reading differs in 0.87% of its characters. Every item
+of all three readings begins with its own heading, and the three
 boundaries the table calls paragraph breaks are breaks in the Steam
-edition's text. The three items the program-driven engine does not
-recognize are entries 9, 39 and 55 (§3). The longest item is about three
-kilobytes. In the game, on the GOG copy with `journal` on over the
-linked engine's store: the innkeeper's citation (`docs/playable-curse.md`
-leg 2) puts entry 31 on the log, and Return opens it, one page of text
-under its heading. Not done: this document in a browser, and one of its
-pictures on the game's screen (the nine were looked at decoded out of
-the store).
+edition's text. Entries 9, 39 and 55 on the program-driven engine, and
+entry 39 and tale 14 on the page, are read by the second reading of §5a;
+without it that engine recognizes 118 and the page 120, tale 14 without
+its heading. Three ingestions on the page made one store. The longest item
+is about three kilobytes. In the game, on the GOG copy with `journal`
+on: over the linked engine's store, the innkeeper's citation
+(`docs/playable-curse.md` leg 2) puts entry 31 on the log, and Return
+opens it, one page of text under its heading; on the page, over the
+page's own store and the page's *Cite them all* (§10), entries 20, 39
+and 59 open as their heading's page and then their picture, drawn in
+the box on the game's screen.
 
 **By hand, the Steam edition** (§3a): every item through the desktop host
 and through the module under node with the page's own `journal.mjs`, one
