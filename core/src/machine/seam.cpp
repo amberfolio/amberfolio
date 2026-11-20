@@ -271,6 +271,14 @@ bool seam_context::offered() const noexcept {
   return at != seam_engine::max_seams && engine_->slots_[at].offered;
 }
 
+void seam_context::hold(bool holding) noexcept {
+  const std::size_t at = engine_->index_of(id_);
+  if (at == seam_engine::max_seams || !engine_->slots_[at].enabled) {
+    return;  // a stop, run for a seam that is off, holds nothing any more.
+  }
+  engine_->slots_[at].holding = holding;
+}
+
 std::uint16_t seam_engine::scratch(std::string_view id,
                                    unsigned word) const noexcept {
   const std::size_t at = index_of(id);
@@ -563,6 +571,7 @@ void seam_engine::clear() noexcept {
     // for one: what it would put back, a reset puts back itself (#540).
     slots_[i].offered = false;
     slots_[i].moment = ticks{};
+    slots_[i].holding = false;
     slots_[i].stop_owed = false;
   }
   stops_owed_ = 0;
@@ -680,6 +689,7 @@ seam_error seam_engine::enable_slot(std::size_t index) {
   s.waited = ticks{};
   s.offered = false;
   s.moment = ticks{};
+  s.holding = false;
   ++enabled_;
   report(id, seam_event_kind::enabled, seam_reason::none);
   arm_all(overlays_);
@@ -705,14 +715,16 @@ seam_error seam_engine::disable(std::string_view id) {
   s.waiting = false;
   // A moment too: a seam switched back on starts from its own points,
   // not from somewhere in a run it was switched off in (#538). One that
-  // was holding something until that moment is owed its stop, which
-  // `arm_all()` below makes due at the next step boundary (#540).
-  if (s.offered && s.seam->stop != nullptr && !s.stop_owed) {
+  // was holding something until that moment, or until a later point of
+  // its own, is owed its stop, which `arm_all()` below makes due at the
+  // next step boundary (#540, #627).
+  if ((s.offered || s.holding) && s.seam->stop != nullptr && !s.stop_owed) {
     s.stop_owed = true;
     ++stops_owed_;
   }
   s.offered = false;
   s.moment = ticks{};
+  s.holding = false;
   --enabled_;
   report(id, seam_event_kind::disabled, seam_reason::none);
   arm_all(overlays_);

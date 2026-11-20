@@ -370,6 +370,8 @@ constexpr place_tables curse_of_the_azure_bonds_tables{
     .zones = curse_zone_names,
     .sub_maps = {},
     .lairs = {}};
+constexpr place_tables secret_of_the_silver_blades_tables{
+    .doors = {}, .zones = {}, .sub_maps = {}, .lairs = {}};
 
 lair_found find_lair(const place_tables& places, std::uint8_t disk,
                      std::uint8_t area, std::uint8_t geo,
@@ -404,6 +406,10 @@ const place_tables& pool_of_radiance_places() noexcept {
 
 const place_tables& curse_of_the_azure_bonds_places() noexcept {
   return curse_of_the_azure_bonds_tables;
+}
+
+const place_tables& secret_of_the_silver_blades_places() noexcept {
+  return secret_of_the_silver_blades_tables;
 }
 
 unsigned cell_of(unsigned x, unsigned y) noexcept {

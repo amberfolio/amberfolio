@@ -71,7 +71,8 @@
 //   a promise: `probeDocument`, `textProbeDocument`, `probeEngine`,
 //   `hashBytes`, `hashPixels`,
 //   `currentScan`, `currentImage`, `wordsWithin`, `readWithin`,
-//   `joinPieces`, `wordCount`, `DOUBTFUL_CONFIDENCE`, `PAGE_SCALE`,
+//   `readPiece`, `joinPieces`, `wordCount`, `DOUBTFUL_CONFIDENCE`,
+//   `PAGE_SCALE`,
 //   `JOURNAL_GRAY`, `JOURNAL_JPEG`.
 //
 // The store's own six are in none of them, because a page should not be
@@ -427,6 +428,33 @@ export function readWithin(data, region) {
   };
 }
 
+/// What one piece of a carried page reads: the words of the page's
+/// reading inside `region`, and when there are none, the words of
+/// `region` read **on its own** (#585).
+///
+/// The page is read with automatic segmentation, and that is right for a
+/// two-page spread (#315), but the segmentation decides what is text
+/// before anything is recognized. A heading set close above its own
+/// drawing can go into the drawing's region, and an engine does not read
+/// what it has called a picture: on Curse of the Azure Bonds' GOG
+/// edition the engine read nothing at all where entry 39's heading is,
+/// on a page it read 785 words of, and that heading is the whole of the
+/// entry's text. The same rectangle handed over as one block, which is
+/// how the linked desktop engine reads every piece (`SetRectangle`),
+/// reads it.
+///
+/// `alone` is an async function answering the engine's reading of the
+/// rectangle by itself, in the page's coordinates; it is asked only when
+/// the page's reading kept nothing there, so a piece that read is read
+/// exactly as it was. `again` in the answer says which one this is.
+export async function readPiece(data, region, alone) {
+  const got = readWithin(data, region);
+  if (got.text !== '' || typeof alone !== 'function') {
+    return { ...got, again: false };
+  }
+  return { ...readWithin(await alone(), region), again: true };
+}
+
 /// Join the pieces of one entry into the reading the store keeps.
 ///
 /// `read` is `{ text, opens }` per piece that read something, in
@@ -691,19 +719,31 @@ export async function loadEngine({ url = ENGINE_URL, language = 'eng' } = {}) {
     if (page && sameBytes(page.bytes, bytes)) return page;
     await worker.setParameters({ tessedit_pageseg_mode: PSM.AUTO });
     const drawn = await upscaledPage(bytes, PAGE_SCALE);
+    // The stream, under its own type, exactly as the document holds it,
+    // whenever this browser would not draw it — this page has not decoded
+    // it and has no business claiming to know more about it than the
+    // document did (#212).
+    const image = drawn ?? new Blob([bytes], { type: 'image/jpeg' });
     // `blocks` has to be asked for: the pinned version answers `text`
     // alone otherwise, and a rectangle cannot be applied to that (#306).
+    const { data } = await worker.recognize(image, {}, { blocks: true });
+    page = { bytes, image, data, scale: drawn ? PAGE_SCALE : 1 };
+    return page;
+  }
+  /// One rectangle of the page in hand, read by itself as one block
+  /// (#585): `readPiece()`'s second reading. The engine's own
+  /// `rectangle` option, so the page is neither cropped nor drawn again
+  /// here, and its words come back in the page's coordinates. The mode is
+  /// single block because that is what a rectangle of type is (#315);
+  /// the next page's reading asks for automatic again.
+  async function readAlone(region) {
+    await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_BLOCK });
     const { data } = await worker.recognize(
-      // The stream, under its own type, exactly as the document holds it,
-      // whenever this browser would not draw it — this page has not
-      // decoded it and has no business claiming to know more about it
-      // than the document did (#212).
-      drawn ?? new Blob([bytes], { type: 'image/jpeg' }),
-      {},
+      page.image,
+      { rectangle: region },
       { blocks: true },
     );
-    page = { bytes, data, scale: drawn ? PAGE_SCALE : 1 };
-    return page;
+    return data;
   }
 
   return {
@@ -734,14 +774,16 @@ export async function loadEngine({ url = ENGINE_URL, language = 'eng' } = {}) {
           opens = opens || part.beginsParagraph === true;
           if (scan.kind === 'jpeg') {
             const { data, scale } = await readPage(part.bytes);
-            const got = readWithin(data, scaledRegion(part.region, scale));
+            const region = scaledRegion(part.region, scale);
+            const got = await readPiece(data, region, () => readAlone(region));
             if (got.text === '') {
               const onPage = wordCount(data);
               empty.push(
                 onPage === 0
                   ? 'the OCR engine read no words on the page'
                   : `the OCR engine read ${onPage} words on the page and` +
-                    " none inside the entry's rectangle",
+                    " none inside the entry's rectangle, nor in the" +
+                    ' rectangle read on its own',
               );
             }
             keep(got.quality);

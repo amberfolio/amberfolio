@@ -111,6 +111,14 @@ inline constexpr std::size_t curse_modern_controls_point_count =
 [[nodiscard]] std::span<const seam_point> curse_text_entry_points() noexcept;
 [[nodiscard]] std::span<const seam_point> curse_aim_watch_points() noexcept;
 
+/// Secret of the Silver Blades' (#609): the two pieces that only observe,
+/// which the host reads rest on. No piece that changes a key or a colour is
+/// ported to it.
+inline constexpr std::size_t secret_modern_controls_point_count =
+    text_entry_point_count + aim_watch_point_count;
+[[nodiscard]] std::span<const seam_point> secret_text_entry_points() noexcept;
+[[nodiscard]] std::span<const seam_point> secret_aim_watch_points() noexcept;
+
 /// The seam's own word `text-entry` notes the line editor in: one while the
 /// program is inside it. `move-mode` holds words 0 to 4.
 inline constexpr unsigned text_entry_scratch = 5;

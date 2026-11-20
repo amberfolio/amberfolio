@@ -1667,7 +1667,8 @@ and a first deposit at the town's vault created `VAULT.DAT`, 28 bytes,
 in the save directory: one file whichever slot is loaded, so a host
 that splits a playthrough by slot keeps it with all of them. **Not a
 row**: a Curse of the Azure Bonds character (`*.GUY`) put there for the
-program's `ADD` to list, which is that game's file. A page that writes
+program's `ADD` to list and take (`docs/playable-secret.md` leg 5),
+which is that game's file. A page that writes
 a playthrough back keeps the rows above and nothing else, so a file
 that is not a row does not survive a reload there.
 
@@ -2476,7 +2477,8 @@ thing out from the screen.
 
 - **Where it comes from.** The `text-entry` piece of `modern-controls`
   notes the editor's first instruction and its one return
-  (`core/src/machine/seam_text_entry.cpp`, `machine/text_entry.h`).
+  (`core/src/machine/seam_text_entry.cpp`, `machine/text_entry.h`), on
+  each of the three programs (`docs/modern-controls.md`).
   Reading runs from the entry until the line is accepted with Return or
   abandoned with Esc. A caller that asks again, after a number that was not
   one, enters again.
@@ -2755,3 +2757,96 @@ A fight (game mode 5, the tactical grid):
     Target), Mark, Philippe, the patron at `28,14` (range 3, no Target)
     and, the window scrolled to `27,11`, Travis at range 7 and a patron
     at `32,11`, range 8. Unit: `SceneOnCurse.*`.
+- **On Secret of the Silver Blades** (#609) the grid of an area whose
+  status line prints the party's stored square, which the town is, and
+  a fight anywhere, with that program's facts (`secret_scene`, and its
+  profile):
+
+  | fact | Secret of the Silver Blades |
+  | --- | --- |
+  | party x, y, facing; wall sets | `0x89D7`..`0x89D9`; `0x89D8` |
+  | the loaded map; the area record | `0x89CE`; `0x67C6` (the geometry block at `+0x18A` and the 3D word at `+0x1CC`, as on the first two) |
+  | disk; area; in transition | `0x7420`; `0xA4C2`; `0x59B5` |
+  | the view kind | none: mode 4 is always the grid |
+  | the square the status line prints | the area record's `+0x3FA` and `+0x3FC`; `0xFF` in the first says the stored one |
+  | slot records; squares; bodies; body count; the fight's block | `0x8571`; `0x7EDF`; `0x868E`; `0x86CD`; `0x86CE` |
+  | ground costs; the acting figure | `0x1A9E`; `0x7D38` |
+  | record: length, computer, AC | `0x1B7`, `0x1A9`, `0x1AB` |
+  | the aim bar's frames: target, its square, range; manual range, record | `+0x14`, `+8` and `+6`, the word at `-0x31`; `-0x38`, `+0x1E` (overlay 16) |
+  | the manual cursor's column and row | not in the frame: DGROUP `0x8E1F`, `0x8E20` |
+
+  - **The map's format is the first two programs'**, by the program's
+    own three routines over it (overlay 32: a face's kind at `+0x0697`,
+    whether a face lets the party through at `+0x0568`, a square's own
+    byte at `+0x079A`): plane 0's nibbles north and east, plane 1's
+    south and west, plane 3 two bits a face. The wall sets' words are at
+    a stride of four from `0x89D8`, slot 1 at `+4`: block 21 in the
+    town and 7 in the ruins.
+  - **No door graphic is measured and no map is named.** A door is what
+    the loaded map says itself, as on a map of Pool of Radiance the
+    table has no row for: the kinds it has shut somewhere, or, with none
+    shut, every way through. Every `zone` is `AREA <n>`.
+  - **`map` is always `null`**: the automap is not on this program.
+  - **The titles and the opening's pages are `null`.** The program is in
+    mode 4 from start-up: the area number is zero until the first
+    script is loaded, and the geometry block's word is zero while the
+    script that is up has loaded none, which the opening's is (block
+    17).
+  - **The ruins' grid is not read: `null`.** There the status line does
+    not print the stored square. The line's routine (overlay 27
+    `+0x316A`) prints the two bytes of the area record above unless the
+    first word is `0xFF`, and nothing in the program but an area's
+    script writes them. Over the steps driven, the ruins' script keeps
+    the party on one grid (the same map bytes, wall set and geometry
+    block throughout), moves it from one part of that grid to another at
+    a door, and numbers the squares itself: stored `11,2` is the line's
+    `0,15`; stored `14,2` is `3,15`, and the step east through its door
+    is stored `10,3` and the line's `4,15`.
+    `x` and `y` are documented above as the line's numbers, and `view`
+    is squares of the grid, so on such an area the two are different
+    squares. **Which a host is told, and whether both, is not decided**:
+    the stored square with its faces, which is where the walls are; the
+    line's square, which is what a player is told; or the two side by
+    side. Until it is, the read says nothing there rather than a square
+    the screen does not show. **A fight there reads**: it has no square
+    for the party.
+  - **The aim** is the aim watch's, as on the first two: absent while
+    `modern-controls` is off, which on this program is that piece and
+    text entry and nothing a player sees (`docs/modern-controls.md`).
+    Both routines are rewritten. From target to target the routine is
+    handed the target's square beside its record, and **after manual's
+    Exit a square and no record**: `mode` is `target`, `x`,`y` that
+    square, `under` `null` whoever stands there, because the program
+    draws nobody's sheet for it (the one on the panel is left from
+    manual), `range` what the bar prints and `target` false.
+  - **Driven** over `docs/playable-secret.md`'s legs, each read beside
+    its still. The town: `3,3` south in the mayor's house with a wall
+    behind and on the left, and at `3,4` a `door` ahead; `3,8` south with
+    the wall on the right; east along the street, a `door` on the right
+    at `7,8` and `10,8` where the program prints the sign over a door,
+    and at `15,8` the gate a `door` ahead and a wall on the right; the
+    square the status line prints each time. The fight of
+    leg 4, window `24,10`: six of the party and four enemies on the
+    squares the picture draws them on, three of the enemies two squares
+    wide, the diagonal wall `blocked`, the panel's member the `turn`
+    with the sheet's hit points and armour class; `player` false for
+    each member once QUICK gives it to the computer; on an enemy's turn
+    its own hit points and armour class; a fallen enemy gone from the
+    list; `null` at the banner after the fight.
+  - **The aim, driven** on Dominic's turn at `29,14` (leg 9): Aim opens
+    from target to target on Dominic himself, range 0 and no Target;
+    Next is Malachite at `28,14` (range 1, Target), then Paine at
+    `28,13` (range 1, Target), then Morgaine at `27,14` (range 2, no
+    Target); Prev is Paine again; Manual leaves the cursor on Paine, and
+    the arrows take it to `27,13` (Guy, range 2), `27,12` (a hippogriff,
+    range 3), `27,11` (another, range 4), `28,11` (nobody, range 3) and
+    `28,12` (the first hippogriff's second square, range 2), each with
+    the sheet the panel shows and the number after `RANGE =`; Exit is
+    the square `28,13` from target to target with nobody under it (the
+    window scrolled to `25,10`), and a second Exit `"aim":null`.
+  - **Not seen in a run**: a party member falling (the fallen's table
+    is where the code that matches Curse of the Azure Bonds' puts it,
+    at Curse's distances from the tables a run did confirm), the
+    transition flag set (its sites are Curse's, instruction for
+    instruction; a still never falls inside one), a spell's aim, and a
+    target outside the window. Unit: `SceneOnSecret.*`.

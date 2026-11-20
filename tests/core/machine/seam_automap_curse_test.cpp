@@ -347,6 +347,106 @@ TEST(SeamAutomapOnCurse, TheOneAdventuringBarIsTheParty) {
       << "Pool of Radiance's second call site is not one here";
 }
 
+// --- Switched on at a bar that is already up (#628) ----------------------------
+
+/// Where the stand-in frames go, in the data segment the rig's stack is in.
+constexpr std::uint16_t bar_frame = 0x0500;
+constexpr std::uint16_t inner_frame = 0x0480;
+
+/// A frame of the program's: its caller's `BP` at `[bp]` and its far
+/// return above it.
+void put_frame(const curse_rig& r, std::uint16_t bp, std::uint16_t caller,
+               std::uint16_t return_cs, std::uint16_t return_ip) {
+  r.put_word(curse_rig::dgroup(), bp, caller);
+  r.put_word(curse_rig::dgroup(), static_cast<std::uint16_t>(bp + 2),
+             return_ip);
+  r.put_word(curse_rig::dgroup(), static_cast<std::uint16_t>(bp + 4),
+             return_cs);
+}
+
+/// The key poll, reached from inside a routine whose frame is at `bp`.
+void poll_from(const curse_rig& r, std::uint16_t bp, unsigned times) {
+  for (unsigned i = 0; i < times; ++i) {
+    r.stand_on(image_load_segment, key_pending);
+    r.regs()[cpu::reg16::bp] = bp;
+    r.box->step();
+  }
+}
+
+TEST(SeamAutomapOnCurse, SwitchedOnAtThePartysBarTabAnswersAtOnce) {
+  // The player is at the party's bar, inside the menu-bar routine's call,
+  // when the seam goes on: the bar's entry was before it, and the first
+  // poll reads whose bar it is off the routine's frame instead.
+  const curse_rig r;
+  r.adventuring();  // the bar goes up with the seam off
+  put_frame(r, bar_frame, 0, adventure_segment, adventure_bar_return);
+  r.enable();
+  ASSERT_FALSE(r.map_state().at_command_bar());
+  r.type(key_tab);
+  poll_from(r, bar_frame, 6);
+  EXPECT_TRUE(r.map_state().at_command_bar());
+  EXPECT_TRUE(r.map_state().panel_open()) << "the first Tab is the panel's";
+  EXPECT_TRUE(r.map_state().panel_on_screen());
+}
+
+TEST(SeamAutomapOnCurse, TheReadingClimbsPastARoutineInBetween) {
+  const curse_rig r;
+  r.adventuring();
+  put_frame(r, bar_frame, 0, adventure_segment, adventure_bar_return);
+  put_frame(r, inner_frame, bar_frame, 0x3D9A, 0x05E5);
+  r.enable();
+  r.type(key_tab);
+  poll_from(r, inner_frame, 6);
+  EXPECT_TRUE(r.map_state().panel_on_screen());
+}
+
+TEST(SeamAutomapOnCurse, SwitchedOnUnderSomebodyElsesBarItWaitsForTheParty) {
+  // A shop's bar, from a call that is not the adventuring loop's: the
+  // reading says no, the Tab is left for the program, and the next bar's
+  // entry is what says yes.
+  const curse_rig r;
+  r.adventuring();
+  r.put_byte(curse_rig::dgroup(), data_game_mode, mode_shop);
+  put_frame(r, bar_frame, 0, 0x2000, 0x0100);
+  r.enable();
+  r.type(key_tab);
+  poll_from(r, bar_frame, 6);
+  EXPECT_FALSE(r.map_state().at_command_bar());
+  EXPECT_FALSE(r.map_state().panel_open()) << "the Tab is the program's";
+}
+
+TEST(SeamAutomapOnCurse, SwitchedOnAgainItDoesNotTrustWhatItSawBefore) {
+  // On at the party's bar, off, a shop's bar goes up unseen, on again:
+  // the party's bar it saw last is not the bar that is up.
+  const curse_rig r;
+  r.enable();
+  r.adventuring();
+  ASSERT_TRUE(r.map_state().at_command_bar());
+  ASSERT_EQ(r.box->seams().disable(seam_id), seam_reason::none);
+  r.put_up_the_bar(0x5000, 0x0300);
+  put_frame(r, bar_frame, 0, 0x2000, 0x0100);
+  r.enable();
+  r.type(key_tab);
+  poll_from(r, bar_frame, 2);
+  EXPECT_FALSE(r.map_state().at_command_bar());
+  EXPECT_FALSE(r.map_state().panel_open());
+}
+
+TEST(SeamAutomapOnCurse, OnceReadTheBarsOwnEntryDecides) {
+  // The frames are read once per switching on: after that the bar's
+  // entry says whose it is, as it always has.
+  const curse_rig r;
+  r.adventuring();
+  r.enable();
+  poll_from(r, 0, 1);
+  ASSERT_FALSE(r.map_state().at_command_bar()) << "no frames, so no";
+  put_frame(r, bar_frame, 0, adventure_segment, adventure_bar_return);
+  poll_from(r, bar_frame, 1);
+  EXPECT_FALSE(r.map_state().at_command_bar()) << "not read a second time";
+  r.put_up_the_bar(curse_rig::dgroup(), data_adventure_bar);
+  EXPECT_TRUE(r.map_state().at_command_bar());
+}
+
 // --- The give-back -----------------------------------------------------------
 
 /// A stand-in for the region clear: clean its eight bytes. A stand-in for

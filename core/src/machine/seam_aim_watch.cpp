@@ -114,7 +114,9 @@ namespace {
 /// One program's facts: in its aim overlay (the profile's), target to
 /// target's meeting point and its wait's return; manual's halving, meeting
 /// point and its wait's return. Then the frames, from BP: target to target's
-/// attack flag and bar string; manual's attack flag and line byte.
+/// attack flag and bar string; manual's attack flag and line byte, which is
+/// in the frame itself, or in a byte of its caller's that the frame holds a
+/// far pointer to (`manual_line_is_far`).
 struct aim_watch_facts {
   const program_profile& profile;
   std::uint32_t target_decided;
@@ -126,6 +128,7 @@ struct aim_watch_facts {
   int target_bar;
   int manual_attack;
   int manual_line;
+  bool manual_line_is_far{};
 };
 
 /// Pool of Radiance: overlay 13.
@@ -156,6 +159,46 @@ constexpr aim_watch_facts curse_aim_watch{.profile = curse_of_the_azure_bonds,
                                           .manual_attack = 0x12,
                                           .manual_line = -0x39};
 
+/// Secret of the Silver Blades (#609): overlay 16, and both routines
+/// rewritten.
+///
+///   * **From target to target**, the routine at `0x2C85`. It is handed the
+///     acting figure's record at `[BP+0x18]`, the target's at `[BP+0x14]`
+///     (zero for none: the target is then only the square at `[BP+8]` and
+///     `[BP+6]`), the weapon's reach at `[BP+0x12]` and whether this is an
+///     attack at `[BP+0x10]`. The range is the line routine's from the
+///     acting figure to that square, a word at `[BP-0x31]`, halved and then
+///     printed for an attack. The word Target is built into the bar string
+///     at `[BP-0x2A]` as on the first two programs; the branches meet at
+///     `0x2DE8`, and the call into the menu-bar routine returns at
+///     `0x2E70`.
+///   * **Manual**, the routine at `0x302D`. The cursor is two bytes of the
+///     data segment (`scene.cpp`). The line's byte is its caller's: the
+///     frame holds a far pointer to it at `[BP+0x12]`. The routine sets it
+///     where the line arrives and prints the range for an attack
+///     (`[BP+0x1A]`); at `0x31CB`, where both branches meet, the range word
+///     at `[BP-0x38]` is halved, and from there the record the panel shows
+///     is put in the far pointer at `[BP+0x1E]`. The byte is cleared
+///     wherever Target is not to be offered, the branches meet again at
+///     `0x337C`, and the call into the menu-bar routine returns at
+///     `0x33DA`.
+///
+/// By two routes: the two routines read beside Curse of the Azure Bonds'
+/// (the same order of steps, with the frames above), and a driven fight
+/// with the scene read beside each still (`docs/hosts.md` §13).
+constexpr aim_watch_facts secret_aim_watch{
+    .profile = secret_of_the_silver_blades,
+    .target_decided = 0x2DE8,
+    .target_returned = 0x2E70,
+    .manual_line_ends = 0x31CB,
+    .manual_decided = 0x337C,
+    .manual_returned = 0x33DA,
+    .target_attack = 0x10,
+    .target_bar = -0x2A,
+    .manual_attack = 0x1A,
+    .manual_line = 0x12,
+    .manual_line_is_far = true};
+
 struct frame {
   std::uint16_t segment;
   std::uint16_t bp;
@@ -169,6 +212,21 @@ struct frame {
 [[nodiscard]] std::uint8_t byte_at(machine& box, frame at, int offset) {
   return box.processor().read_byte(at.segment,
                                    static_cast<std::uint16_t>(at.bp + offset));
+}
+
+[[nodiscard]] std::uint16_t word_at(machine& box, frame at, int offset) {
+  return box.processor().read_word(at.segment,
+                                   static_cast<std::uint16_t>(at.bp + offset));
+}
+
+/// Manual's line byte: in the frame, or where the frame's far pointer says.
+template <const aim_watch_facts& F>
+[[nodiscard]] std::uint8_t manual_line_byte(machine& box, frame at) {
+  if (!F.manual_line_is_far) {
+    return byte_at(box, at, F.manual_line);
+  }
+  return box.processor().read_byte(word_at(box, at, F.manual_line + 2),
+                                   word_at(box, at, F.manual_line));
 }
 
 void note(seam_context& ctx, scene_aim_mode mode, frame at,
@@ -195,7 +253,7 @@ void target_bar_up(machine& box, seam_context& ctx) {
 template <const aim_watch_facts& F>
 void manual_line_noted(machine& box, seam_context& ctx) {
   const frame at = frame_now(box);
-  const bool shown = byte_at(box, at, F.manual_line) != 0 &&
+  const bool shown = manual_line_byte<F>(box, at) != 0 &&
                      byte_at(box, at, F.manual_attack) != 0;
   ctx.set_scratch(aim_flags_scratch, shown ? aim_range_shown : 0);
 }
@@ -205,7 +263,7 @@ void manual_bar_up(machine& box, seam_context& ctx) {
   const frame at = frame_now(box);
   auto flags = static_cast<std::uint16_t>(ctx.scratch(aim_flags_scratch) &
                                           aim_range_shown);
-  if (byte_at(box, at, F.manual_line) != 0) {
+  if (manual_line_byte<F>(box, at) != 0) {
     flags |= aim_offered;
   }
   note(ctx, scene_aim_mode::manual, at, flags);
@@ -244,6 +302,9 @@ static_assert(aim_watch_point_table.size() == aim_watch_point_count);
 constexpr std::array<seam_point, 5> curse_aim_watch_point_table =
     aim_watch_points_of<curse_aim_watch>();
 
+constexpr std::array<seam_point, 5> secret_aim_watch_point_table =
+    aim_watch_points_of<secret_aim_watch>();
+
 }  // namespace
 
 std::span<const seam_point> aim_watch_points() noexcept {
@@ -252,6 +313,10 @@ std::span<const seam_point> aim_watch_points() noexcept {
 
 std::span<const seam_point> curse_aim_watch_points() noexcept {
   return curse_aim_watch_point_table;
+}
+
+std::span<const seam_point> secret_aim_watch_points() noexcept {
+  return secret_aim_watch_point_table;
 }
 
 bool aim_watch_now(const machine& box, scene_aim_frame& out) noexcept {

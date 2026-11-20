@@ -407,13 +407,24 @@ BIOS reaches no address of its own, so no address can pace it.
   with what a moment's handler has. It is the one handler a seam that is
   off runs. `fired` does not count it, and a reset drops it, the devices
   going back to power-on with the machine.
+- **Holding** (`seam_context::hold`, #627). A seam with no moments can
+  hold something too: a string of the program's it changed at one point
+  and puts back at a later one, while the program sits between the two
+  as long as a player likes (the journal's `Notes`, between the bar
+  routine's call and its return). It says so with `hold(true)` and lets
+  go with `hold(false)`, and a `disable()` while it holds owes its stop
+  the same way. `enable()`, `disable()` and `clear()` let go. Its stop
+  writes back only what its own seam wrote, and only where the program
+  is known not to be reading it at that instruction (§10 says why, for
+  the journal).
 - **Cost**: `machine::step()` asks `due(now)` beside `wants(at)`, one
   comparison against the earliest moment any seam has asked for; with
   none asked it is false at every tick. A stop owed is due now.
 
 Tests: `SeamMoment.*` (`tests/core/machine/seam_moment_test.cpp`),
 `SeamMoment.ServingOneThatWritesNothingLeavesTheRunIdentical` the
-fidelity one, `SeamMoment.SwitchedOff*` the stop's.
+fidelity one, `SeamMoment.SwitchedOff*` and `SeamMoment.SwitchedOnAgainItHoldsNothing`
+the stop's.
 
 ---
 
@@ -752,6 +763,8 @@ and never triggered.
 | `secret-fight-kill` | contrast | `secret-fight` (kill-all pulled as the fight begins) |
 | `secret-camp-message-pause` | identical | `secret-camp` (the opening's pages wait for a key, and no pause is reached) |
 | `secret-fight-pause` | contrast | `secret-fight` (the pause as the encounter opens, and every combat line after it, stand longer) |
+| `secret-fight-controls` | identical | `secret-fight` (`modern-controls` on Secret of the Silver Blades, its two observing pieces never reached) |
+| `secret-aim-controls`, `secret-name-controls` | identical | `secret-aim`, `secret-name` (the same, the aim watched and a name typed: on this program the seam writes nothing of the machine's) |
 | `curse-quiet-fanfare` | contrast | `curse-quiet` (Curse's piece from the end of the boot's loading to its end, the titles' own sound it plays over, and the driver's ticks it kept off the chip) |
 
 **A built-in fix has no pair** (`built_in_fixes()`, seam.h). It is on
@@ -1403,6 +1416,25 @@ rule, settling quarantine and ownership signals are derived in
   drew the roster in (a temple is the shop mode, `1`, which the give-back
   otherwise refuses). Any other clear of the cells after the roster, a
   whole panel or screen cleared, a draw and a give-back drop it.
+- **Switched on at a bar that is already up** (#628), the thunk is
+  behind the program: a player at the party's bar is inside the menu-bar
+  routine's call, waiting for a key. So the first key point after the
+  seam is switched on reads whose bar it is off the program's frames
+  instead, once (the seam's own word 0 says it has): from `BP` up the
+  chain of saved `BP`s, at most eight frames, a frame whose far return
+  is one of the adventuring loop's bar calls in the segment the
+  manager's word names is the party's bar; a chain that runs out or
+  does not climb is not. The menu-bar routine keeps a `BP` frame on
+  both programs (a `--dump-memory` at the bar has `BP` on it, its far
+  return Curse's overlay 15 `+0x092C`), and the key routines are called
+  from it, so the first frame is its. Driven: on at frame 4,300 at the
+  bar after Curse's slot A, the first `Tab` (4,450) puts the panel up;
+  on Pool of Radiance at 8,300 after slot A, the same. A seam switched
+  off and on again under somebody else's bar reads that bar, not the
+  party's it saw before. Tests: `SeamAutomapOnCurse.Switched*`,
+  `SeamAutomapOnCurse.TheReadingClimbsPastARoutineInBetween`,
+  `SeamAutomapOnCurse.OnceReadTheBarsOwnEntryDecides`,
+  `AutomapBar.SwitchedOnAtEitherOfThePartysBarsTabAnswersAtOnce`.
 - Rejected as the "whose screen" gate: the program's "a script has the
   message area" byte, because `--watch 84E4` shows it oscillating every
   step.
@@ -1572,7 +1604,8 @@ PLAN.md §5 item 2's in-game half; ingestion is #174 and
 | --- | --- | --- |
 | the automap's five: both key routines, both clears, the roster drawer's `retf` | resident image | as the automap's: the screen is drawn and repainted here, and the reader's modal keys are claimed here |
 | the program's word-wrapping **message box**, where a script's every PRINT ends | resident image | the citation watch: reads the Pascal string (offset at SP+4, segment at SP+6) into a rolling window; the box's home-and-clear flag is the message boundary |
-| the adventuring loop's call into the menu-bar routine, one pair per view mode (M5-E4a, #221) | the adventuring loop's module | before: splices `Notes` onto the party's bar, sets `bar_live()`; at the return: splices it out, clears `bar_live()`, reads the letter from `AL` and the routine's out-parameter, puts the highlight byte back where the routine found it (#330) |
+| the adventuring loop's call into the menu-bar routine, one pair per view mode (M5-E4a, #221) | the adventuring loop's module | before: splices `Notes` onto the party's bar, sets `bar_live()`, and holds it (`seam_context::hold`); at the return: splices it out, lets go, clears `bar_live()`, reads the letter from `AL` and the routine's out-parameter, puts the highlight byte back where the routine found it (#330) |
+| the stop (#627) | none | switched off between the two, which is where a player at the bar is: splices it out of the string its own words 0 and 1 name, clears `bar_live()` |
 
 Rejected as the watch: the string drawer the Encamp Fix calls (the
 profile's `draw_string_entry`), because on this program it draws credits, menus and the
@@ -1713,6 +1746,24 @@ host file and not in the stream. Legs:
 `tests/visual/not-bars.leg`, `not-log-giveback.leg`, `not-log-modal.leg`,
 `not-page-back.leg`, `not-page-modal.leg`, `rdr-prompt.leg`,
 `rdr-page.leg`, `rdr-bar.leg`, `rdr-art.leg`, `rdr-map-back.leg`.
+
+**Switched off at the bar** (#627), the bar's next draw is the
+program's. The splice is in the string from the call to its return, and
+a player at the bar is between the two, so the seam holds it there and
+its stop takes it out (§3b). The stop lands at whatever instruction the
+program is at, and is safe there because the menu-bar routine copies the
+bar it is handed into its own frame at its entry and draws and matches
+from that copy (the same on both programs, read in each one's image): the
+call that is running keeps `Notes` until it returns, and the next call
+is handed the program's string. `Notes` is appended, so taking it out
+writes the length byte alone. The highlight is left alone: it is the
+running call's, and a value past the next bar's last group the routine
+puts back to the first itself. Driven, the seam off at the bar after
+loading slot A, a turn, camp and back, and a step: on Curse (off at
+frame 4,300) every still from the turn's redraw (4,625) to the end is
+the seam-off run's, camp and the bar after it included; on Pool of
+Radiance (off at 8,300) the same from 8,625. Tests:
+`JournalNotes.SwitchedOff*`, `JournalNotes.SwitchedOnAgainAfterTheStopItSplicesAsBefore`.
 
 **Traps specific to it**: the watch address and the shape (#232); the
 blocking read (#266); the batch ordering for pictures (#328); the
@@ -1855,7 +1906,8 @@ animation).
 `seam_modern_controls.cpp`: arrows, Enter, Esc and the number keys at
 every list, bar and prompt, a cursor on the main menu, the walking mode
 on the party's bar and a selection block instead of a colour. Its fact
-tables, on Pool of Radiance and on Curse of the Azure Bonds, are
+tables, on Pool of Radiance, on Curse of the Azure Bonds and, for the two
+pieces that only observe, on Secret of the Silver Blades, are
 [`docs/modern-controls.md`](modern-controls.md), a document of its own
 because it is as long as the rest of this section together.
 

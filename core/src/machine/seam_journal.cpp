@@ -781,6 +781,12 @@ constexpr unsigned notes_item_length = 6;
 /// The letter the routine answers with when it is chosen.
 constexpr std::uint8_t notes_key_ascii = 'N';
 
+/// The seam's own words that say which string carries the command while
+/// the bar routine runs (#627): the data segment and the bar's offset in
+/// it, zero while nothing is spliced. What the stop takes it out of.
+constexpr unsigned word_spliced_segment = 0;
+constexpr unsigned word_spliced_bar = 1;
+
 // ---------------------------------------------------------------------------
 // Reading the machine
 // ---------------------------------------------------------------------------
@@ -3124,7 +3130,13 @@ void bar_before(const journal_facts& f, machine& box, seam_context& ctx,
   // bar is not the program's.
   box.journal().note_bar_highlight(
       cpu.read_byte(ds, f.profile.data_bar_highlight));
-  static_cast<void>(splice_in(cpu, ds, bar));
+  if (splice_in(cpu, ds, bar)) {
+    // Held until the return takes it out, which is where a player sitting
+    // at the bar switches the seam off (#627): the stop is owed then.
+    ctx.set_scratch(word_spliced_segment, ds);
+    ctx.set_scratch(word_spliced_bar, bar);
+    ctx.hold(true);
+  }
 }
 
 /// The bar has come back with a letter. Take the command off it, and if
@@ -3177,6 +3189,9 @@ void bar_after(const journal_facts& f, machine& box, seam_context& ctx,
     return;
   }
   const bool was_spliced = splice_out(cpu, ds, bar);
+  ctx.set_scratch(word_spliced_segment, 0);
+  ctx.set_scratch(word_spliced_bar, 0);
+  ctx.hold(false);
 
   const cpu::registers& regs = cpu.regs();
   const std::uint8_t out_flag = cpu.read_byte(
@@ -3193,6 +3208,36 @@ void bar_after(const journal_facts& f, machine& box, seam_context& ctx,
     return;
   }
   state.set_reader(journal_reader_mode::listing);
+}
+
+/// Switched off between a bar's call and its return (#627): the command
+/// comes off the program's string here, since the return that would have
+/// taken it off is a point of a seam that is off now.
+///
+/// **Safe at whatever instruction this lands on**, because the menu-bar
+/// routine copies the bar it is handed into its own frame at its entry,
+/// on both programs, and draws and matches from that copy. So the call
+/// that is running keeps the word it was handed until it returns, and the
+/// next call is handed the program's own string: the bar is the program's
+/// from its next draw. And `Notes` is appended, so taking it out writes
+/// the length byte alone (`splice_out()`).
+///
+/// The highlight is left where it is: the call still running has the
+/// word, so a highlight on it is a highlight on its own bar, and a value
+/// past the next bar's last group is one the routine puts back to the
+/// first itself.
+void switched_off(machine& box, seam_context& ctx) {
+  journal_state& state = box.journal();
+  state.set_bar_live(false);
+  state.forget_bar_highlight();
+  const std::uint16_t ds = ctx.scratch(word_spliced_segment);
+  if (ds == 0) {
+    return;
+  }
+  static_cast<void>(
+      splice_out(box.processor(), ds, ctx.scratch(word_spliced_bar)));
+  ctx.set_scratch(word_spliced_segment, 0);
+  ctx.set_scratch(word_spliced_bar, 0);
 }
 
 template <const journal_facts& F>
@@ -3308,6 +3353,7 @@ constexpr seam_definition journal_definition{
     .programs = journal_programs,
     .trigger = false,
     .gate = document_kind::none,
+    .stop = &switched_off,
     .schema = seam_schema_version};
 
 }  // namespace

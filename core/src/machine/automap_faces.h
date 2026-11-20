@@ -159,6 +159,12 @@ struct place_tables;
 /// automap). No sub-maps and no lairs; a grid with no name is `AREA <n>`.
 [[nodiscard]] const place_tables& curse_of_the_azure_bonds_places() noexcept;
 
+/// Secret of the Silver Blades': nothing measured yet, so no table names a
+/// door and every grid is `AREA <n>`. A door is then what the map itself
+/// says: the kinds it has shut somewhere, or, on a map with none shut,
+/// every way through.
+[[nodiscard]] const place_tables& secret_of_the_silver_blades_places() noexcept;
+
 /// Which wall faces of this map are doors: its own shut faces, and the
 /// table's answer for the wall sets loaded with it.
 [[nodiscard]] door_evidence door_kinds(const place_tables& places,

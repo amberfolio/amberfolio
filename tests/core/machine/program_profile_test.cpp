@@ -48,7 +48,7 @@ TEST(ProgramProfile, IsAnEditionThisBuildKnows) {
   }
 }
 
-TEST(ProgramProfile, SecretsIsThePartItsCheatsAndItsScreenTextRead) {
+TEST(ProgramProfile, SecretsIsThePartItsSeamsAndItsReadsUse) {
   const program_profile& secret = secret_of_the_silver_blades;
   EXPECT_NE(secret.dgroup_paragraphs, 0U);
   EXPECT_NE(secret.data_game_mode, 0U);
@@ -63,9 +63,27 @@ TEST(ProgramProfile, SecretsIsThePartItsCheatsAndItsScreenTextRead) {
   EXPECT_NE(secret.key_read_entry, 0U);
   EXPECT_TRUE(secret.interpreter_overlay.has_load_segment());
   EXPECT_NE(secret.death_load_segment_at, 0U);
+  // The scene's (scene.h, #609): the current member, the area record and
+  // its geometry block, the disk and area numbers, the party's square and
+  // facing, the loaded map, the wall sets and the transition flag; and the
+  // aim overlay its aim is watched in.
+  EXPECT_NE(secret.data_current_member, 0U);
+  EXPECT_NE(secret.data_area_record, 0U);
+  EXPECT_NE(secret.area_geometry_block, 0U);
+  EXPECT_NE(secret.data_disk_number, 0U);
+  EXPECT_NE(secret.data_area_id, 0U);
+  EXPECT_EQ(secret.data_party_y, secret.data_party_x + 1U);
+  EXPECT_EQ(secret.data_party_facing, secret.data_party_x + 2U);
+  EXPECT_NE(secret.data_map_pointer, 0U);
+  EXPECT_NE(secret.data_wall_set, 0U);
+  EXPECT_NE(secret.data_in_transition, 0U);
+  EXPECT_TRUE(secret.aim_overlay.has_load_segment());
+  // No view kind, as on Curse: the adventuring mode has one view.
+  EXPECT_EQ(secret.data_view_kind, 0U);
   // And nothing pretending to be a fact: what no seam or read available
   // on this program uses is zero until somebody measures it.
-  EXPECT_EQ(secret.data_map_pointer, 0U);
+  EXPECT_EQ(secret.data_bar_highlight, 0U);
+  EXPECT_EQ(secret.data_key_pushback, 0U);
   EXPECT_EQ(secret.command_bar_entry, 0U);
   EXPECT_FALSE(secret.menu_overlay.has_load_segment());
 }

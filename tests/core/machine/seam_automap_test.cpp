@@ -1841,6 +1841,39 @@ TEST(AutomapBar, TheAdventuringLoopsOwnCallIsThePartysWhateverBarItHands) {
   EXPECT_FALSE(r.map_state().at_command_bar()) << "nor while it is out";
 }
 
+TEST(AutomapBar, SwitchedOnAtEitherOfThePartysBarsTabAnswersAtOnce) {
+  // #628: switched on while the program sits in the menu-bar routine's
+  // call, past the entry that says whose bar it is. The first poll reads
+  // it off the routine's frame: its caller's BP at [bp], its far return
+  // above, the adventuring loop's own call for either view.
+  constexpr std::array<std::uint16_t, 2> call_returns{0x09D5, 0x0C45};
+  for (const std::uint16_t call_return : call_returns) {
+    rig r;
+    r.attach_video();
+    r.adventuring(7, 5, lane_north);  // the bar goes up with the seam off
+    constexpr std::uint16_t adventure_word = 0x730;
+    constexpr std::uint16_t adventure_segment = 0x6400;
+    constexpr std::uint16_t frame = 0x0500;
+    constexpr std::uint16_t frame_return_ip = frame + 2;
+    constexpr std::uint16_t frame_return_cs = frame + 4;
+    r.put_word(image_load_segment, adventure_word, adventure_segment);
+    r.put_word(rig::dgroup(), frame, 0);
+    r.put_word(rig::dgroup(), frame_return_ip, call_return);
+    r.put_word(rig::dgroup(), frame_return_cs, adventure_segment);
+    r.enable();
+    ASSERT_FALSE(r.map_state().at_command_bar());
+    r.type(key_tab);
+    for (unsigned i = 0; i < 6; ++i) {
+      r.stand_on(r.point(0));
+      r.regs()[cpu::reg16::bp] = frame;
+      r.box->step();
+    }
+    EXPECT_TRUE(r.map_state().at_command_bar()) << call_return;
+    EXPECT_TRUE(r.map_state().panel_open()) << call_return;
+    EXPECT_TRUE(r.map_state().panel_on_screen()) << call_return;
+  }
+}
+
 TEST(AutomapPanel, SomebodyElseAskingTakesThePanelWithIt) {
   // A vendor's question is the case this is for: it leaves the mode at
   // "adventuring", draws in the viewport and on the message row, and

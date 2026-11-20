@@ -166,4 +166,18 @@ struct tsv_reading {
 [[nodiscard]] std::string tsv_words_within(std::string_view table,
                                            const host::journal_region& region);
 
+/// `region` as Tesseract's zone file has it: one line, `left top width
+/// height` and the zone's kind, `Text`.
+///
+/// The CLI has no crop flag, but it has this (#585). An image `entry.jpg`
+/// with an `entry.uzn` beside it, read at any page segmentation mode that
+/// does not find columns of its own (`--psm 4` and up), is read zone by
+/// zone, each as one block, and every word's box in the `tsv` is in the
+/// page's coordinates, so `tsv_read` filters it as it filters a page. It
+/// is how `tesseract_ocr` reads a piece again on its own when the page's
+/// reading kept nothing inside it: automatic segmentation can put a
+/// heading set close above a drawing into the drawing, and an engine does
+/// not read what it has called a picture.
+[[nodiscard]] std::string tesseract_zone(const host::journal_region& region);
+
 }  // namespace amberfolio::sdl

@@ -259,6 +259,12 @@ the start; a part whose screen the game has not loaded yet (the pick-lists'
 and command bars', the main menu's and Modify's) waits for it, and the rest
 work meanwhile.
 
+**In Secret of the Silver Blades** none of the keys or colours above is
+there yet. The toggle is, because it is also what lets a host tell
+whether the game is reading a line of text and where the combat aim
+cursor is (`docs/hosts.md` §12 and §13); switched on in that game, it
+changes nothing you see or press.
+
 ### The list arrows
 
 **What it does.** The up and down arrows step the highlight in the game's

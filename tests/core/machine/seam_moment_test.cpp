@@ -113,17 +113,44 @@ constexpr seam_definition stopping_seam{
     .points = moment_points,
     .stop = &at_the_stop};
 
+/// What the holding seam's address point says (#627): hold, let go, or
+/// nothing.
+enum class hold_at_arrival : std::uint8_t { nothing, hold, hold_then_let_go };
+hold_at_arrival holds = hold_at_arrival::nothing;
+
+void hold_something(machine& /*box*/, seam_context& ctx) {
+  if (holds != hold_at_arrival::nothing) {
+    ctx.hold(true);
+  }
+  if (holds == hold_at_arrival::hold_then_let_go) {
+    ctx.hold(false);
+  }
+}
+
+constexpr std::array<seam_point, 1> holding_points{
+    {{.module = resident_image, .offset = 0, .run = &hold_something}}};
+constexpr seam_definition holding_seam{
+    .id = "test-hold-stop",
+    .about =
+        "holds something of the program's between two points, and "
+        "has a stop for being switched off between them",
+    .fingerprints = claimed_binaries,
+    .points = holding_points,
+    .stop = &at_the_stop};
+
 struct rig {
   rig() : box(std::make_unique<machine>(memory_layout::pc)) {
     ask_at_arrival = false;
     ask_after = 0;
     period = 0;
     asks_left = 0;
+    holds = hold_at_arrival::nothing;
     arrivals.clear();
     stops.clear();
     EXPECT_TRUE(box->seams().add(moment_seam));
     EXPECT_TRUE(box->seams().add(only_moment_seam));
     EXPECT_TRUE(box->seams().add(stopping_seam));
+    EXPECT_TRUE(box->seams().add(holding_seam));
     sha256_digest digest;
     EXPECT_TRUE(parse_digest(claimed_hex, digest));
     box->seams().loaded(digest, image_load_segment);
@@ -350,6 +377,66 @@ TEST(SeamMoment, AResetDropsAStopOwed) {
   r.box->reset();
   EXPECT_FALSE(r.box->seams().armed());
   EXPECT_FALSE(r.box->seams().due(~ticks{} - 1));
+}
+
+TEST(SeamMoment, SwitchedOffWhileHoldingItsStopRunsOnceAtTheNextBoundary) {
+  // A seam with no moments that holds something between two of its
+  // points (#627) is owed its stop the same way.
+  const rig r;
+  holds = hold_at_arrival::hold;
+  ASSERT_EQ(r.box->seams().enable("test-hold-stop"), seam_reason::none);
+  r.box->step();
+  ASSERT_EQ(r.box->seams().disable("test-hold-stop"), seam_reason::none);
+  EXPECT_TRUE(stops.empty()) << "configuration runs no handler";
+  EXPECT_TRUE(r.box->seams().due(r.box->time())) << "due now";
+
+  const ticks boundary = r.box->time();
+  r.box->step();
+  ASSERT_EQ(stops.size(), 1U);
+  EXPECT_EQ(stops[0].now, boundary);
+  EXPECT_FALSE(stops[0].called) << "a stop is at no known instruction";
+  EXPECT_FALSE(stops[0].placed);
+  EXPECT_FALSE(r.box->seams().armed()) << "and the machine is plain again";
+  static_cast<void>(r.run_to(r.box->time() + 10'000));
+  EXPECT_EQ(stops.size(), 1U);
+}
+
+TEST(SeamMoment, SwitchedOffHavingLetGoIsOwedNoStop) {
+  const rig let_go;
+  holds = hold_at_arrival::hold_then_let_go;
+  ASSERT_EQ(let_go.box->seams().enable("test-hold-stop"), seam_reason::none);
+  let_go.box->step();
+  ASSERT_EQ(let_go.box->seams().disable("test-hold-stop"), seam_reason::none);
+  EXPECT_FALSE(let_go.box->seams().armed());
+  static_cast<void>(let_go.run_to(10'000));
+  EXPECT_TRUE(stops.empty());
+
+  // Nor one that never held anything.
+  const rig never_held;
+  ASSERT_EQ(never_held.box->seams().enable("test-hold-stop"),
+            seam_reason::none);
+  never_held.box->step();
+  ASSERT_EQ(never_held.box->seams().disable("test-hold-stop"),
+            seam_reason::none);
+  EXPECT_FALSE(never_held.box->seams().armed());
+  EXPECT_TRUE(stops.empty());
+}
+
+TEST(SeamMoment, SwitchedOnAgainItHoldsNothing) {
+  // `enable()` lets go: what the seam held before it was switched off
+  // was its stop's to put back, and it starts from its own points.
+  const rig r;
+  holds = hold_at_arrival::hold;
+  ASSERT_EQ(r.box->seams().enable("test-hold-stop"), seam_reason::none);
+  r.box->step();
+  ASSERT_EQ(r.box->seams().disable("test-hold-stop"), seam_reason::none);
+  r.box->step();
+  ASSERT_EQ(stops.size(), 1U);
+  holds = hold_at_arrival::nothing;
+  ASSERT_EQ(r.box->seams().enable("test-hold-stop"), seam_reason::none);
+  ASSERT_EQ(r.box->seams().disable("test-hold-stop"), seam_reason::none);
+  static_cast<void>(r.run_to(r.box->time() + 10'000));
+  EXPECT_EQ(stops.size(), 1U);
 }
 
 TEST(SeamMoment, ServingOneThatWritesNothingLeavesTheRunIdentical) {
