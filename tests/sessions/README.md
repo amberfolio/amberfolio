@@ -215,19 +215,25 @@ the sweep and on the wasm module (`drive.mjs --install '\CURSE'
 
 ### Secret of the Silver Blades
 
-Eleven sessions, `secret-*`, on the Steam copy at `--speed 386` and
+Sixteen sessions, `secret-*`, on the Steam copy at `--speed 386` and
 `--wall none` (#608, #609), each `disk external` and pinned to the copy with
 its shipped slots A and B (`secret-slots`). `docs/playable-secret.md`
-has the legs and the table: the boot, a camp and a wandering fight with
-no seam, and the cheats' pairs, `secret-camp-cheats` `identical
+has the legs and the table: the boot, a camp, a wandering fight, the
+fight with its aim walked (`secret-aim`) and a character's name
+(`secret-name`) with no seam, and the cheats' pairs, `secret-camp-cheats` `identical
 secret-camp` (all three on, none pulled) and `secret-camp-wound`,
 `secret-fight-cheat` and `secret-fight-kill` each a `contrast` with the
 run it differs from; and the text faces', `secret-boot-font-sans` and
 `secret-boot-font-chisel`, each a `contrast` with `secret-boot`; and the
 message pause's, `secret-camp-message-pause` `identical secret-camp` (no
 message pause reached) and `secret-fight-pause` `contrast secret-fight`
-(every combat line stands the setting). Each verifies on the desktop host through the
-sweep.
+(every combat line stands the setting); and `modern-controls`', whose two
+pieces on this program only observe, so all three are `identical`:
+`secret-fight-controls` `identical secret-fight` (neither piece
+reached), `secret-aim-controls` `identical secret-aim` (the aim watched
+at every key) and `secret-name-controls` `identical secret-name` (the
+line editor watched from entry to return). Each verifies on the desktop
+host through the sweep.
 
 ## The matrix, by seam
 
@@ -241,7 +247,7 @@ sweep.
 | `journal` | `reader`, `notes`, `cite`; on Curse `curse-notes`, `curse-cite`, `curse-map-reader` | `quiet-journal` (a `contrast`); on Curse `curse-quiet-journal` (a `contrast`) and `curse-journey-journal` (an `identical`: the party's bar is never drawn) |
 | `explored` | `wild-trail` | `quiet-explored` |
 | the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party`; on Curse `curse-fight-cheat`, `curse-fight-kill`, `curse-camp-wound`; on Secret `secret-fight-cheat`, `secret-fight-kill`, `secret-camp-wound` | `quiet-cheats`; on Curse `curse-quiet-cheats` and `curse-quiet-all`; on Secret `secret-camp-cheats` |
-| `modern-controls` | `list-down-arrows`, `camp-down-arrows`, `camp-pad-arrows`, `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys`, `bar-esc-keys`, `bar-script-keys`, `bar-portrait-keys`, `menu-down-cursor`, `move-walk-mode`, `door-pick-3`, `list-keys-yellow`, `name-arrows-edit` (each a `contrast`; `door-pick-3` has the seam on at both ends and differs by its keys); on Curse `curse-camp-arrows`, `curse-name-arrows`, `curse-menu-cursor`, `curse-modify-arrows`, `curse-move-walk-mode`, `curse-door-arrows`, `curse-script-esc` | none can exist: three of its pieces draw on sight, so `quiet-modern-controls`, `menu-letters-cursor` and `quiet-all-on-sight` are `contrast`s too (the pair is a `contrast`, as the faces' is). On Curse the same three draw on sight, the menu cursor, the hero keys and the selection block, so `curse-quiet-controls` is a `contrast curse-quiet` and `curse-quiet-all-on-sight` a `contrast curse-quiet-all` |
+| `modern-controls` | `list-down-arrows`, `camp-down-arrows`, `camp-pad-arrows`, `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys`, `bar-esc-keys`, `bar-script-keys`, `bar-portrait-keys`, `menu-down-cursor`, `move-walk-mode`, `door-pick-3`, `list-keys-yellow`, `name-arrows-edit` (each a `contrast`; `door-pick-3` has the seam on at both ends and differs by its keys); on Curse `curse-camp-arrows`, `curse-name-arrows`, `curse-menu-cursor`, `curse-modify-arrows`, `curse-move-walk-mode`, `curse-door-arrows`, `curse-script-esc`; on Secret, where the seam is only its two observing pieces, `secret-aim-controls` and `secret-name-controls`, each an `identical` | on Secret `secret-fight-controls`. Elsewhere none can exist: three of its pieces draw on sight, so `quiet-modern-controls`, `menu-letters-cursor` and `quiet-all-on-sight` are `contrast`s too (the pair is a `contrast`, as the faces' is). On Curse the same three draw on sight, the menu cursor, the hero keys and the selection block, so `curse-quiet-controls` is a `contrast curse-quiet` and `curse-quiet-all-on-sight` a `contrast curse-quiet-all` |
 | `quick-steps` | `walk-quick` | `menu-letters-quick`. Not in `quiet-all`: `quiet`'s movement keys click |
 | `message-pause` | `fight-pause`; on Curse `curse-fight-pause`; on Secret `secret-fight-pause` | `quiet-message-pause`, and `quiet-all`; on Curse `curse-quiet-message-pause`, and `curse-quiet-all`; on Secret `secret-camp-message-pause` |
 | `fanfare` | `quiet-fanfare` (a `contrast`); on Curse `curse-quiet-fanfare` (a `contrast`) | none can exist: every boot runs the titles, where it starts. Not in `quiet-all` or `curse-quiet-all` |

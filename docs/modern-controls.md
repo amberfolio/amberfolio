@@ -49,9 +49,10 @@ summed over the pieces.
   party bar's keys after every other piece has passed on them. The point
   count with every seam on is sixty-eight, one face counted (`max_points` is
   ninety-six).
-- **Two programs, several modules.** Every piece keys on the baseline
-  edition (`docs/seams.md` §5), and nine of them on Curse of the Azure Bonds too, with
-  points of their own (below), so the definition names both. The modules are the
+- **Three programs, several modules.** Every piece keys on the baseline
+  edition (`docs/seams.md` §5), nine of them on Curse of the Azure Bonds
+  too and two on Secret of the Silver Blades, with points of their own
+  (below), so the definition names all three. The modules are the
   pieces': overlay 25 for five of them, overlay 16 for the menu cursor's loop
   call, overlay 19 for Modify's score, overlay 14 for the move mode's party
   bar (15 on Curse), overlay 13 for the aim watch, the resident image for the rest, and
@@ -331,6 +332,52 @@ selected member, asked in combat and out.
   read through the scene),
   `JournalReaderOnCurse.TheLogsCursorRowIsAWhiteBlockUnderModernControls`,
   `SeamCallProgram.FindsAnInsideCallsPointInAModuleTheProgramMoves`.
+
+**On Secret of the Silver Blades** (#609) the seam is available with the
+two pieces that only observe, text entry and the aim watch, each the same
+mechanism with that program's facts in a row of its own
+(`text_entry_facts`, `aim_watch_facts`) and their seven points in the
+definition's `programs`. No piece that takes a key or draws is ported, so
+**on this program the seam changes no key and no pixel**: it is there for
+a host's reads, the text-entry signal (`docs/hosts.md` §10) and the
+scene's aim (`docs/hosts.md` §13), and a player who switches it on sees
+nothing change.
+
+| fact | Secret of the Silver Blades |
+| --- | --- |
+| the line editor; its one return | image `0x5B48` (`push bp`); `0x5D87` (`retf 0Ah`), Curse of the Azure Bonds' editor with its two calls of the key read |
+| the aim overlay | overlay 16 (file offset 85738, 16138 bytes, digest `c0bb9c76…74eb8`, word `0x0CA0`) |
+| target to target: routine; meeting point; return; attack flag; bar string | `0x2C85`; `0x2DE8`; `0x2E70`; `BP+0x10`; `BP-0x2A` |
+| target to target: the target's record; its square; the range | a far pointer at `BP+0x14`, zero for none; column `BP+8`, row `BP+6`; the word at `BP-0x31`, halved before it is printed |
+| manual: routine; the line's meeting point; Target's meeting point; return; attack flag | `0x302D`; `0x31CB`; `0x337C`; `0x33DA`; `BP+0x1A` |
+| manual: the line byte | **its caller's**, through a far pointer at `BP+0x12`: set where the line from the acting figure arrives, cleared wherever Target is not offered |
+| manual: the cursor; the range; the record the panel shows | **not in the frame**: DGROUP `0x8E1F` (column) and `0x8E20` (row), stepped by the arrows and clamped to 49 and 24; the word at `BP-0x38`; a far pointer at `BP+0x1E`, zero for none |
+
+- **Both aim routines are rewritten**, and read beside Curse of the
+  Azure Bonds' they take the same steps in the same order: the target's
+  record compared with the acting figure's and handed to the sheet
+  drawer, the line routine's range halved and printed for an attack and
+  compared with the weapon's reach, the word Target appended to the bar
+  string, and the menu-bar routine called. Target to target is handed
+  the target's square beside its record, and after manual's Exit it is
+  handed a square and no record (`docs/hosts.md` §13 has what the scene
+  says then).
+- **Driven** with the seam on (`docs/playable-secret.md` legs 5 and 6):
+  through leg 5's aim on Dominic's turn the watch fired 30 times, and the
+  scene beside each still had the cursor's square, the sheet the panel
+  shows, the number after `RANGE =` and whether Target is on the bar
+  (`docs/hosts.md` §13 has the walk); at leg 6's `CHARACTER NAME:` the
+  line editor's entry and its return were each reached once, the signal
+  reading from the empty prompt through the name typed and not reading
+  at the stats' `REROLL` question before it or on the portrait's bar
+  after it.
+- **Fidelity**: the seam writes nothing of the machine's on this
+  program, so its pairs are `identical` both ways: `secret-fight-controls`
+  `identical secret-fight` (on, neither piece reached, all 371
+  checkpoints), `secret-aim-controls` `identical secret-aim` (on, the aim
+  walked, all 406) and `secret-name-controls` `identical secret-name` (on,
+  a name typed, all 40). Unit: `SeamModernControlsOnSecret.*`,
+  `SceneOnSecret.*` (the aim watch's frames read through the scene).
 
 ## The list arrows (#423, #435, #447, #469)
 
