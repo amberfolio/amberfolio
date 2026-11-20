@@ -187,10 +187,12 @@ constexpr save_layer curse{
 /// `CHRDAT<S><N>.STF`, and removing the member then wrote `<NAME>.STF`
 /// (#608). The shipped parties have six members, and the bound of eight
 /// is the first two games' until a seventh record has been seen.
+/// `AFSEEN<S>.DAT` is this build's own, the journal's read log (#609); the
+/// automap is not on this program, so it has no `AFMAP<S>.DAT`.
 ///
 /// Most specific first, as above: the configuration file, anchored where
 /// the program was started, then the three `<NAME>` rows last.
-constexpr std::array<save_file, 9> secret_files{{
+constexpr std::array<save_file, 10> secret_files{{
     {.pattern = "SAVGAM<S>.DAT",
      .kind = save_file_kind::slot,
      .required = true,
@@ -216,6 +218,11 @@ constexpr std::array<save_file, 9> secret_files{{
      .required = false,
      .about = "what has been deposited at the town's vault: one file for "
               "every slot, written at the deposit"},
+    {.pattern = "AFSEEN<S>.DAT",
+     .kind = save_file_kind::sidecar,
+     .required = false,
+     .about = "this build's own: which journal entries the game had cited "
+              "when slot <S> was written"},
     {.pattern = "BLADES.CFG",
      .kind = save_file_kind::config,
      .required = false,

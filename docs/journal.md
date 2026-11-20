@@ -684,9 +684,10 @@ a sidecar beside the saves, per slot, off unless the player asked
 | --- | --- |
 | `\SAVE\AFSEEN<L>.DAT` | slot `L`'s log, written at that slot's save and read **over** the log in hand at its load, even when it is not there |
 
-On Curse of the Azure Bonds the same file sits in that program's save
-directory, one per slot `A` to `J` (`docs/hosts.md` §6), and the citation
-watch is what fills it there (`docs/seams.md` §10).
+On Curse of the Azure Bonds and Secret of the Silver Blades the same
+file sits in that program's save directory, one per slot `A` to `J`
+(`docs/hosts.md` §6), and the citation watch is what fills it there
+(`docs/seams.md` §10).
 
 Nothing keeps the log between saves. A run starts at the program's main
 menu with no party; a load brings the slot's list and a new party's is
@@ -806,10 +807,11 @@ entries 4 and 45 with their pictures decoded out of the store, entry 18
 across two sheets, entry 44 in its three pieces and entry 50 across a
 tabled break; each has the page's words and its paragraphs. The same
 host reads Pool of Radiance's and Curse's Steam editions as before, 99
-of 99 and 121 of 121, each item against its digest. Not done: this
-document through the wasm module or in a browser, and an entry opened in
-the game: the reader is on Pool of Radiance and Curse of the Azure Bonds
-and not on this program.
+of 99 and 121 of 121, each item against its digest. In the game, with
+`journal` on, the opening's citation puts entry 37 on the log
+(`docs/seams.md` §10). Not done: this document through the wasm module
+or in a browser, and an entry opened in the game: on this program the
+seam is its citation watch alone, with no `Notes` and no reader.
 
 **By hand, Curse's GOG edition** (#585), through the desktop host, each
 reading scored by §5a's harness against the Steam edition's text put in

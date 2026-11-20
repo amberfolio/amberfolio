@@ -2076,8 +2076,9 @@ TEST(JournalDefinition, ItIsACommandAndNotAPullAndItNamesTheBaseline) {
   // point at the call's own return can keep it.
   EXPECT_EQ(resident, 6u);
   EXPECT_EQ(overlaid, 4u);
-  ASSERT_EQ(journal->fingerprints.size(), 2u)
-      << "the baseline, and Curse of the Azure Bonds (#555)";
+  ASSERT_EQ(journal->fingerprints.size(), 3u)
+      << "the baseline, Curse of the Azure Bonds (#555) and Secret of the "
+         "Silver Blades (#609)";
   EXPECT_EQ(journal->fingerprints.front(),
             known_editions().front().fingerprint);
 }
@@ -4745,6 +4746,153 @@ TEST(JournalReaderOnCurse, NeverOpenedItDrawsNothing) {
   EXPECT_EQ(r.curse_word(curse::frame_calls), 0u);
   EXPECT_EQ(r.curse_word(curse::string_calls), 0u);
   EXPECT_EQ(r.curse_word(curse::composer_calls), 0u);
+}
+
+// ---------------------------------------------------------------------------
+// Secret of the Silver Blades (#609)
+// ---------------------------------------------------------------------------
+//
+// The citation watch on a third program, with that program's facts
+// (seam_journal.cpp, `secret_journal`). The watch alone: `Notes` does not
+// fit on this program's bar, so the reader has no way in and none of its
+// points is there.
+
+namespace secret {
+constexpr std::uint16_t dgroup_paragraphs = 0xDE2;
+constexpr std::uint16_t message_box = 0x58B9;
+constexpr std::uint16_t box_frame_clear = 8;
+}  // namespace secret
+
+[[nodiscard]] sha256_digest secret_digest() {
+  sha256_digest digest;
+  EXPECT_TRUE(parse_digest(
+      "8b937984878ec72aa531335dd381a21bda67675408b5fd8e716a35ccd049999e",
+      digest));
+  return digest;
+}
+
+/// A machine told Secret of the Silver Blades is running, with the journal
+/// on and a host.
+struct secret_rig : rig {
+  secret_rig() {
+    box->seams().loaded(secret_digest(), image_load_segment);
+    enable();
+    attach_host();
+  }
+
+  [[nodiscard]] static std::uint16_t secret_dgroup() noexcept {
+    return static_cast<std::uint16_t>(image_load_segment +
+                                      secret::dgroup_paragraphs);
+  }
+
+  /// The program prints `what` into its message box, its flag word
+  /// `flag`: the low byte is what the routine reads, the high byte is
+  /// whatever the caller's AH held.
+  void secret_draws(std::string_view what, std::uint16_t flag,
+                    std::uint16_t ds = secret_dgroup()) const {
+    constexpr std::uint16_t sp = 0x0400;
+    constexpr std::uint16_t where = 0x0100;
+    const std::uint32_t address =
+        cpu::physical_address(image_load_segment, secret::message_box);
+    box->memory().ram()[address] = 0xF4;
+    box->processor().reset();
+    cpu::registers& r = box->processor().regs();
+    r[cpu::sreg::cs] = image_load_segment;
+    r.ip = secret::message_box;
+    r[cpu::sreg::ds] = ds;
+    r[cpu::sreg::ss] = ds;
+    r[cpu::reg16::sp] = sp;
+    put_word(ds, static_cast<std::uint16_t>(sp + 4), where);
+    put_word(ds, static_cast<std::uint16_t>(sp + 6), string_segment);
+    put_word(ds, static_cast<std::uint16_t>(sp + secret::box_frame_clear),
+             flag);
+    put_byte(string_segment, where, static_cast<std::uint8_t>(what.size()));
+    for (std::size_t i = 0; i < what.size(); ++i) {
+      put_byte(string_segment, static_cast<std::uint16_t>(where + 1 + i),
+               static_cast<std::uint8_t>(what[i]));
+    }
+    box->step();
+  }
+};
+
+TEST(JournalOnSecret, IsAvailableWithTheWatchAlone) {
+  const secret_rig r;
+  const seam_definition* journal = r.pc().seams().find("journal");
+  ASSERT_NE(journal, nullptr);
+  const std::span<const seam_point> mine = points_on(*journal, secret_digest());
+  ASSERT_EQ(mine.size(), 1u)
+      << "the message box, and no key, bar, clear or roster point: the "
+         "reader has no way in on this program";
+  EXPECT_NE(mine.data(), journal->points.data());
+  EXPECT_EQ(mine[0].offset, secret::message_box);
+  EXPECT_EQ(mine[0].module.file, resident_image.file);
+  EXPECT_EQ(r.pc().seams().status("journal").reason, seam_reason::none);
+}
+
+TEST(JournalOnSecret, ACitationInTwoPiecesGoesOnTheLog) {
+  // The opening's page prints its sentence and the entry's number, the
+  // number with the flag clear: one message, one citation.
+  const secret_rig r;
+  r.secret_draws("THE MAYOR ASKS YOU TO READ JOURNAL ENTRY ", 0x0001);
+  EXPECT_TRUE(r.reader().seen().empty());
+  r.secret_draws("37", 0x0000);
+  ASSERT_EQ(r.reader().seen().size(), 1u);
+  EXPECT_EQ(r.reader().seen().front().what, Entry(37));
+  EXPECT_FALSE(r.reader().seen().front().read);
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed)
+      << "a citation opens nothing";
+  EXPECT_EQ(r.host.calls, 0u);
+}
+
+TEST(JournalOnSecret, TheFlagIsAByteAndTheCallersHighByteIsNotRead) {
+  // The script's print pushes the flag as AL with AH left over, as on
+  // Curse: a continuation can arrive as a word of 0x0100.
+  const secret_rig r;
+  r.secret_draws("READ JOURNAL ENTRY ", 0x0001);
+  r.secret_draws("37", 0x0100);
+  ASSERT_EQ(r.reader().seen().size(), 1u);
+  EXPECT_EQ(r.reader().seen().front().what, Entry(37));
+}
+
+TEST(JournalOnSecret, ANewMessageStillEmptiesTheWindow) {
+  const secret_rig r;
+  r.secret_draws("READ JOURNAL ENTRY ", 0xFF01);
+  r.secret_draws("37", 0xFF01);
+  EXPECT_TRUE(r.reader().seen().empty())
+      << "a number that begins a message of its own is nobody's citation";
+}
+
+TEST(JournalOnSecret, WatchingIsNotMachineState) {
+  const secret_rig r;
+  r.secret_draws("READ JOURNAL ENTRY ", 0x0001);
+  r.secret_draws("37", 0x0000);
+  ASSERT_EQ(r.reader().seen().size(), 1u);
+
+  secret_rig plain;
+  ASSERT_EQ(plain.pc().seams().disable("journal"), seam_reason::none);
+  plain.secret_draws("READ JOURNAL ENTRY ", 0x0001);
+  plain.secret_draws("37", 0x0000);
+  EXPECT_TRUE(plain.reader().seen().empty());
+  EXPECT_EQ(hash_state(r.pc()), hash_state(plain.pc()))
+      << "the log is observation, and the watch writes nothing the machine "
+         "holds";
+}
+
+TEST(JournalOnSecret, ADataSegmentThatIsNotTheProgramsIsDeclined) {
+  const secret_rig r;
+  r.secret_draws("READ JOURNAL ENTRY 37", 0x0001, rig::dgroup());
+  EXPECT_TRUE(r.reader().seen().empty());
+  r.secret_draws("READ JOURNAL ENTRY 37", 0x0001);
+  EXPECT_EQ(r.reader().seen().size(), 1u);
+}
+
+TEST(JournalOnSecret, SwitchedOffItIsOwedNothing) {
+  // No splice on this program, so the stop has nothing to take out.
+  const secret_rig r;
+  r.secret_draws("READ JOURNAL ENTRY 37", 0x0001);
+  const auto before = hash_state(r.pc());
+  ASSERT_EQ(r.pc().seams().disable("journal"), seam_reason::none);
+  EXPECT_EQ(hash_state(r.pc()), before);
 }
 
 }  // namespace
