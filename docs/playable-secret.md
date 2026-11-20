@@ -25,8 +25,9 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
 No `--install`: the Steam copy is recognized and laid out at `\SECRET`
 (`docs/hosts.md` §2c). No seam is needed to play, and the ones available
 on this program are the three debug cheats, the two text faces, the
-message pause and `modern-controls`, which here is only its two pieces
-that observe, for the host reads below (`docs/seams.md` §10). Sixty
+message pause, `modern-controls`, which here is only its two pieces
+that observe, for the host reads below, and the journal, which here is
+only its citation watch (`docs/seams.md` §10). Sixty
 frames to the virtual second; `TICKS = FRAME * 19,886` at `--speed 386`
 is close enough for `--until`.
 
@@ -129,8 +130,8 @@ the party. **Nothing is asked on the way**: no question, no document.
   menu comes back with six members and nine rows, its highlight on the
   third; five `Down` reach `BEGIN ADVENTURING`.
 - Eight `Return` turn the opening's pages: a picture, then the mayor.
-  **One of the pages cites a journal entry by number**, which is where
-  S3's journal reader will start from. The mode byte is 4 from the first
+  **The seventh cites journal entry 37 by number**, which the journal's
+  watch puts on its log (below). The mode byte is 4 from the first
   page.
 - The opening ends in experience points and a treasure screen (mode 6):
   `Return`, then `E` and `N` to leave what is there.
@@ -431,6 +432,19 @@ the rest in the fight.
 A script written for the seam leaves a second and a half after each
 line, or presses a key to end the pause and another for the command.
 
+## The journal on this program
+
+The seam is its citation watch alone: what the game cites goes on the
+log, and with `--save-sidecars` the log goes beside the slot's save.
+There is no `Notes` on the party's bar, so the reader does not open
+(`docs/seams.md` §10 has why).
+
+| run | what it shows |
+|---|---|
+| leg 2 with `--seam journal` | the seventh page of the opening, at frame 5,122, puts entry 37 on the log, unread; one `journal-seen` callout, the message box reached 39 times, and the run is leg 2's |
+| leg 1, then `E@8200 S@8500 C@8800 N@9100`, with `--seam journal --save-sidecars` | the camp's save into slot C writes `AFSEENC.DAT`, one row: entry 37, unread |
+| leg 0, then `Down@1500 Down@1560 Return@1620 C@2100`, over that disk, with the same two flags | loading C reads `AFSEENC.DAT` back (`reads=1`); four `Down`, `Return` and `D` save the party to D from the party menu, and `AFSEEND.DAT` holds the same row |
+
 ## The copy protection
 
 The program has two questions, and **the Steam copy asks neither**: in
@@ -449,7 +463,7 @@ where that mechanism is (`docs/seams.md` §10).
 
 ## The sessions
 
-Twenty, `secret-*`, each on the Steam copy with its shipped slots (the
+Twenty-two, `secret-*`, each on the Steam copy with its shipped slots (the
 `secret-slots` snapshot) at `--speed 386` and `--wall none`.
 
 | session | seams | relation | what it is |
@@ -473,3 +487,5 @@ Twenty, `secret-*`, each on the Steam copy with its shipped slots (the
 | `secret-fight-controls` | modern-controls | `identical secret-fight` | neither piece reached: all 371 checkpoints |
 | `secret-aim-controls` | modern-controls | `identical secret-aim` | the aim watched at every key of the aim: all 406 checkpoints |
 | `secret-name-controls` | modern-controls | `identical secret-name` | the line editor watched from entry to return: all 40 checkpoints |
+| `secret-boot-journal` | journal | `identical secret-boot` | the watch never reached: all 15 checkpoints |
+| `secret-camp-journal` | journal | `identical secret-camp` | entry 37 cited by the opening and logged; the watch writes nothing the machine holds: all 106 checkpoints |

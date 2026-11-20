@@ -225,6 +225,11 @@ log stays filled until the store's `seen` lines are removed.
 log is what the story has told you to read, and the reader shows the log;
 to read the rest of a journal, `--cite-all-journal`.
 
+**In Secret of the Silver Blades** the game's citations go on the log,
+and the log goes beside your saves, but there is no `Notes` and so no
+reader: the party's bar there leaves no room for the word
+(`docs/seams.md` §10).
+
 ## Modern controls
 
 **What it does.** One switch for the keys and the colours a later game would

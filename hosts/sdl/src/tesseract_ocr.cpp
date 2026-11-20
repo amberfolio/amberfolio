@@ -321,8 +321,8 @@ bool tesseract_ocr::recognize_encoded(const host::journal_part& part,
                           shell_quoted(stem) + " --psm 3 tsv",
                       log);
   std::error_code ignored;
-  std::filesystem::remove(image, ignored);
   if (!ok) {
+    std::filesystem::remove(image, ignored);
     std::filesystem::remove(tsv, ignored);
     return false;
   }
@@ -331,6 +331,31 @@ bool tesseract_ocr::recognize_encoded(const host::journal_part& part,
   std::filesystem::remove(tsv, ignored);
   out = tsv_read(table, &part.region);
   trim_trailing(out.text);
+
+  // Nothing kept: the piece read again on its own (#585). Automatic
+  // segmentation decides what is text before anything is recognized, and
+  // it can put a heading set close above a drawing into the drawing,
+  // where the engine reads nothing. The same rectangle as a zone beside
+  // the page (`tesseract_zone`) is read as one block, as the linked
+  // engine reads every piece, so `--psm 6`; the words come back in the
+  // page's coordinates and the same filter keeps them.
+  if (out.text.empty()) {
+    const std::string zone = stem + ".uzn";
+    {
+      std::ofstream file(zone, std::ios::binary | std::ios::trunc);
+      file << tesseract_zone(part.region);
+    }
+    const bool again = run(shell_quoted(program_) + " " + shell_quoted(image) +
+                               " " + shell_quoted(stem) + " --psm 6 tsv",
+                           log);
+    std::filesystem::remove(zone, ignored);
+    if (again) {
+      out = tsv_read(slurp(tsv), &part.region);
+      trim_trailing(out.text);
+    }
+    std::filesystem::remove(tsv, ignored);
+  }
+  std::filesystem::remove(image, ignored);
   return !out.text.empty();
 }
 

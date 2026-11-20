@@ -307,4 +307,10 @@ std::string tsv_words_within(std::string_view table,
   return tsv_read(table, &region).text;
 }
 
+std::string tesseract_zone(const host::journal_region& region) {
+  return std::to_string(region.left) + " " + std::to_string(region.top) + " " +
+         std::to_string(region.width) + " " + std::to_string(region.height) +
+         " Text\n";
+}
+
 }  // namespace amberfolio::sdl

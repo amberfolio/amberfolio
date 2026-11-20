@@ -1642,6 +1642,7 @@ The table is what has been watched so far, on the Steam copy.
 | `CHRDAT<S><N>.STF` | saves | member | no | what that member carries |
 | `CHRDAT<S><N>.SFX` | saves | member | no | the effects that member is under |
 | `VAULT.DAT` | saves | vault | no | what has been deposited at the town's vault: one file for every slot, written at a deposit (28 bytes after a first one) |
+| `AFSEEN<S>.DAT` | saves | sidecar | no | **ours**: the journal's read log, as slot `<S>` was written |
 | `BLADES.CFG` | start | config | no | the program's settings — **a game file** |
 | `<NAME>.WHO` | saves | character | no | a character kept under a name the player chose |
 | `<NAME>.STF` | saves | character | no | what that character carries |
@@ -1668,7 +1669,12 @@ in the save directory: one file whichever slot is loaded, so a host
 that splits a playthrough by slot keeps it with all of them. **Not a
 row**: a Curse of the Azure Bonds character (`*.GUY`) put there for the
 program's `ADD` to list and take (`docs/playable-secret.md` leg 5),
-which is that game's file. A page that writes
+which is that game's file. `AFSEEN<S>.DAT` is the journal's read log
+(#609): with `--seam journal --save-sidecars`, a save to slot C at the
+camp after the opening's citation of entry 37 writes `AFSEENC.DAT` (one
+row, entry 37 unread), and loading C reads it back
+(`save-sidecars writes=0 reads=1 slot=C trouble=none`). The automap is
+not on this program, so it has no `AFMAP<S>.DAT` row. A page that writes
 a playthrough back keeps the rows above and nothing else, so a file
 that is not a row does not survive a reload there.
 

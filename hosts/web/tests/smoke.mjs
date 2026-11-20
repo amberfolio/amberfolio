@@ -5246,6 +5246,7 @@ if (missing.length === 0 && sessions !== null) {
     currentScan,
     wordsWithin,
     readWithin,
+    readPiece,
     joinPieces,
     DOUBTFUL_CONFIDENCE,
     wordCount,
@@ -5575,6 +5576,47 @@ if (missing.length === 0 && sessions !== null) {
   check(
     quiet.text === 'x' && !quiet.quality.known && quiet.quality.words === 0,
     'a word with no confidence became an opinion',
+  );
+
+  // A piece the page's reading kept nothing of is read again on its own
+  // (#585): an engine segmenting a whole spread can call a heading part
+  // of the drawing under it and read nothing there. The second reading
+  // is asked for only then, and is filtered to the same rectangle.
+  let asked = 0;
+  const alone = async () => {
+    ++asked;
+    return {
+      blocks: [
+        {
+          paragraphs: [
+            para({ words: [word('heading', 10, 10), word('beside', 200, 10)] }),
+          ],
+        },
+      ],
+    };
+  };
+  const readAlready = await readPiece(answer, region, alone);
+  check(
+    readAlready.text === 'kept also\nsecond' && !readAlready.again && asked === 0,
+    'a piece the page reading kept words of was read a second time',
+  );
+  const readAgain = await readPiece(clipped, { left: 100, top: 0, width: 50, height: 50 }, alone);
+  check(
+    readAgain.text === '' && readAgain.again && asked === 1,
+    'a second reading kept words outside the rectangle it was asked about',
+  );
+  const missed = {
+    blocks: [{ paragraphs: [para({ words: [word('elsewhere', 200, 200)] })] }],
+  };
+  const found = await readPiece(missed, region, alone);
+  check(
+    found.text === 'heading' && found.again && found.quality.words === 1 && asked === 2,
+    `a piece the page reading missed read ${JSON.stringify(found.text)} on its own`,
+  );
+  const unasked = await readPiece(missed, region, null);
+  check(
+    unasked.text === '' && !unasked.again,
+    'a piece with no second reading to ask for invented one',
   );
 
   // How the pieces of one entry are joined (#331, #361), which is the
