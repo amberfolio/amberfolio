@@ -249,5 +249,14 @@ TEST(TsvWords, AnEmptyTableIsAnEmptyAnswer) {
   EXPECT_EQ(tsv_words_within(kHeader, kBox), "");
 }
 
+// A piece read again on its own goes to the engine as a zone file beside
+// the page (#585): one line, the rectangle in the page's own samples, in
+// the order Tesseract reads them, and the kind it reads as type.
+TEST(TsvWords, AZoneIsTheRectangleInTheOrderTheEngineReadsIt) {
+  EXPECT_EQ(
+      tesseract_zone({.left = 12, .top = 345, .width = 6789, .height = 10}),
+      "12 345 6789 10 Text\n");
+}
+
 }  // namespace
 }  // namespace amberfolio::sdl

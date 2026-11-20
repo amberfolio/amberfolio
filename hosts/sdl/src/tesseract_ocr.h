@@ -78,6 +78,14 @@
 // decoding and re-encoding a scan, and every re-encode is a chance to
 // hand the engine something slightly worse than what the player has.
 //
+// **A piece the page's reading kept nothing of is read again on its own**
+// (#585), still without a crop: the same bytes with a zone file beside
+// them (`tesseract_zone`), which the CLI reads as one block. The page's
+// own segmentation can call a heading part of the drawing under it and
+// read nothing there; on Curse of the Azure Bonds' GOG edition that was
+// three items' headings. Only an empty piece is read twice, so a piece
+// that read is read exactly as before.
+//
 //
 // ...and what reading a whole page costs, now that it is measured (#315)
 // ---------------------------------------------------------------------
