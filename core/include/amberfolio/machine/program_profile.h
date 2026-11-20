@@ -783,6 +783,16 @@ inline constexpr seam_module combat{
         "43295e82b663b4690b5aac90cf7b3a1592dd2ee2fdcf6adf3b26358c013eec86",
     .load_segment_at = 0x8A0};
 
+/// Overlay 16: a fight's aim, the target bar and the manual aim. The
+/// stub's record is at image `0x0C90`.
+inline constexpr seam_module aim{
+    .file = "GAME.OVR",
+    .file_offset = 85738,
+    .length = 16138,
+    .digest =
+        "c0bb9c76500ad2cbcfe242ecb4e48a348c904325f266747dd40a1ef305874eb8",
+    .load_segment_at = 0xCA0};
+
 }  // namespace secret_of_the_silver_blades_modules
 
 /// Secret of the Silver Blades, the program Steam sells (v1.30;
@@ -795,6 +805,11 @@ inline constexpr seam_module combat{
 ///
 /// The record is the one the first two programs keep, longer again: the
 /// same fields in the same order, further in.
+///
+/// **No view kind**, as on Curse of the Azure Bonds: the adventuring mode
+/// has one view, the grid, and the program is in that mode from its first
+/// instruction. The area record keeps the geometry block and the 3D word
+/// where the first two programs keep them (`docs/hosts.md` §13).
 inline constexpr program_profile secret_of_the_silver_blades{
     .name = "Secret of the Silver Blades",
     .fingerprint =
@@ -814,7 +829,7 @@ inline constexpr program_profile secret_of_the_silver_blades{
     .titles_overlay = {},
     .interpreter_overlay = secret_of_the_silver_blades_modules::interpreter,
     .combat_overlay = secret_of_the_silver_blades_modules::combat,
-    .aim_overlay = {},
+    .aim_overlay = secret_of_the_silver_blades_modules::aim,
     .adventure_overlay = {},
     .camp_overlay = {},
     .roster_overlay = {},
@@ -847,22 +862,22 @@ inline constexpr program_profile secret_of_the_silver_blades{
     .view_kind_grid = {},
     .view_kind_first_overland = {},
     .view_kind_last_overland = {},
-    .data_in_transition = {},
-    .data_disk_number = {},
-    .data_area_id = {},
-    .data_party_x = {},
-    .data_party_y = {},
-    .data_party_facing = {},
-    .data_wall_set = {},
-    .data_map_pointer = {},
-    .data_area_record = {},
+    .data_in_transition = 0x59B5,
+    .data_disk_number = 0x7420,
+    .data_area_id = 0xA4C2,
+    .data_party_x = 0x89D7,
+    .data_party_y = 0x89D8,
+    .data_party_facing = 0x89D9,
+    .data_wall_set = 0x89D8,
+    .data_map_pointer = 0x89CE,
+    .data_area_record = 0x67C6,
     .area_overland_column = {},
     .area_overland_row = {},
-    .area_geometry_block = {},
-    .area_shown_in_3d = {},
+    .area_geometry_block = 0x18A,
+    .area_shown_in_3d = 0x1CC,
     .data_area_bar = {},
     .data_view_bar = {},
-    .data_current_member = {},
+    .data_current_member = 0x7D38,
     .data_roster_head = 0x7D3C,
     .data_bar_highlight = {},
     .data_key_pushback = {},

@@ -429,7 +429,7 @@ TEST(SeamPanel, AProgramWithAFewSeamsListsThoseAndNoOther) {
   const std::vector<panel_row> rows = panel_rows(secret);
   for (const std::string_view ported :
        {"cheat-invulnerable", "cheat-kill-all", "cheat-wound-party",
-        "font-sans", "font-chisel", "message-pause"}) {
+        "font-sans", "font-chisel", "message-pause", "modern-controls"}) {
     EXPECT_TRUE(lists(rows, ported)) << ported;
   }
   for (const std::string_view absent : {"encamp-fix", "explored"}) {

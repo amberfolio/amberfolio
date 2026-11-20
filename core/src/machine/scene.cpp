@@ -37,8 +37,9 @@ namespace {
 static_assert(scene_view_max == map_format::sight_cells_max);
 static_assert(scene_map_max == automap_map_cells);
 
-/// How far into the current area record this read reaches: the last byte
-/// of the word that says the wilderness is drawn in 3D.
+/// How far into the current area record a read of the profile's members
+/// reaches: the last byte of the word that says the wilderness is drawn in
+/// 3D.
 [[nodiscard]] constexpr std::uint16_t record_reach(
     const program_profile& profile) noexcept {
   return static_cast<std::uint16_t>(profile.area_shown_in_3d + 2);
@@ -177,9 +178,10 @@ struct scene_facts {
 
   /// The aim bar's two frames while it waits for a key, from BP
   /// (seam_aim_watch.cpp has both routes). From target to target: the
-  /// target's record, a far pointer, and the range it prints. Manual: the
-  /// cursor's column and row, the range word, and the record the panel
-  /// shows, a far pointer, zero for none.
+  /// target's record, a far pointer, and the range it prints, a byte.
+  /// Manual: the cursor's column and row (unless the data segment holds
+  /// them, below), the range word, and the record the panel shows, a far
+  /// pointer, zero for none.
   int target_record;
   int target_range;
   int manual_column;
@@ -193,6 +195,32 @@ struct scene_facts {
   /// overland is the travel view above.
   std::uint16_t area_journey_place{};
   std::span<const std::string_view> journey_places{};
+
+  /// The manual aim's cursor, on a program that keeps it in the data
+  /// segment and not in the routine's frame: its column and its row. Zero
+  /// where the frame holds it (`manual_column`, `manual_row`).
+  std::uint16_t data_manual_column{};
+  std::uint16_t data_manual_row{};
+
+  /// From target to target, on a program whose routine is handed a square
+  /// beside the record and may be handed no record at all: the square's
+  /// column and row in the frame, from BP. Zero on a program whose target
+  /// is always a figure.
+  int target_column{};
+  int target_row{};
+
+  /// The square the status line prints, on a program whose scripts may
+  /// give it one of their own: two words of the area record, the column
+  /// and the row, with `shown_none` in the first where the line prints the
+  /// party's stored square. Zero on a program whose line always prints the
+  /// stored square.
+  std::uint16_t area_shown_column{};
+  std::uint16_t area_shown_row{};
+
+  /// Whether a script that has no grid leaves the area record's geometry
+  /// block zero: blocks are numbered from one, and a program that is in
+  /// its adventuring mode while such a script runs has no square to say.
+  bool geometry_says_a_grid_is_up{};
 
   [[nodiscard]] constexpr std::uint16_t data_slot_count() const noexcept {
     return static_cast<std::uint16_t>(data_slot_squares + square_shape);
@@ -271,11 +299,82 @@ constexpr scene_facts curse_scene{
     .area_journey_place = 0x338,
     .journey_places = curse_journey_places};
 
+/// What the first word of the shown square holds where the status line
+/// prints the party's stored one.
+constexpr std::uint16_t shown_none = 0xFF;
+
+/// Secret of the Silver Blades (#609). The tactical grid's tables are the
+/// first two programs' in the same order, the fallen and the fight's block
+/// at the same distances from each other; the record is 439 bytes, with
+/// the computer's byte and the armour class beside its side byte as
+/// before. No travel view and no journey this read knows of. Its place
+/// tables are empty: no door graphic is measured and no grid is named.
+///
+/// **The aim** is overlay 16's, and both routines are rewritten. From
+/// target to target the target's record is the far pointer at `[BP+0x14]`
+/// and the range the word at `[BP-0x31]`, measured by the line routine and
+/// halved before it is printed; the read takes its low byte. The routine
+/// is handed the target's square too, column at `[BP+8]` and row at
+/// `[BP+6]`, and after manual's Exit it is handed that and no record: the
+/// bar is then on a square, with nobody's sheet drawn for it. In manual the
+/// cursor is not in the frame at all: its column and row are two bytes of
+/// the data segment, `0x8E1F` and `0x8E20`, which the arrows step and the
+/// routine clamps to the grid's 50 by 25; the range word is at `[BP-0x38]`
+/// and the record the panel shows the far pointer at `[BP+0x1E]`
+/// (`seam_aim_watch.cpp` has the points and the rest of both frames).
+///
+/// **The status line's square is the script's, where it has one.** The
+/// line's routine (overlay 27 `+0x316A`) prints the bytes at `+0x3FA` and
+/// `+0x3FC` of the area record unless the word at `+0x3FA` is `0xFF`, and
+/// then the party's stored column and row. No routine of the program
+/// writes either word: an area's script does, and the town's leaves
+/// `0xFF`. The ruins east of it are wider than a grid: their script keeps
+/// the party on one sixteen-by-sixteen grid, moves it from one part of the
+/// grid to another at a door, and numbers the squares for the line itself.
+/// **This read answers nothing there**, because the square it would say
+/// is not the one the screen prints, and which of the two a host should be
+/// told is not decided (`docs/hosts.md` §13). A fight there reads: it has
+/// no square for the party.
+///
+/// **A grid is up once a geometry block is.** The program is in its
+/// adventuring mode from its first instruction, and through the opening's
+/// pages, whose script (block 17) loads no geometry: the area record's
+/// geometry word is zero until a script loads a block, and they are
+/// numbered from one.
+constexpr scene_facts secret_scene{
+    .profile = secret_of_the_silver_blades,
+    .places = &map_format::secret_of_the_silver_blades_places,
+    .data_terrain = 0,
+    .terrain_stride = 0,
+    .data_slot_records = 0x8571,
+    .data_slot_squares = 0x7EDF,
+    .data_bodies = 0x868E,
+    .data_body_count = 0x86CD,
+    .data_combat_block = 0x86CE,
+    .data_ground_cost = 0x1A9E,
+    .record_bytes = 0x1B7,
+    .record_computer = 0x1A9,
+    .record_ac = 0x1AB,
+    .target_record = 0x14,
+    .target_range = -0x31,
+    .manual_column = 0,
+    .manual_row = 0,
+    .manual_range = -0x38,
+    .manual_record = 0x1E,
+    .data_manual_column = 0x8E1F,
+    .data_manual_row = 0x8E20,
+    .target_column = 0x08,
+    .target_row = 0x06,
+    .area_shown_column = 0x3FA,
+    .area_shown_row = 0x3FC,
+    .geometry_says_a_grid_is_up = true};
+
 /// The row for the program `digest` names, or null: a program this read
 /// has no facts about.
 [[nodiscard]] const scene_facts* scene_facts_for(
     const sha256_digest& digest) noexcept {
-  for (const scene_facts* facts : {&pool_of_radiance_scene, &curse_scene}) {
+  for (const scene_facts* facts :
+       {&pool_of_radiance_scene, &curse_scene, &secret_scene}) {
     if (digest_is(digest, facts->profile.fingerprint)) {
       return facts;
     }
@@ -413,11 +512,23 @@ void name_zone(const scene_facts& f, scene& out, std::uint8_t geo,
     // is numbered from one and is zero until the first area is read.
     return false;
   }
-  const std::uint32_t record =
-      ram.follow(profile.data_area_record, record_reach(profile));
+  const std::uint32_t record = ram.follow(
+      profile.data_area_record,
+      std::max<std::uint32_t>(record_reach(profile), f.area_shown_row + 2U));
   const std::uint32_t map_at =
       ram.follow(profile.data_map_pointer, map_format::map_bytes);
   if (record == 0 || map_at == 0) {
+    return false;
+  }
+  if (f.geometry_says_a_grid_is_up &&
+      ram.word_at(record + profile.area_geometry_block) == 0) {
+    // A script with no grid of its own: pages of story over the mode.
+    return false;
+  }
+  if (f.area_shown_column != 0 &&
+      ram.word_at(record + f.area_shown_column) != shown_none) {
+    // The status line is printing a square the area's script gave it, not
+    // the stored one this read would say (`secret_scene`).
     return false;
   }
   const std::uint8_t facing = ram.data(profile.data_party_facing);
@@ -713,18 +824,33 @@ void read_aim(const scene_facts& f, const memory& ram,
         seen = &slot;
       }
     }
-    if (seen == nullptr) {
+    const bool no_record = ram.word_at(in_frame(f.target_record)) == 0 &&
+                           ram.word_at(in_frame(f.target_record + 2)) == 0;
+    if (seen != nullptr) {
+      aim.x = seen->x;
+      aim.y = seen->y;
+      aim.under = listed_as(target);
+    } else if (no_record && f.target_column != 0) {
+      // A square and nobody: the panel is drawn for no one.
+      aim.x = ram.at(in_frame(f.target_column));
+      aim.y = ram.at(in_frame(f.target_row));
+      if (aim.x >= scene_combat_columns || aim.y >= scene_combat_rows) {
+        return;
+      }
+    } else {
       return;
     }
-    aim.x = seen->x;
-    aim.y = seen->y;
-    aim.under = listed_as(target);
     if (at.range_shown) {
       aim.range = ram.at(in_frame(f.target_range));
     }
   } else if (at.mode == scene_aim_mode::manual) {
-    aim.x = ram.at(in_frame(f.manual_column));
-    aim.y = ram.at(in_frame(f.manual_row));
+    if (f.data_manual_column != 0) {
+      aim.x = ram.data(f.data_manual_column);
+      aim.y = ram.data(f.data_manual_row);
+    } else {
+      aim.x = ram.at(in_frame(f.manual_column));
+      aim.y = ram.at(in_frame(f.manual_row));
+    }
     if (aim.x >= scene_combat_columns || aim.y >= scene_combat_rows) {
       return;
     }

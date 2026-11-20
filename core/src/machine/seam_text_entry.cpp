@@ -94,6 +94,12 @@ constexpr text_entry_facts pool_of_radiance_text_entry{.editor_entry = 0x7A73,
 constexpr text_entry_facts curse_text_entry{.editor_entry = 0x53F6,
                                             .editor_return = 0x5584};
 
+/// Secret of the Silver Blades (#609): `push bp` at image `0x5B48`, the
+/// one `retf 0Ah` at `0x5D87`, and between them the two calls of the
+/// program's key read that Curse of the Azure Bonds' editor makes.
+constexpr text_entry_facts secret_text_entry{.editor_entry = 0x5B48,
+                                             .editor_return = 0x5D87};
+
 void reading_begins(machine& /*box*/, seam_context& ctx) {
   ctx.set_scratch(text_entry_scratch, 1);
 }
@@ -119,6 +125,9 @@ static_assert(text_entry_point_table.size() == text_entry_point_count);
 constexpr std::array<seam_point, 2> curse_text_entry_point_table =
     text_entry_points_of<curse_text_entry>();
 
+constexpr std::array<seam_point, 2> secret_text_entry_point_table =
+    text_entry_points_of<secret_text_entry>();
+
 }  // namespace
 
 std::span<const seam_point> text_entry_points() noexcept {
@@ -127,6 +136,10 @@ std::span<const seam_point> text_entry_points() noexcept {
 
 std::span<const seam_point> curse_text_entry_points() noexcept {
   return curse_text_entry_point_table;
+}
+
+std::span<const seam_point> secret_text_entry_points() noexcept {
+  return secret_text_entry_point_table;
 }
 
 text_entry text_entry_now(const machine& box) noexcept {

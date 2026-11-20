@@ -93,6 +93,7 @@ add_executable(amberfolio-core-tests
   core/machine/seam_roster_fix_test.cpp
   core/machine/seam_timer_fix_test.cpp
   core/machine/seam_modern_controls_curse_test.cpp
+  core/machine/seam_modern_controls_secret_test.cpp
   core/machine/seam_modern_controls_test.cpp
   core/machine/seam_test.cpp
   core/machine/service_floor_test.cpp

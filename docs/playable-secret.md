@@ -24,8 +24,9 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
 
 No `--install`: the Steam copy is recognized and laid out at `\SECRET`
 (`docs/hosts.md` §2c). No seam is needed to play, and the ones available
-on this program are the three debug cheats, the two text faces and the
-message pause (`docs/seams.md` §10). Sixty
+on this program are the three debug cheats, the two text faces, the
+message pause and `modern-controls`, which here is only its two pieces
+that observe, for the host reads below (`docs/seams.md` §10). Sixty
 frames to the virtual second; `TICKS = FRAME * 19,886` at `--speed 386`
 is close enough for `--until`.
 
@@ -34,7 +35,9 @@ slots A and B (the `secret-slots` snapshot). Snapshot the directory and
 restore it between runs.
 
 The `.txt` beside a still is the screen's text (`docs/hosts.md` §10),
-which reads on this program. The scene (`.scene.json`) does not yet.
+and the `.scene.json` the scene (`docs/hosts.md` §13): the grid in the
+town, every fight, and with `--seam modern-controls` the aim. The ruins'
+grid reads `null` (below), and so do the titles and the opening's pages.
 
 ## The program's own controls
 
@@ -89,12 +92,14 @@ from the mayor's house to the east gate with no wall on the way, walked
 square for square.
 
 **The status line's square is not always the stored one.** In the town
-the two agree. The ruins are wider than sixteen squares, and the map at
-the pointer is a part of them that the program changes as the party
-crosses out of it: the party arrives at stored `11,2` with the line
-saying `0,15`; at stored `14,2` the line says `3,15`; and one step east
-of that, through a door, the party is at stored `10,3`, and a step
-further at stored `11,3` with the line saying `5,15`.
+the two agree. In the ruins the area's script gives the line a square of
+its own, two words of the area record (`+0x3FA`, `+0x3FC`; `0xFF` in the
+first is the town's "print the stored one"), and moves the party about
+one sixteen-by-sixteen grid whose map, wall set and geometry block stay
+the same over every step driven: the party arrives at stored `11,2` with
+the line saying `0,15`; at stored `14,2` the line says `3,15`; and one
+step east of that, through a door, the party is at stored `10,3`, and a
+step further at stored `11,3` with the line saying `5,15`.
 
 ---
 
@@ -300,6 +305,61 @@ after this one: one file, no slot's own (`docs/hosts.md` §6).
 
 **After a save at camp the program asks `QUIT TO DOS YES NO`**; `N`
 goes on.
+## Leg 9: the aim
+
+```
+... leg 4 to --press Return@24300 ...
+--press A@24700 --press N@24900 --press N@25100 --press N@25300
+--press P@25500 --press M@25700
+--press Left@25900 --press Up@26100 --press Up@26300 --press Right@26500
+--press Down@26700 --press E@26900 --press E@27100
+--press Q@27300 ... every 200 frames ... --press Q@29300
+--press N@29800 --press Return@30200 --press E@30600 --press N@31000
+```
+
+- The fight opens on Dominic's turn at `29,14`, window `24,10`. `A` is
+  `AIM`: the bar is `NEXT PREV MANUAL CENTER EXIT` from target to target,
+  on Dominic himself at `RANGE = 0`; `N` steps nearest first through
+  Malachite, Paine and Morgaine, `P` back to Paine, and the bar has
+  `TARGET` on it where the target is in reach.
+- `M` is `MANUAL`, `(USE CURSOR KEYS)`, the cursor where the target
+  was; the four arrows step it a square each, over the party, the
+  hippogriffs and an empty square, the panel showing whoever is under
+  it.
+- `E` from manual is back to target to target, on the square the cursor
+  left, the window scrolled to `25,10`; a second `E` ends the aim at the
+  combat bar.
+- From there it is leg 4's: `Q` for each member, the program's question,
+  `N`, and the treasure screen. The fight is over by frame 29,300.
+
+`secret-aim` is this leg, 406 checkpoints; `docs/hosts.md` §13 has what
+the scene reads at each key.
+
+## Leg 10: a character's name
+
+```
+--press Return@600 --press Return@900
+--press Return@1500 --press Return@1700 --press Return@1900
+--press Return@2100 --press Return@2300
+--press N@2500 --press T@2700 --press O@2760 --press R@2820
+--press Return@3000
+```
+
+Leg 5's character to its name, with the keys closer together and the
+name typed a letter at a time: a `Return` at each list takes its lit
+row, `N` keeps the stats, and the bottom line is `CHARACTER NAME:`, the
+program's line editor. `TOR` and `Return` take the name, and the
+figure's editor is up by frame 3,050. `secret-name` is this leg, 40
+checkpoints.
+
+## The host reads on this program
+
+| run | what it shows |
+|---|---|
+| leg 3 | the scene at every step through the town: the square and facing the status line prints, the faces around it (the mayor's door one square ahead at `3,4`, a door on the right at each sign on the street, the gate ahead at `15,8`); `null` from the gate on, in the ruins |
+| leg 4 | the fight's figures, hit points, turns and fallen, the window and its ground |
+| leg 9 with `--seam modern-controls` | the aim at each of its keys, the seam fired 30 times |
+| leg 10 with `--seam modern-controls` | `text-entry reading` from the empty `CHARACTER NAME:` through `TOR`, `not-reading` at `REROLL` before it and on the figure's editor after it; the line editor's entry and its return each reached once |
 
 ## The cheats on this program
 
@@ -350,7 +410,7 @@ where that mechanism is (`docs/seams.md` §10).
 
 ## The sessions
 
-Fourteen, `secret-*`, each on the Steam copy with its shipped slots (the
+Nineteen, `secret-*`, each on the Steam copy with its shipped slots (the
 `secret-slots` snapshot) at `--speed 386` and `--wall none`.
 
 | session | seams | relation | what it is |
@@ -368,3 +428,8 @@ Fourteen, `secret-*`, each on the Steam copy with its shipped slots (the
 | `secret-fight-kill` | cheat-kill-all, pulled | `contrast secret-fight` | 324 of 371 identical, divergent from tick 491,204,086, the pull |
 | `secret-camp-message-pause` | message-pause | `identical secret-camp` | no pause is reached: all 106 checkpoints |
 | `secret-fight-pause` | message-pause | `contrast secret-fight` | 315 of 371 identical, divergent from tick 476,011,182, in the two pauses that open the encounter |
+| `secret-aim` | | | leg 9 |
+| `secret-name` | | | leg 10 |
+| `secret-fight-controls` | modern-controls | `identical secret-fight` | neither piece reached: all 371 checkpoints |
+| `secret-aim-controls` | modern-controls | `identical secret-aim` | the aim watched at every key of the aim: all 406 checkpoints |
+| `secret-name-controls` | modern-controls | `identical secret-name` | the line editor watched from entry to return: all 40 checkpoints |
