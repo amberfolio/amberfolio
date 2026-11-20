@@ -131,6 +131,7 @@ import {
   readScreenKeyboard,
   readKeyCard,
   keyCardProgram,
+  keyCardLegend,
   visibleKeyCard,
   commitKey,
   commitScancode,
@@ -794,8 +795,11 @@ if (missing.length === 0) {
   const seen = new Set();
   let rows = 0;
   for (const context of card.contexts) {
-    check(!seen.has(context.id), `the key card names ${context.id} twice`);
-    seen.add(context.id);
+    // A screen two programs share is a context once for each: an id is
+    // unique within one program's card.
+    const named = `${context.id}/${context.program ?? ''}`;
+    check(!seen.has(named), `the key card names ${named} twice`);
+    seen.add(named);
     check(
       ['both', 'desktop', 'page'].includes(context.shell),
       `${context.id} is for the shell ${JSON.stringify(context.shell)}`,
@@ -888,15 +892,44 @@ if (missing.length === 0) {
   const shownFor = (word) => visibleKeyCard(card, 'page', everything, word);
   const pool = shownFor('pool');
   const curse = shownFor('curse');
+  const blades = shownFor('blades');
   check(has(pool, 'wilderness') && !has(pool, 'journey'), "the baseline's card is not its own");
   check(
     has(curse, 'journey') && !has(curse, 'wilderness'),
     "Curse's card shows a wilderness it does not have, or no journey",
   );
+  // Secret of the Silver Blades: its own screens, no Notes, and with every
+  // seam on only the message pause's row, since modern-controls and the
+  // journal take no key on it.
+  check(
+    has(blades, 'explore') && has(blades, 'combat') && !has(blades, 'wilderness') &&
+      !has(blades, 'journey') && !has(blades, 'journal'),
+    "Secret of the Silver Blades' card is not its own",
+  );
+  check(
+    blades.every((context) => context.rows.every((row) => row.seam === '' || row.seam === 'message-pause')),
+    "Secret of the Silver Blades' card shows a seam's key it does not take",
+  );
+  // Each program's note under the card: the baseline's for the first two
+  // and for an unknown program, its own for the third.
+  check(
+    keyCardLegend(card, 'pool') === card.legend &&
+      keyCardLegend(card, 'curse') === card.legend &&
+      keyCardLegend(card, '') === card.legend &&
+      keyCardLegend(card, 'another') === card.legend &&
+      typeof programs[2]?.legend === 'string' &&
+      keyCardLegend(card, 'blades') === programs[2].legend &&
+      keyCardLegend(card, 'blades') !== card.legend,
+    "a program's note under the key card is not its own",
+  );
   for (const [word, shown] of [
     ['pool', pool],
     ['curse', curse],
+    ['blades', blades],
   ]) {
+    // One context of an id for a program: the page keys its DOM on it.
+    const ids = shown.map((context) => context.id);
+    check(new Set(ids).size === ids.length, `the card for ${word} shows one id twice`);
     check(
       shown.every(
         (context) =>
@@ -943,7 +976,8 @@ if (missing.length === 0) {
   );
   console.log(
     `smoke: key card of ${card.contexts.length} contexts and ${rows} rows, ` +
-      `${pool.length} shown for ${programs[0]?.word} and ${curse.length} for ${programs[1]?.word}`,
+      `${pool.length} shown for ${programs[0]?.word}, ${curse.length} for ${programs[1]?.word} ` +
+      `and ${blades.length} for ${programs[2]?.word}`,
   );
 }
 
