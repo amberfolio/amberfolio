@@ -1667,7 +1667,8 @@ and a first deposit at the town's vault created `VAULT.DAT`, 28 bytes,
 in the save directory: one file whichever slot is loaded, so a host
 that splits a playthrough by slot keeps it with all of them. **Not a
 row**: a Curse of the Azure Bonds character (`*.GUY`) put there for the
-program's `ADD` to list, which is that game's file. A page that writes
+program's `ADD` to list and take (`docs/playable-secret.md` leg 5),
+which is that game's file. A page that writes
 a playthrough back keeps the rows above and nothing else, so a file
 that is not a row does not survive a reload there.
 
