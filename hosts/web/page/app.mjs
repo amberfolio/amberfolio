@@ -63,6 +63,7 @@ import {
   readScreenKeyboard,
   readKeyCard,
   keyCardProgram,
+  keyCardLegend,
   visibleKeyCard,
   commitKey,
   moveFocus,
@@ -2252,7 +2253,7 @@ function renderKeyCard(machine, container) {
     });
     const legend = document.createElement('p');
     legend.className = 'note';
-    legend.textContent = card.legend;
+    legend.textContent = keyCardLegend(card, program);
     container.replaceChildren(...sections, legend);
   };
   draw();

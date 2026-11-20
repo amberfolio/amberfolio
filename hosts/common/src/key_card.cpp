@@ -33,6 +33,7 @@ namespace {
 // unit suite holds each to the edition table.
 constexpr std::string_view pool = "pool";
 constexpr std::string_view curse = "curse";
+constexpr std::string_view blades = "blades";
 constexpr std::string_view no_seam;
 
 // Contexts are in the order a player is likely to want them: where the
@@ -221,6 +222,68 @@ constexpr std::array journal_rows{
     key_row{"Esc", "close the entry, then the log", "journal"},
 };
 
+// Secret of the Silver Blades has screens of the same names and other keys
+// on most of them, so each of its screens is a context of its own, with
+// the rows docs/playable-secret.md records as driven. No piece of
+// modern-controls takes a key or draws on this program, and its party's
+// bar has no Notes, so none of those rows is here; the message pause's is.
+
+constexpr std::array blades_explore_rows{
+    key_row{"Up, Down", "at the bar: the previous or next party member"},
+    key_row{"Left, Right", "at the bar: step the lit word"},
+    key_row{"M, Return on Move",
+            "walk: the bar is Exit alone, and the arrows walk"},
+    key_row{"Up, 8", "walking: step forward one square"},
+    key_row{"Left, Right, 4, 6", "walking: turn a quarter turn left or right"},
+    key_row{"Down", "walking: turn around"},
+    key_row{"Return, E", "walking: back to the bar, Move lit"},
+    key_row{"Esc", "nothing here, at the bar or walking"},
+};
+
+constexpr std::array blades_bar_rows{
+    key_row{"its first letter", "take that command; lower case works"},
+    key_row{"Left, Right", "step the lit word, except where they walk or turn"},
+    key_row{"Return", "take the lit word"},
+    key_row{"Y, N", "answer a Yes/No question"},
+    key_row{"Esc", "leave camp or a member's sheet; not the party's bar"},
+    key_row{"E, then N", "leave a treasure screen with treasure still on it"},
+};
+
+constexpr std::array blades_menu_rows{
+    key_row{"Up, Down", "move the highlight over the rows"},
+    key_row{"Return", "take the highlighted row"},
+    key_row{"letters, Home, End", "nothing here: a row is taken by Return"},
+};
+
+constexpr std::array blades_list_rows{
+    key_row{"Up, Down", "move the lit row"},
+    key_row{"Return", "take the bar's lit word for the lit row"},
+    key_row{"Home, End", "nothing here"},
+    key_row{"E", "leave the list (the bar's EXIT)"},
+    key_row{"Esc", "leave a shop's list, or the party menu's"},
+};
+
+constexpr std::array blades_combat_rows{
+    key_row{"M, then the arrows",
+            "move one square a key; the bar counts what is left"},
+    key_row{"Esc", "while moving: the bar, and back where the move began"},
+    key_row{"A", "Aim: N, P choose a target, M a cursor, E leaves"},
+    key_row{"arrows, in Aim's M", "step the cursor one square"},
+    key_row{"V", "View: the member's sheet; E leaves it"},
+    key_row{"Q", "Quick: the computer plays this member to the end"},
+    key_row{"D", "Done: Guard, Delay, Quit, Speed or Exit"},
+    key_row{"N, the fight over", "at Continue Battle: no, take the win"},
+    key_row{"any key", "end a message's pause; that key does no more",
+            "message-pause"},
+};
+
+constexpr std::array blades_text_rows{
+    key_row{"letters, digits", "typed in; lower case shows as capitals"},
+    key_row{"Backspace", "erase the last character"},
+    key_row{"Return, Esc", "accept what is typed; Esc does not cancel"},
+    key_row{"arrows", "nothing here: an arrow types no letter"},
+};
+
 constexpr std::array desktop_rows{
     key_row{"F11", "mute or unmute"},
     key_row{"F12", "volume: 25, 50, 75, 100 percent, then round again"},
@@ -231,26 +294,60 @@ constexpr std::array desktop_rows{
     key_row{"Arrows, Return", "drive the keyboard or panel while one is up"},
 };
 
+// A context is one program's, or every program's (the desktop's own keys).
+// The first two games share most of their screens and Secret of the
+// Silver Blades shares none of theirs, so a screen of the first two is
+// named once for each, over one list of rows, and an `id` is a program's
+// once: no program is shown two contexts of one id.
 constexpr std::array contexts{
     key_context{"explore", "Exploring: the 3D view (towns, dungeons)",
-                explore_rows},
+                explore_rows, card_shell::both, pool},
+    key_context{"explore", "Exploring: the 3D view (towns, dungeons)",
+                explore_rows, card_shell::both, curse},
+    key_context{"explore", "Exploring: the 3D view (the town, the ruins)",
+                blades_explore_rows, card_shell::both, blades},
     key_context{"wilderness", "Exploring: the wilderness map", wilderness_rows,
                 card_shell::both, pool},
     key_context{"journey", "Exploring: the overland journey", journey_rows,
                 card_shell::both, curse},
-    key_context{"bars", "Command bars (the line along the bottom)", bar_rows},
+    key_context{"bars", "Command bars (the line along the bottom)", bar_rows,
+                card_shell::both, pool},
+    key_context{"bars", "Command bars (the line along the bottom)", bar_rows,
+                card_shell::both, curse},
+    key_context{"bars", "Command bars (the line along the bottom)",
+                blades_bar_rows, card_shell::both, blades},
     key_context{"menu", "The main menu (party setup, training halls)",
-                menu_rows},
+                menu_rows, card_shell::both, pool},
+    key_context{"menu", "The main menu (party setup, training halls)",
+                menu_rows, card_shell::both, curse},
+    key_context{"menu", "The party menu (party setup, training halls)",
+                blades_menu_rows, card_shell::both, blades},
     key_context{"lists", "Pick-lists (race, class, shops, spells, coins)",
-                list_rows},
-    key_context{"picker", "Choosing a party member", picker_rows},
-    key_context{"combat", "Combat", combat_rows},
+                list_rows, card_shell::both, pool},
+    key_context{"lists", "Pick-lists (race, class, shops, spells, coins)",
+                list_rows, card_shell::both, curse},
+    key_context{"lists", "Pick-lists (race, class, a shop's goods, cures)",
+                blades_list_rows, card_shell::both, blades},
+    key_context{"picker", "Choosing a party member", picker_rows,
+                card_shell::both, pool},
+    key_context{"picker", "Choosing a party member", picker_rows,
+                card_shell::both, curse},
+    key_context{"combat", "Combat", combat_rows, card_shell::both, pool},
+    key_context{"combat", "Combat", combat_rows, card_shell::both, curse},
+    key_context{"combat", "Combat", blades_combat_rows, card_shell::both,
+                blades},
     key_context{"scores", "Modify: a new character's scores", score_rows,
                 card_shell::both, pool},
     key_context{"fields", "Modify: a new character's scores and name",
                 field_rows, card_shell::both, curse},
-    key_context{"text", "Typing a name", text_rows},
-    key_context{"journal", "Notes (the journal)", journal_rows},
+    key_context{"text", "Typing a name", text_rows, card_shell::both, pool},
+    key_context{"text", "Typing a name", text_rows, card_shell::both, curse},
+    key_context{"text", "Typing a name or a number", blades_text_rows,
+                card_shell::both, blades},
+    key_context{"journal", "Notes (the journal)", journal_rows,
+                card_shell::both, pool},
+    key_context{"journal", "Notes (the journal)", journal_rows,
+                card_shell::both, curse},
     key_context{"desktop", "This window (the desktop host)", desktop_rows,
                 card_shell::desktop},
 };
@@ -262,6 +359,24 @@ constexpr std::string_view legend =
     "that seam changes it: with modern-controls on, walking is a mode the "
     "party's bar starts with Move and ends with Exit, and the number row's 1 "
     "to 8 pick a party member at the main menu.";
+
+/// A program whose note is not the baseline's: what is true of the keys
+/// on every one of its screens at once.
+struct program_legend {
+  std::string_view program;
+  std::string_view text;
+};
+
+constexpr std::array legends{
+    program_legend{
+        .program = blades,
+        .text = "On the screens that use the arrows, the number row's 8 2 4 6 "
+                "are Up Down Left Right, as the keypad's are, so no keypad is "
+                "needed. Home and End do nothing in this game's lists or at "
+                "its party menu. Its keys are its own: no enhancement adds one "
+                "here, and a row that names a seam shows only while that seam "
+                "is on."},
+};
 
 [[nodiscard]] std::string_view shell_word(card_shell shell) {
   switch (shell) {
@@ -311,6 +426,8 @@ void append_string(std::string& out, std::string_view text) {
     append_string(out, key_card_program(&program));
     out += ",\"fingerprint\":";
     append_string(out, program.fingerprint);
+    out += ",\"legend\":";
+    append_string(out, key_card_legend(key_card_program(&program)));
     out += '}';
   }
   out += "],\"contexts\":[";
@@ -355,7 +472,14 @@ void append_string(std::string& out, std::string_view text) {
 
 std::span<const key_context> key_card() { return contexts; }
 
-std::string_view key_card_legend() { return legend; }
+std::string_view key_card_legend(std::string_view program) {
+  for (const program_legend& own : legends) {
+    if (own.program == program) {
+      return own.text;
+    }
+  }
+  return legend;
+}
 
 std::string key_card_program(const machine::edition* program) {
   if (program == nullptr) {

@@ -46,11 +46,18 @@ inline constexpr std::size_t card_does_column = 22;
 [[nodiscard]] std::vector<host::key_page> card_pages(
     const machine::seam_engine& seams);
 
+/// The note under the card for the program `seams` knows it is running
+/// (`host::key_card_legend()`): the baseline's for one it does not
+/// recognize.
+[[nodiscard]] std::string_view card_legend(const machine::seam_engine& seams);
+
 /// One page of the card as lines, `card_columns` wide each, with the same
 /// number of lines on every page so that turning one does not resize the
-/// panel. `page` is clamped into range, so a card that lost a page (a seam
-/// turned off under it) never points past its end.
+/// panel, and `legend` under the rows. `page` is clamped into range, so a
+/// card that lost a page (a seam turned off under it) never points past
+/// its end.
 [[nodiscard]] std::vector<std::string> card_lines(
-    const std::vector<host::key_page>& pages, std::size_t& page);
+    const std::vector<host::key_page>& pages, std::size_t& page,
+    std::string_view legend = host::key_card_legend());
 
 }  // namespace amberfolio::sdl

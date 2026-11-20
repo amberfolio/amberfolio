@@ -5,7 +5,8 @@
 // What a test can hold a table of words to is its shape, and that is what
 // is here: every row says something, every seam a row names exists, every
 // program a row or a context names is an edition, a program is shown its
-// own rows and no other's, a context is not named twice, the words fit
+// own rows and no other's, a context is not named twice for one program,
+// each program has its note under the card, the words fit
 // the grid the desktop host sets them in, and the JSON a page reads is
 // the table and not a second copy that can drift. Whether a row is *true*
 // is the other half, and no
@@ -19,6 +20,7 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "amberfolio/machine/edition.h"
@@ -90,14 +92,27 @@ TEST(KeyCard, EveryContextHasRowsAndEveryRowSaysSomething) {
   EXPECT_FALSE(key_card_legend().empty());
 }
 
-TEST(KeyCard, EveryContextIsNamedOnceInLowerCase) {
-  std::set<std::string_view> seen;
+TEST(KeyCard, EveryContextIsNamedOnceForAProgramInLowerCase) {
+  // A screen two programs share is in the table once for each, so an id
+  // is unique within a program and may recur across them.
+  std::set<std::pair<std::string_view, std::string_view>> seen;
   for (const key_context& context : key_card()) {
-    EXPECT_TRUE(seen.insert(context.id).second) << context.id;
+    EXPECT_TRUE(seen.insert({context.id, context.program}).second)
+        << context.id << " for " << context.program;
     EXPECT_FALSE(context.id.empty());
     for (const char c : context.id) {
       EXPECT_TRUE((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'))
           << context.id;
+    }
+  }
+  // And no program is shown two contexts of one id: a page keys its DOM
+  // on the id.
+  for (const std::string& program : program_words()) {
+    std::set<std::string_view> shown;
+    for (const key_page& page :
+         key_card_for(card_shell::desktop, program, everything)) {
+      EXPECT_TRUE(shown.insert(page.context->id).second)
+          << program << ": " << page.context->id;
     }
   }
 }
@@ -171,6 +186,58 @@ TEST(KeyCard, AProgramIsShownItsOwnScreensAndNotAnothers) {
           << page.context->id << ": " << row->keys;
     }
   }
+}
+
+TEST(KeyCard, SecretOfTheSilverBladesIsShownOnlyItsOwnScreens) {
+  // Its screens share names with the first two games' and few of their
+  // keys, so every one of them is its own, and the desktop's keys are
+  // the only context it shares.
+  const std::vector<key_page> secret =
+      key_card_for(card_shell::desktop, "blades", everything);
+  for (const std::string_view id :
+       {"explore", "bars", "menu", "lists", "combat", "text", "desktop"}) {
+    EXPECT_TRUE(has_context(secret, id)) << id;
+  }
+  // No wilderness and no journey; no Notes on its party's bar; no member
+  // picker and no Modify driven yet.
+  for (const std::string_view id :
+       {"wilderness", "journey", "journal", "picker", "scores", "fields"}) {
+    EXPECT_FALSE(has_context(secret, id)) << id;
+  }
+  for (const key_page& page : secret) {
+    EXPECT_TRUE(page.context->program == "blades" ||
+                page.context->shell == card_shell::desktop)
+        << page.context->id;
+  }
+}
+
+TEST(KeyCard, SecretOfTheSilverBladesShowsNoRowOfAPieceItHasNot) {
+  // With every seam on: modern-controls is on this program only for a
+  // host's reads, and the journal only for its citation watch, so neither
+  // has a key to show; the automap and the Encamp Fix are not on it at
+  // all. The message pause is, and a key ends it.
+  std::set<std::string_view> named;
+  for (const key_page& page :
+       key_card_for(card_shell::desktop, "blades", everything)) {
+    for (const key_row* row : page.rows) {
+      if (!row->seam.empty()) {
+        named.insert(row->seam);
+      }
+    }
+  }
+  EXPECT_EQ(named, std::set<std::string_view>{"message-pause"});
+}
+
+TEST(KeyCard, AProgramsNoteIsItsOwnOrTheBaselines) {
+  EXPECT_EQ(key_card_legend("pool"), key_card_legend());
+  EXPECT_EQ(key_card_legend("curse"), key_card_legend());
+  EXPECT_EQ(key_card_legend("another"), key_card_legend());
+  EXPECT_NE(key_card_legend("blades"), key_card_legend());
+  // Secret of the Silver Blades' number row is its keypad's, and its
+  // Home and End are not the first two games'.
+  EXPECT_NE(key_card_legend("blades").find("number row"),
+            std::string_view::npos);
+  EXPECT_NE(key_card_legend("blades").find("Home"), std::string_view::npos);
 }
 
 TEST(KeyCard, EveryScreenBothProgramsHaveHasRowsForEach) {
@@ -258,6 +325,9 @@ TEST(KeyCard, EveryWordIsPrintableAsciiWithNothingToEscape) {
     });
   };
   EXPECT_TRUE(plain(key_card_legend()));
+  for (const std::string& program : program_words()) {
+    EXPECT_TRUE(plain(key_card_legend(program))) << program;
+  }
   for (const key_context& context : key_card()) {
     EXPECT_TRUE(plain(context.id)) << context.id;
     EXPECT_TRUE(plain(context.title)) << context.title;
@@ -331,10 +401,14 @@ TEST(KeyCard, TheJsonIsTheTableAndNotACopyOfIt) {
   EXPECT_EQ(occurrences(json, "\"program\":"), key_card().size() + row_count());
   EXPECT_EQ(occurrences(json, "\"word\":"), programs.size());
   EXPECT_EQ(occurrences(json, "\"fingerprint\":"), programs.size());
+  // The top-level note and each program's.
+  EXPECT_EQ(occurrences(json, "\"legend\":"), 1 + programs.size());
   for (const machine::edition& program : programs) {
-    const std::string entry = R"({"word":")" + key_card_program(&program) +
-                              R"(","fingerprint":")" +
-                              std::string(program.fingerprint) + R"("})";
+    const std::string word = key_card_program(&program);
+    const std::string entry = R"({"word":")" + word + R"(","fingerprint":")" +
+                              std::string(program.fingerprint) +
+                              R"(","legend":")" +
+                              std::string(key_card_legend(word)) + R"("})";
     EXPECT_NE(json.find(entry), std::string_view::npos) << entry;
   }
   // The baseline is the first, which is the card a page with no program
