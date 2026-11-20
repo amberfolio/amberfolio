@@ -187,10 +187,9 @@ moves the file); the file input on the page.
 
 **What it needs.** An OCR engine: Tesseract, run as a program on the
 desktop, loaded as the pinned `tesseract.js` from the page's own origin on
-the web, never from a CDN. A recognised edition: the table has five,
-Pool of Radiance's and Curse of the Azure Bonds' GOG and Steam journals
-and Secret of the Silver Blades' Steam journal (`docs/journal.md` §3 is
-how to add one); any other PDF is refused with its fingerprint. The
+the web, never from a CDN. A recognised edition: the table has six,
+each game's GOG and Steam journals (`docs/journal.md` §3 is how to add
+one); any other PDF is refused with its fingerprint. The
 three Steam journals are typeset as text and are read with no engine at
 all. Every
 build decodes the pages the pictures are on (`docs/journal.md` §11.4).

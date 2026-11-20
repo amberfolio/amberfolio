@@ -2216,13 +2216,12 @@ desktop's rebuilds the rows from the engine anyway.
 
 ### The documents this build recognises
 
-Seven (`machine/document.cpp`). Pool of Radiance has four, two releases'
+Eight (`machine/document.cpp`). Pool of Radiance has four, two releases'
 worth, the same four `document` artifacts on both of its rows of
 `data/editions.json`, because any of them serves the one program; the
 GOG release's two are named `archive release` in the table. Curse of the
-Azure Bonds has two journals, on both of its rows for the same reason.
-Secret of the Silver Blades has one, the Steam release's journal, on
-both of its rows:
+Azure Bonds has two journals, on both of its rows for the same reason,
+and so has Secret of the Silver Blades:
 
 | document | kind | sha256 |
 | --- | --- | --- |
@@ -2233,6 +2232,7 @@ both of its rows:
 | Curse of the Azure Bonds, the Steam release's Adventurer's Journal (PDF) | journal | `68bd9d47…fec8031` |
 | Curse of the Azure Bonds, the GOG release's Adventurer's Journal (PDF) | journal | `7c918ead…d8529bb` |
 | Secret of the Silver Blades, the Steam release's Adventurer's Journal (PDF) | journal | `153190ec…d9e66c3` |
+| Secret of the Silver Blades, the GOG release's Adventurer's Journal (PDF) | journal | `f26c9062…a9a48a74` |
 
 A code wheel is a fact that gates nothing (#290). Every journal is
 read, by one of two routes (`docs/journal.md` §3): each GOG release's
