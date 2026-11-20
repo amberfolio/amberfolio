@@ -7,8 +7,8 @@ and has the method in full; `docs/first-light.md` stops at the party
 menu. Nothing in this repository can run any of it (PLAN.md §6).
 
 The legs here are the ones driven so far. What is still to be driven is
-on #608: a cure and a training carried through, and the ruins past
-their first street.
+on #608: a training carried through, and the ruins past their first
+street.
 
 ---
 
@@ -52,7 +52,7 @@ from this table.
 | a prompt on the bottom line | `LOAD WHICH GAME: A B`, `YES NO` | the letter |
 | a page of story | text under a picture, `PRESS <ENTER>/<RETURN> TO CONTINUE` | `Return` |
 | a command bar | words on the bottom line, the first one lit | the word's first letter; `Return` takes the lit one |
-| the adventuring bar | `MOVE AREA CAST VIEW ENCAMP SEARCH LOOK` | `Return` on the lit `MOVE` starts the program's own move mode: the bar is `EXIT`, `Up` steps, `Left` and `Right` turn, `E` ends it |
+| the adventuring bar | `MOVE AREA CAST VIEW ENCAMP SEARCH LOOK` | `M`, or `Return` while `MOVE` is the lit word (it is not after a camp), starts the program's own move mode: the bar is `EXIT`, `Up` steps, `Left` and `Right` turn, `E` ends it |
 | the treasure bar | `VIEW TAKE POOL SHARE EXIT` | `E` leaves; with treasure left the program asks whether to go back, and **`N` is the one that leaves** |
 | the camp bar | `SAVE VIEW MAGIC REST ALTER FIX EXIT` | letters; the program has its own `FIX` |
 | a character's view | a sheet over `HEAL CURE EXIT` (what a member can do varies) | `E` leaves |
@@ -316,6 +316,7 @@ after this one: one file, no slot's own (`docs/hosts.md` §6).
 
 **After a save at camp the program asks `QUIT TO DOS YES NO`**; `N`
 goes on.
+
 ## Leg 9: the aim
 
 ```
@@ -363,6 +364,34 @@ program's line editor. `TOR` and `Return` take the name, and the
 figure's editor is up by frame 3,050. `secret-name` is this leg, 40
 checkpoints.
 
+## Leg 11: a cure at the temple
+
+```
+... leg 7's opening ...
+--press E@8200                                        # ENCAMP
+--press E@8650 --pull cheat-wound-party@8650          # the party on one hit point each, and out
+--press M@9100                                        # MOVE
+--press Up@9250 ... four Up, Left, seven Up, Right, two Up ...   # to 10,9
+--press Y@11800
+--press A@12100 --press Return@12400 --press Return@12700 --press E@13000
+                                                      # APPRAISE, GEMS, SELL, and out
+--press H@13300                                       # HEAL
+--press Down@13600 --press Down@13750                 # to the third cure of the list
+--press Return@14050 --press Return@14350 --press Return@14650
+--press E@14950 --press V@15250 --press E@15550 --press E@15850
+```
+
+With `--seam cheat-wound-party`, because no shipped party is hurt and a
+fight's wounds are a long walk from this door. The temple's list is for
+the current member; each `Return` buys the lit cure, and three of them
+take the first member from 1 hit point to 15 and the fifty platinum the
+gem fetched down to 10. `secret-heal` is this leg, with that seam.
+
+**The training hall has not trained anybody.** `TRAIN CHARACTER` asks
+`PICK CHARACTER`, where `Up` and `Down` choose and `Return` takes one,
+and then the menu is back with no message and the member unchanged:
+tried with the shipped party and with a new character carrying 300
+platinum. What it wants is not known.
 ## The host reads on this program
 
 | run | what it shows |
@@ -434,7 +463,7 @@ where that mechanism is (`docs/seams.md` §10).
 
 ## The sessions
 
-Twenty-one, `secret-*`, each on the Steam copy with its shipped slots (the
+Twenty-two, `secret-*`, each on the Steam copy with its shipped slots (the
 `secret-slots` snapshot) at `--speed 386` and `--wall none`.
 
 | session | seams | relation | what it is |
@@ -444,6 +473,7 @@ Twenty-one, `secret-*`, each on the Steam copy with its shipped slots (the
 | `secret-new-party` | | | leg 5 |
 | `secret-buy` | | | leg 7 |
 | `secret-vault` | | | leg 8 |
+| `secret-heal` | cheat-wound-party, pulled | | leg 11 |
 | `secret-camp-cheats` | the three cheats, none pulled | `identical secret-camp` | no point acts: all 106 checkpoints |
 | `secret-camp-wound` | cheat-wound-party, pulled | `contrast secret-camp` | 93 of 106 identical, divergent from tick 169,050,886, the pull |
 | `secret-fight` | | | leg 4 |
