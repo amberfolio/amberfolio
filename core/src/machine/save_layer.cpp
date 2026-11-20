@@ -190,7 +190,7 @@ constexpr save_layer curse{
 ///
 /// Most specific first, as above: the configuration file, anchored where
 /// the program was started, then the three `<NAME>` rows last.
-constexpr std::array<save_file, 9> secret_files{{
+constexpr std::array<save_file, 10> secret_files{{
     {.pattern = "SAVGAM<S>.DAT",
      .kind = save_file_kind::slot,
      .required = true,
@@ -216,6 +216,11 @@ constexpr std::array<save_file, 9> secret_files{{
      .required = false,
      .about = "what has been deposited at the town's vault: one file for "
               "every slot, written at the deposit"},
+    {.pattern = "AFMAP<S>.DAT",
+     .kind = save_file_kind::sidecar,
+     .required = false,
+     .about = "this build's own: what the automap had explored when slot <S> "
+              "was written"},
     {.pattern = "BLADES.CFG",
      .kind = save_file_kind::config,
      .required = false,

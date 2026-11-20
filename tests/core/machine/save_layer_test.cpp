@@ -172,6 +172,11 @@ TEST(SaveLayer, SecretsSlotIsItsRecordsAndTheirEffects) {
   EXPECT_EQ(row("SECRET\\SAVE\\CHRDATC4.SAV").file->kind,
             save_file_kind::member);
   EXPECT_EQ(row("SECRET\\BLADES.CFG").file->kind, save_file_kind::config);
+  // The automap's sidecar (#609), beside the slot it was written with.
+  const save_layer_row map = row("SECRET\\SAVE\\AFMAPC.DAT");
+  ASSERT_NE(map.file, nullptr);
+  EXPECT_EQ(map.file->kind, save_file_kind::sidecar);
+  EXPECT_EQ(map.slot, 'C');
   // The town's vault (#608): one file beside the saves, no slot's own.
   const save_layer_row vault = row("SECRET\\SAVE\\VAULT.DAT");
   ASSERT_NE(vault.file, nullptr);

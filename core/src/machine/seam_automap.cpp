@@ -410,7 +410,62 @@ struct automap_facts {
   /// pixel row against the wall (#555). Off on Pool of Radiance, whose
   /// panel keeps the pixels its sessions pin.
   bool doors_over_party;
+
+  /// The keys the party's bar answers with a roster-cursor step and a
+  /// roster redraw (`claimable_of()`): every extended key but the scan
+  /// codes the bar keeps for itself, and these characters, which its raw
+  /// mode translates through the keypad table.
+  std::span<const std::uint8_t> bar_kept_scans;
+  std::span<const std::uint8_t> roster_chars;
+
+  /// On a program with a move mode of its own (Secret of the Silver
+  /// Blades): the byte that is non-zero while it is on, and the adventure
+  /// loop's call into the menu-bar routine that puts its bar up, by the
+  /// instruction after it. Its bar is the party's too, and none of its
+  /// keys is a roster step. Zero elsewhere.
+  std::uint16_t data_move_mode{};
+  std::uint16_t move_bar_return{};
+
+  /// Whether a script with no grid of its own leaves the area record's
+  /// geometry block zero (scene.cpp's rule): the program is in its
+  /// adventuring mode through pages of story that have none.
+  bool geometry_says_a_grid_is_up{};
+
+  /// Where in the area record a script may keep a square of its own for
+  /// the status line, the column word, with `shown_none` there where the
+  /// line prints the party's stored square. A map whose script numbers its
+  /// squares itself is not drawn or recorded (docs/seams.md §10). Zero on a
+  /// program whose line always prints the stored square.
+  std::uint16_t area_shown_column{};
+
+  /// Whether the program's own key reader polls before it reads, and reads
+  /// unconditionally when that poll says no (Secret of the Silver Blades:
+  /// a bar polls through one wrapper and, told yes, reads through another
+  /// that polls again). A key that reaches the ring between the bar's poll
+  /// and the wrapper's is taken at the second, and the read after it would
+  /// wait inside the BIOS for the player's next key, unseen
+  /// (`at_key_read()`).
+  bool polls_before_its_read{};
+
+  /// The floor's colour while the program's ground byte is zero: brown,
+  /// Pool of Radiance's own default terrain, where the byte is only zero
+  /// before the program sets it. Secret of the Silver Blades draws its
+  /// ground from tiles and never sets the byte, and its floor is Curse's
+  /// dark grey, the colour of its streets' cobbles.
+  std::uint8_t floor_when_unset{6};
 };
+
+/// The four moves: scan codes the bar hands the adventuring loop as
+/// steps and turns, which are never roster steps.
+constexpr std::array<std::uint8_t, 4> keeps_the_moves{0x48, 0x4B, 0x4D, 0x50};
+/// The keypad's characters that are roster steps where 2, 4, 6 and 8 are
+/// moves: End, PgDn, a space, Home, PgUp, and `\` (`7`).
+constexpr std::array<std::uint8_t, 6> roster_chars_beside_moves{'1', '3', '5',
+                                                                '7', '9', '\\'};
+
+/// What the area record's shown column holds where the status line prints
+/// the stored square.
+constexpr std::uint16_t shown_none = 0xFF;
 
 /// Pool of Radiance: the baseline edition (program_profile.h). The
 /// roster drawer is resident, called at the paragraph it was linked at.
@@ -429,7 +484,9 @@ constexpr automap_facts pool_of_radiance_automap{
     .roster_call_offset = pool_of_radiance.roster_draw_offset,
     .note_bar = &note_command_bar,
     .records_overland = true,
-    .doors_over_party = false};
+    .doors_over_party = false,
+    .bar_kept_scans = keeps_the_moves,
+    .roster_chars = roster_chars_beside_moves};
 
 /// Where the bar is in the menu-bar routine's frame at the thunk's entry:
 /// the far return on top, then eleven words of arguments, the bar's far
@@ -495,7 +552,9 @@ constexpr automap_facts curse_automap{
     .roster_call_offset = curse_of_the_azure_bonds.roster_draw_offset,
     .note_bar = &note_one_bar<curse_of_the_azure_bonds>,
     .records_overland = false,
-    .doors_over_party = true};
+    .doors_over_party = true,
+    .bar_kept_scans = keeps_the_moves,
+    .roster_chars = roster_chars_beside_moves};
 
 /// Curse's roster drawer's `retf 4`, in the profile's `summary_overlay`.
 constexpr std::uint16_t curse_roster_drawn_return = 0x092E;
@@ -505,8 +564,93 @@ constexpr std::uint16_t curse_roster_drawn_return = 0x092E;
 /// Text boxes clear through it.
 constexpr std::uint16_t curse_text_clear_entry = 0x580E;
 
+// --- Secret of the Silver Blades (#609) --------------------------------------
+
+/// The roster drawer's `retf 4`, in the profile's `summary_overlay` (Curse's
+/// `+0x092E`, instruction for instruction).
+constexpr std::uint16_t secret_roster_drawn_return = 0x0984;
+
+/// The roster's one-row redraw, beside the drawer in the same module: it
+/// draws the row of one member, lit or not, and clears the row after the
+/// party through the region clear. The party's bar calls it twice for a
+/// roster-cursor step where the first two programs redraw the roster whole,
+/// so its `retf 6` is a roster on the screen as the drawer's return is: the
+/// rows it did not draw are the ones that were there.
+constexpr std::uint16_t secret_roster_row_return = 0x0B17;
+
+/// The second region clear, as on Curse: the same frame, both pages.
+constexpr std::uint16_t secret_text_clear_entry = 0x600E;
+
+/// The program's own move mode (`MOVE` on the party's bar): the byte that
+/// says it is on, and the adventure loop's call into the menu-bar routine
+/// with its one-word bar, by the instruction after it.
+constexpr std::uint16_t secret_data_move_mode = 0xA4D4;
+constexpr std::uint16_t secret_move_bar_return = 0x0AD1;
+
+/// The party's bar keeps Left and Right for itself, which move its lit
+/// word; every other extended key, Up and Down among them, steps the
+/// roster's cursor. The keypad's 4 and 6 move the lit word too.
+constexpr std::array<std::uint8_t, 2> secret_bar_kept_scans{0x4B, 0x4D};
+constexpr std::array<std::uint8_t, 8> secret_roster_chars{'1', '2', '3', '5',
+                                                          '7', '8', '9', '\\'};
+
+/// Whose bar is going up, on Secret of the Silver Blades: the adventure
+/// loop copies its bars onto the stack as every other caller does, so the
+/// call is all that says so, by the far return on top of the stack and the
+/// segment the overlay manager's word says the adventure overlay is at
+/// now. Two calls are the party's: the bar's, and its move mode's.
+void note_secret_bar(machine& box, const seam_context& ctx, std::uint16_t ds) {
+  (void)ds;
+  const program_profile& p = secret_of_the_silver_blades;
+  cpu::processor& cpu = box.processor();
+  const cpu::registers& regs = cpu.regs();
+  const std::uint16_t ss = regs[cpu::sreg::ss];
+  const std::uint16_t sp = regs[cpu::reg16::sp];
+  const std::uint16_t return_ip = cpu.read_word(ss, sp);
+  const std::uint16_t return_cs =
+      cpu.read_word(ss, static_cast<std::uint16_t>(sp + 2));
+  const std::uint16_t adventure = cpu.read_word(
+      static_cast<std::uint16_t>(ctx.image_base() >> 4U),
+      static_cast<std::uint16_t>(p.adventure_overlay.load_segment_at));
+  box.automap().set_at_command_bar(
+      adventure != 0 && return_cs == adventure &&
+      (return_ip == p.view_bar_return || return_ip == secret_move_bar_return));
+}
+
+/// Secret of the Silver Blades (#609). The renderer's tables are Curse's,
+/// at their own offsets; the frame and ground colours are set through the
+/// same routine. No place has a name and no wall set a measured door row
+/// (`secret_of_the_silver_blades_places()`). The roster drawer is overlaid
+/// as Curse's is. Its move mode is the program's own, with a bar of its
+/// own; the status line's square is the area script's where it keeps one.
+constexpr automap_facts secret_automap{
+    .profile = secret_of_the_silver_blades,
+    .places = &map_format::secret_of_the_silver_blades_places,
+    .data_shape_tiles = 0x89CA,
+    .data_shape_first_slot = 0x0AD8,
+    .data_shape_columns = 0x0AE2,
+    .data_shape_rows = 0x0AEC,
+    .data_tile_banks = 0x7DEA,
+    .data_bank_first_tile = 0x1A7C,
+    .data_frame_colour = 0x89D2,
+    .data_ground_colour = 0x89D5,
+    .roster_call_paragraph = secret_of_the_silver_blades.screen_paragraph,
+    .roster_call_offset = secret_of_the_silver_blades.roster_draw_offset,
+    .note_bar = &note_secret_bar,
+    .records_overland = false,
+    .doors_over_party = true,
+    .bar_kept_scans = secret_bar_kept_scans,
+    .roster_chars = secret_roster_chars,
+    .data_move_mode = secret_data_move_mode,
+    .move_bar_return = secret_move_bar_return,
+    .geometry_says_a_grid_is_up = true,
+    .area_shown_column = 0x3FA,
+    .polls_before_its_read = true,
+    .floor_when_unset = 8};
+
 constexpr auto automap_binaries =
-    fingerprints_of(std::array{&pool_of_radiance, &curse_of_the_azure_bonds});
+    fingerprints_of(std::array{&pool_of_radiance, &curse_of_the_azure_bonds,
+                               &secret_of_the_silver_blades});
 
 /// The 8x8 font the program draws every menu and message with, behind the
 /// profile's `data_font_pointer` (M5-E2b): sixty-four glyphs of eight
@@ -1539,9 +1683,13 @@ constexpr std::uint16_t key_tab = 0x0F09;
 /// rule is the program's own, and nothing outside it is taken. The
 /// character is enough for the second kind, unlike Tab: nothing else on
 /// this machine makes a digit.
-constexpr std::array<std::uint8_t, 4> key_move_scans{0x48, 0x4B, 0x4D, 0x50};
-constexpr std::array<std::uint8_t, 6> key_roster_chars{'1', '3', '5',
-                                                       '7', '9', '\\'};
+///
+/// Which scan codes are the moves, and so which digits, is the program's:
+/// a row of the fact table (`bar_kept_scans`, `roster_chars`). On Secret
+/// of the Silver Blades the party's bar does not move the party at all —
+/// its move mode does, with a bar of its own — so Up and Down and the
+/// keypad's 2 and 8 are roster steps there, and Left and Right, which move
+/// the bar's lit word, are the bar's.
 
 /// What the keystroke at the head of the buffer is, to this seam.
 enum class claimable : std::uint8_t {
@@ -1554,19 +1702,19 @@ enum class claimable : std::uint8_t {
   roster_cursor,
 };
 
-[[nodiscard]] claimable claimable_of(std::uint16_t key) noexcept {
+[[nodiscard]] claimable claimable_of(const automap_facts& f,
+                                     std::uint16_t key) noexcept {
   if (key == key_tab) {
     return claimable::panel;
   }
   const auto character = static_cast<std::uint8_t>(key & 0xFFU);
   const auto scan = static_cast<std::uint8_t>(key >> 8U);
   if (character == 0) {
-    const bool move =
-        std::ranges::find(key_move_scans, scan) != key_move_scans.end();
-    return scan == 0 || move ? claimable::none : claimable::roster_cursor;
+    const bool kept =
+        std::ranges::find(f.bar_kept_scans, scan) != f.bar_kept_scans.end();
+    return scan == 0 || kept ? claimable::none : claimable::roster_cursor;
   }
-  return std::ranges::find(key_roster_chars, character) !=
-                 key_roster_chars.end()
+  return std::ranges::find(f.roster_chars, character) != f.roster_chars.end()
              ? claimable::roster_cursor
              : claimable::none;
 }
@@ -1591,7 +1739,7 @@ enum class claimable : std::uint8_t {
   if (head == tail) {
     return claimable::none;
   }
-  const claimable which = claimable_of(cpu.read_word(bda::segment, head));
+  const claimable which = claimable_of(f, cpu.read_word(bda::segment, head));
   if (which == claimable::none || (which == claimable::panel && !want_panel) ||
       (which == claimable::roster_cursor && !want_cursor)) {
     return claimable::none;
@@ -1637,8 +1785,33 @@ enum class claimable : std::uint8_t {
     // which is the scene read's rule too (scene.cpp).
     return false;
   }
-  return cpu.read_byte(ds, profile.data_in_transition) == 0 &&
-         cpu.read_word(ds, at(profile.data_map_pointer, 2)) != 0;
+  if (cpu.read_byte(ds, profile.data_in_transition) != 0 ||
+      cpu.read_word(ds, at(profile.data_map_pointer, 2)) == 0) {
+    return false;
+  }
+  if (!f.geometry_says_a_grid_is_up && f.area_shown_column == 0) {
+    return true;
+  }
+  const std::uint16_t record_offset =
+      cpu.read_word(ds, profile.data_area_record);
+  const std::uint16_t record_segment =
+      cpu.read_word(ds, at(profile.data_area_record, 2));
+  if (record_segment == 0) {
+    return false;
+  }
+  if (f.geometry_says_a_grid_is_up &&
+      cpu.read_word(record_segment,
+                    at(record_offset, profile.area_geometry_block)) == 0) {
+    // Pages of story whose script has no grid: the map pointer is the
+    // last area's, or nobody's.
+    return false;
+  }
+  // A script that numbers its squares itself moves the party between
+  // parts of its grid at doors the grid says are walls, so a map of the
+  // stored squares is not the place the player walks (docs/seams.md §10).
+  return f.area_shown_column == 0 ||
+         cpu.read_word(record_segment,
+                       at(record_offset, f.area_shown_column)) == shown_none;
 }
 
 /// Everything one pass needs off the data segment. The geometry block
@@ -1673,10 +1846,9 @@ enum class claimable : std::uint8_t {
     return false;
   }
   // A floor that is fog-black would draw an explored cell as an
-  // unexplored one. The program has not set the byte yet; brown is what
-  // its own default terrain is.
+  // unexplored one. The program has not set the byte (`floor_when_unset`).
   if (out.floor_colour == 0) {
-    out.floor_colour = colour_brown;
+    out.floor_colour = f.floor_when_unset;
   }
   return true;
 }
@@ -1748,8 +1920,11 @@ void give_the_roster_back(const automap_facts& f, machine& box,
 
   cpu::processor& cpu = box.processor();
   const std::uint8_t mode = cpu.read_byte(ds, profile.data_game_mode);
-  if (!roster_just_drawn && mode != profile.mode_camp &&
-      mode != profile.mode_travel && mode != profile.mode_adventure) {
+  // A zero travel mode is a program without one (Secret of the Silver
+  // Blades), not the party menu's mode 0.
+  const bool travel = profile.mode_travel != 0 && mode == profile.mode_travel;
+  if (!roster_just_drawn && mode != profile.mode_camp && !travel &&
+      mode != profile.mode_adventure) {
     // Belt and braces, and the program's own rule: the roster is only
     // there to be redrawn on the modes that have one. A repaint the
     // program cannot perform would leave a corrupted screen, which is a
@@ -1828,9 +2003,16 @@ void give_the_roster_back(const automap_facts& f, machine& box,
 }
 
 /// Whether a roster-cursor step is this seam's key on this pass: only
-/// while the panel is the thing on the cells that step would repaint.
-[[nodiscard]] bool cursor_keys_are_the_panels(
-    const automap_state& state) noexcept {
+/// while the panel is the thing on the cells that step would repaint, and
+/// not in a move mode of the program's own, whose bar steps and turns the
+/// party on those keys and touches no roster row.
+[[nodiscard]] bool cursor_keys_are_the_panels(const automap_facts& f,
+                                              cpu::processor& cpu,
+                                              std::uint16_t ds,
+                                              const automap_state& state) {
+  if (f.data_move_mode != 0 && cpu.read_byte(ds, f.data_move_mode) != 0) {
+    return false;
+  }
   return state.panel_open() && !state.panel_covered();
 }
 
@@ -1838,6 +2020,43 @@ void give_the_roster_back(const automap_facts& f, machine& box,
 /// was switched on (#628): zero, the value `enable()` gives every word,
 /// until then.
 constexpr unsigned word_bar_read = 0;
+
+/// On a program whose reader polls before it reads (`polls_before_its_read`):
+/// a key was taken at the last poll and the program has been handed
+/// nothing since, and this seam's batch is behind the arrival about to be
+/// offered again. Zero until then, as every word starts.
+constexpr unsigned word_poll_took = 1;
+constexpr unsigned word_batch_back = 2;
+
+/// Whether the BIOS ring is empty.
+[[nodiscard]] bool ring_empty(cpu::processor& cpu) {
+  return cpu.read_word(bda::segment, bda::keyboard_buffer_head) ==
+         cpu.read_word(bda::segment, bda::keyboard_buffer_tail);
+}
+
+/// What one poll did, to the words above: a key taken sets the first; any
+/// other poll clears it, but the one this seam's own batch is behind,
+/// which is the same poll offered again.
+void note_poll(const automap_facts& f, seam_context& ctx, bool took) {
+  if (!f.polls_before_its_read) {
+    return;
+  }
+  const bool again = ctx.scratch(word_batch_back) != 0;
+  ctx.set_scratch(word_batch_back, 0);
+  if (took) {
+    ctx.set_scratch(word_poll_took, 1);
+  } else if (!again) {
+    ctx.set_scratch(word_poll_took, 0);
+  }
+}
+
+/// A batch of this seam's is on its way, and the poll it is behind will be
+/// offered again.
+void note_batch(const automap_facts& f, seam_context& ctx) {
+  if (f.polls_before_its_read) {
+    ctx.set_scratch(word_batch_back, 1);
+  }
+}
 
 /// How many of the program's frames `inside_the_party_bar()` looks up.
 /// The key routines are called from the menu-bar routine itself, whose
@@ -1882,7 +2101,8 @@ template <const automap_facts& F>
     const std::uint16_t return_cs = cpu.read_word(ss, at(bp, 4));
     if (return_cs == adventure &&
         ((p.area_bar_return != 0 && return_ip == p.area_bar_return) ||
-         (p.view_bar_return != 0 && return_ip == p.view_bar_return))) {
+         (p.view_bar_return != 0 && return_ip == p.view_bar_return) ||
+         (F.move_bar_return != 0 && return_ip == F.move_bar_return))) {
       return true;
     }
     const std::uint16_t caller = cpu.read_word(ss, bp);
@@ -1933,15 +2153,20 @@ void at_key_pending(machine& box, seam_context& ctx) {
     // and a map that skipped that square would stay wrong for the rest of
     // the session. Only the presentation and the key yield, which is the
     // line the covered-cells rule draws too.
+    note_poll(F, ctx, false);
     if (yield_to_the_program(F, box, ctx, ds)) {
       return;
     }
   } else {
-    switch (claim_key(F, cpu, ds, true, cursor_keys_are_the_panels(state))) {
+    const claimable which = claim_key(
+        F, cpu, ds, true, cursor_keys_are_the_panels(F, cpu, ds, state));
+    note_poll(F, ctx, which != claimable::none);
+    switch (which) {
       case claimable::panel:
         if (toggle_panel(F, box, ctx, ds)) {
           // The roster is on its way back through a batch. Nothing else
           // this pass.
+          note_batch(F, ctx);
           return;
         }
         break;
@@ -2120,13 +2345,25 @@ void at_key_read(machine& box, seam_context& ctx) {
     return;
   }
   read_the_bar_once<F>(box, ctx);
+  // A read straight after a poll that took the key it was going to read
+  // (`polls_before_its_read`): the ring is empty and the program is about
+  // to sleep in the BIOS, so it is answered as a claim here is.
+  if (F.polls_before_its_read) {
+    const bool owed = ctx.scratch(word_poll_took) != 0;
+    ctx.set_scratch(word_poll_took, 0);
+    if (owed && ring_empty(cpu)) {
+      static_cast<void>(
+          ctx.inject_keystroke(key_ignored_scan, key_ignored_ascii));
+      return;
+    }
+  }
   automap_state& state = box.automap();
   if (!state.at_command_bar()) {
     (void)yield_to_the_program(F, box, ctx, ds);
     return;
   }
-  const claimable which =
-      claim_key(F, cpu, ds, true, cursor_keys_are_the_panels(state));
+  const claimable which = claim_key(
+      F, cpu, ds, true, cursor_keys_are_the_panels(F, cpu, ds, state));
   if (which == claimable::none) {
     return;
   }
@@ -2277,11 +2514,41 @@ constexpr std::array<seam_point, 7> curse_automap_points{
       .offset = curse_of_the_azure_bonds.command_bar_entry,
       .run = &at_command_bar<curse_automap>}}};
 
+/// Secret of the Silver Blades': Curse's seven, and the roster's one-row
+/// redraw's return beside the drawer's in its overlay.
+constexpr std::array<seam_point, 8> secret_automap_points{
+    {{.module = resident_image,
+      .offset = secret_of_the_silver_blades.key_pending_entry,
+      .run = &at_key_pending<secret_automap>},
+     {.module = resident_image,
+      .offset = secret_of_the_silver_blades.key_read_entry,
+      .run = &at_key_read<secret_automap>},
+     {.module = resident_image,
+      .offset = secret_of_the_silver_blades.clear_region_entry,
+      .run = &at_clear_region},
+     {.module = resident_image,
+      .offset = secret_text_clear_entry,
+      .run = &at_clear_region},
+     {.module = resident_image,
+      .offset = secret_of_the_silver_blades.clear_screen_entry,
+      .run = &at_clear_screen},
+     {.module = secret_of_the_silver_blades.summary_overlay,
+      .offset = secret_roster_drawn_return,
+      .run = &at_roster_drawn},
+     {.module = secret_of_the_silver_blades.summary_overlay,
+      .offset = secret_roster_row_return,
+      .run = &at_roster_drawn},
+     {.module = resident_image,
+      .offset = secret_of_the_silver_blades.command_bar_entry,
+      .run = &at_command_bar<secret_automap>}}};
+
 /// The points on every program but the baseline, whose points are the
 /// definition's own (seam.h, schema 9).
-constexpr std::array<seam_program_points, 1> automap_programs{
+constexpr std::array<seam_program_points, 2> automap_programs{
     {{.fingerprint = curse_of_the_azure_bonds.fingerprint,
-      .points = curse_automap_points}}};
+      .points = curse_automap_points},
+     {.fingerprint = secret_of_the_silver_blades.fingerprint,
+      .points = secret_automap_points}}};
 
 constexpr seam_definition automap_definition{
     .id = "automap",
