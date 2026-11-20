@@ -765,6 +765,8 @@ and never triggered.
 | `secret-fight-pause` | contrast | `secret-fight` (the pause as the encounter opens, and every combat line after it, stand longer) |
 | `secret-fight-controls` | identical | `secret-fight` (`modern-controls` on Secret of the Silver Blades, its two observing pieces never reached) |
 | `secret-aim-controls`, `secret-name-controls` | identical | `secret-aim`, `secret-name` (the same, the aim watched and a name typed: on this program the seam writes nothing of the machine's) |
+| `secret-camp-automap` | identical | `secret-camp` (the automap on Secret of the Silver Blades, Tab never pressed) |
+| `secret-town-map` | contrast | `secret-town` (Tab at the party's bar and the walk through the town with the map up) |
 | `curse-quiet-fanfare` | contrast | `curse-quiet` (Curse's piece from the end of the boot's loading to its end, the titles' own sound it plays over, and the driver's ticks it kept off the chip) |
 
 **A built-in fix has no pair** (`built_in_fixes()`, seam.h). It is on
@@ -1480,28 +1482,30 @@ reader's give-back paints over it inside a batch, so the reader calls
 `automap_state::note_panel_painted_over()` and the map redraws at its
 next arrival with its open flag untouched (#332).
 
-**On Curse of the Azure Bonds** (#555) the screen is laid out the same
-way, the viewport left and the roster in the same rect, and the panel is
-the same panel. One `automap_facts` row per program
-(`seam_automap.cpp`), the points in the definition's `programs`:
+**On Curse of the Azure Bonds** (#555) and **on Secret of the Silver
+Blades** (#609) the screen is laid out the same way, the viewport left
+and the roster in the same rect, and the panel is the same panel. One
+`automap_facts` row per program (`seam_automap.cpp`), the points in the
+definition's `programs`:
 
-| fact | Pool of Radiance | Curse of the Azure Bonds |
-| --- | --- | --- |
-| the keyboard's two entries | image `0xA6FD`, `0xA70F` | `0x86EB`, `0x86FD`; pushback DGROUP `0x8CBF` |
-| the region clear, frame bottom, right, top, left above the far return | image `0x4047` | `0x17FD`, and a second with the same frame at `0x580E` that text boxes clear through; both clear both pages |
-| the full-screen clear | image `0x7D3B` | `0x56E2` (only the titles call it; every full-screen view clears through the region clear) |
-| the roster drawer | resident, `0x0BA:0x0767` | overlay 25 (file offset 226981, 13331 bytes, load word `0x0EE0`), `+0x0798`; called through its stub entry at `0x00ED:0x002A`, the paragraph its record begins at (§8.4, #526) |
-| roster drawn | its `retf`, image `0x148A` | its `retf 4`, overlay 25 `+0x092E` |
-| the menu-bar thunk | image `0x3C7A` | `0x106A` (overlay 27's stub, its third entry); the bar at the same place in the frame |
-| the party's bar | DGROUP `0x04B6` and `0x04DF`; calls returning to overlay 14 `0x09D5`, `0x0C45` | one: DGROUP `0x03D8`, the overhead view toggled inside the same loop; the call returning to overlay 15 `+0x092C` |
-| an area is up | view kind `1` | area id DGROUP `0x8B78` non-zero (the program is in mode 4 from its titles on), as the scene read says |
-| the raw mode's keypad table | DGROUP `0x288C` | `0x27D0`, the same translation, and `\` to `7` |
-| shape tiles; first slot, columns, rows | `0x6A58`; `0x0C8C`, `0x0C96`, `0x0CA0` | `0x721C`; `0x0ADA`, `0x0AE4`, `0x0AEE` |
-| tile banks, their first codes | `0x5E3A`, `0x2722` | `0x65D0`, `0x2682` (a fifth bank past `0xFF` that no wall row reaches) |
-| frame colour, ground colour | `0x6A60`, `0x6A63` | `0x7224`, `0x7227` (dark grey, set by the program on this adapter) |
-| places | measured | a door table and the maps' names (`curse_of_the_azure_bonds_places()`); no sub-maps, no lairs |
-| door graphics (disk, WALLDEF block, rows) | 19 rows | 17 rows: disk 2 blocks 1 (`0x10`), 2 (`0x02`), 3 (`0x01`), 4 (`0x10`); disk 3 blocks 3 (`0x01`), 5 (`0x14`), 6 (`0x10`), 7 (`0x12`); disk 4 blocks 3 (`0x01`), 8 (`0x18`), 9 (`0x10`), 10 (`0x10`), 11 (`0x14`); disk 5 blocks 8 (`0x18`), 12 (`0x18`); disk 6 blocks 3 (`0x01`), 13 (`0x10`) |
-| a door on the party's square | under the mark | over the mark, under its white (`doors_over_party`) |
+| fact | Pool of Radiance | Curse of the Azure Bonds | Secret of the Silver Blades |
+| --- | --- | --- | --- |
+| the keyboard's two entries | image `0xA6FD`, `0xA70F` | `0x86EB`, `0x86FD`; pushback DGROUP `0x8CBF` | `0xBA8A`, `0xBA9C`; pushback `0xA6E9`. A bar polls through a wrapper at `0x7299` and, told yes, reads through one at `0x7133` that polls again and reads unconditionally when told no (`polls_before_its_read`, below) |
+| the region clear, frame bottom, right, top, left above the far return | image `0x4047` | `0x17FD`, and a second with the same frame at `0x580E` that text boxes clear through; both clear both pages | `0x1EE9`, and the second at `0x600E` |
+| the full-screen clear | image `0x7D3B` | `0x56E2` (only the titles call it; every full-screen view clears through the region clear) | `0x5EE4` |
+| the roster drawer | resident, `0x0BA:0x0767` | overlay 25 (file offset 226981, 13331 bytes, load word `0x0EE0`), `+0x0798`; called through its stub entry at `0x00ED:0x002A`, the paragraph its record begins at (§8.4, #526) | overlay 27 (file offset 229713, 15132 bytes, load word `0x1520`), `+0x07C4`, Curse's instruction for instruction; its stub entry `0x0151:0x002A` |
+| roster drawn | its `retf`, image `0x148A` | its `retf 4`, overlay 25 `+0x092E` | its `retf 4`, overlay 27 `+0x0984`; and the `retf 6` of the one-row redraw beside it, `+0x0B17` (below) |
+| the menu-bar thunk | image `0x3C7A` | `0x106A` (overlay 27's stub, its third entry); the bar at the same place in the frame | `0x16DF` (overlay 29's stub, its fourth entry) |
+| the party's bar | DGROUP `0x04B6` and `0x04DF`; calls returning to overlay 14 `0x09D5`, `0x0C45` | one: DGROUP `0x03D8`, the overhead view toggled inside the same loop; the call returning to overlay 15 `+0x092C` | two calls and no bar in the data segment: the loop copies `MOVE AREA CAST VIEW ENCAMP SEARCH LOOK` out of its own code onto the stack, as every caller does. The call returning to overlay 17 (load word `0x0D70`) `+0x092D`, and its move mode's, `EXIT`, returning to `+0x0AD1`; the overhead view (`AREA`) keeps the first |
+| an area is up | view kind `1` | area id DGROUP `0x8B78` non-zero (the program is in mode 4 from its titles on), as the scene read says | area id `0xA4C2` non-zero and the area record's geometry block (`+0x18A`) non-zero, the scene read's rule: the opening's pages are mode 4 with no grid |
+| the raw mode's keypad table | DGROUP `0x288C` | `0x27D0`, the same translation, and `\` to `7` | `0x341E`, the same |
+| the bar's roster steps | every extended key but the four moves; `1 3 5 7 9 \` | the same | every extended key but Left and Right, which move the lit word; `1 2 3 5 7 8 9 \`. The bar moves nobody, and Up and Down step the current member. In the move mode (DGROUP `0xA4D4` non-zero) none: its keys step and turn |
+| shape tiles; first slot, columns, rows | `0x6A58`; `0x0C8C`, `0x0C96`, `0x0CA0` | `0x721C`; `0x0ADA`, `0x0AE4`, `0x0AEE` | `0x89CA`; `0x0AD8`, `0x0AE2`, `0x0AEC` |
+| tile banks, their first codes | `0x5E3A`, `0x2722` | `0x65D0`, `0x2682` (a fifth bank past `0xFF` that no wall row reaches) | `0x7DEA`, `0x1A7C` (the same ranges, the fifth to `0x14D`) |
+| frame colour, ground colour | `0x6A60`, `0x6A63` | `0x7224`, `0x7227` (dark grey, set by the program on this adapter) | `0x89D2`, `0x89D5`. The ground byte stays zero (the 3D view's ground is tiles), so the floor is dark grey (`floor_when_unset`) |
+| places | measured | a door table and the maps' names (`curse_of_the_azure_bonds_places()`); no sub-maps, no lairs | none measured (`secret_of_the_silver_blades_places()`): every grid is `AREA <n>` |
+| door graphics (disk, WALLDEF block, rows) | 19 rows | 17 rows: disk 2 blocks 1 (`0x10`), 2 (`0x02`), 3 (`0x01`), 4 (`0x10`); disk 3 blocks 3 (`0x01`), 5 (`0x14`), 6 (`0x10`), 7 (`0x12`); disk 4 blocks 3 (`0x01`), 8 (`0x18`), 9 (`0x10`), 10 (`0x10`), 11 (`0x14`); disk 5 blocks 8 (`0x18`), 12 (`0x18`); disk 6 blocks 3 (`0x01`), 13 (`0x10`) | none: a map with no shut face draws every way through as a door |
+| a door on the party's square | under the mark | over the mark, under its white (`doors_over_party`) | over the mark |
 
 - **The door table** is measured as Pool of Radiance's is: every shut
   face on the sixteen grids (`GEO2` to `GEO6`), and the wall set each
@@ -1594,6 +1598,69 @@ the same panel. One `automap_facts` row per program
   In `curse-quiet-all`. Tests:
   `SeamAutomapOnCurse.*`
   (`tests/core/machine/seam_automap_curse_test.cpp`).
+
+**On Secret of the Silver Blades** (#609) the panel is Curse's, with
+three things of this program's own besides the facts above:
+
+- **The one-row redraw.** A roster step at the party's bar does not
+  redraw the roster: the loop calls overlay 27 `+0x0987` twice, unlit
+  and lit, which draws one member's row and clears the row after the
+  party, inside the panel's rect. Its `retf 6` is a roster point as the
+  drawer's return is. Without it a step with the panel down left the
+  cells covered, and the next Tab drew nothing.
+- **The read after the second poll** (`polls_before_its_read`). A key
+  that reaches the ring between the bar's poll and the read wrapper's is
+  taken at the wrapper's, which then reads with nothing in the ring and
+  waits inside the BIOS; driven, the next Tab was handed to the program
+  and the panel stayed up. So a read straight after a poll that took a
+  key, with the ring empty, is answered with `-` as a key taken at the
+  read is (#266). Any other poll in between, but the one this seam's own
+  batch is behind, forgets it. Only on this program.
+- **The ruins are not mapped.** East of the town the area's script
+  prints a square of its own on the status line (the area record's
+  `+0x3FA` and `+0x3FC`, `0xFF` in the first where it prints the stored
+  one, `docs/hosts.md` §13) and keeps the party on one grid in pieces.
+  The program's step (overlay 32 `+0x0568`) refuses a face whose two
+  bits are zero; the script takes the party through such a face, a
+  wooden door of kind 8, to another piece. Driven: from the arrival at
+  stored `11,2` (line `0,15`) the squares the grid joins are `11..14,0..2`
+  and nothing else; at stored `14,2` (line `3,15`) a step east puts the
+  party at stored `10,3` (line `4,15`), the line's square the stored one
+  less `11,-13` in the first piece and less `6,-12` in the second. A map
+  of the stored grid would draw the door the party walked through as a
+  wall and move its mark four squares west and one south for a step
+  east, so while the line prints a square of the script's the seam
+  records nothing and draws nothing. The panel stays open and is back
+  on the town's first square. Mapping the ruins in the line's squares
+  is a new shape for a record (each square of the script's numbering
+  drawn from a stored square), not decided.
+- **Driven** on slot A (`docs/playable-secret.md` leg 3) with Tab at
+  the party's bar: the panel stays up in the move mode and through the
+  two signs, and is drawn again at each step. Compared with the walked
+  route over the map's planes: the mayor's house at `2..3,3..4` with the
+  door on its south side at `3,4` a leaf where the 3D view shows the red
+  door ahead; the street south to `3,8` with the two doors on its west at
+  `3,9` and `3,10`; the east street with the training hall's, the pub's
+  and the armoury's doors on its north at `7,7`, `10,7` and `14,7`, the
+  vault's and the temple's on its south at `7,8` and `10,8`, and the gate
+  a leaf east of `15,8`. Walls are brown and light grey on the dark grey
+  floor; the label is `AREA 16`. The gate's `YES NO`
+  takes the panel away with the roster drawn; the ruins draw the roster,
+  and walking back west through the gate brings the panel back with
+  nothing recorded in between (`automap-update` 17 calls either way).
+  Up, Down, Home and the keypad's 8 with the panel up are taken and the
+  member stays; with it down, Down and 8 step the member and the next
+  Tab draws the panel. `ENCAMP`, a sheet and `EXIT` give the roster back
+  and bring the panel back at the party's bar; `AREA` draws the
+  program's own overhead map in the viewport beside it. With
+  `--save-sidecars` a save to slot C at camp writes `AFMAPC.DAT` (one
+  record, disk 1, area 16, block 16, fifteen squares) and loading C
+  reads it back, the panel at `3,6 S` drawing the mayor's house.
+- **Fidelity**: `secret-camp-automap` `identical secret-camp` (on, Tab
+  never pressed, all 106 checkpoints); `secret-town-map` `contrast
+  secret-town` (Tab on `MOVE`'s frame, 90 of 138 identical, divergent
+  from tick 163,085,086). Tests: `SeamAutomapOnSecret.*`
+  (`tests/core/machine/seam_automap_secret_test.cpp`).
 
 ### The journal reader (#175, #221, #222, #232, #305, #328, #346)
 

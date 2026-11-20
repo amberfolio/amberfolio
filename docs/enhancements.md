@@ -150,6 +150,17 @@ none.
 
 **What it will not do.** Map the overworld; that is the explored overlay.
 
+**In Secret of the Silver Blades** it is the same panel, up in the game's
+own move mode as at the party's bar. While it is up, Up and Down (and the
+keypad's 2 and 8) do not change the current member, as Home and End do
+not in the first two games; in the move mode they walk. No door graphic
+or place name is measured there yet, so every way through is drawn as a
+door and every map is `AREA <n>`. **The ruins east of the town are not
+mapped**: the game numbers their squares itself and moves the party
+between parts of one map at its doors, so a map of where the game keeps
+the party would not be where you walk. The panel stays open there,
+showing the roster, and is back in the town.
+
 ## The explored overlay
 
 **What it does.** Fog of war on the game's own overworld map. The squares

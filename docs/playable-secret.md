@@ -25,8 +25,9 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
 No `--install`: the Steam copy is recognized and laid out at `\SECRET`
 (`docs/hosts.md` §2c). No seam is needed to play, and the ones available
 on this program are the three debug cheats, the two text faces, the
-message pause and `modern-controls`, which here is only its two pieces
-that observe, for the host reads below (`docs/seams.md` §10). Sixty
+message pause, the automap and `modern-controls`, which here is only its
+two pieces that observe, for the host reads below (`docs/seams.md` §10).
+Sixty
 frames to the virtual second; `TICKS = FRAME * 19,886` at `--speed 386`
 is close enough for `--until`.
 
@@ -63,7 +64,10 @@ from this table.
 
 At any bar `Left` and `Right` move the lit word and `Escape` leaves a
 view; at the adventuring bar `Up` and `Down` change which member is the
-current one. The number row does nothing.
+current one. A digit is the keypad's, whichever row typed it: the
+program's raw mode turns `8` and `2` into `Up` and `Down` (driven: `8`
+at the adventuring bar makes the member above the current one), and `4`
+and `6` move the lit word.
 
 ## The watch list
 
@@ -84,9 +88,12 @@ holds the north and east walls as its high and low nibbles and plane 1
 the south and west; a zero nibble is no wall, and any other is the kind
 of wall drawn there. Plane 3 holds two bits a side (north in bits 0 and
 1, then east, south, west), and a side with a wall and a 1 there lets
-the party through. **A 0 there is not always shut**: walls of kinds 3
+the party through. The program's own step (overlay 32 `+0x0568`) lets
+the party through a side with no wall or with a non-zero pair, and
+nowhere else. **In the ruins a 0 is not always shut**: walls of kinds 3
 and 4 with a 0 stopped the party, and a wall of kind 8, drawn as a
-wooden door, let it through with a 0. Which kinds are doors has not been
+wooden door, let it through with a 0, because the area's script moves
+the party there itself (below). Which kinds are doors has not been
 worked out past those. A route computed from the planes, eighteen keys
 from the mayor's house to the east gate with no wall on the way, walked
 square for square.
@@ -172,8 +179,11 @@ program asks whether to leave the town, and `Y` puts the party in the
 ruins: stored `11,2` facing east, `0,15` on the status line. From there
 eleven squares are joined by sides the map marks as letting the party
 through. A door it does not mark opens to a step all the same, and the
-one east of stored `14,2` leads out to a street. Nothing further of the
-ruins has been driven.
+one east of stored `14,2` leads out to a street: from the arrival,
+`Left Up Right Up Up Up Right Up` reach `14,2` facing south, `Left Up`
+goes through it to stored `10,3`, and five more `Up` reach stored
+`15,3`, the line saying `9,15`. Nothing further of the ruins has been
+driven.
 
 ## Leg 4: a fight
 
@@ -385,6 +395,18 @@ Each is the leg above with one seam (`docs/seams.md` §10):
 own in a recording, and a `contrast` pair has to checkpoint at the same
 ticks (`tests/sessions/README.md`).
 
+## The automap on this program
+
+`--seam automap` and `Tab` at the party's bar (`docs/seams.md` §10):
+
+| run | what it shows |
+|---|---|
+| leg 3 with `--press Tab@8200` | the panel over the roster from `MOVE` on, drawn again at every step of the walk: the mayor's house and its door at `3,4`, the street south and the east street with the five doors on it (`7,7`, `10,7`, `14,7` north, `7,8`, `10,8` south) and the gate east of `15,8`; the roster for the gate's question and in the ruins, which are not mapped, and the panel again when the party walks back west into the town |
+| leg 1 with `Tab@8100`, then `Up`, `Tab`, `Down`, `Tab`, `Tab`, `8`, `Tab`, 150 frames apart | `Up` taken with the panel up, the member unchanged; `Down` and `8` with it down step the member, and each next `Tab` draws the panel |
+| leg 1 with `Tab@8100`, then leg 2's `E`, `V`, `E`, `E` 300 frames apart from 8,250 | the camp's bar and the sheet take the panel away with the roster drawn, and `EXIT` from camp brings it back |
+| leg 1 with `Tab@8100`, `A`, `A` | `AREA` draws the program's own overhead map in the viewport beside the panel, and `A` again the 3D view |
+| leg 1 with `--save-sidecars`, `Tab@8100`, `MOVE`, three `Up`, `E`, `E`, `S`, `C`, `N` | `AFMAPC.DAT` written beside the saves (`docs/hosts.md` §6); slot C loaded and `BEGIN ADVENTURING`, `Tab` draws the mayor's house from it |
+
 ## The message pause on this program
 
 The program's own pause after a message is 241 ms at `--speed 386` and
@@ -420,8 +442,8 @@ where that mechanism is (`docs/seams.md` §10).
 
 ## The sessions
 
-Nineteen, `secret-*`, each on the Steam copy with its shipped slots (the
-`secret-slots` snapshot) at `--speed 386` and `--wall none`.
+Twenty-two, `secret-*`, each on the Steam copy with its shipped slots
+(the `secret-slots` snapshot) at `--speed 386` and `--wall none`.
 
 | session | seams | relation | what it is |
 |---|---|---|---|
@@ -443,3 +465,6 @@ Nineteen, `secret-*`, each on the Steam copy with its shipped slots (the
 | `secret-fight-controls` | modern-controls | `identical secret-fight` | neither piece reached: all 371 checkpoints |
 | `secret-aim-controls` | modern-controls | `identical secret-aim` | the aim watched at every key of the aim: all 406 checkpoints |
 | `secret-name-controls` | modern-controls | `identical secret-name` | the line editor watched from entry to return: all 40 checkpoints |
+| `secret-town` | | | leg 3, to the ruins at frame 11,600 |
+| `secret-camp-automap` | automap | `identical secret-camp` | `Tab` never pressed: all 106 checkpoints |
+| `secret-town-map` | automap | `contrast secret-town` | `Tab` on `MOVE`'s frame, 8,200: 90 of 138 identical, divergent from tick 163,085,086 |

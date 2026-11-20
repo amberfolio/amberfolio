@@ -1642,6 +1642,7 @@ The table is what has been watched so far, on the Steam copy.
 | `CHRDAT<S><N>.STF` | saves | member | no | what that member carries |
 | `CHRDAT<S><N>.SFX` | saves | member | no | the effects that member is under |
 | `VAULT.DAT` | saves | vault | no | what has been deposited at the town's vault: one file for every slot, written at a deposit (28 bytes after a first one) |
+| `AFMAP<S>.DAT` | saves | sidecar | no | **ours**: the automap's exploration, as slot `<S>` was written |
 | `BLADES.CFG` | start | config | no | the program's settings — **a game file** |
 | `<NAME>.WHO` | saves | character | no | a character kept under a name the player chose |
 | `<NAME>.STF` | saves | character | no | what that character carries |
@@ -1665,7 +1666,13 @@ of eight is the first two games' until a seventh record is seen. A
 character created and kept wrote a `.WHO` and an `.SFX` under its name,
 and a first deposit at the town's vault created `VAULT.DAT`, 28 bytes,
 in the save directory: one file whichever slot is loaded, so a host
-that splits a playthrough by slot keeps it with all of them. **Not a
+that splits a playthrough by slot keeps it with all of them.
+`AFMAP<S>.DAT` is the automap's exploration (#609): with `--seam
+automap --save-sidecars`, Tab at the party's bar, three steps south,
+then `ENCAMP`, `SAVE`, `C` and `N` to `QUIT TO DOS` write `AFMAPC.DAT`
+(121 bytes: one record, disk 1, area 16, block 16, fifteen squares;
+`save-sidecars writes=1 reads=0 slot=C trouble=none`), and loading C
+reads it back, the panel at `3,6 S` drawing the mayor's house. **Not a
 row**: a Curse of the Azure Bonds character (`*.GUY`) put there for the
 program's `ADD` to list and take (`docs/playable-secret.md` leg 5),
 which is that game's file. A page that writes
