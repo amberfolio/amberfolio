@@ -1834,6 +1834,78 @@ void give_the_roster_back(const automap_facts& f, machine& box,
   return state.panel_open() && !state.panel_covered();
 }
 
+/// This seam's own word that says whose bar is up has been read since it
+/// was switched on (#628): zero, the value `enable()` gives every word,
+/// until then.
+constexpr unsigned word_bar_read = 0;
+
+/// How many of the program's frames `inside_the_party_bar()` looks up.
+/// The key routines are called from the menu-bar routine itself, whose
+/// frame is the first; the rest is margin.
+constexpr unsigned bar_frames_walked = 8;
+
+/// Whether the program is inside the adventuring loop's own call into the
+/// menu-bar routine, read off the program's frames (#628).
+///
+/// **For a seam switched on while the bar is already up.** The bar's
+/// entry is where `at_command_bar()` learns whose bar it is, and a player
+/// sitting at the party's bar is inside that call, past its entry: the
+/// seam would not know the bar was the party's until the next call, after
+/// a step or a turn. So the first key point after the seam is switched on
+/// reads it here instead.
+///
+/// **The frames are the program's own chain**: each routine keeps its
+/// caller's `BP` at `[BP]` and its far return above it, the chain the
+/// overlay manager walks itself. The menu-bar routine has one; a key
+/// routine's point is its entry, before it makes its own, so `BP` is the
+/// caller's. A frame whose far return is the adventuring loop's, in the
+/// segment the overlay manager's word says that module is at now, just
+/// past one of its bar calls, is the call `note_command_bar()` would have
+/// said was the party's at its entry (the same return it compares). A
+/// chain that does not climb, or runs out, says no: the next bar's entry
+/// says yes as it always has.
+template <const automap_facts& F>
+[[nodiscard]] bool inside_the_party_bar(machine& box, const seam_context& ctx) {
+  const program_profile& p = F.profile;
+  cpu::processor& cpu = box.processor();
+  const std::uint16_t adventure = cpu.read_word(
+      static_cast<std::uint16_t>(ctx.image_base() >> 4U),
+      static_cast<std::uint16_t>(p.adventure_overlay.load_segment_at));
+  if (adventure == 0) {
+    return false;
+  }
+  const cpu::registers& regs = cpu.regs();
+  const std::uint16_t ss = regs[cpu::sreg::ss];
+  std::uint16_t bp = regs[cpu::reg16::bp];
+  for (unsigned frame = 0; frame < bar_frames_walked && bp != 0; ++frame) {
+    const std::uint16_t return_ip = cpu.read_word(ss, at(bp, 2));
+    const std::uint16_t return_cs = cpu.read_word(ss, at(bp, 4));
+    if (return_cs == adventure &&
+        ((p.area_bar_return != 0 && return_ip == p.area_bar_return) ||
+         (p.view_bar_return != 0 && return_ip == p.view_bar_return))) {
+      return true;
+    }
+    const std::uint16_t caller = cpu.read_word(ss, bp);
+    if (caller <= bp) {
+      return false;
+    }
+    bp = caller;
+  }
+  return false;
+}
+
+/// The first key point since the seam was switched on: say whose bar is up
+/// from the program's frames, once (#628). Every bar's entry after it says
+/// so itself.
+template <const automap_facts& F>
+void read_the_bar_once(machine& box, seam_context& ctx) {
+  if (ctx.scratch(word_bar_read) != 0) {
+    return;
+  }
+  ctx.set_scratch(word_bar_read, 1);
+  box.automap().set_at_command_bar(inside_the_party_bar<F>(box, ctx));
+}
+
 // ---------------------------------------------------------------------------
 // The handlers
 // ---------------------------------------------------------------------------
@@ -1848,6 +1920,7 @@ void at_key_pending(machine& box, seam_context& ctx) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
+  read_the_bar_once<F>(box, ctx);
   automap_state& state = box.automap();
 
   if (!state.at_command_bar()) {
@@ -2046,6 +2119,7 @@ void at_key_read(machine& box, seam_context& ctx) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
+  read_the_bar_once<F>(box, ctx);
   automap_state& state = box.automap();
   if (!state.at_command_bar()) {
     (void)yield_to_the_program(F, box, ctx, ds);
@@ -2083,6 +2157,7 @@ void at_command_bar(machine& box, seam_context& ctx) {
   // cannot come to different conclusions about whose screen this is
   // (`automap_overland.h`).
   F.note_bar(box, ctx, ds);
+  ctx.set_scratch(word_bar_read, 1);
 }
 
 /// A box region is about to be cleared. If it meets the panel's cells,

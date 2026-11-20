@@ -310,6 +310,16 @@
 // there is nothing for it to put back then: the machine's devices go back
 // to power-on with it.
 //
+// A seam with no moments can hold something too: a string of the
+// program's it changed at one point and puts back at a later one, the
+// journal's word on the party's bar between the bar routine's call and
+// its return (#627). The program can sit between those two points for as
+// long as the player likes, so that is where it is switched off. Such a
+// seam says so with `seam_context::hold()`, and a `disable()` while it
+// holds owes its stop the same way. The stop writes back only what its
+// own seam wrote, and only where the program is known not to be reading
+// it then (the seam's own section of docs/seams.md §10 says why).
+//
 //
 // Qualified points
 // ----------------
@@ -699,12 +709,15 @@ struct seam_definition {
   /// reads it through `seam_context::setting()`.
   seam_setting setting{};
 
-  /// What puts back what this seam holds between its moments, or null for
-  /// nothing (#540; this file's "A point at a moment"). Run once, at the
-  /// next step boundary after a `disable()` that found a moment asked
-  /// for, and never otherwise: a seam that ends the thing itself puts it
-  /// back from its own points. Like a moment's handler it is at no known
-  /// instruction, so `call_program` and `place_bytes` answer false.
+  /// What puts back what this seam holds between its moments, or between
+  /// two of its points, or null for nothing (#540, #627; this file's "A
+  /// point at a moment"). Run once, at the next step boundary after a
+  /// `disable()` that found a moment asked for or the seam holding
+  /// (`seam_context::hold`), and never otherwise: a seam that ends the
+  /// thing itself puts it back from its own points. Like a moment's
+  /// handler it is at no known instruction, so `call_program` and
+  /// `place_bytes` answer false, and it writes back only what its own
+  /// seam wrote.
   seam_handler stop{nullptr};
 
   /// The schema this definition was written against — `seam_schema_version`
@@ -1223,6 +1236,14 @@ class seam_context {
   /// Whether this seam has a moment outstanding.
   [[nodiscard]] bool offered() const noexcept;
 
+  /// Say that this seam is, or is no longer, **holding** something of the
+  /// program's that its own later point puts back (#627): a string it
+  /// changed for one call and restores at that call's return. A seam
+  /// switched off while it holds has no point left to put it back with,
+  /// so its `stop` is owed, as for a moment asked for. `enable()`,
+  /// `disable()` and `clear()` let go.
+  void hold(bool holding) noexcept;
+
   /// At an `at_moment` point, the moment this arrival was asked for —
   /// at or before the machine's clock, never after it. Zero anywhere
   /// else.
@@ -1414,8 +1435,9 @@ class seam_engine {
 
   /// Turn `id` off. `seam_reason::none` on success, `unknown_seam`
   /// otherwise; a seam that was already off is simply off. One that had a
-  /// moment asked for and names a `stop` is owed it, at the next step
-  /// boundary (#540).
+  /// moment asked for, or was holding something (`seam_context::hold`),
+  /// and names a `stop` is owed it, at the next step boundary (#540,
+  /// #627).
   seam_error disable(std::string_view id);
 
   /// Turn everything off. `machine::reset()` calls this — an enabled seam
@@ -1699,8 +1721,12 @@ class seam_engine {
     /// while `offered`. Configuration like the latch.
     bool offered{false};
     ticks moment{};
-    /// Switched off while `offered`, with a `stop` to run: owed it at the
-    /// next step boundary (#540).
+    /// Holding something of the program's that a later point of its own
+    /// puts back (`seam_context::hold`, #627). Configuration like the
+    /// moment.
+    bool holding{false};
+    /// Switched off while `offered` or `holding`, with a `stop` to run:
+    /// owed it at the next step boundary (#540, #627).
     bool stop_owed{false};
     /// How many times a handler of this seam has declined
     /// (`seam_context::decline`). Zero means it has not, which is what

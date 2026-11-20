@@ -2238,6 +2238,93 @@ TEST(JournalNotes, ABarWithNoRoomIsLeftAlone) {
   EXPECT_EQ(r.bar_at(bar_area), full) << "36 + 6 is over the forty it has";
 }
 
+TEST(JournalNotes, SwitchedOffAtTheBarTheCommandComesOffTheProgramsString) {
+  // #627: the player sits at the bar, inside the routine's call, which is
+  // between the splice and the return that takes it out, and switches the
+  // seam off there. The return is a point of a seam that is off now, so
+  // the stop takes the command off instead, at the next boundary.
+  rig r;
+  r.attach_host();
+  r.enable();
+  r.put_bar(bar_area, area_words);
+  r.put_byte(r.dgroup(), bar_highlight, 3);
+  r.bar_goes_out(area_before);
+  ASSERT_EQ(r.bar_at(bar_area), std::string(area_words) + " Notes");
+  ASSERT_TRUE(r.reader().bar_live());
+
+  ASSERT_EQ(r.pc().seams().disable("journal"), seam_reason::none);
+  EXPECT_EQ(r.bar_at(bar_area), std::string(area_words) + " Notes")
+      << "switching off is configuration and runs no handler";
+  r.box->step();
+  EXPECT_EQ(r.bar_at(bar_area), area_words)
+      << "the next call is handed the program's own string";
+  EXPECT_FALSE(r.reader().bar_live());
+  EXPECT_EQ(r.byte_at(r.dgroup(), bar_highlight), 3)
+      << "the highlight is the running call's, and left alone";
+  EXPECT_FALSE(r.pc().seams().due(r.pc().time())) << "the stop ran once";
+
+  // The return the program comes back through finds nothing to take out,
+  // the seam being off, and the string stays the program's.
+  r.stand_in_adventure(area_after, 'N');
+  r.put_byte(r.dgroup(), 0x0600 - 0x04, 0);
+  r.box->step();
+  EXPECT_EQ(r.bar_at(bar_area), area_words);
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed);
+}
+
+TEST(JournalNotes, SwitchedOffBetweenTwoBarsItIsOwedNothing) {
+  // Away from the bar the string is already the program's: nothing to put
+  // back, and no stop owed.
+  rig r;
+  r.attach_host();
+  r.enable();
+  r.put_bar(bar_area, area_words);
+  r.one_bar_pass(area_before, area_after, 'X');
+  ASSERT_EQ(r.bar_at(bar_area), area_words);
+
+  ASSERT_EQ(r.pc().seams().disable("journal"), seam_reason::none);
+  EXPECT_FALSE(r.pc().seams().due(r.pc().time()))
+      << "nothing held, so no stop is owed";
+  EXPECT_EQ(r.bar_at(bar_area), area_words);
+}
+
+TEST(JournalNotes, SwitchedOnAgainAfterTheStopItSplicesAsBefore) {
+  rig r;
+  r.attach_host();
+  r.enable();
+  r.put_bar(bar_area, area_words);
+  r.bar_goes_out(area_before);
+  ASSERT_EQ(r.pc().seams().disable("journal"), seam_reason::none);
+  r.box->step();
+  ASSERT_EQ(r.bar_at(bar_area), area_words);
+
+  r.enable();
+  r.one_bar_pass(area_before, area_after, 'X');
+  EXPECT_EQ(r.bar_at(bar_area), area_words);
+  r.bar_goes_out(area_before);
+  EXPECT_EQ(r.bar_at(bar_area), std::string(area_words) + " Notes");
+}
+
+TEST(JournalNotes, SwitchedOffAndOnAgainAtTheBarTheReturnStillTakesItOff) {
+  // Off and straight back on, before the boundary the stop is owed at:
+  // the enable starts the seam afresh, so the stop finds nothing it wrote,
+  // and the seam that is on again takes the command off at the return.
+  rig r;
+  r.attach_host();
+  r.enable();
+  r.put_bar(bar_area, area_words);
+  r.bar_goes_out(area_before);
+  ASSERT_EQ(r.pc().seams().disable("journal"), seam_reason::none);
+  r.enable();
+  r.box->step();
+  EXPECT_EQ(r.bar_at(bar_area), std::string(area_words) + " Notes")
+      << "the running call's word, still the seam's";
+  r.stand_in_adventure(area_after, 'X');
+  r.put_byte(r.dgroup(), 0x0600 - 0x04, 0);
+  r.box->step();
+  EXPECT_EQ(r.bar_at(bar_area), area_words);
+}
+
 TEST(JournalNotes, ChoosingItOpensTheReader) {
   rig r;
   r.attach_video();
