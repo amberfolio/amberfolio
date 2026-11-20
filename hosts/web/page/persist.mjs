@@ -35,8 +35,9 @@
 //               had in `localStorage`, because a drawer that moved house
 //               kept its label.
 //   `settings`  this page's own choices, as JSON: the program last
-//               booted, the seams the player turned on in the toggle
-//               panel (#383) and the numbers they gave them (#531).
+//               booted, the speed last chosen (#626), the seams the
+//               player turned on in the toggle panel (#383) and the
+//               numbers they gave them (#531).
 //
 // **Which of `disk` and `play` a file belongs in is not this file's
 // decision.** `machine/save_layer.h` is the fact table for that — which
@@ -110,8 +111,17 @@ export const STORES = Object.freeze([
 
 /// The settings key the program last booted is remembered under, so a
 /// returning player finds it already chosen. This page's own choice and
-/// not the machine's, which is what the `settings` store is for.
+/// not the machine's, which is what the `settings` store is for. It is
+/// the path as the machine's filesystem lists it, which is how the page
+/// offers a program at a drop and at a visit after one alike (#626).
 export const PROGRAM_SETTING = 'program';
+
+/// The settings key the speed control's choice is remembered under
+/// (#626): one of the four preset names (`host.mjs`'s `SPEED_PRESETS`),
+/// read back through `storedSpeed()`, which answers null for anything
+/// else. Written when a person moves the control and by nothing else; a
+/// browser with no record runs at the machine's own default.
+export const SPEED_SETTING = 'speed';
 
 /// The seams this player turned on in the toggle panel, as an array of
 /// ids (#383). `toggle-panel.mjs`'s `storedSeams()` is what reads it,

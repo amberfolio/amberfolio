@@ -215,12 +215,13 @@ the sweep and on the wasm module (`drive.mjs --install '\CURSE'
 
 ### Secret of the Silver Blades
 
-Sixteen sessions, `secret-*`, on the Steam copy at `--speed 386` and
+Nineteen sessions, `secret-*`, on the Steam copy at `--speed 386` and
 `--wall none` (#608, #609), each `disk external` and pinned to the copy with
 its shipped slots A and B (`secret-slots`). `docs/playable-secret.md`
-has the legs and the table: the boot, a camp, a wandering fight, the
-fight with its aim walked (`secret-aim`) and a character's name
-(`secret-name`) with no seam, and the cheats' pairs, `secret-camp-cheats` `identical
+has the legs and the table: the boot, a camp, a wandering fight, a new
+party, a purchase at the armoury, a deposit at the vault, the fight with
+its aim walked (`secret-aim`) and a character's name (`secret-name`)
+with no seam, and the cheats' pairs, `secret-camp-cheats` `identical
 secret-camp` (all three on, none pulled) and `secret-camp-wound`,
 `secret-fight-cheat` and `secret-fight-kill` each a `contrast` with the
 run it differs from; and the text faces', `secret-boot-font-sans` and

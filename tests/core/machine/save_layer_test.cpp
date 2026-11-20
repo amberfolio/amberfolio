@@ -172,6 +172,11 @@ TEST(SaveLayer, SecretsSlotIsItsRecordsAndTheirEffects) {
   EXPECT_EQ(row("SECRET\\SAVE\\CHRDATC4.SAV").file->kind,
             save_file_kind::member);
   EXPECT_EQ(row("SECRET\\BLADES.CFG").file->kind, save_file_kind::config);
+  // The town's vault (#608): one file beside the saves, no slot's own.
+  const save_layer_row vault = row("SECRET\\SAVE\\VAULT.DAT");
+  ASSERT_NE(vault.file, nullptr);
+  EXPECT_EQ(vault.file->kind, save_file_kind::vault);
+  EXPECT_EQ(vault.slot, 0);
   // What a member carries, written once the member carries something
   // (#608), and the member's own row and not a kept character's.
   const save_layer_row carried = row("SECRET\\SAVE\\CHRDATC1.STF");
@@ -240,6 +245,7 @@ TEST(SaveLayer, KindsHaveTheirOwnSpellings) {
   EXPECT_STREQ(save_file_kind_name(save_file_kind::character), "character");
   EXPECT_STREQ(save_file_kind_name(save_file_kind::config), "config");
   EXPECT_STREQ(save_file_kind_name(save_file_kind::sidecar), "sidecar");
+  EXPECT_STREQ(save_file_kind_name(save_file_kind::vault), "vault");
 }
 
 // --- Reading a path against it -------------------------------------------

@@ -362,14 +362,14 @@ nothing change.
   the target's square beside its record, and after manual's Exit it is
   handed a square and no record (`docs/hosts.md` §13 has what the scene
   says then).
-- **Driven** with the seam on (`docs/playable-secret.md` legs 5 and 6):
-  through leg 5's aim on Dominic's turn the watch fired 30 times, and the
+- **Driven** with the seam on (`docs/playable-secret.md` legs 9 and 10):
+  through leg 9's aim on Dominic's turn the watch fired 30 times, and the
   scene beside each still had the cursor's square, the sheet the panel
   shows, the number after `RANGE =` and whether Target is on the bar
-  (`docs/hosts.md` §13 has the walk); at leg 6's `CHARACTER NAME:` the
+  (`docs/hosts.md` §13 has the walk); at leg 10's `CHARACTER NAME:` the
   line editor's entry and its return were each reached once, the signal
   reading from the empty prompt through the name typed and not reading
-  at the stats' `REROLL` question before it or on the portrait's bar
+  at the stats' `REROLL` question before it or on the figure's editor
   after it.
 - **Fidelity**: the seam writes nothing of the machine's on this
   program, so its pairs are `identical` both ways: `secret-fight-controls`
