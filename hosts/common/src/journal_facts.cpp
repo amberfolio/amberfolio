@@ -14,6 +14,7 @@
 #include "amberfolio/machine/edition.h"
 #include "amberfolio/machine/program_profile.h"
 #include "amberfolio/sha256.h"
+#include "journal_facts_secret_gog.h"
 
 namespace amberfolio::host {
 namespace {
@@ -5763,7 +5764,7 @@ constexpr std::array<journal_entry_fact, 72> secret_entries{{
 /// Each fingerprint is the same one `machine::known_documents()` carries
 /// for the gate: one artifact seen twice, and the suite checks that the
 /// two agree.
-constexpr std::array<journal_edition, 5> table{{
+constexpr std::array<journal_edition, 6> table{{
     {.fingerprint =
          "67cbfc0c833b835494310680ad298bc4de1cdcc0168115cc3608c2f6074c737c",
      .name = "Pool of Radiance Adventurer's Journal, archive release",
@@ -5793,6 +5794,11 @@ constexpr std::array<journal_edition, 5> table{{
      .entries = secret_entries,
      .pages = secret_pages,
      .paragraph_gap = 13},
+    {.fingerprint =
+         "f26c90627c1cdb2dfacf92ad3f795545a659c7b8c6d0f44a8996f8f3a9a48a74",
+     .name = "Secret of the Silver Blades Adventurer's Journal, GOG release",
+     .program = machine::secret_of_the_silver_blades.fingerprint,
+     .entries = journal_rows::secret_gog_entries},
 }};
 
 }  // namespace

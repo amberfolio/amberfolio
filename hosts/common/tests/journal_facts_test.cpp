@@ -37,23 +37,25 @@
 namespace amberfolio::host {
 namespace {
 
-TEST(JournalTable, HasTheFiveEditionsSomebodySatDownWith) {
+TEST(JournalTable, HasTheSixEditionsSomebodySatDownWith) {
   // It was empty until M5-E3b (#214), and the header said why at length:
   // these are facts about a document somebody has to sit down with. The
   // archive edition is first and the tests about scans below read it as
   // `front()`; the Steam edition, typeset as text, is second (#398);
   // Curse of the Azure Bonds' Steam edition, typeset as text, is third
-  // (#555); its GOG edition, scans again, is fourth (#585); and Secret of
-  // the Silver Blades' Steam edition, typeset as text, is fifth (#609).
-  ASSERT_EQ(known_journals().size(), 5U)
+  // (#555); its GOG edition, scans again, is fourth (#585); Secret of the
+  // Silver Blades' Steam edition, typeset as text, is fifth (#609); and
+  // its GOG edition, scans, is sixth (#633).
+  ASSERT_EQ(known_journals().size(), 6U)
       << "an edition came or went; the rules below are what a row has to"
-         " satisfy, and #214, #398, #555, #585 and #609 are where these"
-         " came from";
+         " satisfy, and #214, #398, #555, #585, #609 and #633 are where"
+         " these came from";
   EXPECT_FALSE(known_journals().front().reads_own_text());
   EXPECT_TRUE(known_journals()[1].reads_own_text());
   EXPECT_TRUE(known_journals()[2].reads_own_text());
   EXPECT_FALSE(known_journals()[3].reads_own_text());
   EXPECT_TRUE(known_journals()[4].reads_own_text());
+  EXPECT_FALSE(known_journals()[5].reads_own_text());
   EXPECT_EQ(known_journals().front().entries.size(), 99U)
       << "the archive release's journal has fifty-eight entries,"
          " twenty-three tales and eighteen proclamations";
@@ -849,6 +851,196 @@ TEST(JournalTable, NoRectangleOfCursesGogEditionOverlapsAnother) {
                          << b.region.top;
     }
   }
+}
+
+/// Which of a spread's four column bands a rectangle of Secret of the
+/// Silver Blades' GOG edition begins in: the bands are cut between samples
+/// 420 and 429 on a left page and 1235 and 1247 on a right one, with the
+/// spine at 832 (`journal_facts_secret_gog.cpp`); a frame set beside a
+/// picture is still in one of them.
+[[nodiscard]] std::size_t secret_gog_band(std::uint32_t left) {
+  if (left < 430U) {
+    return 0U;
+  }
+  if (left < 832U) {
+    return 1U;
+  }
+  if (left < 1240U) {
+    return 2U;
+  }
+  return 3U;
+}
+
+TEST(JournalTable, SecretsGogEditionHasItsSteamEditionsEntries) {
+  // The same booklet scanned (#633): seventy-two entries by the same
+  // numbers, because the game cites an entry by its number, and the
+  // nineteen pictures on the same nineteen entries.
+  const journal_edition& steam = known_journals()[4];
+  const journal_edition& gog = known_journals()[5];
+  EXPECT_EQ(gog.program, steam.program);
+  EXPECT_EQ(gog.program, machine::secret_of_the_silver_blades.fingerprint);
+  ASSERT_EQ(gog.entries.size(), steam.entries.size());
+  std::size_t pictures = 0;
+  for (std::size_t i = 0; i < gog.entries.size(); ++i) {
+    const journal_entry_fact& scanned = gog.entries[i];
+    const journal_entry_fact& typeset = steam.entries[i];
+    // Row for row, so the chain is the one the Steam edition's is.
+    EXPECT_EQ(scanned.kind, typeset.kind) << "row " << i;
+    EXPECT_EQ(scanned.number, typeset.number) << "row " << i;
+    EXPECT_EQ(scanned.art.size(), typeset.art.size())
+        << "entry " << scanned.number;
+    EXPECT_TRUE(scanned.text.empty()) << "a scanned edition has no text";
+    pictures += scanned.art.size();
+  }
+  EXPECT_EQ(pictures, 19U);
+  EXPECT_EQ(gog.paragraph_gap, 0U)
+      << "the gap is a fact the text route reads; an engine reads scans";
+}
+
+TEST(JournalTable, SecretsGogEditionsPagesAreAllCarriedNotDecoded) {
+  // Thirty-one spreads of one shape, every one `/DCTDecode` (#212): the
+  // entries are on nine of them, pages 16 to 24.
+  std::set<std::uint16_t> pages;
+  std::map<std::uint16_t, std::uint64_t> offsets;
+  for (const journal_entry_fact& fact : known_journals()[5].entries) {
+    for (const std::span<const journal_fragment> pieces :
+         {fact.fragments, fact.art}) {
+      for (const journal_fragment& piece : pieces) {
+        EXPECT_EQ(piece.image.filter, journal_filter::dct);
+        EXPECT_EQ(piece.image.components, 3U) << "the scans are RGB";
+        EXPECT_EQ(piece.image.width, 1650U);
+        EXPECT_EQ(piece.image.height, 1275U);
+        pages.insert(piece.page);
+        // One page, one stream.
+        const auto [at, fresh] = offsets.emplace(piece.page, piece.offset);
+        EXPECT_EQ(at->second, piece.offset) << "page " << piece.page;
+      }
+    }
+  }
+  EXPECT_EQ(pages.size(), 9U);
+  EXPECT_EQ(*pages.begin(), 16U);
+  EXPECT_EQ(*pages.rbegin(), 24U);
+}
+
+TEST(JournalTable, SecretsGogEditionOpensEveryEntryWithItsHeadingAlone) {
+  // An entry's first piece is its heading's line, measured from right of
+  // the checkbox printed before it; the title under it, where there is
+  // one, and the body each open a paragraph. The counts are the ones the
+  // prose quotes (`journal_facts_secret_gog.cpp`, `docs/journal.md`
+  // section 3): seventy-two headings, sixty-eight titles and eighty
+  // pieces of body, of which sixty open their entry's body, three carry
+  // it on across a paragraph break and seventeen carry a paragraph on.
+  std::size_t pieces = 0;
+  std::size_t opening = 0;
+  std::size_t carrying_on = 0;
+  std::size_t two_pieces_and_a_picture = 0;
+  for (const journal_entry_fact& fact : known_journals()[5].entries) {
+    ASSERT_GE(fact.fragments.size(), 2U)
+        << "entry " << fact.number << " is a heading and nothing else";
+    pieces += fact.fragments.size();
+    const journal_fragment& heading = fact.fragments.front();
+    EXPECT_LE(heading.region.height, 40U)
+        << "entry " << fact.number
+        << " opens with more than a line of its heading's type";
+    EXPECT_LE(heading.region.width, 200U);
+    EXPECT_FALSE(heading.begins_paragraph);
+    EXPECT_TRUE(fact.fragments[1].begins_paragraph)
+        << "entry " << fact.number << " runs its heading into what is under it";
+    for (std::size_t i = 1; i < fact.fragments.size(); ++i) {
+      if (fact.fragments[i].begins_paragraph) {
+        ++opening;
+      } else {
+        ++carrying_on;
+      }
+    }
+    if (fact.fragments.size() == 2U && !fact.art.empty()) {
+      ++two_pieces_and_a_picture;
+    }
+  }
+  EXPECT_EQ(pieces, 220U);
+  EXPECT_EQ(opening, 68U + 60U + 3U);
+  EXPECT_EQ(carrying_on, 17U);
+  // The twelve maps under their heading and title, with no body.
+  EXPECT_EQ(two_pieces_and_a_picture, 12U);
+}
+
+TEST(JournalTable, SecretsGogEditionsPiecesAreInReadingOrder) {
+  // Down a column, then the next column, then the next scan; and further
+  // down the same column, where a title follows its heading, a body its
+  // title, or a body comes level with a drawing or leaves it.
+  for (const journal_entry_fact& fact : known_journals()[5].entries) {
+    for (std::size_t i = 1; i < fact.fragments.size(); ++i) {
+      const journal_fragment& before = fact.fragments[i - 1];
+      const journal_fragment& after = fact.fragments[i];
+      const std::size_t band_before = secret_gog_band(before.region.left);
+      const std::size_t band_after = secret_gog_band(after.region.left);
+      const bool later_scan = after.page > before.page;
+      const bool later_column =
+          after.page == before.page && band_after > band_before;
+      const bool further_down =
+          after.page == before.page && band_after == band_before &&
+          after.region.top >= before.region.top + before.region.height;
+      EXPECT_TRUE(later_scan || later_column || further_down)
+          << "entry " << fact.number
+          << " has a piece that does not follow the one before it";
+    }
+  }
+}
+
+TEST(JournalTable, SecretsGogEditionsTextIsOverAPictureOnlyInTwoNotches) {
+  // Every piece hugs its own ink, so on one scan no two text rectangles
+  // share a sample. A picture is the bounding box of its ink (#357), and
+  // two maps are not rectangles: a heading and its title are set in the
+  // notch of each, entry 38's own and entry 40's in entry 38's map, and
+  // entry 45's own and entry 47's in entry 45's. Those eight rectangles
+  // hold no sample of the map's ink (`journal_facts_secret_gog.cpp`); no
+  // other text rectangle overlaps a picture.
+  struct placed {
+    std::uint16_t entry;
+    const journal_fragment* piece;
+  };
+  std::vector<placed> text;
+  std::vector<placed> pictures;
+  for (const journal_entry_fact& fact : known_journals()[5].entries) {
+    for (const journal_fragment& piece : fact.fragments) {
+      text.push_back({.entry = fact.number, .piece = &piece});
+    }
+    for (const journal_fragment& picture : fact.art) {
+      pictures.push_back({.entry = fact.number, .piece = &picture});
+    }
+  }
+  const auto apart = [](const journal_fragment& a, const journal_fragment& b) {
+    return a.page != b.page ||
+           a.region.left + a.region.width <= b.region.left ||
+           b.region.left + b.region.width <= a.region.left ||
+           a.region.top + a.region.height <= b.region.top ||
+           b.region.top + b.region.height <= a.region.top;
+  };
+  for (std::size_t i = 0; i < text.size(); ++i) {
+    for (std::size_t j = i + 1; j < text.size(); ++j) {
+      EXPECT_TRUE(apart(*text[i].piece, *text[j].piece))
+          << "entries " << text[i].entry << " and " << text[j].entry
+          << " share a part of scan " << text[i].piece->page;
+    }
+  }
+  std::map<std::uint16_t, std::set<std::uint16_t>> under;
+  for (const placed& words : text) {
+    for (const placed& picture : pictures) {
+      if (!apart(*words.piece, *picture.piece)) {
+        under[picture.entry].insert(words.entry);
+      }
+    }
+  }
+  const std::map<std::uint16_t, std::set<std::uint16_t>> notches{
+      {38, {38, 40}}, {45, {45, 47}}};
+  EXPECT_EQ(under, notches);
+  std::size_t rectangles = 0;
+  for (const placed& words : text) {
+    for (const placed& picture : pictures) {
+      rectangles += apart(*words.piece, *picture.piece) ? 0U : 1U;
+    }
+  }
+  EXPECT_EQ(rectangles, 8U) << "a heading and a title in each of two notches";
 }
 
 TEST(JournalTable, EveryTextRowIsAWellFormedFact) {
