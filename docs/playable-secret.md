@@ -7,8 +7,8 @@ and has the method in full; `docs/first-light.md` stops at the party
 menu. Nothing in this repository can run any of it (PLAN.md §6).
 
 The legs here are the ones driven so far. What is still to be driven is
-on #608: a cure and a training carried through, the ruins past their
-first street, and what the program wants of a character it imports.
+on #608: a cure and a training carried through, and the ruins past
+their first street.
 
 ---
 
@@ -236,10 +236,20 @@ ruins has been driven.
 second party of six at this same point of the story.
 
 **The other answer, `CURSE`**, lists the Curse of the Azure Bonds
-characters (`*.GUY`) in the same save directory. With one put there the
-list names it; taking it read the name and one byte at offset 132 of
-the file and added nobody, with no message. The character was a new
-one of the first level. What the program wants of one is not known.
+characters (`*.GUY`) in the same save directory, and **`A` takes one
+into the party**. Driven with two members removed from that game's
+shipped party and their files put beside this game's saves: the list
+names both, `A` marks the lit one with an asterisk, and the party menu
+then has that member with its armour class and hit points. The program
+reads each file's name and one byte at offset 132 to make the list, and
+the whole `.GUY` when one is taken; it does not open the `.FX` beside
+it.
+
+**`Return` does not take one there.** The bar's lit word is kept from
+one bar to the next by its place, as in the first two games: `CURSE`
+was the second word of the bar before, so the second word, `EXIT`, is
+the lit one on `ADD A CHARACTER: ADD EXIT`, and `Return` leaves. After
+`SECRET`, the first word, it is `ADD`. A letter is the same either way.
 
 ## Leg 6: the town
 
