@@ -433,7 +433,8 @@ void overlays::draw(SDL_Renderer* renderer) {
   if (panel_shown_) {
     panel_paint_.draw(
         renderer,
-        card_shown_ ? sdl::card_lines(sdl::card_pages(box_.seams()), card_page_)
+        card_shown_ ? sdl::card_lines(sdl::card_pages(box_.seams()), card_page_,
+                                      sdl::card_legend(box_.seams()))
                     : sdl::panel_lines(sdl::panel_rows(box_.seams()),
                                        panel_focus_, document_notice_),
         card_shown_ ? sdl::panel_no_row : panel_focus_);

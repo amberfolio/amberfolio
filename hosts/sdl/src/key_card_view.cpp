@@ -66,8 +66,13 @@ std::vector<host::key_page> card_pages(const machine::seam_engine& seams) {
       });
 }
 
+std::string_view card_legend(const machine::seam_engine& seams) {
+  return host::key_card_legend(host::key_card_program(seams.known_edition()));
+}
+
 std::vector<std::string> card_lines(const std::vector<host::key_page>& pages,
-                                    std::size_t& page) {
+                                    std::size_t& page,
+                                    std::string_view legend) {
   std::vector<std::string> lines;
   std::string title = blank_line();
   place(title, 0,
@@ -101,7 +106,7 @@ std::vector<std::string> card_lines(const std::vector<host::key_page>& pages,
     lines.push_back(line);
   }
   lines.push_back(blank_line());
-  for (const std::string& piece : wrapped(host::key_card_legend())) {
+  for (const std::string& piece : wrapped(legend)) {
     std::string line = blank_line();
     place(line, 0, piece);
     lines.push_back(line);

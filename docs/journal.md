@@ -296,7 +296,8 @@ fails the item (`hosts/sdl/src/tesseract_ocr.cpp`). On Secret of the
 Silver Blades' GOG edition the program-driven engine reads something in
 every piece and recognizes all 72 entries, with the checkbox read as a
 character in front of eleven of the headings; the linked engine begins
-all 72 with their own heading. The browser has not read that edition.
+all 72 with their own heading. tesseract.js on the page recognizes all
+72 too (§7).
 
 ## 3a. An edition typeset as text (#398)
 
@@ -887,8 +888,11 @@ tabled break; each has the page's words and its paragraphs. The same
 host reads Pool of Radiance's and Curse's Steam editions as before, 99
 of 99 and 121 of 121, each item against its digest. In the game, with
 `journal` on, the opening's citation puts entry 37 on the log
-(`docs/seams.md` §10). Not done: this document through the wasm module
-or in a browser, and an entry opened in the game: on this program the
+(`docs/seams.md` §10). On the built page in a browser (Chromium,
+headless, the page's own journal input, #610): `72 of 72 entries read
+from the document itself, no OCR engine needed, 19 of 19 pictures`,
+nothing fetched from the engine's directory, and the same store
+fingerprint. Not done: an entry opened in the game: on this program the
 seam is its citation watch alone, with no `Notes` and no reader.
 
 **By hand, Curse's GOG edition** (#585), through the desktop host and
@@ -937,7 +941,11 @@ three boundaries the table calls paragraph breaks are breaks in the
 Steam edition's text and the other seventeen are not. The longest entry
 is under two kilobytes. The nineteen pictures were looked at decoded out
 of the store; entries 38's and 45's show the headings set in their
-notch (§11.1). Not done: this document in a browser, and an entry opened
+notch (§11.1). On the built page in a browser (Chromium, headless, the
+page's own journal input, #610), tesseract.js 6.0.1 read it in 46
+seconds: `72 of 72 entries read by tesseract.js 6.0.1, 19 of 19
+pictures`, store `sha256=755712877c546dfea91da412292cb2763f18a5134c326ac70426b6e278ecbefb`.
+Not done: the page's reading scored by the harness, and an entry opened
 in the game, since the reader is not on this program.
 
 **By hand, the Steam edition** (§3a): every item through the desktop host

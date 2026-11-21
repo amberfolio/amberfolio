@@ -2378,7 +2378,7 @@ export function releaseLatched(module, latched) {
 
 /// The whole card, once:
 ///
-///   `{ legend, programs: [{ word, fingerprint }],
+///   `{ legend, programs: [{ word, fingerprint, legend }],
 ///      contexts: [{ id, title, shell, program,
 ///                   rows: [{ keys, does, seam, program }] }] }`
 ///
@@ -2387,7 +2387,9 @@ export function releaseLatched(module, latched) {
 /// the program as it is. `program` is empty for a context or a row true
 /// of every program, or one of `programs`' words; `programs` is every
 /// program the card knows, the baseline first, each with the SHA-256 of
-/// its program image.
+/// its program image and its note under the card (`keyCardLegend()`).
+/// A screen two programs share is a context once for each, so an `id` is
+/// unique within one program's card and not across the whole.
 export function readKeyCard(module) {
   const needed = module._af_web_key_card_json(0, 0);
   const scratch = module._malloc(needed + 1);
@@ -2414,6 +2416,15 @@ export function keyCardProgram(card, fingerprint) {
   const wanted = fingerprint.toLowerCase();
   const known = (card.programs ?? []).find((program) => program.fingerprint === wanted);
   return known?.word ?? '';
+}
+
+/// The note under the card for one program, a `keyCardProgram()` word:
+/// that program's own (`programs[].legend`), or the baseline's top-level
+/// `legend` for no word, for a program the card does not know and for a
+/// card from a build whose programs carried none.
+export function keyCardLegend(card, program = '') {
+  const own = (card.programs ?? []).find((known) => known.word === program)?.legend;
+  return typeof own === 'string' && own !== '' ? own : card.legend;
 }
 
 /// The card as one shell shows it for one program: the contexts for

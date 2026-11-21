@@ -44,14 +44,17 @@
 // A program's rows follow the program
 // ----------------------------------
 //
-// The card is one table for every program this build knows, and the two
+// The card is one table for every program this build knows, and the
 // games do not have the same screens or, on the ones they share, always
 // the same keys. So a context or a row may name a **program**, by the
-// word `key_card_program()` gives an edition (`pool`, `curse`), and is
-// then shown only while that program is the one running; one that names
-// none is true of every program. With no program known, or one this build
-// does not recognize, the card is the baseline's, the first edition in
-// `machine::known_editions()`.
+// word `key_card_program()` gives an edition (`pool`, `curse`, `blades`),
+// and is then shown only while that program is the one running; one that
+// names none is true of every program. A screen two programs share is
+// named once for each, so a context's `id` is unique within a program and
+// not across the table. With no program known, or one this build does not
+// recognize, the card is the baseline's, the first edition in
+// `machine::known_editions()`. The note under the card is a program's too
+// (`key_card_legend()`).
 //
 // The unit suite holds every program a row names to the edition table, as
 // it holds every seam to the seam table.
@@ -121,7 +124,7 @@ struct key_row {
 /// A screen or a situation, and the keys that mean something there.
 struct key_context {
   /// A stable word for the context: a page keys its DOM on it and a test
-  /// names it. Lower-case, no spaces.
+  /// names it. Lower-case, no spaces; unique within one program's card.
   std::string_view id;
   /// What a player calls the place, for a heading.
   std::string_view title;
@@ -145,11 +148,13 @@ struct key_context {
 /// The whole card, in the order a shell shows it.
 [[nodiscard]] std::span<const key_context> key_card();
 
-/// The note under the card: what holds for every context at once.
-[[nodiscard]] std::string_view key_card_legend();
+/// The note under the card: what holds for every context at once, for
+/// the program `key_card_program()` names by `program`. A program with no
+/// note of its own, an unrecognized one and none have the baseline's.
+[[nodiscard]] std::string_view key_card_legend(std::string_view program = {});
 
 /// The word the card names a program by: the stem of the configuration
-/// file it reads, in lower case, `pool` and `curse`. A fact the edition
+/// file it reads, in lower case: `pool`, `curse` and `blades`. A fact the edition
 /// table already has, and no two programs it knows read the same file
 /// (`edition_test.cpp`). Empty for null, a program this build does not
 /// recognize.
@@ -174,7 +179,7 @@ struct key_page {
 /// The card as JSON for a page, which has no way to call C++:
 ///
 ///   {"legend": "...",
-///    "programs": [{"word": "...", "fingerprint": "..."}],
+///    "programs": [{"word": "...", "fingerprint": "...", "legend": "..."}],
 ///    "contexts": [{"id": "...", "title": "...",
 ///    "shell": "both|desktop|page", "program": "...", "rows": [{"keys":
 ///    "...", "does": "...", "seam": "...", "program": "..."}]}]}
@@ -182,8 +187,10 @@ struct key_page {
 /// `programs` is every program a context or a row may name, the baseline
 /// first: its word and the SHA-256 of its program image, as
 /// `af_machine_program_fingerprint` spells the one a machine is running,
-/// so a page that knows the fingerprint knows the word. A `program` that
-/// is empty is every program.
+/// so a page that knows the fingerprint knows the word, and that
+/// program's note under the card; the top-level `legend` is the
+/// baseline's. A `program` that is empty is every program, and a context
+/// `id` may appear once for each program.
 ///
 /// Every context and every row, unfiltered: the page filters, because it
 /// is the page that learns a seam has been switched. Plain printable
