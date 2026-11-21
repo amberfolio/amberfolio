@@ -155,11 +155,15 @@ own move mode as at the party's bar. While it is up, Up and Down (and the
 keypad's 2 and 8) do not change the current member, as Home and End do
 not in the first two games; in the move mode they walk. No door graphic
 or place name is measured there yet, so every way through is drawn as a
-door and every map is `AREA <n>`. **The ruins east of the town are not
-mapped**: the game numbers their squares itself and moves the party
-between parts of one map at its doors, so a map of where the game keeps
-the party would not be where you walk. The panel stays open there,
-showing the roster, and is back in the town.
+door and every map is `AREA <n>`. **The ruins east of the town are
+mapped in the squares the status line names there**: the game numbers
+them itself, counting your steps, and moves the party between pieces of
+one stored map at its doors, turning a piece as well as moving it. Each
+square you stand on is drawn with the walls of the place the game keeps
+you on, turned as the game turns it, a door the game carried you
+through is drawn as a door, and the panel shows sixteen of the game's
+squares at a time, the block of them you are in. Only the squares you
+stood on are drawn there, not the ones you could see.
 
 ## The explored overlay
 

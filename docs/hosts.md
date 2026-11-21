@@ -1684,7 +1684,11 @@ is the automap's exploration (#609): with `--seam automap
 `ENCAMP`, `SAVE`, `C` and `N` to `QUIT TO DOS` write `AFMAPC.DAT` (121
 bytes: one record, disk 1, area 16, block 16, fifteen squares;
 `save-sidecars writes=1 reads=0 slot=C trouble=none`), and loading C
-reads it back, the panel at `3,6 S` drawing the mayor's house. A page that writes
+reads it back, the panel at `3,6 S` drawing the mayor's house. A save in
+the ruins writes it at the format's version 3, which carries the pages of
+the script's numbering (`docs/seams.md` §10): saved at camp on the
+piece the script turns (stored `12,7`, the line's `12,16`), 2,512 bytes,
+four records, and loading C draws that page at the first Tab. A page that writes
 a playthrough back keeps the rows above and nothing else, so a file
 that is not a row does not survive a reload there.
 
@@ -2578,6 +2582,17 @@ The interior screen (game mode 4, the sixteen-by-sixteen grid):
  "map":[ ...the same shape, every revealed square the automap panel draws... ]}
 ```
 
+The interior screen where the area's script numbers the squares itself
+(Secret of the Silver Blades' ruins, #609):
+
+```json
+{"screen":"explore","disk":1,"area":32,"zone":"AREA 32",
+ "x":13,"y":19,"facing":"north","stored":{"x":11,"y":4,"facing":"south"},
+ "around":{"ahead":"wall","right":"wall","behind":"wall","left":"open"},
+ "view":[{"x":11,"y":4,"north":"wall","east":"open","south":"wall","west":"wall"}, ...],
+ "map":[ ...,{"x":13,"y":19,"north":"wall","east":"wall","south":"door","west":"open"}, ...]}
+```
+
 The overland (game mode 3, view kinds 2 to 4):
 
 ```json
@@ -2611,7 +2626,19 @@ A fight (game mode 5, the tactical grid):
 
 - **Coordinates.** x grows east and y south. A square of the grid is 0 to
   15 each way; an overland position is a column 0 to 15 and a row 0 to
-  35 of the area. They are the numbers the program's status line prints.
+  35 of the area. They are the numbers the program's status line prints,
+  and `facing` is the letter it prints.
+- **`stored`**, only where an area's script numbers the squares for the
+  status line itself (Secret of the Silver Blades' ruins): the party's
+  square on the grid the program has loaded and its facing there, which
+  the walls and the 3D view belong to. The script keeps the party on one
+  sixteen-by-sixteen grid in pieces, carries it from piece to piece and
+  turns a piece as well as moving it, and counts the party's steps, so
+  `x`, `y` and `facing` (its numbers, 0 to 255 each way) and `stored`
+  differ in square and may differ in facing. `around` and `view` are
+  `stored`'s: `around` is the party's own, which no turning changes, and
+  `view`'s squares and faces are the loaded grid's, north being its
+  north. Absent everywhere else, where the two are one square.
 - **`zone`** is the name the automap's panel prints (`AREA <n>` where its
   table has none), without the panel's soft breaks.
 - **A face** is `open` (nothing there), `wall`, `opening` (a way through
@@ -2629,7 +2656,13 @@ A fight (game mode 5, the tactical grid):
 - **`map`** is every square the automap has revealed on this map, row by
   row, which is what its panel draws. **`null` while the automap seam is
   off**, because then nothing records where the party has been: null is
-  "not recorded", and `[]` is "nothing explored yet".
+  "not recorded", and `[]` is "nothing explored yet". Where `stored` is
+  given, the squares are the script's, of the sixteen-by-sixteen page of
+  its numbering the party is on (the panel shows that page): the squares
+  the party stood on, each with the faces of the stored square it stood
+  on there, turned as the script turned that piece, and a face the grid
+  has solid that the party was carried across a `door`
+  (`docs/seams.md` §10, the automap).
 - **`window`** is the travel view's 5x5 window, rows from the top, cells
   west to east. `x` and `y` are its top-left cell where the program puts
   it, clamped at the map's edges exactly as the program clamps it; against
@@ -2813,9 +2846,9 @@ A fight (game mode 5, the tactical grid):
     Target), Mark, Philippe, the patron at `28,14` (range 3, no Target)
     and, the window scrolled to `27,11`, Travis at range 7 and a patron
     at `32,11`, range 8. Unit: `SceneOnCurse.*`.
-- **On Secret of the Silver Blades** (#609) the grid of an area whose
-  status line prints the party's stored square, which the town is, and
-  a fight anywhere, with that program's facts (`secret_scene`, and its
+- **On Secret of the Silver Blades** (#609) the grid, the ruins' as
+  well, where the status line prints squares of the script's own, and a
+  fight anywhere, with that program's facts (`secret_scene`, and its
   profile):
 
   | fact | Secret of the Silver Blades |
@@ -2824,7 +2857,7 @@ A fight (game mode 5, the tactical grid):
   | the loaded map; the area record | `0x89CE`; `0x67C6` (the geometry block at `+0x18A` and the 3D word at `+0x1CC`, as on the first two) |
   | disk; area; in transition | `0x7420`; `0xA4C2`; `0x59B5` |
   | the view kind | none: mode 4 is always the grid |
-  | the square the status line prints | the area record's `+0x3FA` and `+0x3FC`; `0xFF` in the first says the stored one |
+  | the square the status line prints | the area record's `+0x3FA` and `+0x3FC`, `0xFF` in the first says the stored one; the script's quarter turns at `+0x3FE` |
   | slot records; squares; bodies; body count; the fight's block | `0x8571`; `0x7EDF`; `0x868E`; `0x86CD`; `0x86CE` |
   | ground costs; the acting figure | `0x1A9E`; `0x7D38` |
   | record: length, computer, AC | `0x1B7`, `0x1A9`, `0x1AB` |
@@ -2844,30 +2877,30 @@ A fight (game mode 5, the tactical grid):
     shut, every way through. Every `zone` is `AREA <n>`.
   - **`map` is the automap's**, as on the first two programs, while it
     is on (#609): driven down leg 3, at `15,8 E` it lists the squares
-    walked from the mayor's house, his door a `door` south of `3,4`.
+    walked from the mayor's house, his door a `door` south of `3,4`; in
+    the ruins, the page of the script's numbering the party is on.
   - **The titles and the opening's pages are `null`.** The program is in
     mode 4 from start-up: the area number is zero until the first
     script is loaded, and the geometry block's word is zero while the
     script that is up has loaded none, which the opening's is (block
     17).
-  - **The ruins' grid is not read: `null`.** There the status line does
-    not print the stored square. The line's routine (overlay 27
-    `+0x316A`) prints the two bytes of the area record above unless the
-    first word is `0xFF`, and nothing in the program but an area's
-    script writes them. Over the steps driven, the ruins' script keeps
-    the party on one grid (the same map bytes, wall set and geometry
-    block throughout), moves it from one part of that grid to another at
-    a door, and numbers the squares itself: stored `11,2` is the line's
-    `0,15`; stored `14,2` is `3,15`, and the step east through its door
-    is stored `10,3` and the line's `4,15`.
-    `x` and `y` are documented above as the line's numbers, and `view`
-    is squares of the grid, so on such an area the two are different
-    squares. **Which a host is told, and whether both, is not decided**:
-    the stored square with its faces, which is where the walls are; the
-    line's square, which is what a player is told; or the two side by
-    side. Until it is, the read says nothing there rather than a square
-    the screen does not show. **A fight there reads**: it has no square
-    for the party.
+  - **The ruins read both squares** (`stored`, above). The line's
+    routine (overlay 27 `+0x316A`) prints the low bytes of the area
+    record's `+0x3FA` and `+0x3FC` unless the first word is `0xFF`, and
+    the facing byte plus twice the word at `+0x3FE` while the 3D word is
+    set (plus it once while it is clear; a sum that falls between two
+    facings reads `null`). Nothing in the program but an area's script
+    writes the three, and the town's script leaves `0xFF`. The ruins'
+    keeps the party on one grid (the same map bytes, wall set and
+    geometry block throughout), carries it from piece to piece through
+    faces the program's step refuses, turned as well as moved, and adds
+    one to its square in the direction of every step
+    (`docs/playable-secret.md`, the watch list). **For a moment after an
+    area changes** the record still holds the last script's numbering
+    and the party the square it left, as a stored square is stale across
+    any change of area; the automap believes neither until the party's
+    bar is up (`docs/seams.md` §10). **A fight there reads**: it has no
+    square for the party.
   - **The aim** is the aim watch's, as on the first two: absent while
     `modern-controls` is off, which on this program is that piece and
     text entry and nothing a player sees (`docs/modern-controls.md`).
@@ -2883,7 +2916,14 @@ A fight (game mode 5, the tactical grid):
     the wall on the right; east along the street, a `door` on the right
     at `7,8` and `10,8` where the program prints the sign over a door,
     and at `15,8` the gate a `door` ahead and a wall on the right; the
-    square the status line prints each time. The fight of
+    square the status line prints each time. The ruins (leg 14, with the
+    automap on): at every step out and back `x`, `y` and `facing` were
+    the line's and `stored` the party's bytes; at the arrival `0,15`
+    east, `stored` `11,2` east; after stored `14,2`'s east face, `4,15`
+    and `10,3`; on the piece turned half round, `13,19` north and
+    `stored` `11,4` south with a wall `ahead` on the stored grid's south;
+    `map` the page the panel drew, the faces walked through `door` on
+    both sides. The fight of
     leg 4, window `24,10`: six of the party and four enemies on the
     squares the picture draws them on, three of the enemies two squares
     wide, the diagonal wall `blocked`, the panel's member the `turn`

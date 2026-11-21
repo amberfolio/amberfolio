@@ -7,8 +7,8 @@ and has the method in full; `docs/first-light.md` stops at the party
 menu. Nothing in this repository can run any of it (PLAN.md §6).
 
 The legs here are the ones driven so far. What is still to be driven is
-on #608: a training carried through, and the ruins past their first
-street.
+on #608: a training carried through, and the ruins past the six of their
+script's doors leg 14 and its runs went through.
 
 ---
 
@@ -38,8 +38,9 @@ restore it between runs.
 
 The `.txt` beside a still is the screen's text (`docs/hosts.md` §10),
 and the `.scene.json` the scene (`docs/hosts.md` §13): the grid in the
-town, every fight, and with `--seam modern-controls` the aim. The ruins'
-grid reads `null` (below), and so do the titles and the opening's pages.
+town, the ruins' with the line's square and the stored one (below), every
+fight, and with `--seam modern-controls` the aim. The titles and the
+opening's pages read `null`.
 
 ## The program's own controls
 
@@ -116,22 +117,46 @@ of wall drawn there. Plane 3 holds two bits a side (north in bits 0 and
 the party through. The program's own step (overlay 32 `+0x0568`) lets
 the party through a side with no wall or with a non-zero pair, and
 nowhere else. **In the ruins a 0 is not always shut**: walls of kinds 3
-and 4 with a 0 stopped the party, and a wall of kind 8, drawn as a
-wooden door, let it through with a 0, because the area's script moves
-the party there itself (below). Which kinds are doors has not been
-worked out past those. A route computed from the planes, eighteen keys
-from the mayor's house to the east gate with no wall on the way, walked
-square for square.
+and 4 with a 0 stopped the party, and walls of kinds 7 and 8, drawn as
+wooden doors, let it through with a 0 where the area's script has a door
+on the square, because the script moves the party there itself (below).
+Which kinds are doors has not been worked out past those. A route
+computed from the planes, eighteen keys from the mayor's house to the
+east gate with no wall on the way, walked square for square.
 
 **The status line's square is not always the stored one.** In the town
 the two agree. In the ruins the area's script gives the line a square of
 its own, two words of the area record (`+0x3FA`, `+0x3FC`; `0xFF` in the
-first is the town's "print the stored one"), and moves the party about
-one sixteen-by-sixteen grid whose map, wall set and geometry block stay
-the same over every step driven: the party arrives at stored `11,2` with
-the line saying `0,15`; at stored `14,2` the line says `3,15`; and one
-step east of that, through a door, the party is at stored `10,3`, and a
-step further at stored `11,3` with the line saying `5,15`.
+first is the town's "print the stored one"), and turns the facing it
+prints by a third (`+0x3FE`, quarter turns: the line prints the facing
+byte plus twice it). It keeps the party on one sixteen-by-sixteen grid
+whose map, wall set and geometry block stay the same over every step
+driven, cut into pieces; through a door it carries the party to another
+piece, which it may turn as well as move, and it adds one to the line's
+square in the direction of every step, so its numbers are the party's
+walk and run far past fifteen. The pieces leg 14 and its runs met, the
+line's square being the stored one less the offset, or turned:
+
+| the line's squares | stored squares | turn | reached through |
+| --- | --- | --- | --- |
+| `0..3,13..15` | `11..14,0..2` | 0, less `11,-13` | the gate |
+| `4..9,15`, `9,16..17` | `10..15,3`, `15,4..5` | 0, less `6,-12` | stored `14,2`'s east face, kind 8 |
+| `10..11,17`, `11,18..19` | `9..10,0`, `10,1..2` | 0, less `-1,-17` | stored `15,5`'s east face, kind 8 |
+| `11..13,20` | `3..5,0` | 0, less `-8,-20` | stored `10,2`'s south face, kind 8 |
+| `12..18,16..20`, where walked | `6..12,3..7`, the same squares | half round: the line's is `24,23` less the stored | stored `5,0`'s north face, kind 7 |
+| `14,20..24` | `0,7..11` | 0, less `-14,-13` | stored `10,4`'s north face, kind 8 |
+| `14,25..26` | `4,8..9` | 0, less `-10,-17` | stored `0,11`'s south face, kind 7 |
+
+Over every still of every run, 49 of the line's squares, from `0,13` to
+`18,26`: no square of the line's was ever two stored squares or two
+turns, and no stored square two of the line's. The four doors leg 14
+goes through each went back the way it came. The area's script (block 32
+of `ECL1.DAX`) sets the line's square only where the party arrives, from
+a table of fifteen arrivals (the gate's is `0,15`, the farthest `83,56`),
+and counts from there. A face across which the script carries the party is
+solid on the grid on both sides (stored `14,2`'s east and `10,3`'s west,
+`5,0`'s north and `11,4`'s north); a border between two pieces that the
+script has no door for is the wall the grid has there (`13,20`'s east).
 
 ---
 
@@ -207,8 +232,7 @@ through. A door it does not mark opens to a step all the same, and the
 one east of stored `14,2` leads out to a street: from the arrival,
 `Left Up Right Up Up Up Right Up` reach `14,2` facing south, `Left Up`
 goes through it to stored `10,3`, and five more `Up` reach stored
-`15,3`, the line saying `9,15`. Nothing further of the ruins has been
-driven.
+`15,3`, the line saying `9,15`. Leg 14 goes on from there.
 
 ## Leg 4: a fight
 
@@ -476,11 +500,52 @@ and `8` steps it back to the last, so all three sheets are Guy's. With
 row chooses: Epona's sheet, then Morgaine's, then, `8` being nobody in a
 party of six, Guy's. `secret-pick` and `secret-pick-heroes` are this leg.
 
+## Leg 14: through the ruins and back
+
+```
+... leg 3 ...
+--press Left@11350 ... a key every 150 frames:
+  Left Up Right Up Up Up Right Up Left Up        # through stored 14,2's east face
+  Up Up Up Up Up Right Up Up Left Up             # through stored 15,5's east face
+  Up Right Up Up Up                              # through stored 10,2's south face
+  Left Up Up Left Up                             # through stored 5,0's north face
+  Right Right Up                                 # and back: 5,0
+  Right Up Up Right Up                           # 10,2
+  Up Up Left Up Up                               # 15,5
+  Right Up Up Left Up Up Up Up Up Up             # 14,2
+  Right Up Left Up Up Up Left Up Right Up        # out of the gate's west side
+  Up                                             # 14,8 in the town, at frame 20,950
+```
+
+Out of the town as leg 3, then through four of the script's doors and
+back through the same four, by the pieces in the watch list's table: the
+first street to `3,15`, the second from `4,15` to `9,15` and south to
+`9,17`, the third from `10,17` to `11,19`, the fourth from `11,20` to
+`13,20`, and onto the piece the script turns half round at `13,19`, the
+party on stored `11,4` facing south with the line saying north. `Right
+Right` turns it there and the same doors in the other order put it on
+the line's squares it walked out on, each the same stored square, and
+out of the gate's west side into the town at `15,8`, the line printing
+the stored square again. Nothing on the way stops the walk.
+`secret-ruins` is this leg, 279 checkpoints.
+
+**What the rest of the ruins hold, from the runs beside it**, each loaded
+from a save at camp on the turned piece (stored `12,7`, the line's
+`12,16`; slot C, saved as leg 12 saves):
+north through stored `10,4` the party is at stored `0,7`, the line's
+`14,20`, the turn back to none; south from there, stored `0,11` prints
+`YOU SEE AN ARROW POINTING NORTH.`, waits for `Return`, and its south
+face leads to stored `4,8`, the line's `14,25`. Leg 4's pacing meets its
+wandering monsters on the first street, at the line's `0,13`. The doors
+to the area's other two scripts (blocks 33 and 34, which print the
+stored square) were not driven.
+
 ## The host reads on this program
 
 | run | what it shows |
 |---|---|
-| leg 3 | the scene at every step through the town: the square and facing the status line prints, the faces around it (the mayor's door one square ahead at `3,4`, a door on the right at each sign on the street, the gate ahead at `15,8`); `null` from the gate on, in the ruins |
+| leg 3 | the scene at every step through the town: the square and facing the status line prints, the faces around it (the mayor's door one square ahead at `3,4`, a door on the right at each sign on the street, the gate ahead at `15,8`) |
+| leg 14 with `--seam automap` | the scene at every step through the ruins: `x`, `y` and `facing` the line's and `stored` the party's square and facing on the loaded grid, 63 stills checked against the area record and the party's bytes; on the turned piece the line's north is the stored south; `map` the page the panel draws |
 | leg 4 | the fight's figures, hit points, turns and fallen, the window and its ground |
 | leg 9 with `--seam modern-controls` | the aim at each of its keys, the seam fired 30 times |
 | leg 10 with `--seam modern-controls` | `text-entry reading` from the empty `CHARACTER NAME:` through `TOR`, `not-reading` at `REROLL` before it and on the figure's editor after it; the line editor's entry and its return each reached once |
@@ -505,7 +570,10 @@ ticks (`tests/sessions/README.md`).
 
 | run | what it shows |
 |---|---|
-| leg 3 with `--press Tab@8200` | the panel over the roster from `MOVE` on, drawn again at every step of the walk: the mayor's house and its door at `3,4`, the street south and the east street with the five doors on it (`7,7`, `10,7`, `14,7` north, `7,8`, `10,8` south) and the gate east of `15,8`; the roster for the gate's question and in the ruins, which are not mapped, and the panel again when the party walks back west into the town |
+| leg 3 with `--press Tab@8200` | the panel over the roster from `MOVE` on, drawn again at every step of the walk: the mayor's house and its door at `3,4`, the street south and the east street with the five doors on it (`7,7`, `10,7`, `14,7` north, `7,8`, `10,8` south) and the gate east of `15,8`; the roster for the gate's question, and in the ruins the panel on the first page of their script's numbering |
+| leg 14 with `--press Tab@8200` | the town as above, then the ruins on the pages of the line's squares, each square as the stored square under it draws it: the entrance mark at `0,15`; the door just walked through a leaf on both sides; `9,15` to `9,16` the page below; on the turned piece the mark the line's square and facing and the walls turned with it; the walk back drawing the squares the walk out drew, and the town's panel again west of the gate (`docs/seams.md` §10) |
+| leg 4 with `--press Tab@8200` | the panel through the pacing on the first street, the fight's screen over it, and the panel at `0,13` when the treasure screen is left |
+| leg 14's walk out and on to stored `12,7` with `--press Tab@8200 --save-sidecars`, then `E`, `E`, `S`, `C`, `N`, `E` | `AFMAPC.DAT` at version 3, 2,512 bytes; slot C loaded, `Tab` draws the turned piece's page from it and the walk back goes on drawing |
 | leg 1 with `Tab@8100`, then `Up`, `Tab`, `Down`, `Tab`, `Tab`, `8`, `Tab`, 150 frames apart | `Up` taken with the panel up, the member unchanged; `Down` and `8` with it down step the member, and each next `Tab` draws the panel |
 | leg 1 with `Tab@8100`, then leg 2's `E`, `V`, `E`, `E` 300 frames apart from 8,250 | the camp's bar and the sheet take the panel away with the roster drawn, and `EXIT` from camp brings it back |
 | leg 1 with `Tab@8100`, `A`, `A` | `AREA` draws the program's own overhead map in the viewport beside the panel, and `A` again the 3D view |
@@ -566,7 +634,7 @@ where that mechanism is (`docs/seams.md` §10).
 
 ## The sessions
 
-Thirty-two, `secret-*`, at `--speed 386` and `--wall none`: `secret-load`
+Thirty-five, `secret-*`, at `--speed 386` and `--wall none`: `secret-load`
 on the disk `secret-save` leaves (the `secret-saved` snapshot), and the
 rest on the Steam copy with its shipped slots (`secret-slots`).
 
@@ -603,3 +671,6 @@ rest on the Steam copy with its shipped slots (`secret-slots`).
 | `secret-town` | | | leg 3, to the ruins at frame 11,600 |
 | `secret-camp-automap` | automap | `identical secret-camp` | `Tab` never pressed: all 106 checkpoints |
 | `secret-town-map` | automap | `contrast secret-town` | `Tab` on `MOVE`'s frame, 8,200: 90 of 138 identical, divergent from tick 163,085,086 |
+| `secret-ruins` | | | leg 14, out through four of the ruins' script's doors and back into the town, 279 checkpoints |
+| `secret-ruins-automap` | automap | `identical secret-ruins` | `Tab` never pressed, the town and the ruins' pages recorded: all 279 checkpoints |
+| `secret-ruins-map` | automap | `contrast secret-ruins` | `Tab` on `MOVE`'s frame, 8,200: 90 of 279 identical, divergent from tick 163,085,086 |

@@ -215,7 +215,7 @@ the sweep and on the wasm module (`drive.mjs --install '\CURSE'
 
 ### Secret of the Silver Blades
 
-Thirty-two sessions, `secret-*`, on the Steam copy at `--speed 386` and
+Thirty-five sessions, `secret-*`, on the Steam copy at `--speed 386` and
 `--wall none` (#608, #609), each `disk external`: `secret-load` is pinned
 to the disk `secret-save` wrote (the `secret-saved` snapshot) and the
 rest to the copy with its shipped slots A and B (`secret-slots`). `docs/playable-secret.md`
@@ -223,12 +223,16 @@ has the legs and the table: the boot, a camp, a wandering fight, a new
 party, a purchase at the armoury, a deposit at the vault, a save at
 camp and its load, the fight with
 its aim walked (`secret-aim`), a character's name (`secret-name`), the
-walk through the town to the ruins (`secret-town`) and the party menu's
+walk through the town to the ruins (`secret-town`), on through four of
+the ruins' doors and back into the town (`secret-ruins`) and the party menu's
 member picker answered with the number row (`secret-pick`), each with no
 seam, a cure at the temple on a party the wound cheat has hurt
-(`secret-heal`), the automap's pair, `secret-camp-automap` `identical
+(`secret-heal`), the automap's two pairs, `secret-camp-automap` `identical
 secret-camp` (Tab never pressed) and `secret-town-map` `contrast
-secret-town` (the walk with the map up), and the cheats' pairs,
+secret-town` (the walk with the map up), and over the ruins
+`secret-ruins-automap` `identical secret-ruins` (Tab never pressed, the
+ruins' pages recorded) and `secret-ruins-map` `contrast secret-ruins`
+(the map up through the town and the ruins), and the cheats' pairs,
 `secret-camp-cheats` `identical
 secret-camp` (all three on, none pulled) and `secret-camp-wound`,
 `secret-fight-cheat` and `secret-fight-kill` each a `contrast` with the
@@ -267,7 +271,7 @@ host through the sweep.
 | `encamp-fix` | `camp-fix` | `quiet-encamp` |
 | `roster-fix` (built in, always on) | `roster-add` | none can exist: there is no off. Every other session verifies with it on, `party` reaching it twice |
 | `timer-fix` (built in, always on) | `walk-quick`, at every sound after a skipped wait | none can exist: there is no off. Every session without quick steps verifies with it on: the driver's vector is the BIOS's at every install |
-| `automap` | `walk-map`; on Curse `curse-town-map`, `curse-temple-map`, `curse-map-reader`; on Secret `secret-town-map` | `quiet-automap`; on Curse `curse-quiet-automap` and `curse-quiet-all`; on Secret `secret-camp-automap` |
+| `automap` | `walk-map`; on Curse `curse-town-map`, `curse-temple-map`, `curse-map-reader`; on Secret `secret-town-map`, `secret-ruins-map` | `quiet-automap`; on Curse `curse-quiet-automap` and `curse-quiet-all`; on Secret `secret-camp-automap`, `secret-ruins-automap` |
 | `journal` | `reader`, `notes`, `cite`; on Curse `curse-notes`, `curse-cite`, `curse-map-reader`; on Secret `secret-notes`, and `secret-camp-journal` (an `identical`: a citation logged writes nothing the machine holds) | `quiet-journal` (a `contrast`); on Curse `curse-quiet-journal` (a `contrast`) and `curse-journey-journal` (an `identical`: the party's bar is never drawn); on Secret `secret-boot-journal` (an `identical`) and `secret-town-journal` (a `contrast`: `NOTES` on the move mode's bar) |
 | `explored` | `wild-trail` | `quiet-explored` |
 | the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party`; on Curse `curse-fight-cheat`, `curse-fight-kill`, `curse-camp-wound`; on Secret `secret-fight-cheat`, `secret-fight-kill`, `secret-camp-wound` | `quiet-cheats`; on Curse `curse-quiet-cheats` and `curse-quiet-all`; on Secret `secret-camp-cheats` |
