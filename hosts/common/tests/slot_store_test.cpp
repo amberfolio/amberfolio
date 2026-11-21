@@ -279,6 +279,77 @@ TEST(AutomapSidecar, AnOverlandRecordSurvivesTheRoundTrip) {
   EXPECT_TRUE(automap_state::seen(*grid, 3, 12));
 }
 
+TEST(AutomapSidecar, AStoreWithNoNumberedPageIsWrittenAsVersionTwo) {
+  // Byte for byte the file the build before numbered pages wrote: the
+  // version, a row of 113 bytes, and the size that makes.
+  automap_state state;
+  state.reveal(state.record_for(3, 0, 0), 1, 1);
+  state.reveal(state.record_for_overland(6, 0x19), 3, 32);
+  std::array<std::uint8_t, slot_store_automap_capacity> bytes{};
+  const std::size_t size = state.write_sidecar(bytes);
+  EXPECT_EQ(bytes[3], 2u);
+  EXPECT_EQ(bytes[6] | (bytes[7] << 8U), 113);
+  EXPECT_EQ(size, 8u + (2u * 113u));
+}
+
+TEST(AutomapSidecar, ANumberedPageRidesVersionThree) {
+  // A page of a script's numbering (#609): its squares, the stored square
+  // each was stood on, its turns and the borders crossed, beside a grid
+  // whose row is the same width in such a file.
+  automap_state before;
+  automap_record& page = before.record_for_numbered(1, 32, 32, 13, 19);
+  ASSERT_TRUE(before.stand_on_numbered(page, 13, 19, 11, 4, 2));
+  ASSERT_TRUE(before.stand_on_numbered(page, 12, 19, 12, 4, 2));
+  before.cross_numbered(page, 13, 19, page, 6);
+  before.mark(page, 13, 19, automap_marker::entrance);
+  before.reveal(before.record_for(1, 16, 16), 3, 3);
+
+  std::array<std::uint8_t, slot_store_automap_capacity> bytes{};
+  const std::size_t size = before.write_sidecar(bytes);
+  ASSERT_EQ(size, before.sidecar_bytes());
+  EXPECT_EQ(bytes[3], 3u);
+  constexpr std::size_t row = 113 + 1 + 256 + 256;
+  EXPECT_EQ(bytes[6] | (bytes[7] << 8U), static_cast<int>(row));
+  EXPECT_EQ(size, 8u + (2u * row));
+
+  automap_state after;
+  ASSERT_TRUE(after.read_sidecar({bytes.data(), size}));
+  EXPECT_EQ(after.records_used(), 2u);
+  EXPECT_NE(after.find(1, 16, 16), nullptr) << "the town's grid";
+  const automap_record* back = after.find_numbered(1, 32, 32, 13, 19);
+  ASSERT_NE(back, nullptr);
+  EXPECT_EQ(back->kind, automap_map_kind::numbered);
+  EXPECT_EQ(back->page, 0x10u) << "column page 0, row page 1";
+  EXPECT_EQ(after.find_numbered(1, 32, 32, 13, 3), nullptr)
+      << "another page is another record";
+  EXPECT_TRUE(automap_state::seen(*back, 13, 19));
+  EXPECT_TRUE(automap_state::seen(*back, 12, 19));
+  EXPECT_FALSE(automap_state::seen(*back, 11, 19));
+  EXPECT_EQ(automap_state::numbered_stored_x(*back, 13, 19), 11u);
+  EXPECT_EQ(automap_state::numbered_stored_y(*back, 13, 19), 4u);
+  EXPECT_EQ(automap_state::numbered_turns(*back, 13, 19), 2u);
+  EXPECT_TRUE(automap_state::numbered_crossed(*back, 13, 19, 6));
+  EXPECT_TRUE(automap_state::numbered_crossed(*back, 12, 19, 2));
+  EXPECT_FALSE(automap_state::numbered_crossed(*back, 13, 19, 2));
+  EXPECT_EQ(automap_state::marker_at(*back, 13, 19), automap_marker::entrance);
+}
+
+TEST(AutomapSidecar, AVersionTwoFileWithANumberedKindByteHasNoPages) {
+  // Only version 3 carries a page's fields, so a version-2 row that says
+  // it is one is read as a grid, as any unknown kind is.
+  automap_state state;
+  state.reveal(state.record_for(3, 0, 0), 1, 1);
+  std::array<std::uint8_t, slot_store_automap_capacity> bytes{};
+  const std::size_t size = state.write_sidecar(bytes);
+  ASSERT_EQ(bytes[3], 2u);
+  bytes[8 + 3] = 2;  // the row's kind byte
+  automap_state other;
+  ASSERT_TRUE(other.read_sidecar({bytes.data(), size}));
+  const automap_record* back = other.find(3, 0, 0);
+  ASSERT_NE(back, nullptr);
+  EXPECT_EQ(back->kind, automap_map_kind::grid);
+}
+
 TEST(AutomapSidecar, AFileFromTheVersionBeforeTheOverlandStillOpens) {
   // Laid out from version 1's own documented shape (automap.h) rather
   // than written by anything here: the point is that a player's existing

@@ -319,12 +319,25 @@ struct scene {
   std::array<char, scene_zone_max> zone{};
   std::uint8_t zone_length{};
 
-  /// Where the party stands and which way it faces (a `scene_*` facing).
-  /// On the interior screen a square of the grid; on the overland a
-  /// column 0..15 and a row 0..35 of the area.
+  /// Where the party stands and which way it faces (a `scene_*` facing),
+  /// as the status line prints them. On the interior screen a square of
+  /// the grid; on the overland a column 0..15 and a row 0..35 of the area.
   std::uint8_t x{};
   std::uint8_t y{};
   std::uint8_t facing{};
+
+  /// On the interior screen of an area whose script numbers its squares
+  /// for the status line itself (#609, Secret of the Silver Blades' ruins):
+  /// `x`, `y` and `facing` are the script's, and these are the party's
+  /// square on the loaded grid and its facing there, which `view` and
+  /// `around` belong to. The script moves the party between pieces of one
+  /// stored grid, turned as well as moved, so the two can differ in both
+  /// square and facing. `numbered` false, and the three equal to the line's,
+  /// everywhere else.
+  bool numbered{false};
+  std::uint8_t stored_x{};
+  std::uint8_t stored_y{};
+  std::uint8_t stored_facing{};
 
   // --- journey ---------------------------------------------------------
 
@@ -345,7 +358,11 @@ struct scene {
   /// on). False, and `map_count` zero, means "not recorded", not "not
   /// explored".
   bool map_kept{false};
-  /// Every square the automap has revealed on this map, row by row.
+  /// Every square the automap has revealed on this map, row by row. Where
+  /// the script numbers the squares (`numbered`), the squares of the page
+  /// of its numbering the party is on, in its numbers, each with the faces
+  /// of the stored square the party stood on there turned as the script
+  /// turns them, and a solid face the party crossed a `door`.
   std::array<scene_square, scene_map_max> map{};
   std::uint16_t map_count{};
 

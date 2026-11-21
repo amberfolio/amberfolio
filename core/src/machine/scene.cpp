@@ -209,14 +209,6 @@ struct scene_facts {
   int target_column{};
   int target_row{};
 
-  /// The square the status line prints, on a program whose scripts may
-  /// give it one of their own: two words of the area record, the column
-  /// and the row, with `shown_none` in the first where the line prints the
-  /// party's stored square. Zero on a program whose line always prints the
-  /// stored square.
-  std::uint16_t area_shown_column{};
-  std::uint16_t area_shown_row{};
-
   /// Whether a script that has no grid leaves the area record's geometry
   /// block zero: blocks are numbered from one, and a program that is in
   /// its adventuring mode while such a script runs has no square to say.
@@ -323,18 +315,20 @@ constexpr std::uint16_t shown_none = 0xFF;
 /// and the record the panel shows the far pointer at `[BP+0x1E]`
 /// (`seam_aim_watch.cpp` has the points and the rest of both frames).
 ///
-/// **The status line's square is the script's, where it has one.** The
-/// line's routine (overlay 27 `+0x316A`) prints the bytes at `+0x3FA` and
-/// `+0x3FC` of the area record unless the word at `+0x3FA` is `0xFF`, and
-/// then the party's stored column and row. No routine of the program
-/// writes either word: an area's script does, and the town's leaves
-/// `0xFF`. The ruins east of it are wider than a grid: their script keeps
-/// the party on one sixteen-by-sixteen grid, moves it from one part of the
-/// grid to another at a door, and numbers the squares for the line itself.
-/// **This read answers nothing there**, because the square it would say
-/// is not the one the screen prints, and which of the two a host should be
-/// told is not decided (`docs/hosts.md` §13). A fight there reads: it has
-/// no square for the party.
+/// **The status line's square is the script's, where it has one** (the
+/// profile's `area_shown_column`, `area_shown_row` and `area_shown_turn`).
+/// The line's routine (overlay 27 `+0x316A`) prints the bytes at `+0x3FA`
+/// and `+0x3FC` of the area record unless the word at `+0x3FA` is `0xFF`,
+/// and then the party's stored column and row; and the facing byte plus
+/// twice the word at `+0x3FE`. No routine of the program writes the three:
+/// an area's script does, and the town's leaves `0xFF`. The ruins east of
+/// it are wider than a grid: their script keeps the party on one
+/// sixteen-by-sixteen grid, moves it from one piece of the grid to another
+/// at a door, turned as well as moved, and numbers the squares for the
+/// line itself by counting the party's steps. **This read says both**: the
+/// line's square and facing as `x`, `y` and `facing`, and the stored ones,
+/// which the walls and the view belong to, as `stored` (`docs/hosts.md`
+/// §13).
 ///
 /// **A grid is up once a geometry block is.** The program is in its
 /// adventuring mode from its first instruction, and through the opening's
@@ -365,8 +359,6 @@ constexpr scene_facts secret_scene{
     .data_manual_row = 0x8E20,
     .target_column = 0x08,
     .target_row = 0x06,
-    .area_shown_column = 0x3FA,
-    .area_shown_row = 0x3FC,
     .geometry_says_a_grid_is_up = true};
 
 /// The row for the program `digest` names, or null: a program this read
@@ -512,9 +504,10 @@ void name_zone(const scene_facts& f, scene& out, std::uint8_t geo,
     // is numbered from one and is zero until the first area is read.
     return false;
   }
-  const std::uint32_t record = ram.follow(
-      profile.data_area_record,
-      std::max<std::uint32_t>(record_reach(profile), f.area_shown_row + 2U));
+  const std::uint32_t record =
+      ram.follow(profile.data_area_record,
+                 std::max<std::uint32_t>(record_reach(profile),
+                                         profile.area_shown_turn + 2U));
   const std::uint32_t map_at =
       ram.follow(profile.data_map_pointer, map_format::map_bytes);
   if (record == 0 || map_at == 0) {
@@ -523,12 +516,6 @@ void name_zone(const scene_facts& f, scene& out, std::uint8_t geo,
   if (f.geometry_says_a_grid_is_up &&
       ram.word_at(record + profile.area_geometry_block) == 0) {
     // A script with no grid of its own: pages of story over the mode.
-    return false;
-  }
-  if (f.area_shown_column != 0 &&
-      ram.word_at(record + f.area_shown_column) != shown_none) {
-    // The status line is printing a square the area's script gave it, not
-    // the stored one this read would say (`secret_scene`).
     return false;
   }
   const std::uint8_t facing = ram.data(profile.data_party_facing);
@@ -540,13 +527,37 @@ void name_zone(const scene_facts& f, scene& out, std::uint8_t geo,
   out.screen = scene_screen::explore;
   out.disk = ram.data(profile.data_disk_number);
   out.area = ram.data(profile.data_area_id);
-  out.x = static_cast<std::uint8_t>(ram.data(profile.data_party_x) & 0x0FU);
-  out.y = static_cast<std::uint8_t>(ram.data(profile.data_party_y) & 0x0FU);
+  out.stored_x =
+      static_cast<std::uint8_t>(ram.data(profile.data_party_x) & 0x0FU);
+  out.stored_y =
+      static_cast<std::uint8_t>(ram.data(profile.data_party_y) & 0x0FU);
+  out.stored_facing = facing;
+  out.x = out.stored_x;
+  out.y = out.stored_y;
   out.facing = facing;
+  if (profile.area_shown_column != 0 &&
+      ram.word_at(record + profile.area_shown_column) != shown_none) {
+    // The status line prints a square the area's script gave it, and the
+    // facing byte turned as the script turns its grid (`secret_scene`):
+    // twice the turns while the 3D word is set, as the line's routine adds
+    // them. A turn that lands between two lanes names no facing.
+    const unsigned turn = ram.word_at(record + profile.area_shown_turn);
+    const unsigned lanes_turned =
+        ram.word_at(record + profile.area_shown_in_3d) != 0 ? 2U * turn : turn;
+    if ((lanes_turned & 1U) != 0) {
+      return false;
+    }
+    out.numbered = true;
+    out.x = ram.at(record + profile.area_shown_column);
+    out.y = ram.at(record + profile.area_shown_row);
+    out.facing = static_cast<std::uint8_t>(
+        map_format::numbered_lane(facing, (lanes_turned / 2U) & 3U));
+  }
   const std::uint8_t geo = ram.at(record + profile.area_geometry_block);
 
   const map_format::grid grid = read_grid(ram, map_at);
-  const map_format::zone_place where{.map = &grid, .x = out.x, .y = out.y};
+  const map_format::zone_place where{
+      .map = &grid, .x = out.stored_x, .y = out.stored_y};
   name_zone(f, out, geo, where);
   map_format::wall_set_blocks blocks{};
   for (unsigned slot = 0; slot < map_format::wall_set_slots; ++slot) {
@@ -557,15 +568,39 @@ void name_zone(const scene_facts& f, scene& out, std::uint8_t geo,
       map_format::door_kinds(f.places(), grid, out.disk, blocks);
 
   std::array<map_format::sight_cell, map_format::sight_cells_max> seen{};
-  const std::size_t count =
-      map_format::sight_from(grid, out.x, out.y, out.facing, seen);
+  const std::size_t count = map_format::sight_from(
+      grid, out.stored_x, out.stored_y, out.stored_facing, seen);
   for (std::size_t i = 0; i < count; ++i) {
     out.view[i] = square_at(grid, seen[i].x, seen[i].y, doors);
   }
   out.view_count = static_cast<std::uint8_t>(count);
 
   out.map_kept = kept != nullptr;
-  if (kept != nullptr) {
+  if (kept != nullptr && out.numbered) {
+    // The automap's page of the script's numbering the party is on, in its
+    // numbers, each square drawn from the stored square stood on there.
+    const automap_record* page =
+        kept->find_numbered(out.disk, out.area, geo, out.x, out.y);
+    if (page != nullptr) {
+      const unsigned left = out.x & 0xF0U;
+      const unsigned top = out.y & 0xF0U;
+      for (unsigned y = 0; y < automap_map_side; ++y) {
+        for (unsigned x = 0; x < automap_map_side; ++x) {
+          if (!automap_state::seen(*page, x, y)) {
+            continue;
+          }
+          scene_square square{.x = static_cast<std::uint8_t>(left + x),
+                              .y = static_cast<std::uint8_t>(top + y)};
+          for (std::size_t i = 0; i < map_format::lanes.size(); ++i) {
+            square.faces[i] = face_word(map_format::numbered_border_of(
+                grid, *page, x, y, map_format::lanes[i], doors.either(),
+                doors.seen));
+          }
+          out.map[out.map_count++] = square;
+        }
+      }
+    }
+  } else if (kept != nullptr) {
     const automap_record* explored = kept->find(out.disk, out.area, geo);
     if (explored != nullptr) {
       // The panel's squares: only the lair the party is in.
@@ -1085,8 +1120,8 @@ void write_explore(json_out& json, const scene& from) {
       json.put(',');
     }
     json.key(turns[turn]);
-    json.string(scene_face_name(
-        here.face(static_cast<std::uint8_t>(from.facing + (turn * 2U)))));
+    json.string(scene_face_name(here.face(
+        static_cast<std::uint8_t>(from.stored_facing + (turn * 2U)))));
   }
   json.put('}');
 
@@ -1489,6 +1524,22 @@ std::size_t scene_json(const scene& from, std::span<char> out) noexcept {
   json.put(',');
   json.key("facing");
   json.string(scene_facing_name(from.facing));
+  if (from.numbered) {
+    // The square on the loaded grid the line's is drawn from, and the
+    // party's facing there: what `around` and `view` are of.
+    json.put(',');
+    json.key("stored");
+    json.put('{');
+    json.key("x");
+    json.number(from.stored_x);
+    json.put(',');
+    json.key("y");
+    json.number(from.stored_y);
+    json.put(',');
+    json.key("facing");
+    json.string(scene_facing_name(from.stored_facing));
+    json.put('}');
+  }
   if (from.screen == scene_screen::explore) {
     write_explore(json, from);
   } else {

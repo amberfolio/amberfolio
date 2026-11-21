@@ -212,6 +212,30 @@ struct border {
                                unsigned lane, std::uint16_t doors,
                                std::uint16_t seen) noexcept;
 
+/// The border on `lane` of square (x, y) of a numbered page (#609,
+/// `automap_map_kind::numbered`), x and y within the page: the border of
+/// the stored square the party stood on there, on the stored lane the
+/// script's turns bring round to `lane`, by `border_of`. A face the map has
+/// solid that the party was seen to cross there is a door
+/// (`automap_door_evidence::walked`): the script carried the party through
+/// it. Meaningful only for a square the page has seen.
+[[nodiscard]] border numbered_border_of(const grid& map,
+                                        const automap_record& page, unsigned x,
+                                        unsigned y, unsigned lane,
+                                        std::uint16_t doors,
+                                        std::uint16_t seen) noexcept;
+
+/// The lane a stored lane is on once a script's numbering has turned it
+/// `turns` quarter turns, and back.
+[[nodiscard]] constexpr unsigned numbered_lane(unsigned stored_lane,
+                                               unsigned turns) noexcept {
+  return (stored_lane + (2U * turns)) & 7U;
+}
+[[nodiscard]] constexpr unsigned stored_lane(unsigned numbered,
+                                             unsigned turns) noexcept {
+  return (numbered + 8U - ((2U * turns) & 7U)) & 7U;
+}
+
 // --- What the party can see ------------------------------------------------
 
 /// How far ahead sight carries: the cell the party is on and two more,

@@ -248,7 +248,7 @@ bool slot_store::nothing_to_put_in_it(const machine::dos_path& path,
 }
 
 void slot_store::write_automap_to(const machine::dos_path& path) {
-  std::array<std::uint8_t, slot_store_automap_capacity> bytes{};
+  std::span<std::uint8_t> bytes = automap_bytes_;
   const std::size_t size = box_->automap().write_sidecar(bytes);
   if (size == 0) {
     return;
@@ -272,7 +272,7 @@ void slot_store::write_journal_to(const machine::dos_path& path) {
 }
 
 void slot_store::read_automap_from(const machine::dos_path& path) {
-  std::array<std::uint8_t, slot_store_automap_capacity> bytes{};
+  std::span<std::uint8_t> bytes = automap_bytes_;
   std::size_t got = 0;
   if (!read_whole(path, bytes, got)) {
     return;

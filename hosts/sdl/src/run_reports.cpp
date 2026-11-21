@@ -103,11 +103,18 @@ void print_door_rule(const machine::machine& box, door_rule_log& log,
   std::fprintf(stderr,
                "amberfolio: automap doors frame=%06llu disk=%u area=%02X"
                " geo=%02X seen=%04X table=%04X drawn shut=%u kind-seen=%u"
-               " kind-table=%u no-evidence=%u\n",
+               " kind-table=%u no-evidence=%u",
                static_cast<unsigned long long>(frame_index), now.disk, now.area,
                now.geo, now.seen, now.from_table, now.drawn.shut,
                now.drawn.seen_kind, now.drawn.table_kind,
                now.drawn.no_evidence);
+  // A door the party was carried through, on a page of a script's
+  // numbering (#609); said only where there is one, so every other map's
+  // line is the one it always was.
+  if (now.drawn.walked != 0) {
+    std::fprintf(stderr, " walked=%u", now.drawn.walked);
+  }
+  std::fputc('\n', stderr);
 }
 
 void print_watch(machine::machine& box, const std::vector<watch_point>& watches,

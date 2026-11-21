@@ -102,7 +102,36 @@ enum class automap_map_kind : std::uint8_t {
   /// identified by (disk, area) — there is no geometry block to swap out
   /// there, so the third byte is zero and means nothing.
   overland = 1,
+  /// One page of an area whose script numbers its squares for the status
+  /// line itself (#609, Secret of the Silver Blades' ruins): sixteen by
+  /// sixteen of the script's squares, identified by (disk, area, geometry
+  /// block) and the page (`automap_numbered_page`). Each square the party
+  /// stood on keeps the stored square it stood on and how the script turned
+  /// it (`automap_record::drawn_from`, `drawn_turn`), because the script
+  /// moves the party from one piece of its one stored grid to another, turned
+  /// as well as moved, and the stored grid is not the place the player
+  /// walks.
+  numbered = 2,
 };
+
+/// Which page of a script's numbering a square is on: the page's column
+/// (the square's column over sixteen) in the low nibble and its row in the
+/// high one. The status line prints a byte each way, so sixteen pages
+/// across and down cover every square a script can number.
+[[nodiscard]] constexpr std::uint8_t automap_numbered_page(
+    unsigned x, unsigned y) noexcept {
+  return static_cast<std::uint8_t>((((y >> 4U) & 0x0FU) << 4U) |
+                                   ((x >> 4U) & 0x0FU));
+}
+
+/// On a numbered page, what `automap_record::drawn_turn` holds for a square:
+/// the quarter turns from the stored grid to the script's numbering in its
+/// low two bits (a face on stored lane `l` is on lane `l + 2 * turns` of the
+/// square as numbered), and in its high four the borders the party was seen
+/// to cross, one bit per numbered lane from north (bit 4) round to west
+/// (bit 7).
+inline constexpr std::uint8_t automap_turn_mask = 0x03;
+inline constexpr unsigned automap_crossed_shift = 4;
 
 /// One bit per cell, at the width of the **widest** kind, because a
 /// record is one fixed width whatever it is about.
@@ -290,7 +319,16 @@ inline constexpr std::size_t automap_max_markers = 12;
 /// writes 2, because a player's existing `AFMAP<S>.DAT` has to open rather
 /// than be refused — a version bump that threw the map away would be the
 /// same loss the sidecar exists to prevent.
+///
+/// **Version 3 is the numbered pages'** (#609): version 2's row, then the
+/// page and, for each of its 256 squares, the stored square it was drawn
+/// from and its turn (`automap_turn_mask`). It is written only when the
+/// store holds a numbered page; a store without one is written as version 2,
+/// byte for byte what the build before it wrote, so the first two programs
+/// and every map but such an area's keep their files exactly. A reader here
+/// reads all three.
 inline constexpr std::uint8_t automap_sidecar_version = 2;
+inline constexpr std::uint8_t automap_sidecar_numbered_version = 3;
 inline constexpr std::uint8_t automap_sidecar_first_version = 1;
 inline constexpr std::array<char, 3> automap_sidecar_magic{'A', 'F', 'M'};
 
@@ -315,6 +353,16 @@ inline constexpr std::array<char, 3> automap_sidecar_magic{'A', 'F', 'M'};
 /// to be zero would otherwise be the same record.
 inline constexpr std::size_t automap_sidecar_record_bytes =
     5 + automap_seen_bytes + (3 * automap_max_markers);
+
+/// And version 3's: version 2's row and then
+///
+///     113 1   the page (`automap_numbered_page`), zero on another kind
+///     114 256 each square's stored square, `y * 16 + x`
+///     370 256 each square's turn (`automap_turn_mask`) and crossed borders
+///
+/// On a grid or an overland record the last 513 bytes are zero.
+inline constexpr std::size_t automap_sidecar_numbered_record_bytes =
+    automap_sidecar_record_bytes + 1 + (std::size_t{2} * automap_map_cells);
 
 /// And version 1's, which this build still reads: no kind byte, and a
 /// bitmap of 32. Every record in such a file is a grid.
@@ -365,6 +413,15 @@ struct automap_record {
   std::array<std::uint8_t, automap_max_markers> marker_x{};
   std::array<std::uint8_t, automap_max_markers> marker_y{};
   std::array<automap_marker, automap_max_markers> marker_kind{};
+
+  /// On a numbered page (`automap_map_kind::numbered`): which page of the
+  /// script's numbering, part of the identity; and for each of its squares
+  /// the party stood on, by `y * 16 + x` within the page, the stored square
+  /// it stood on (`y * 16 + x` on the loaded grid) and that square's turn
+  /// and crossed borders (`automap_turn_mask`). Zero on another kind.
+  std::uint8_t page{};
+  std::array<std::uint8_t, automap_map_cells> drawn_from{};
+  std::array<std::uint8_t, automap_map_cells> drawn_turn{};
 };
 
 /// Why the panel drew a door leaf on a face (#268).
@@ -388,6 +445,10 @@ enum class automap_door_evidence : std::uint8_t {
   /// A way through on a map where nothing at all is known about the wall
   /// sets, so the pre-nibble rule stands: a passable face is a door.
   no_evidence,
+  /// On a numbered page (#609): a face the map has solid, which the party
+  /// was seen to cross from one square of the script's numbering to the
+  /// next. The script carried it through, so it is a way through.
+  walked,
 };
 
 /// How many leaves the last drawn panel drew, by evidence.
@@ -401,6 +462,7 @@ struct automap_door_tally {
   std::uint16_t seen_kind{};
   std::uint16_t table_kind{};
   std::uint16_t no_evidence{};
+  std::uint16_t walked{};
 
   friend constexpr bool operator==(const automap_door_tally&,
                                    const automap_door_tally&) = default;
@@ -428,9 +490,11 @@ class automap_state {
 
   /// The record for this map identity, claiming a slot if there is not
   /// one yet. Never null.
+  /// `page` is a numbered record's page and zero for the other kinds.
   [[nodiscard]] automap_record& record_for(automap_map_kind kind,
                                            std::uint8_t disk, std::uint8_t area,
-                                           std::uint8_t geo) noexcept;
+                                           std::uint8_t geo,
+                                           std::uint8_t page = 0) noexcept;
 
   /// The interior grid's form of it, which is what every caller before
   /// M5-E5b meant.
@@ -448,9 +512,9 @@ class automap_state {
   /// The record for this map identity, or null if none has been claimed.
   /// The const half, for a host that is persisting and a test that is
   /// asking.
-  [[nodiscard]] const automap_record* find(automap_map_kind kind,
-                                           std::uint8_t disk, std::uint8_t area,
-                                           std::uint8_t geo) const noexcept;
+  [[nodiscard]] const automap_record* find(
+      automap_map_kind kind, std::uint8_t disk, std::uint8_t area,
+      std::uint8_t geo, std::uint8_t page = 0) const noexcept;
 
   [[nodiscard]] const automap_record* find(std::uint8_t disk, std::uint8_t area,
                                            std::uint8_t geo) const noexcept {
@@ -461,6 +525,58 @@ class automap_state {
       std::uint8_t disk, std::uint8_t area) const noexcept {
     return find(automap_map_kind::overland, disk, area, 0);
   }
+
+  // --- a script's numbering (#609) ---------------------------------------
+
+  /// The page a square of a script's numbering is on, claiming it if there
+  /// is not one yet; and the const half. `x`, `y` are the square as the
+  /// status line prints it.
+  [[nodiscard]] automap_record& record_for_numbered(std::uint8_t disk,
+                                                    std::uint8_t area,
+                                                    std::uint8_t geo,
+                                                    unsigned x,
+                                                    unsigned y) noexcept {
+    return record_for(automap_map_kind::numbered, disk, area, geo,
+                      automap_numbered_page(x, y));
+  }
+  [[nodiscard]] const automap_record* find_numbered(std::uint8_t disk,
+                                                    std::uint8_t area,
+                                                    std::uint8_t geo,
+                                                    unsigned x,
+                                                    unsigned y) const noexcept {
+    return find(automap_map_kind::numbered, disk, area, geo,
+                automap_numbered_page(x, y));
+  }
+
+  /// The party stands on square (`x`, `y`) of a script's numbering, which
+  /// is stored square (`stored_x`, `stored_y`) turned `turns` quarter turns:
+  /// the square is seen, and drawn from that stored square from now on. True
+  /// if anything about it changed. `map` is that square's page.
+  bool stand_on_numbered(automap_record& map, unsigned x, unsigned y,
+                         unsigned stored_x, unsigned stored_y,
+                         unsigned turns) noexcept;
+
+  /// The party went from square (`x0`, `y0`) of a script's numbering to the
+  /// square beside it on `lane` (a map lane): the border between them is
+  /// one the party crossed, on both sides. `from` and `to` are the two
+  /// squares' pages, the same record unless the step crossed a page's edge.
+  void cross_numbered(automap_record& from, unsigned x0, unsigned y0,
+                      automap_record& to, unsigned lane) noexcept;
+
+  /// What a seen square of a numbered page was drawn from: the stored
+  /// square's column and row, its turns, and whether the party crossed its
+  /// border on numbered `lane`. `x`, `y` wrap at four bits, as on a grid.
+  [[nodiscard]] static unsigned numbered_stored_x(const automap_record& map,
+                                                  unsigned x,
+                                                  unsigned y) noexcept;
+  [[nodiscard]] static unsigned numbered_stored_y(const automap_record& map,
+                                                  unsigned x,
+                                                  unsigned y) noexcept;
+  [[nodiscard]] static unsigned numbered_turns(const automap_record& map,
+                                               unsigned x, unsigned y) noexcept;
+  [[nodiscard]] static bool numbered_crossed(const automap_record& map,
+                                             unsigned x, unsigned y,
+                                             unsigned lane) noexcept;
 
   /// Whether a cell has been seen. On a grid the coordinates wrap at four
   /// bits, the way the program's own do; on an overland map a cell off
@@ -560,6 +676,32 @@ class automap_state {
   /// the three above are, dropped by `clear()` and never serialized.
   [[nodiscard]] bool at_command_bar() const noexcept { return at_command_bar_; }
   void set_at_command_bar(bool at) noexcept { at_command_bar_ = at; }
+
+  /// The map the party's own bar last came up on, on a program whose area
+  /// scripts may number their squares (#609); forgotten when any other bar
+  /// comes up. **A square of a script's numbering is believed only there.**
+  /// When the program changes areas it loads the new one's grid and runs
+  /// its script some frames later, and in between the area record still
+  /// holds the last script's numbering (or none, on a record fresh from a
+  /// saved game) and the party's square is the one it left: the old
+  /// numbering on the new map, stood on a stale square, still enough
+  /// frames for three looks to agree. The party's bar does not come up
+  /// until the script has placed the party and numbered its square.
+  /// Presentation state like the bar flag: dropped by `clear()`, never
+  /// serialized.
+  void set_bar_map(std::uint8_t disk, std::uint8_t area,
+                   std::uint8_t geo) noexcept {
+    bar_map_known_ = true;
+    bar_disk_ = disk;
+    bar_area_ = area;
+    bar_geo_ = geo;
+  }
+  void forget_bar_map() noexcept { bar_map_known_ = false; }
+  [[nodiscard]] bool bar_map_is(std::uint8_t disk, std::uint8_t area,
+                                std::uint8_t geo) const noexcept {
+    return bar_map_known_ && bar_disk_ == disk && bar_area_ == area &&
+           bar_geo_ == geo;
+  }
 
   /// Whether some of the panel's pixels are still on the glass around a
   /// clear that took only part of its rect (#555).
@@ -694,6 +836,10 @@ class automap_state {
   /// How many bytes `write_sidecar` would fill for the records in hand.
   [[nodiscard]] std::size_t sidecar_bytes() const noexcept;
 
+  /// Whether any record is a numbered page, which is what makes the
+  /// sidecar version 3 (`automap_sidecar_numbered_version`).
+  [[nodiscard]] bool holds_numbered() const noexcept;
+
   /// The records, into `out`. Answers how many bytes were written, or
   /// zero if `out` is too small to hold them — which a caller finds out
   /// by asking `sidecar_bytes()` first, the way the rest of this tree's
@@ -768,6 +914,11 @@ class automap_state {
   /// out, exactly as a geometry-block swap is. The two seams that call
   /// this share one settling state, which is right: the party is in one
   /// place, and only one of the two screens is ever up.
+  ///
+  /// **On a numbered map** (#609) `x` and `y` are the square the status
+  /// line prints, and a mark goes on the page that square is on. A step
+  /// from one page to the next is not a map change: the identity is the
+  /// area's, and the page is where on it.
   bool observe(automap_map_kind kind, std::uint8_t disk, std::uint8_t area,
                std::uint8_t geo, std::uint8_t x, std::uint8_t y) noexcept;
 
@@ -850,6 +1001,18 @@ class automap_state {
   }
 
  private:
+  /// The record a position is on: a numbered map's page of it, and the
+  /// map itself for the other kinds.
+  [[nodiscard]] automap_record& record_at(automap_map_kind kind,
+                                          std::uint8_t disk, std::uint8_t area,
+                                          std::uint8_t geo, std::uint8_t x,
+                                          std::uint8_t y) noexcept {
+    return record_for(kind, disk, area, geo,
+                      kind == automap_map_kind::numbered
+                          ? automap_numbered_page(x, y)
+                          : std::uint8_t{0});
+  }
+
   std::array<automap_record, max_records> records_{};
   std::size_t next_slot_{0};
   std::uint32_t serial_{0};
@@ -860,6 +1023,10 @@ class automap_state {
   bool stranded_{false};
   bool roster_over_stranded_{false};
   bool at_command_bar_{false};
+  bool bar_map_known_{false};
+  std::uint8_t bar_disk_{};
+  std::uint8_t bar_area_{};
+  std::uint8_t bar_geo_{};
 
   bool appearance_valid_{false};
   std::uint8_t appearance_area_{};

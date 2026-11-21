@@ -261,6 +261,18 @@ struct program_profile {
   std::uint16_t area_geometry_block;
   std::uint16_t area_shown_in_3d;
 
+  /// The square the status line prints, on a program whose area scripts
+  /// may number the squares themselves (#609): three words of the area
+  /// record, the column, the row, and the quarter turns from the stored
+  /// grid to the script's numbering, with `0xFF` in the column where the
+  /// line prints the party's stored square. The line's routine (Secret of
+  /// the Silver Blades' overlay 27 `+0x316A`) prints the facing byte plus
+  /// twice the turns while `area_shown_in_3d` is non-zero. Zero on a
+  /// program whose line always prints the stored square.
+  std::uint16_t area_shown_column;
+  std::uint16_t area_shown_row;
+  std::uint16_t area_shown_turn;
+
   /// The adventuring screen's own two command bars, as Pascal strings the
   /// program keeps: the overhead view's and the 3D view's. Every other
   /// bar in the game is a copy built on the stack (M5-E2d).
@@ -496,6 +508,9 @@ inline constexpr program_profile pool_of_radiance{
     .area_overland_row = 0x188,
     .area_geometry_block = 0x18A,
     .area_shown_in_3d = 0x1CC,
+    .area_shown_column = {},
+    .area_shown_row = {},
+    .area_shown_turn = {},
 
     .data_area_bar = 0x04B6,
     .data_view_bar = 0x04DF,
@@ -738,6 +753,9 @@ inline constexpr program_profile curse_of_the_azure_bonds{
     .area_overland_row = 0x188,
     .area_geometry_block = 0x18A,
     .area_shown_in_3d = 0x1CC,
+    .area_shown_column = {},
+    .area_shown_row = {},
+    .area_shown_turn = {},
     .data_area_bar = {},
     .data_view_bar = 0x03D8,
     .data_current_member = 0x6520,
@@ -962,6 +980,9 @@ inline constexpr program_profile secret_of_the_silver_blades{
     .area_overland_row = {},
     .area_geometry_block = 0x18A,
     .area_shown_in_3d = 0x1CC,
+    .area_shown_column = 0x3FA,
+    .area_shown_row = 0x3FC,
+    .area_shown_turn = 0x3FE,
     .data_area_bar = {},
     .data_view_bar = {},
     .data_current_member = 0x7D38,

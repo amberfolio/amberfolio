@@ -1371,6 +1371,9 @@ rule, settling quarantine and ownership signals are derived in
   driven in `docs/playable.md` leg 12 (#268). `--trace` prints a tally
   per draw:
   `amberfolio: automap doors frame=011000 disk=8 area=0D geo=0D seen=0200 table=0200 drawn shut=0 kind-seen=1 kind-table=0 no-evidence=0`.
+  A fifth, on a page of a script's numbering (#609, below): a face the
+  map has solid that the party was carried across, added to the line as
+  `walked=<n>` where there is one.
   Rejected: runtime learning across maps, because the seam refuses every
   binary the table was not derived from. The face, door and sight rules
   and the zone table are `core/src/machine/automap_faces.h`, which the
@@ -1615,24 +1618,57 @@ three things of this program's own besides the facts above:
   key, with the ring empty, is answered with `-` as a key taken at the
   read is (#266). Any other poll in between, but the one this seam's own
   batch is behind, forgets it. Only on this program.
-- **The ruins are not mapped.** East of the town the area's script
-  prints a square of its own on the status line (the area record's
-  `+0x3FA` and `+0x3FC`, `0xFF` in the first where it prints the stored
-  one, `docs/hosts.md` §13) and keeps the party on one grid in pieces.
-  The program's step (overlay 32 `+0x0568`) refuses a face whose two
-  bits are zero; the script takes the party through such a face, a
-  wooden door of kind 8, to another piece. Driven: from the arrival at
-  stored `11,2` (line `0,15`) the squares the grid joins are `11..14,0..2`
-  and nothing else; at stored `14,2` (line `3,15`) a step east puts the
-  party at stored `10,3` (line `4,15`), the line's square the stored one
-  less `11,-13` in the first piece and less `6,-12` in the second. A map
-  of the stored grid would draw the door the party walked through as a
-  wall and move its mark four squares west and one south for a step
-  east, so while the line prints a square of the script's the seam
-  records nothing and draws nothing. The panel stays open and is back
-  on the town's first square. Mapping the ruins in the line's squares
-  is a new shape for a record (each square of the script's numbering
-  drawn from a stored square), not decided.
+- **The ruins are mapped in the script's numbering.** East of the town
+  the area's script prints a square of its own on the status line (the
+  profile's `area_shown_column`, `area_shown_row` and `area_shown_turn`:
+  the area record's `+0x3FA`, `+0x3FC` and `+0x3FE`, `0xFF` in the first
+  where the line prints the stored square; `docs/hosts.md` §13). It keeps
+  the party on one stored grid cut into pieces, carries it from piece to
+  piece through faces the program's step (overlay 32 `+0x0568`) refuses,
+  turning a piece as well as moving it (`+0x3FE`, quarter turns), and
+  counts the party's steps to number its squares. A map of the stored
+  grid would draw the door just walked through as a wall and move the
+  mark four squares west and one south for a step east, so there the
+  seam keeps **numbered pages** (`automap_map_kind::numbered`, #609):
+  - **The record**: one per sixteen-by-sixteen page of the script's
+    numbering, identified by disk, area, geometry block and the page
+    (the column over sixteen in the low nibble, the row over sixteen in
+    the high, `automap_numbered_page`). Its bitmap and marks are a
+    grid's, in the page's squares; beside them, for each of its 256
+    squares the stored square the party stood on there
+    (`automap_record::drawn_from`) and a byte holding the script's turns
+    in its low two bits and, in its high four, the borders the party was
+    seen to cross (`drawn_turn`).
+  - **Only the square stood on is recorded**, from the stored square
+    under the party: sight is the stored grid's, and what it reaches may
+    be across a door the script carries the party through, somewhere
+    else in its numbering. A step to the next square of the numbering
+    marks the border between them crossed on both sides, across a page's
+    edge too.
+  - **Drawn** (`map_format::numbered_border_of`, which the scene read
+    calls too): the page the party's square is on, each seen square with
+    the faces of the stored square it was drawn from, turned by its
+    turns, and a face the map has solid that the party crossed a door
+    leaf: the script carried the party through it. The tally prints such
+    leaves as `walked=` where there are any. The mark is the line's
+    square and facing.
+  - **Believed only once the party's bar is up on the map**
+    (`automap_state::set_bar_map`). When the program changes areas it
+    loads the new grid and runs the new script some frames later, and in
+    between the record still holds the last numbering (or none: `0` on
+    a record fresh from a save, through the opening's pages) and the
+    party the square it left, still for long enough for three looks to
+    agree. The party's bar does not come up until the script has placed
+    the party.
+  - **The sidecar** is version 3 while the store holds a numbered page
+    (automap.h: version 2's row, then the page and the 512 bytes);
+    without one it is version 2 byte for byte, so the first two programs
+    and the town write the files they always wrote. Versions 1 to 3 are
+    read.
+  - **A page at a time.** The panel shows the page the party is on, so a
+    step from `9,15` to `9,16` turns to the page below, and the first
+    street stays on the page above. The script's own table of where the party
+    arrives from the other areas reaches `83,56`, six pages across.
 - **Driven** on slot A (`docs/playable-secret.md` leg 3) with Tab at
   the party's bar: the panel stays up in the move mode and through the
   two signs, and is drawn again at each step. Compared with the walked
@@ -1644,9 +1680,8 @@ three things of this program's own besides the facts above:
   vault's and the temple's on its south at `7,8` and `10,8`, and the gate
   a leaf east of `15,8`. Walls are brown and light grey on the dark grey
   floor; the label is `AREA 16`. The gate's `YES NO`
-  takes the panel away with the roster drawn; the ruins draw the roster,
-  and walking back west through the gate brings the panel back with
-  nothing recorded in between (`automap-update` 17 calls either way).
+  takes the panel away with the roster drawn, and the move mode's bar in
+  the ruins brings it back on the first page (below).
   Up, Down, Home and the keypad's 8 with the panel up are taken and the
   member stays; with it down, Down and 8 step the member and the next
   Tab draws the panel. `ENCAMP`, a sheet and `EXIT` give the roster back
@@ -1655,10 +1690,34 @@ three things of this program's own besides the facts above:
   `--save-sidecars` a save to slot C at camp writes `AFMAPC.DAT` (one
   record, disk 1, area 16, block 16, fifteen squares) and loading C
   reads it back, the panel at `3,6 S` drawing the mayor's house.
+- **Driven in the ruins** (`docs/playable-secret.md` leg 15, Tab on
+  `MOVE`'s frame), each still beside the status line and the stored
+  square: the arrival at `0,15` with the entrance mark; the first
+  street `0..3,14..15`; through stored `14,2`'s east face (kind 8,
+  solid) to `4,15`, a leaf on the border from both sides; on to `9,15`,
+  and south to `9,16`, the page below; through stored `15,5`'s east face
+  to `10,17`; through stored `10,2`'s south face to `11,20`; along to
+  `13,20` and through stored `5,0`'s north face onto a piece turned half
+  round, stored `11,4` facing south drawn at `13,19` with the arrow
+  north, as the line prints it, and its faces turned (in the runs beside
+  the leg, a step east on the stored grid, west as the line has it, is
+  `12,19`, one square west on the panel). Back the same
+  way, every square the one the walk out drew, and west through the gate
+  the town's panel. Leg 4's fight in the ruins gives the panel back at
+  `0,13` after it. With `--save-sidecars`, a save at camp on the turned
+  piece writes `AFMAPC.DAT` at version 3 (four records: the town, a
+  two-square record of the stored grid from the frames between the
+  ruins' load and its script, and the two pages), and loading C draws
+  the page at the first Tab.
 - **Fidelity**: `secret-camp-automap` `identical secret-camp` (on, Tab
   never pressed, all 106 checkpoints); `secret-town-map` `contrast
   secret-town` (Tab on `MOVE`'s frame, 90 of 138 identical, divergent
-  from tick 163,085,086). Tests: `SeamAutomapOnSecret.*`
+  from tick 163,085,086); `secret-ruins-automap` `identical
+  secret-ruins` (on, Tab never pressed, the ruins recorded: all 279
+  checkpoints); `secret-ruins-map` `contrast secret-ruins` (Tab on
+  `MOVE`'s frame, 90 of 279 identical, divergent from tick 163,085,086).
+  `secret-town-map`'s last four checkpoints are in the ruins, with the
+  panel on their first page. Tests: `SeamAutomapOnSecret.*`
   (`tests/core/machine/seam_automap_secret_test.cpp`).
 
 ### The journal reader (#175, #221, #222, #232, #305, #328, #346)
