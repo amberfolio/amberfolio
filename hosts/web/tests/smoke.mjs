@@ -898,13 +898,13 @@ if (missing.length === 0) {
     has(curse, 'journey') && !has(curse, 'wilderness'),
     "Curse's card shows a wilderness it does not have, or no journey",
   );
-  // Secret of the Silver Blades: its own screens, no Notes, and with every
-  // seam on only the message pause's rows, the automap's and
-  // modern-controls' one, the number row at the party menu's picker; the
-  // journal takes no key on it.
+  // Secret of the Silver Blades: its own screens, Notes among them, and with
+  // every seam on only the message pause's rows, the automap's, the
+  // journal's and modern-controls' one, the number row at the party menu's
+  // picker.
   check(
     has(blades, 'explore') && has(blades, 'combat') && !has(blades, 'wilderness') &&
-      !has(blades, 'journey') && !has(blades, 'journal'),
+      !has(blades, 'journey') && has(blades, 'journal'),
     "Secret of the Silver Blades' card is not its own",
   );
   check(
@@ -914,6 +914,7 @@ if (missing.length === 0) {
           row.seam === '' ||
           row.seam === 'message-pause' ||
           row.seam === 'automap' ||
+          row.seam === 'journal' ||
           (row.seam === 'modern-controls' && context.id === 'menu'),
       ),
     ),

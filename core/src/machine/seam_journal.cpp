@@ -373,6 +373,38 @@ struct journal_facts {
   /// drawer takes one is handed black, the ground every line this reader
   /// draws sits on.
   bool string_takes_background;
+
+  /// Whether the outer frame takes **one word** its callers push, which it
+  /// never reads and cleans up itself. Handed `1`, as nearly every one of
+  /// the program's own callers hands it.
+  bool outer_frame_takes_word;
+
+  /// **`N` at the party's bar, with no word on it** (#609): on a program
+  /// whose party's bar has no room for `Notes`, the key opens the reader
+  /// there, taken out of the ring before the menu-bar routine sees it,
+  /// while the program's frames say the routine running is the loop's
+  /// call with that bar (`view_bar_return`). Nowhere else.
+  bool notes_key_at_bar;
+
+  /// **`Notes` on the move mode's bar** (#609), on a program whose move
+  /// mode has a bar of its own (the profile's `move_bar_return`): spliced
+  /// into the menu-bar routine's own copy of the bar once the routine has
+  /// cut that copy into its groups. `menu_groups_parsed` is the
+  /// instruction after that cut, in the menu overlay; `menu_group_table`
+  /// is how far below the routine's `BP` the table of groups begins: the
+  /// group count at `BP - menu_group_table + 1`, and group `n`'s first and
+  /// last character at `BP - menu_group_table + 2n` and the byte after.
+  /// Zero on a program whose bar has room, where `Notes` goes into the
+  /// loop's own string before the call.
+  std::uint16_t menu_groups_parsed;
+  std::uint16_t menu_group_table;
+
+  /// On a program whose key read first polls itself and then reads
+  /// whatever the poll said (#609): the instruction after that poll's call,
+  /// as an offset from the image base. A key this seam takes at that poll
+  /// leaves the read about to wait inside the BIOS, so the read is handed
+  /// the ignorable key at once (`seam_key_read.h`). Zero elsewhere.
+  std::uint16_t read_poll_return;
 };
 
 /// Pool of Radiance, the baseline edition. Five of the resident points are
@@ -388,7 +420,12 @@ constexpr journal_facts pool_of_radiance_journal{
     .box_clear_is_byte = false,
     .frame_out_flag = 0x04,
     .outer_frame_entry = 0,
-    .string_takes_background = false};
+    .string_takes_background = false,
+    .outer_frame_takes_word = false,
+    .notes_key_at_bar = false,
+    .menu_groups_parsed = 0,
+    .menu_group_table = 0,
+    .read_poll_return = 0};
 
 /// Curse of the Azure Bonds (#555). Its narration goes through a message
 /// box of the same shape: the far pointer to a Pascal string at SP+4 and
@@ -421,7 +458,12 @@ constexpr journal_facts curse_journal{.profile = curse_of_the_azure_bonds,
                                       .box_clear_is_byte = true,
                                       .frame_out_flag = 0x04,
                                       .outer_frame_entry = 0x1330,
-                                      .string_takes_background = true};
+                                      .string_takes_background = true,
+                                      .outer_frame_takes_word = false,
+                                      .notes_key_at_bar = false,
+                                      .menu_groups_parsed = 0,
+                                      .menu_group_table = 0,
+                                      .read_poll_return = 0};
 
 /// Curse's overlay 25, the party summary drawer and the screen composer
 /// among others, and the drawer's `retf 4` in it: the automap's point at
@@ -436,30 +478,53 @@ constexpr seam_module curse_summary_overlay{
     .load_segment_at = 0x0EE0};
 constexpr std::uint16_t curse_roster_drawn_return = 0x092E;
 
-/// Secret of the Silver Blades (#609): **the citation watch alone**. The
-/// message box is the same routine with the same frame, the flag a byte
-/// pushed as `mov al, n` and `push ax` by the script's print command, so a
-/// citation goes on the log as it does on Curse, and from there into the
-/// slot's sidecar.
+/// Secret of the Silver Blades (#609). The message box is the same routine
+/// with the same frame, the flag a byte pushed as `mov al, n` and `push ax`
+/// by the script's print command, so a citation goes on the log as it does
+/// on Curse, and from there into the slot's sidecar.
 ///
-/// **The reader is not on this program, because `Notes` does not fit on
-/// its bar.** The party's bar is a constant in the adventuring loop's own
-/// module, thirty-eight characters, copied to a stack temporary of exactly
-/// that length before every call; the menu-bar routine copies at most forty
-/// characters of what it is handed, and forty is the screen's width. Six
-/// more do not fit there, nor on the camp's bar, thirty-five characters,
-/// and `Notes` is the reader's only way in (#346). Where the command goes
-/// on this program is a decision, not a fact (`docs/seams.md` §10), so
-/// every member below the watch's is zero.
+/// **`Notes` does not fit on the party's bar**: thirty-eight characters,
+/// a constant of the adventuring loop's own module copied to a stack
+/// temporary of exactly its length before every call, and the menu-bar
+/// routine keeps forty. So the reader has two ways in here, both decided
+/// by the maintainer (#609):
+///
+///   * **`N` at the party's bar**, with no word on the bar
+///     (`notes_key_at_bar`). `N` is none of that bar's commands, so with
+///     the seam off the routine reads it and waits for another key.
+///   * **`Notes` after `Exit` on the move mode's bar**, spliced into the
+///     menu-bar routine's own forty-character copy of that bar once the
+///     routine has cut it into groups, and the group added to the
+///     routine's table **without counting it** (`menu_groups_parsed`). The
+///     count is what decides whether `Left` and `Right` move the lit word
+///     or go back to the loop, which turns the party with them; a bar of
+///     one group hands them back, so the move mode still turns. `N` finds
+///     the group by its letter, as a command's letter does.
+///
+/// The outer frame is Curse's, at image `0x19D0` (`019D:0000`), clearing
+/// rows 1 to `0x16` and columns 1 to `0x26`, and takes one word it never
+/// reads. The key read polls before it reads (`read_poll_return`).
 constexpr journal_facts secret_journal{.profile = secret_of_the_silver_blades,
                                        .message_box_entry = 0x58B9,
                                        .box_frame_string_offset = 4,
                                        .box_frame_string_segment = 6,
                                        .box_frame_clear = 8,
                                        .box_clear_is_byte = true,
-                                       .frame_out_flag = {},
-                                       .outer_frame_entry = {},
-                                       .string_takes_background = false};
+                                       .frame_out_flag = 0x04,
+                                       .outer_frame_entry = 0x19D0,
+                                       .string_takes_background = true,
+                                       .outer_frame_takes_word = true,
+                                       .notes_key_at_bar = true,
+                                       .menu_groups_parsed = 0x0426,
+                                       .menu_group_table = 0x93,
+                                       .read_poll_return = 0x7144};
+
+/// Secret's overlay 27 (the profile's `summary_overlay`): the roster
+/// drawer's `retf 4` and the `retf 6` of its one-row redraw, which the
+/// party's bar calls for a roster step and which clears the row after the
+/// party through the region clear (the automap's two points there).
+constexpr std::uint16_t secret_roster_drawn_return = 0x0984;
+constexpr std::uint16_t secret_roster_row_return = 0x0B17;
 
 constexpr auto journal_binaries =
     fingerprints_of(std::array{&pool_of_radiance, &curse_of_the_azure_bonds,
@@ -812,6 +877,22 @@ constexpr std::uint8_t notes_key_ascii = 'N';
 /// it, zero while nothing is spliced. What the stop takes it out of.
 constexpr unsigned word_spliced_segment = 0;
 constexpr unsigned word_spliced_bar = 1;
+
+/// On a program that splices `Notes` into the menu-bar routine's own copy
+/// of the move mode's bar (`menu_groups_parsed`): non-zero from the splice
+/// to that call's return, which is what says the `N` it answers is this
+/// seam's. Nothing of the program's is held: the copy is the routine's own
+/// and goes with its frame.
+constexpr unsigned word_move_spliced = 2;
+
+/// The most groups the menu-bar routine's table has room for: forty bytes,
+/// two to a group.
+constexpr std::uint8_t menu_most_groups = 20;
+
+/// How many of the program's frames are climbed looking for the party's
+/// bar's call (`inside_the_partys_bar()`): the menu-bar routine's frame is
+/// the second above a key point, under the key routine's own wrapper.
+constexpr unsigned bar_frames_walked = 8;
 
 // ---------------------------------------------------------------------------
 // Reading the machine
@@ -1789,6 +1870,115 @@ enum class claimable : std::uint8_t {
          cpu.read_word(bda::segment, bda::keyboard_buffer_tail);
 }
 
+/// The segment the overlay manager has the adventuring loop's module at
+/// now, or zero while it is not loaded.
+[[nodiscard]] std::uint16_t adventure_segment(const journal_facts& f,
+                                              cpu::processor& cpu,
+                                              const seam_context& ctx) {
+  return cpu.read_word(
+      static_cast<std::uint16_t>(ctx.image_base() >> 4U),
+      static_cast<std::uint16_t>(f.profile.adventure_overlay.load_segment_at));
+}
+
+/// Whether the routine running is the adventuring loop's call into the
+/// menu-bar routine with the party's own bar, read off the program's
+/// frames (#609): each routine keeps its caller's `BP` at `[BP]` and its
+/// far return above it, and the key routines are reached from the menu-bar
+/// routine through a wrapper of their own, so a key point is two frames
+/// under it. A frame whose far return is the loop's, just past that call,
+/// in the segment the manager's word says the loop is at, says yes; a chain
+/// that runs out or does not climb says no. The automap reads the same
+/// chain when it is switched on at a bar already up (#628).
+[[nodiscard]] bool inside_the_partys_bar(const journal_facts& f,
+                                         cpu::processor& cpu,
+                                         const seam_context& ctx) {
+  const std::uint16_t adventure = adventure_segment(f, cpu, ctx);
+  if (adventure == 0 || f.profile.view_bar_return == 0) {
+    return false;
+  }
+  const cpu::registers& regs = cpu.regs();
+  const std::uint16_t ss = regs[cpu::sreg::ss];
+  std::uint16_t bp = regs[cpu::reg16::bp];
+  for (unsigned frame = 0; frame < bar_frames_walked && bp != 0; ++frame) {
+    if (cpu.read_word(ss, at(bp, 4)) == adventure &&
+        cpu.read_word(ss, at(bp, 2)) == f.profile.view_bar_return) {
+      return true;
+    }
+    const std::uint16_t caller = cpu.read_word(ss, bp);
+    if (caller <= bp) {
+      return false;
+    }
+    bp = caller;
+  }
+  return false;
+}
+
+/// **`N` at the party's bar** (`notes_key_at_bar`, #609): take it out of
+/// the ring and open the log, on a program whose party's bar has no room
+/// for the word. True when it was taken.
+///
+/// Only with the reader down, only `N` (either case: the routine upper-cases
+/// what it reads), never while the program's pushback slot is armed, and
+/// only inside the loop's call with the party's bar, which is the one
+/// place the composer is a give-back that may be used (#305). `N` is none
+/// of that bar's commands, so the program had nothing to do with it.
+[[nodiscard]] bool open_on_the_key(const journal_facts& f, machine& box,
+                                   const seam_context& ctx, std::uint16_t ds) {
+  if (!f.notes_key_at_bar) {
+    return false;
+  }
+  cpu::processor& cpu = box.processor();
+  if (cpu.read_byte(ds, f.profile.data_key_pushback) != 0) {
+    return false;
+  }
+  const std::uint16_t head =
+      cpu.read_word(bda::segment, bda::keyboard_buffer_head);
+  if (head == cpu.read_word(bda::segment, bda::keyboard_buffer_tail)) {
+    return false;
+  }
+  const auto character =
+      static_cast<std::uint8_t>(cpu.read_word(bda::segment, head) & 0xFFU);
+  if (character != notes_key_ascii && character != key_next_lower) {
+    return false;
+  }
+  if (!inside_the_partys_bar(f, cpu, ctx)) {
+    return false;
+  }
+  auto next = static_cast<std::uint16_t>(head + 2U);
+  if (next >= bda::keyboard_buffer_end) {
+    next = bda::keyboard_buffer;
+  }
+  cpu.write_word(bda::segment, bda::keyboard_buffer_head, next);
+  journal_state& state = box.journal();
+  state.set_page_from_list(false);
+  state.set_reader(journal_reader_mode::listing);
+  return true;
+}
+
+/// A key taken at the poll a key read makes before it reads
+/// (`read_poll_return`, #609): that read is about to wait inside the BIOS
+/// for a key the ring no longer has, so it is handed the ignorable one now,
+/// the answer a key taken at the read itself gets (`seam_key_read.h`).
+void answer_the_read_behind(const journal_facts& f, machine& box,
+                            seam_context& ctx) {
+  if (f.read_poll_return == 0) {
+    return;
+  }
+  cpu::processor& cpu = box.processor();
+  if (!no_key_waiting(cpu)) {
+    return;
+  }
+  const cpu::registers& regs = cpu.regs();
+  const std::uint16_t ss = regs[cpu::sreg::ss];
+  const std::uint16_t sp = regs[cpu::reg16::sp];
+  const std::uint32_t returns_to = cpu::physical_address(
+      cpu.read_word(ss, at(sp, 2)), cpu.read_word(ss, sp));
+  if (returns_to != ctx.image_base() + f.read_poll_return) {
+    return;
+  }
+  static_cast<void>(ctx.inject_keystroke(key_ignored_scan, key_ignored_ascii));
+}
+
 // ---------------------------------------------------------------------------
 // Opening, paging and closing
 // ---------------------------------------------------------------------------
@@ -1829,7 +2019,10 @@ enum class claimable : std::uint8_t {
                                   std::uint16_t colour) {
   if (f.outer_frame_entry != 0) {
     const std::array<std::uint16_t, 0> nothing{};
-    if (!ctx.call_program(image, f.outer_frame_entry, nothing)) {
+    const std::array<std::uint16_t, 1> one{1};
+    if (!(f.outer_frame_takes_word
+              ? ctx.call_program(image, f.outer_frame_entry, one)
+              : ctx.call_program(image, f.outer_frame_entry, nothing))) {
       return false;
     }
     const std::size_t width =
@@ -2707,6 +2900,12 @@ void give_the_rows_the_bar(journal_state& state) {
                                seam_context& ctx, std::uint16_t ds,
                                bool& claimed) {
   journal_state& state = box.journal();
+  if (state.reader() == journal_reader_mode::closed) {
+    // With the reader down nothing is claimed but `N` at the party's bar,
+    // and that only on a program whose bar has no room for the word.
+    claimed = open_on_the_key(f, box, ctx, ds);
+    return false;
+  }
   std::uint16_t key = 0;
   const bool bar_keys = modern_controls_on(box);
   const claimable which =
@@ -2926,7 +3125,11 @@ void at_key_pending(machine& box, seam_context& ctx) {
     return;
   }
   bool claimed = false;
-  if (handle_keys(f, box, ctx, ds, claimed)) {
+  const bool batched = handle_keys(f, box, ctx, ds, claimed);
+  if (claimed) {
+    answer_the_read_behind(f, box, ctx);
+  }
+  if (batched) {
     // The screen is on its way back through a batch. Nothing else this
     // pass.
     return;
@@ -3266,6 +3469,107 @@ void switched_off(machine& box, seam_context& ctx) {
   ctx.set_scratch(word_spliced_bar, 0);
 }
 
+/// The menu-bar routine has cut its own copy of the bar it was handed into
+/// groups (`menu_groups_parsed`, #609): on the move mode's bar, put
+/// `Notes` after its last word and its group in the routine's table, and
+/// leave the routine's count of groups as the program made it.
+///
+/// **Whose bar it is** is the routine's far return, two words above its
+/// `BP`: the loop's move-mode call (`move_bar_return`) in the segment the
+/// manager's word says the loop is at. Anybody else's bar is left alone,
+/// quietly, because this point is reached for every bar there is.
+///
+/// **Into the routine's copy, not the loop's string**: the loop's is a
+/// stack temporary of exactly its own length, and the routine's has room
+/// for forty. The copy is the routine's own and goes when it returns, so
+/// nothing of the program's is held, and a seam switched off while it is
+/// up leaves the running call its word and the next one none.
+///
+/// **The count is not changed.** The routine reads it to decide whether
+/// `Left` and `Right` move the lit word (more than one group) or go back
+/// to the loop, which turns the party; one group keeps the move mode's
+/// arrows the program's. `N` is matched by the routine's scan of every
+/// character, which then looks the group up by its first character in
+/// the table, so the group is found without being counted. The highlight
+/// is noted for the return to put back.
+template <const journal_facts& F>
+void at_menu_groups_parsed(machine& box, seam_context& ctx) {
+  const journal_facts& f = F;
+  cpu::processor& cpu = box.processor();
+  const std::uint16_t ds = data_segment(f, cpu, ctx);
+  if (ds == 0) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  const cpu::registers& regs = cpu.regs();
+  const std::uint16_t ss = regs[cpu::sreg::ss];
+  const std::uint16_t bp = regs[cpu::reg16::bp];
+  const std::uint16_t adventure = adventure_segment(f, cpu, ctx);
+  if (adventure == 0 || cpu.read_word(ss, at(bp, 4)) != adventure ||
+      cpu.read_word(ss, at(bp, 2)) != f.profile.move_bar_return) {
+    return;
+  }
+  journal_state& state = box.journal();
+  state.set_bar_live(true);
+  const auto bar = static_cast<std::uint16_t>(bp - f.profile.menu_local_bar);
+  const auto table = static_cast<std::uint16_t>(bp - f.menu_group_table);
+  const std::uint8_t length = cpu.read_byte(ss, bar);
+  const std::uint8_t groups = cpu.read_byte(ss, at(table, 1));
+  if (find_notes(cpu, ss, bar, length) != 0) {
+    return;  // offered again: already there
+  }
+  if (length == 0 || length + notes_item_length > f.profile.menu_bar_capacity ||
+      groups == 0 || groups >= menu_most_groups) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  state.note_bar_highlight(cpu.read_byte(ds, f.profile.data_bar_highlight));
+  for (unsigned nth = 0; nth < notes_item_length; ++nth) {
+    cpu.write_byte(ss, at(bar, static_cast<std::uint16_t>(length + 1U + nth)),
+                   notes_item[nth]);
+  }
+  cpu.write_byte(ss, bar,
+                 static_cast<std::uint8_t>(length + notes_item_length));
+  const auto group = static_cast<std::uint16_t>(2U * (groups + 1U));
+  cpu.write_byte(ss, at(table, group), static_cast<std::uint8_t>(length + 2U));
+  cpu.write_byte(ss, at(table, static_cast<std::uint16_t>(group + 1U)),
+                 static_cast<std::uint8_t>(length + notes_item_length));
+  ctx.set_scratch(word_move_spliced, 1);
+}
+
+/// The move mode's bar has come back (#609): if the routine answered this
+/// seam's `N`, put the highlight back where the routine found it and open
+/// the log. Any other answer is the loop's.
+template <const journal_facts& F>
+void at_move_bar_after(machine& box, seam_context& ctx) {
+  const journal_facts& f = F;
+  journal_state& state = box.journal();
+  state.set_bar_live(false);
+  const bool was_spliced = ctx.scratch(word_move_spliced) != 0;
+  ctx.set_scratch(word_move_spliced, 0);
+  cpu::processor& cpu = box.processor();
+  const std::uint16_t ds = data_segment(f, cpu, ctx);
+  if (ds == 0 || !was_spliced) {
+    return;
+  }
+  const cpu::registers& regs = cpu.regs();
+  const std::uint8_t out_flag = cpu.read_byte(
+      regs[cpu::sreg::ss],
+      static_cast<std::uint16_t>(regs[cpu::reg16::bp] - f.frame_out_flag));
+  if (out_flag != 0 || regs.get(cpu::reg8::al) != notes_key_ascii) {
+    return;
+  }
+  if (state.bar_highlight_known()) {
+    cpu.write_byte(ds, f.profile.data_bar_highlight, state.bar_highlight());
+  }
+  state.forget_bar_highlight();
+  if (state.reader() != journal_reader_mode::closed) {
+    return;
+  }
+  state.set_page_from_list(false);
+  state.set_reader(journal_reader_mode::listing);
+}
+
 template <const journal_facts& F>
 void at_area_bar_before(machine& box, seam_context& ctx) {
   bar_before(F, box, ctx, F.profile.data_area_bar);
@@ -3352,13 +3656,40 @@ constexpr std::array<seam_point, 8> curse_journal_points{
       .offset = curse_of_the_azure_bonds.view_bar_return,
       .run = &at_view_bar_after<curse_journal>}}};
 
-/// On Secret of the Silver Blades, the message box alone: the citation
-/// watch, with no way into the reader (`secret_journal`), so no key, bar,
-/// clear or roster point either.
-constexpr std::array<seam_point, 1> secret_journal_points{
+/// On Secret of the Silver Blades, Curse's first six with the roster's
+/// one-row redraw beside its drawer, and two of this program's own for the
+/// move mode's `Notes`: the menu-bar routine once it has cut its copy of
+/// the bar into groups, and the loop's move-mode call's return. There is
+/// no point at the party's bar's call: `N` there is taken at the key
+/// points, by the program's frames (`secret_journal`).
+constexpr std::array<seam_point, 9> secret_journal_points{
     {{.module = resident_image,
+      .offset = secret_of_the_silver_blades.key_pending_entry,
+      .run = &at_key_pending<secret_journal>},
+     {.module = resident_image,
+      .offset = secret_of_the_silver_blades.key_read_entry,
+      .run = &at_key_read<secret_journal>},
+     {.module = resident_image,
       .offset = secret_journal.message_box_entry,
-      .run = &at_message_box<secret_journal>}}};
+      .run = &at_message_box<secret_journal>},
+     {.module = resident_image,
+      .offset = secret_of_the_silver_blades.clear_region_entry,
+      .run = &at_clear_region},
+     {.module = resident_image,
+      .offset = secret_of_the_silver_blades.clear_screen_entry,
+      .run = &at_clear_screen},
+     {.module = secret_of_the_silver_blades.summary_overlay,
+      .offset = secret_roster_drawn_return,
+      .run = &at_roster_drawn},
+     {.module = secret_of_the_silver_blades.summary_overlay,
+      .offset = secret_roster_row_return,
+      .run = &at_roster_drawn},
+     {.module = secret_of_the_silver_blades.menu_overlay,
+      .offset = secret_journal.menu_groups_parsed,
+      .run = &at_menu_groups_parsed<secret_journal>},
+     {.module = secret_of_the_silver_blades.adventure_overlay,
+      .offset = secret_of_the_silver_blades.move_bar_return,
+      .run = &at_move_bar_after<secret_journal>}}};
 
 /// The points on every program but the baseline, whose points are the
 /// definition's own (seam.h, schema 9).

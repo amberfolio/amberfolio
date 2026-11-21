@@ -156,7 +156,8 @@ TEST(KeyCardView, SecretOfTheSilverBladesIsShownItsOwnCardAndNote) {
   ASSERT_TRUE(machine::parse_digest(programs[2].fingerprint, digest));
   engine.loaded(digest, machine::image_load_segment);
   const std::vector<host::key_page> secret = card_pages(engine);
-  // No wilderness, no journey, no Notes, no member picker of its own yet.
+  // No wilderness, no journey, no member picker of its own yet; and no
+  // Notes with no seam on, its rows being the journal's.
   EXPECT_TRUE(has_page(secret, "explore"));
   EXPECT_FALSE(has_page(secret, "wilderness"));
   EXPECT_FALSE(has_page(secret, "journey"));

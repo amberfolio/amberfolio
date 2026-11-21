@@ -204,6 +204,10 @@ struct program_profile {
   std::uint16_t area_bar_return;
   std::uint16_t view_bar_call;
   std::uint16_t view_bar_return;
+  /// On a program whose loop has a move mode of its own, with a bar of its
+  /// own (`MOVE` on the party's bar): the instruction after the loop's call
+  /// into the menu-bar routine with that bar. Zero on a program with none.
+  std::uint16_t move_bar_return;
 
   // --- The data segment ------------------------------------------------------
 
@@ -464,6 +468,7 @@ inline constexpr program_profile pool_of_radiance{
     .area_bar_return = 0x09D5,
     .view_bar_call = 0x0C40,
     .view_bar_return = 0x0C45,
+    .move_bar_return = {},
 
     .data_game_mode = 0x49F3,
     .mode_camp = 2,
@@ -710,6 +715,7 @@ inline constexpr program_profile curse_of_the_azure_bonds{
     .area_bar_return = {},
     .view_bar_call = 0x0927,
     .view_bar_return = 0x092C,
+    .move_bar_return = {},
     .data_game_mode = 0x4FD3,
     .mode_camp = 2,
     .mode_travel = 3,
@@ -864,11 +870,21 @@ inline constexpr seam_module menu{
 /// **No bar in the data segment.** The adventuring loop copies its bar out
 /// of its own code onto the stack, as every other caller does, so
 /// `data_view_bar` is zero and the party's bar is told by the loop's call
-/// alone: `view_bar_call` and its return (`seam_automap.cpp`).
+/// alone: `view_bar_call` and its return (`seam_automap.cpp`). Its move
+/// mode has a bar of its own, `EXIT`, and a call of its own
+/// (`move_bar_return`).
 ///
 /// **The roster drawer is overlaid** (`summary_overlay`), as on Curse of
 /// the Azure Bonds: it is called through its stub entry at the stub's own
 /// paragraph, and its return is in the module (docs/seams.md §8.4, #526).
+/// **So is the screen composer**, in the same module (`+0x3031`), called
+/// through its stub entry `0151:00E3`.
+///
+/// **The menu-bar routine** (`menu_overlay`, `+0x03C9`) copies the bar it
+/// is handed into its own frame, forty characters at most, below `BP` as
+/// on the first two programs; the highlight it keeps is `data_bar_highlight`,
+/// and it draws a lit word as black on a white block (`selection_colour`).
+/// The string drawer takes a background colour, as Curse's does.
 inline constexpr program_profile secret_of_the_silver_blades{
     .name = "Secret of the Silver Blades",
     .fingerprint =
@@ -876,13 +892,13 @@ inline constexpr program_profile secret_of_the_silver_blades{
     .dgroup_paragraphs = 0xDE2,
     .screen_paragraph = 0x0151,
     .roster_draw_offset = 0x002A,
-    .screen_composer_offset = {},
+    .screen_composer_offset = 0x00E3,
     .key_pending_entry = 0xBA8A,
     .key_read_entry = 0xBA9C,
     .clear_region_entry = 0x1EE9,
     .clear_screen_entry = 0x5EE4,
     .draw_frame_entry = {},
-    .draw_string_entry = {},
+    .draw_string_entry = 0x575D,
     .command_bar_entry = 0x16DF,
     .roster_drawn_return = {},
     .titles_overlay = {},
@@ -904,14 +920,15 @@ inline constexpr program_profile secret_of_the_silver_blades{
     .appraise_load_segment_at = {},
     .death_load_segment_at = 0x18C0,  // overlay 34
     .menu_key_read_call = 0x05A0,
-    .menu_local_bar = {},
-    .menu_bar_capacity = {},
+    .menu_local_bar = 0x53,
+    .menu_bar_capacity = 40,
     .pick_list_bar_return = {},
-    .selection_colour = {},
+    .selection_colour = 0x0F,
     .area_bar_call = {},
     .area_bar_return = {},
     .view_bar_call = 0x0928,
     .view_bar_return = 0x092D,
+    .move_bar_return = 0x0AD1,
     .data_game_mode = 0x67E7,
     .mode_camp = 2,
     .mode_travel = {},
@@ -938,7 +955,7 @@ inline constexpr program_profile secret_of_the_silver_blades{
     .data_view_bar = {},
     .data_current_member = 0x7D38,
     .data_roster_head = 0x7D3C,
-    .data_bar_highlight = {},
+    .data_bar_highlight = 0x8A61,
     .data_key_pushback = 0xA6E9,
     .data_font_pointer = 0x7DC8,
     .data_view_column_bias = {},

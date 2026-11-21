@@ -582,10 +582,9 @@ constexpr std::uint16_t secret_roster_row_return = 0x0B17;
 constexpr std::uint16_t secret_text_clear_entry = 0x600E;
 
 /// The program's own move mode (`MOVE` on the party's bar): the byte that
-/// says it is on, and the adventure loop's call into the menu-bar routine
-/// with its one-word bar, by the instruction after it.
+/// says it is on. The adventure loop's call into the menu-bar routine with
+/// its one-word bar is the profile's `move_bar_return`.
 constexpr std::uint16_t secret_data_move_mode = 0xA4D4;
-constexpr std::uint16_t secret_move_bar_return = 0x0AD1;
 
 /// The party's bar keeps Left and Right for itself, which move its lit
 /// word; every other extended key, Up and Down among them, steps the
@@ -614,7 +613,7 @@ void note_secret_bar(machine& box, const seam_context& ctx, std::uint16_t ds) {
       static_cast<std::uint16_t>(p.adventure_overlay.load_segment_at));
   box.automap().set_at_command_bar(
       adventure != 0 && return_cs == adventure &&
-      (return_ip == p.view_bar_return || return_ip == secret_move_bar_return));
+      (return_ip == p.view_bar_return || return_ip == p.move_bar_return));
 }
 
 /// Secret of the Silver Blades (#609). The renderer's tables are Curse's,
@@ -642,7 +641,7 @@ constexpr automap_facts secret_automap{
     .bar_kept_scans = secret_bar_kept_scans,
     .roster_chars = secret_roster_chars,
     .data_move_mode = secret_data_move_mode,
-    .move_bar_return = secret_move_bar_return,
+    .move_bar_return = secret_of_the_silver_blades.move_bar_return,
     .geometry_says_a_grid_is_up = true,
     .area_shown_column = 0x3FA,
     .polls_before_its_read = true,

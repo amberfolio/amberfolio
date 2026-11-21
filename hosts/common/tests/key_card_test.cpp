@@ -194,14 +194,14 @@ TEST(KeyCard, SecretOfTheSilverBladesIsShownOnlyItsOwnScreens) {
   // the only context it shares.
   const std::vector<key_page> secret =
       key_card_for(card_shell::desktop, "blades", everything);
-  for (const std::string_view id :
-       {"explore", "bars", "menu", "lists", "combat", "text", "desktop"}) {
+  for (const std::string_view id : {"explore", "bars", "menu", "lists",
+                                    "combat", "text", "journal", "desktop"}) {
     EXPECT_TRUE(has_context(secret, id)) << id;
   }
-  // No wilderness and no journey; no Notes on its party's bar; no member
-  // picker and no Modify driven yet.
+  // No wilderness and no journey; no member picker and no Modify driven
+  // yet.
   for (const std::string_view id :
-       {"wilderness", "journey", "journal", "picker", "scores", "fields"}) {
+       {"wilderness", "journey", "picker", "scores", "fields"}) {
     EXPECT_FALSE(has_context(secret, id)) << id;
   }
   for (const key_page& page : secret) {
@@ -214,9 +214,9 @@ TEST(KeyCard, SecretOfTheSilverBladesIsShownOnlyItsOwnScreens) {
 TEST(KeyCard, SecretOfTheSilverBladesShowsNoRowOfAPieceItHasNot) {
   // With every seam on: modern-controls is on this program with one piece
   // that takes a key, the number row at the party menu's picker, and
-  // otherwise for a host's reads; the journal only for its citation watch,
-  // with no key to show; the Encamp Fix is not on it at all. The message
-  // pause is, and a key ends it; the automap is, on Tab (#609).
+  // otherwise for a host's reads; the Encamp Fix is not on it at all. The
+  // message pause is, and a key ends it; the automap is, on Tab; the
+  // journal is, on N at the party's bar and Notes walking (#609).
   std::set<std::string_view> named;
   std::set<std::string_view> where_controls;
   for (const key_page& page :
@@ -230,8 +230,9 @@ TEST(KeyCard, SecretOfTheSilverBladesShowsNoRowOfAPieceItHasNot) {
       }
     }
   }
-  EXPECT_EQ(named, (std::set<std::string_view>{"automap", "message-pause",
-                                               "modern-controls"}));
+  EXPECT_EQ(named,
+            (std::set<std::string_view>{"automap", "journal", "message-pause",
+                                        "modern-controls"}));
   EXPECT_EQ(where_controls, std::set<std::string_view>{"menu"});
 }
 

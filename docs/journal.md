@@ -892,8 +892,9 @@ of 99 and 121 of 121, each item against its digest. In the game, with
 headless, the page's own journal input, #610): `72 of 72 entries read
 from the document itself, no OCR engine needed, 19 of 19 pictures`,
 nothing fetched from the engine's directory, and the same store
-fingerprint. Not done: an entry opened in the game: on this program the
-seam is its citation watch alone, with no `Notes` and no reader.
+fingerprint. In the game, over that store, `N` at the party's bar opens
+the log and entry 37, its two pages of text and then its picture
+(`docs/seams.md` §10).
 
 **By hand, Curse's GOG edition** (#585), through the desktop host and
 on the built page in a browser (Chromium, headless, the page's own
@@ -945,8 +946,8 @@ notch (§11.1). On the built page in a browser (Chromium, headless, the
 page's own journal input, #610), tesseract.js 6.0.1 read it in 46
 seconds: `72 of 72 entries read by tesseract.js 6.0.1, 19 of 19
 pictures`, store `sha256=755712877c546dfea91da412292cb2763f18a5134c326ac70426b6e278ecbefb`.
-Not done: the page's reading scored by the harness, and an entry opened
-in the game, since the reader is not on this program.
+Not done: the page's reading scored by the harness, and an entry of
+this edition's store opened in the game.
 
 **By hand, the Steam edition** (§3a): every item through the desktop host
 and through the module under node with the page's own `journal.mjs`, one
@@ -1003,7 +1004,9 @@ The reader is a seam (`docs/seams.md` §10). This section is the join.
   pictures until somebody opens the entry.
 - **One page size and one way in** (M5-E4d #305, #346): the frame
   drawer's full screen, twenty rows of thirty-eight characters, opened
-  off the `Notes` command and off nothing else.
+  off the `Notes` command and off nothing else; on Secret of the Silver
+  Blades, whose party's bar has no room for the word, off `N` at that
+  bar and `Notes` on the move mode's (`docs/seams.md` §10).
   `journal_state::bar_live()`, set and cleared at the `Notes` splice's
   own points, says whether the party's own command-bar routine is
   running, which is the one precondition under which the program's screen
@@ -1044,7 +1047,8 @@ The reader is a seam (`docs/seams.md` §10). This section is the join.
   in one call for the row in the message green and one more for each
   word's initial over its own cell in the bright - up to four, fewer on
   any bar that has dropped a word. There is no other key: since #346 this
-  seam claims nothing at all while the reader is down.
+  seam claims nothing at all while the reader is down, but `N` at Secret
+  of the Silver Blades' party's bar.
 - **The bar answers the bar keys** (#471). The reader's bars are its own,
   so the seam's point at the program's menu-bar routine cannot reach them;
   with `modern-controls` on the reader takes the keys itself. Left and Right step the

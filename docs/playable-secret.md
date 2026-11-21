@@ -27,8 +27,8 @@ No `--install`: the Steam copy is recognized and laid out at `\SECRET`
 on this program are the three debug cheats, the two text faces, the
 message pause, the automap, `modern-controls`, which here is its hero
 keys at the party menu's `PICK CHARACTER` (leg 13) and its two pieces
-that observe, for the host reads below, and the journal, which here is
-only its citation watch (`docs/seams.md` §10). Sixty
+that observe, for the host reads below, and the journal, opened by `N`
+at the party's bar (`docs/seams.md` §10). Sixty
 frames to the virtual second; `TICKS = FRAME * 19,886` at `--speed 386`
 is close enough for `--until`.
 
@@ -78,6 +78,7 @@ rows below, as a player reads it.
 | the adventuring bar | `1`, `3`, `5`, `7`, `9` | the first member becomes the current one |
 | the adventuring bar | `,`, `.`, `Escape` | nothing |
 | the adventuring bar | `M` | the move mode, as `Return` on `MOVE` |
+| the adventuring bar, the move mode | `N` | nothing: it is none of either bar's commands (with `journal` on it opens Notes, below) |
 | the move mode | `Down`; `8` and `4`, the number row's or the keypad's | turns round; as `Up` and `Left` |
 | the move mode | `Return`, `E`; `Escape`, `Home`, `End` | the bar again, `MOVE` lit; nothing |
 | camp | `Escape` | at a member's sheet, back to the camp's bar; at that bar, out of camp |
@@ -529,16 +530,23 @@ line, or presses a key to end the pause and another for the command.
 
 ## The journal on this program
 
-The seam is its citation watch alone: what the game cites goes on the
-log, and with `--save-sidecars` the log goes beside the slot's save.
-There is no `Notes` on the party's bar, so the reader does not open
-(`docs/seams.md` §10 has why).
+What the game cites goes on the log, and with `--save-sidecars` the log
+goes beside the slot's save. The party's bar has no room for `Notes`, so
+**`N` at the party's bar** opens the log, with no word on the bar, and
+the move mode's bar reads `EXIT NOTES`, where `N` opens it too
+(`docs/seams.md` §10). `--journal-store` names the store; the sessions
+use `tests/visual/secret-reader-store.txt`, entry 37 in this project's
+own words with a synthetic picture.
 
 | run | what it shows |
 |---|---|
 | leg 2 with `--seam journal` | the seventh page of the opening, at frame 5,122, puts entry 37 on the log, unread; one `journal-seen` callout, the message box reached 39 times, and the run is leg 2's |
 | leg 1, then `E@8200 S@8500 C@8800 N@9100`, with `--seam journal --save-sidecars` | the camp's save into slot C writes `AFSEENC.DAT`, one row: entry 37, unread |
 | leg 0, then `Down@1500 Down@1560 Return@1620 C@2100`, over that disk, with the same two flags | loading C reads `AFSEENC.DAT` back (`reads=1`); four `Down`, `Return` and `D` save the party to D from the party menu, and `AFSEEND.DAT` holds the same row |
+| leg 1, then `N@8100 Return@8400 N@8700 N@9000 E@9300 E@9600`, with `--seam journal` and a store | the log at 8,150 with entry 37 unread; the entry's first page at 8,450 (`NEXT EXIT 1/3`), its second, then its picture (`PREV EXIT 3/3`); the log again, and at 9,650 the adventuring screen pixel for pixel the one at 8,050 |
+| the same run, then `M@9900 N@10200 E@10500 E@10800` | the move mode's bar `EXIT NOTES`; the log from it at 10,250; `E` gives the move mode's screen back pixel for pixel, and `E` ends the move mode |
+| leg 1, then `M@8100 Left@8400 Right@8700 Right@9000 Up@9300`, with and without the seam | the same facing and square at every key: `Left` and `Right` turn with `NOTES` on the bar |
+| leg 1 with the store ingested from Steam's PDF (`--journal`) and the first row's keys | entry 37's two pages of the journal's own text and its picture |
 
 ## The copy protection
 
@@ -558,7 +566,7 @@ where that mechanism is (`docs/seams.md` §10).
 
 ## The sessions
 
-Twenty-nine, `secret-*`, at `--speed 386` and `--wall none`: `secret-load`
+Thirty-two, `secret-*`, at `--speed 386` and `--wall none`: `secret-load`
 on the disk `secret-save` leaves (the `secret-saved` snapshot), and the
 rest on the Steam copy with its shipped slots (`secret-slots`).
 
@@ -588,7 +596,10 @@ rest on the Steam copy with its shipped slots (`secret-slots`).
 | `secret-pick` | | | leg 13 |
 | `secret-pick-heroes` | modern-controls | `contrast secret-pick` | 23 of 68 identical, divergent from tick 43,291,822, the roster numbered; the digits choose |
 | `secret-boot-journal` | journal | `identical secret-boot` | the watch never reached: all 15 checkpoints |
-| `secret-camp-journal` | journal | `identical secret-camp` | entry 37 cited by the opening and logged; the watch writes nothing the machine holds: all 106 checkpoints |
+| `secret-camp-journal` | journal | `identical secret-camp` | entry 37 cited by the opening and logged, `N` never pressed and no move mode; the watch writes nothing the machine holds: all 106 checkpoints |
+| `secret-town-journal` | journal | `contrast secret-town` | `NOTES` on the move mode's bar, never chosen, and the walk step for step: 90 of 138 identical, divergent from tick 163,085,086, `MOVE`'s frame |
+| `secret-notes-keys` | | | leg 1, then the next session's keys with no seam |
+| `secret-notes` | journal, a store | `contrast secret-notes-keys` | `N` at the party's bar and `NOTES` walking, entry 37 read to its picture each time: 89 of 132 identical, divergent from tick 161,096,486 |
 | `secret-town` | | | leg 3, to the ruins at frame 11,600 |
 | `secret-camp-automap` | automap | `identical secret-camp` | `Tab` never pressed: all 106 checkpoints |
 | `secret-town-map` | automap | `contrast secret-town` | `Tab` on `MOVE`'s frame, 8,200: 90 of 138 identical, divergent from tick 163,085,086 |

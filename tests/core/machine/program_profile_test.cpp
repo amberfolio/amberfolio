@@ -104,10 +104,27 @@ TEST(ProgramProfile, SecretsIsThePartItsSeamsAndItsReadsUse) {
   EXPECT_NE(secret.screen_paragraph, 0U);
   EXPECT_NE(secret.roster_draw_offset, 0U);
   EXPECT_EQ(secret.data_view_bar, 0U);
+  // The journal reader's (seam_journal.cpp, #609): the move mode's bar call,
+  // the menu-bar routine's module and its own copy of the bar, the bar's
+  // highlight, the string drawer, the composer's stub entry and the colour
+  // a selection is drawn in.
+  EXPECT_NE(secret.move_bar_return, 0U);
+  EXPECT_NE(secret.move_bar_return, secret.view_bar_return);
+  EXPECT_TRUE(secret.menu_overlay.has_load_segment());
+  EXPECT_NE(secret.menu_local_bar, 0U);
+  EXPECT_EQ(secret.menu_bar_capacity, 40U);
+  EXPECT_NE(secret.data_bar_highlight, 0U);
+  EXPECT_NE(secret.draw_string_entry, 0U);
+  EXPECT_NE(secret.screen_composer_offset, 0U);
+  EXPECT_NE(secret.selection_colour, 0U);
   // And nothing pretending to be a fact: what no seam or read available
   // on this program uses is zero until somebody measures it.
-  EXPECT_EQ(secret.data_bar_highlight, 0U);
+  EXPECT_EQ(secret.draw_frame_entry, 0U);
+  EXPECT_FALSE(secret.camp_overlay.has_load_segment());
   EXPECT_FALSE(secret.roster_overlay.has_load_segment());
+  // The move mode's bar is this program's alone.
+  EXPECT_EQ(pool_of_radiance.move_bar_return, 0U);
+  EXPECT_EQ(curse_of_the_azure_bonds.move_bar_return, 0U);
 }
 
 TEST(ProgramProfile, TheBaselineAndCurseHaveOne) {
