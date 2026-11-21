@@ -235,9 +235,10 @@ log stays filled until the store's `seen` lines are removed.
 log is what the story has told you to read, and the reader shows the log;
 to read the rest of a journal, `--cite-all-journal`.
 
-**In Secret of the Silver Blades** the game's citations go on the log,
-and the log goes beside your saves, but there is no `Notes` and so no
-reader: the party's bar there leaves no room for the word
+**In Secret of the Silver Blades** the party's bar has no room for the
+word, so `N` at that bar opens the log, with nothing added to the bar;
+walking, the bar reads `EXIT NOTES`, and `N` opens it there too. The rest
+is the same: the log, the pages, the pictures and the screen given back
 (`docs/seams.md` §10).
 
 ## Modern controls

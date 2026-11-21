@@ -215,7 +215,7 @@ the sweep and on the wasm module (`drive.mjs --install '\CURSE'
 
 ### Secret of the Silver Blades
 
-Twenty-five sessions, `secret-*`, on the Steam copy at `--speed 386` and
+Twenty-eight sessions, `secret-*`, on the Steam copy at `--speed 386` and
 `--wall none` (#608, #609), each `disk external` and pinned to the copy with
 its shipped slots A and B (`secret-slots`). `docs/playable-secret.md`
 has the legs and the table: the boot, a camp, a wandering fight, a new
@@ -237,13 +237,16 @@ pieces on this program only observe, so all three are `identical`:
 `secret-fight-controls` `identical secret-fight` (neither piece
 reached), `secret-aim-controls` `identical secret-aim` (the aim watched
 at every key) and `secret-name-controls` `identical secret-name` (the
-line editor watched from entry to return); and the journal's, whose
-citation watch is all of it on this program and writes nothing the
-machine holds, so both are `identical`: `secret-boot-journal`
-`identical secret-boot` (the watch never reached) and
+line editor watched from entry to return); and the journal's:
+`secret-boot-journal` `identical secret-boot` (the watch never reached),
 `secret-camp-journal` `identical secret-camp` (entry 37 cited by the
-opening and logged). Each verifies on the desktop host through the
-sweep.
+opening and logged, `N` never pressed and no move mode, so nothing the
+machine holds is written), `secret-town-journal` `contrast secret-town`
+(`NOTES` on the move mode's bar, never chosen) and `secret-notes`
+`contrast secret-notes-keys` (`N` at the party's bar and `NOTES` walking,
+entry 37 read to its picture each time, over
+`tests/visual/secret-reader-store.txt`). Each verifies on the desktop
+host through the sweep.
 
 ## The matrix, by seam
 
@@ -254,7 +257,7 @@ sweep.
 | `roster-fix` (built in, always on) | `roster-add` | none can exist: there is no off. Every other session verifies with it on, `party` reaching it twice |
 | `timer-fix` (built in, always on) | `walk-quick`, at every sound after a skipped wait | none can exist: there is no off. Every session without quick steps verifies with it on: the driver's vector is the BIOS's at every install |
 | `automap` | `walk-map`; on Curse `curse-town-map`, `curse-temple-map`, `curse-map-reader`; on Secret `secret-town-map` | `quiet-automap`; on Curse `curse-quiet-automap` and `curse-quiet-all`; on Secret `secret-camp-automap` |
-| `journal` | `reader`, `notes`, `cite`; on Curse `curse-notes`, `curse-cite`, `curse-map-reader`; on Secret `secret-camp-journal` (an `identical`: on that program the seam is its citation watch alone, which writes nothing the machine holds) | `quiet-journal` (a `contrast`); on Curse `curse-quiet-journal` (a `contrast`) and `curse-journey-journal` (an `identical`: the party's bar is never drawn); on Secret `secret-boot-journal` (an `identical`) |
+| `journal` | `reader`, `notes`, `cite`; on Curse `curse-notes`, `curse-cite`, `curse-map-reader`; on Secret `secret-notes`, and `secret-camp-journal` (an `identical`: a citation logged writes nothing the machine holds) | `quiet-journal` (a `contrast`); on Curse `curse-quiet-journal` (a `contrast`) and `curse-journey-journal` (an `identical`: the party's bar is never drawn); on Secret `secret-boot-journal` (an `identical`) and `secret-town-journal` (a `contrast`: `NOTES` on the move mode's bar) |
 | `explored` | `wild-trail` | `quiet-explored` |
 | the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party`; on Curse `curse-fight-cheat`, `curse-fight-kill`, `curse-camp-wound`; on Secret `secret-fight-cheat`, `secret-fight-kill`, `secret-camp-wound` | `quiet-cheats`; on Curse `curse-quiet-cheats` and `curse-quiet-all`; on Secret `secret-camp-cheats` |
 | `modern-controls` | `list-down-arrows`, `camp-down-arrows`, `camp-pad-arrows`, `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys`, `bar-esc-keys`, `bar-script-keys`, `bar-portrait-keys`, `menu-down-cursor`, `move-walk-mode`, `door-pick-3`, `list-keys-yellow`, `name-arrows-edit` (each a `contrast`; `door-pick-3` has the seam on at both ends and differs by its keys); on Curse `curse-camp-arrows`, `curse-name-arrows`, `curse-menu-cursor`, `curse-modify-arrows`, `curse-move-walk-mode`, `curse-door-arrows`, `curse-script-esc`; on Secret, where the seam is only its two observing pieces, `secret-aim-controls` and `secret-name-controls`, each an `identical` | on Secret `secret-fight-controls`. Elsewhere none can exist: three of its pieces draw on sight, so `quiet-modern-controls`, `menu-letters-cursor` and `quiet-all-on-sight` are `contrast`s too (the pair is a `contrast`, as the faces' is). On Curse the same three draw on sight, the menu cursor, the hero keys and the selection block, so `curse-quiet-controls` is a `contrast curse-quiet` and `curse-quiet-all-on-sight` a `contrast curse-quiet-all` |
