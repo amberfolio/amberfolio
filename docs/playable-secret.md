@@ -422,6 +422,36 @@ gem fetched down to 10. `secret-heal` is this leg, with that seam.
 and then the menu is back with no message and the member unchanged:
 tried with the shipped party and with a new character carrying 300
 platinum. What it wants is not known.
+## Leg 12: a save, and its load
+
+```
+... leg 1 ...
+--press E@8200                                        # ENCAMP
+--press S@8500 --press C@8800                         # SAVE, into slot C
+--press N@9100                                        # do not quit to DOS
+--press E@9400
+```
+
+The save writes `SAVGAMC.DAT` and a `CHRDATC<N>.SAV` for each of the
+six, with an `.SFX` beside three of them, ten files. `secret-save` is
+this leg, and the disk it leaves is the `secret-saved` snapshot.
+
+```
+... leg 0, on that disk ...
+--press Down@1500 --press Down@1560 --press Return@1620 --press C@2100
+--press Down@2700 ... five, 60 frames apart ... --press Return@3100
+--press V@3700 --press E@4000
+```
+
+`LOAD WHICH GAME` offers `A B C`, and `BEGIN ADVENTURING` puts the party
+at the adventuring bar where it was saved, in the mayor's house, with no
+opening to turn through. `secret-load` is this leg, pinned to that disk.
+
+**There is no overland.** Where the first two games have a wilderness
+or a journey between places, this one has the town's gates and, the
+mayor says, a teleporter in his house; neither has shown a travel mode
+(game mode 3) in anything driven.
+
 ## The host reads on this program
 
 | run | what it shows |
@@ -505,8 +535,9 @@ where that mechanism is (`docs/seams.md` §10).
 
 ## The sessions
 
-Twenty-five, `secret-*`, each on the Steam copy with its shipped slots
-(the `secret-slots` snapshot) at `--speed 386` and `--wall none`.
+Twenty-seven, `secret-*`, at `--speed 386` and `--wall none`: `secret-load`
+on the disk `secret-save` leaves (the `secret-saved` snapshot), and the
+rest on the Steam copy with its shipped slots (`secret-slots`).
 
 | session | seams | relation | what it is |
 |---|---|---|---|
@@ -515,6 +546,8 @@ Twenty-five, `secret-*`, each on the Steam copy with its shipped slots
 | `secret-new-party` | | | leg 5 |
 | `secret-buy` | | | leg 7 |
 | `secret-vault` | | | leg 8 |
+| `secret-save` | | | leg 12, the save |
+| `secret-load` | | | leg 12, the load |
 | `secret-heal` | cheat-wound-party, pulled | | leg 11 |
 | `secret-camp-cheats` | the three cheats, none pulled | `identical secret-camp` | no point acts: all 106 checkpoints |
 | `secret-camp-wound` | cheat-wound-party, pulled | `contrast secret-camp` | 93 of 106 identical, divergent from tick 169,050,886, the pull |
