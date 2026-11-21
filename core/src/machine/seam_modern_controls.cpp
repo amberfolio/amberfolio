@@ -49,9 +49,8 @@
 //     edition (edition.h), and Curse of the Azure Bonds for the eight
 //     pieces ported to it (#555): all of them, with points of their own
 //     in the definition's `programs`. On Secret of the Silver Blades it
-//     is the two pieces that observe, `text-entry` and `aim-watch`
-//     (#609): the seam is there for a host to read through, and switching
-//     it on changes no key and no pixel of that program.
+//     is `hero-keys`, at the party menu's member picker, and the two
+//     pieces that observe, `text-entry` and `aim-watch` (#609).
 //     Every piece's addresses are facts about the program they name, and a
 //     seam is unavailable against any other.
 //   * **A piece no longer asks whether another is on.** `menu-cursor` took
@@ -82,8 +81,9 @@ namespace {
 
 /// The programs this seam's facts are about (program_profile.h): the
 /// baseline edition, every piece; Curse of the Azure Bonds, the pieces
-/// ported to it (#555); and Secret of the Silver Blades, the two that
-/// observe (#609). The seam is available on these and on no other binary.
+/// ported to it (#555); and Secret of the Silver Blades, the hero keys and
+/// the two that observe (#609). The seam is available on these and on no
+/// other binary.
 constexpr auto modern_controls_binaries =
     fingerprints_of(std::array{&pool_of_radiance, &curse_of_the_azure_bonds,
                                &secret_of_the_silver_blades});
@@ -129,14 +129,16 @@ struct curse_point_table {
   }
 };
 
-/// Secret's: the two pieces that observe, in the same order.
+/// Secret's: the hero keys and the two pieces that observe, in the same
+/// order.
 struct secret_point_table {
   std::array<seam_point, secret_modern_controls_point_count> point{};
 
   secret_point_table() {
     std::size_t next = 0;
     for (const std::span<const seam_point> piece :
-         {secret_text_entry_points(), secret_aim_watch_points()}) {
+         {secret_hero_keys_points(), secret_text_entry_points(),
+          secret_aim_watch_points()}) {
       for (const seam_point& each : piece) {
         point[next++] = each;
       }

@@ -78,6 +78,14 @@ TEST(ProgramProfile, SecretsIsThePartItsSeamsAndItsReadsUse) {
   EXPECT_NE(secret.data_wall_set, 0U);
   EXPECT_NE(secret.data_in_transition, 0U);
   EXPECT_TRUE(secret.aim_overlay.has_load_segment());
+  // The hero keys' (seam_hero_keys.cpp, #609): the menu-bar routine's
+  // module and its read call, the pushback slot, the roster drawer's
+  // module and the party menu's picker's.
+  EXPECT_TRUE(secret.menu_overlay.has_load_segment());
+  EXPECT_NE(secret.menu_key_read_call, 0U);
+  EXPECT_NE(secret.data_key_pushback, 0U);
+  EXPECT_TRUE(secret.summary_overlay.has_load_segment());
+  EXPECT_TRUE(secret.view_overlay.has_load_segment());
   // No view kind, as on Curse: the adventuring mode has one view.
   EXPECT_EQ(secret.data_view_kind, 0U);
   // The automap's (seam_automap.cpp, #609): the key poll and its pushback
@@ -99,7 +107,7 @@ TEST(ProgramProfile, SecretsIsThePartItsSeamsAndItsReadsUse) {
   // And nothing pretending to be a fact: what no seam or read available
   // on this program uses is zero until somebody measures it.
   EXPECT_EQ(secret.data_bar_highlight, 0U);
-  EXPECT_FALSE(secret.menu_overlay.has_load_segment());
+  EXPECT_FALSE(secret.roster_overlay.has_load_segment());
 }
 
 TEST(ProgramProfile, TheBaselineAndCurseHaveOne) {

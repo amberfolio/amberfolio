@@ -212,20 +212,27 @@ TEST(KeyCard, SecretOfTheSilverBladesIsShownOnlyItsOwnScreens) {
 }
 
 TEST(KeyCard, SecretOfTheSilverBladesShowsNoRowOfAPieceItHasNot) {
-  // With every seam on: modern-controls is on this program only for a
-  // host's reads, and the journal only for its citation watch, so neither
-  // has a key to show; the Encamp Fix is not on it at all. The message
+  // With every seam on: modern-controls is on this program with one piece
+  // that takes a key, the number row at the party menu's picker, and
+  // otherwise for a host's reads; the journal only for its citation watch,
+  // with no key to show; the Encamp Fix is not on it at all. The message
   // pause is, and a key ends it; the automap is, on Tab (#609).
   std::set<std::string_view> named;
+  std::set<std::string_view> where_controls;
   for (const key_page& page :
        key_card_for(card_shell::desktop, "blades", everything)) {
     for (const key_row* row : page.rows) {
       if (!row->seam.empty()) {
         named.insert(row->seam);
       }
+      if (row->seam == "modern-controls") {
+        where_controls.insert(page.context->id);
+      }
     }
   }
-  EXPECT_EQ(named, (std::set<std::string_view>{"automap", "message-pause"}));
+  EXPECT_EQ(named, (std::set<std::string_view>{"automap", "message-pause",
+                                               "modern-controls"}));
+  EXPECT_EQ(where_controls, std::set<std::string_view>{"menu"});
 }
 
 TEST(KeyCard, AProgramsNoteIsItsOwnOrTheBaselines) {

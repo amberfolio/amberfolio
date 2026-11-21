@@ -763,10 +763,9 @@ and never triggered.
 | `secret-fight-kill` | contrast | `secret-fight` (kill-all pulled as the fight begins) |
 | `secret-camp-message-pause` | identical | `secret-camp` (the opening's pages wait for a key, and no pause is reached) |
 | `secret-fight-pause` | contrast | `secret-fight` (the pause as the encounter opens, and every combat line after it, stand longer) |
-| `secret-fight-controls` | identical | `secret-fight` (`modern-controls` on Secret of the Silver Blades, its two observing pieces never reached) |
-| `secret-aim-controls`, `secret-name-controls` | identical | `secret-aim`, `secret-name` (the same, the aim watched and a name typed: on this program the seam writes nothing of the machine's) |
+| `secret-pick-heroes` | contrast | `secret-pick` (`modern-controls` on Secret of the Silver Blades: the party menu's roster numbered, and the number row choosing at its member picker) |
+| `secret-name-controls` | identical | `secret-name` (the same seam, a name typed and no party to number: the line editor watched, and nothing of the machine's written) |
 | `secret-camp-automap` | identical | `secret-camp` (the automap on Secret of the Silver Blades, Tab never pressed) |
-| `secret-town-map` | contrast | `secret-town` (Tab at the party's bar and the walk through the town with the map up) |
 | `curse-quiet-fanfare` | contrast | `curse-quiet` (Curse's piece from the end of the boot's loading to its end, the titles' own sound it plays over, and the driver's ticks it kept off the chip) |
 
 **A built-in fix has no pair** (`built_in_fixes()`, seam.h). It is on
@@ -2009,8 +2008,9 @@ animation).
 `seam_modern_controls.cpp`: arrows, Enter, Esc and the number keys at
 every list, bar and prompt, a cursor on the main menu, the walking mode
 on the party's bar and a selection block instead of a colour. Its fact
-tables, on Pool of Radiance, on Curse of the Azure Bonds and, for the two
-pieces that only observe, on Secret of the Silver Blades, are
+tables, on Pool of Radiance, on Curse of the Azure Bonds and, for the hero
+keys and the two pieces that only observe, on Secret of the Silver Blades,
+are
 [`docs/modern-controls.md`](modern-controls.md), a document of its own
 because it is as long as the rest of this section together.
 
