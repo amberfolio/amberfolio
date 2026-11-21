@@ -764,7 +764,7 @@ and never triggered.
 | `secret-camp-message-pause` | identical | `secret-camp` (the opening's pages wait for a key, and no pause is reached) |
 | `secret-fight-pause` | contrast | `secret-fight` (the pause as the encounter opens, and every combat line after it, stand longer) |
 | `secret-pick-heroes` | contrast | `secret-pick` (`modern-controls` on Secret of the Silver Blades: the party menu's roster numbered, and the number row choosing at its member picker) |
-| `secret-name-controls` | identical | `secret-name` (the same seam, a name typed and no party to number: the line editor watched, and nothing of the machine's written) |
+| `secret-modify-block` | contrast | `secret-modify` (`modern-controls` on Secret of the Silver Blades: every selection a white block from the title's lit `PLAY` on, and Modify's highlighted fields) |
 | `secret-camp-automap` | identical | `secret-camp` (the automap on Secret of the Silver Blades, Tab never pressed) |
 | `curse-quiet-fanfare` | contrast | `curse-quiet` (Curse's piece from the end of the boot's loading to its end, the titles' own sound it plays over, and the driver's ticks it kept off the chip) |
 
@@ -1955,10 +1955,10 @@ forty. So the reader has two ways in here, decided by the maintainer:
   every still from there to 10,000 is the seam-off run's. With `N`
   pressed after the stop, the running call answers it, the loop goes
   round, and the same.
-- **The lit word**, with `modern-controls` on, is white end to end: the
-  selection's colour here is the program's own highlight's, a white block
-  (`selection_colour`), and the block itself is the selection block's,
-  which is not on this program.
+- **The lit word**, with `modern-controls` on, is a white block, as the
+  log's cursor row is: the selection's colour here is the program's own
+  highlight's (`selection_colour`), and the block and its margin are the
+  selection block's (`docs/modern-controls.md`).
 
 - **Driven** on the Steam copy, slot A (`docs/playable-secret.md` leg 1),
   over the synthetic store and over the real one ingested from Steam's
@@ -2053,8 +2053,8 @@ animation).
 every list, bar and prompt, a cursor on the main menu, the walking mode
 on the party's bar and a selection block instead of a colour. Its fact
 tables, on Pool of Radiance, on Curse of the Azure Bonds and, for the hero
-keys and the two pieces that only observe, on Secret of the Silver Blades,
-are
+keys, the selection block and the two pieces that only observe, on Secret
+of the Silver Blades, are
 [`docs/modern-controls.md`](modern-controls.md), a document of its own
 because it is as long as the rest of this section together.
 

@@ -26,8 +26,9 @@ No `--install`: the Steam copy is recognized and laid out at `\SECRET`
 (`docs/hosts.md` §2c). No seam is needed to play, and the ones available
 on this program are the three debug cheats, the two text faces, the
 message pause, the automap, `modern-controls`, which here is its hero
-keys at the party menu's `PICK CHARACTER` (leg 13) and its two pieces
-that observe, for the host reads below, and the journal, opened by `N`
+keys at the party menu's `PICK CHARACTER` (leg 13), its selection block
+(below) and its two pieces that observe, for the host reads below, and
+the journal, opened by `N`
 at the party's bar (`docs/seams.md` §10). Sixty
 frames to the virtual second; `TICKS = FRAME * 19,886` at `--speed 386`
 is close enough for `--until`.
@@ -476,6 +477,45 @@ and `8` steps it back to the last, so all three sheets are Guy's. With
 row chooses: Epona's sheet, then Morgaine's, then, `8` being nobody in a
 party of six, Guy's. `secret-pick` and `secret-pick-heroes` are this leg.
 
+## Leg 14: Modify
+
+```
+... leg 0 ...
+--press Down@1500 --press Down@1560 --press Return@1620 --press A@2100
+--press Return@2400 --press Return@2600               # MODIFY CHARACTER, Guy
+--press Down@2900 ... eight, 200 frames apart         # each field in turn
+```
+
+The party menu comes back from slot A with `MODIFY CHARACTER` lit, and
+`PICK CHARACTER` with the first member selected, so two `Return` open
+Modify on Guy, `MODIFY: ADD SUBTRACT KEEP EXIT`, strength highlighted.
+`Down` steps the highlighted field, the program's own: strength,
+intelligence, wisdom, dexterity, constitution, charisma, the name (its
+cursor's letter white on black over it), the hit points' value, and round
+to strength. The highlighted field is light magenta. `secret-modify` and
+`secret-modify-block` are this leg.
+
+## The selection block on this program
+
+`--seam modern-controls` draws every selection as a white block with a
+margin (`docs/modern-controls.md`, the Secret of the Silver Blades
+section). Each run is the leg with the seam off and on, stills read side
+by side:
+
+| run | what it shows |
+|---|---|
+| leg 2 | the title's `PLAY`, the party menu's row, the roster's current member and the bars' lit words (treasure, party's bar, camp, a sheet's `CURE`) a block with a margin; the party menu's lone `SELECT` white letters; the script's notices one block from `P`, the treasure's notice the program's block with no margin |
+| leg 13 | `PICK CHARACTER`'s `SELECT` a block; the current member's block moving to Epona at `3` |
+| leg 10 | the creation lists' rows and `SELECT`, `REROLL STATS? YES NO`'s `YES`, the figure editor's `1ST-COLOR` a block, whole, where the program's own block ends in half a letter |
+| leg 12 | `SAVE WHICH GAME`'s `A` and `QUIT TO DOS`'s `NO` |
+| leg 1, then `E@8200 Down@8350 M@8500 M@8800 Down@9100 Down@9250` | the second member's block, the Magic bar's `CAST`, a spell list's row and `MEMORIZE` |
+| leg 7, leg 11 | the armoury's goods and `BUY`, a member's items and `READY`, the temple's cures and `HEAL` |
+| leg 9 (the `secret-aim` recording) | the fight's `MOVE`, the aim bar's `NEXT`, the manual aim's lone `TARGET`; the aim's box as the program draws it |
+| leg 14 | each of Modify's fields a white block in turn, the name with its cursor's letter the gap in it, the hit points' value without the maximum |
+| leg 1 with `--seam automap`, `Tab@8100 Down@8400 Tab@8700 Down@9000` | with the panel up the only pixels that differ from the seam-off run are the bar's margin; the roster comes back with its block |
+| leg 1 with `--seam journal` and the store, `N@8100 Right@8400` | the log's row a white block, and `EXIT` after `Right` |
+| leg 2 with `--seam font-sans`, `--seam font-chisel` | the same blocks in each face |
+
 ## The host reads on this program
 
 | run | what it shows |
@@ -566,7 +606,7 @@ where that mechanism is (`docs/seams.md` §10).
 
 ## The sessions
 
-Thirty-two, `secret-*`, at `--speed 386` and `--wall none`: `secret-load`
+Thirty-four, `secret-*`, at `--speed 386` and `--wall none`: `secret-load`
 on the disk `secret-save` leaves (the `secret-saved` snapshot), and the
 rest on the Steam copy with its shipped slots (`secret-slots`).
 
@@ -590,11 +630,13 @@ rest on the Steam copy with its shipped slots (`secret-slots`).
 | `secret-fight-pause` | message-pause | `contrast secret-fight` | 315 of 371 identical, divergent from tick 476,011,182, in the two pauses that open the encounter |
 | `secret-aim` | | | leg 9 |
 | `secret-name` | | | leg 10 |
-| `secret-fight-controls` | modern-controls | | leg 4, nothing reached; the party menu's roster numbered, so 342 of 371 checkpoints are `secret-fight`'s: different from tick 43,291,822 and the same again from 91,654,574, in the opening. No relation describes a difference that does not last |
-| `secret-aim-controls` | modern-controls | | the aim watched at every key of the aim; 377 of 406 `secret-aim`'s, the same two ticks |
-| `secret-name-controls` | modern-controls | `identical secret-name` | the line editor watched from entry to return, no party to number: all 40 checkpoints |
+| `secret-fight-controls` | modern-controls | | leg 4, no key of the seam's pressed; the roster numbered and every selection a block, so 27 of 371 checkpoints are `secret-fight`'s: different from tick 11,951,486, the title's lit `PLAY`, and the same again in stretches with nothing the seam drew left, the first from 114,563,246. No relation describes a difference that does not last |
+| `secret-aim-controls` | modern-controls | | the aim watched at every key of the aim; 27 of 406 `secret-aim`'s, the same way |
+| `secret-name-controls` | modern-controls | | the line editor watched from entry to return; the lists' blocks, so 13 of 40 `secret-name`'s, the same again while the name is typed |
 | `secret-pick` | | | leg 13 |
-| `secret-pick-heroes` | modern-controls | `contrast secret-pick` | 23 of 68 identical, divergent from tick 43,291,822, the roster numbered; the digits choose |
+| `secret-pick-heroes` | modern-controls | `contrast secret-pick` | 5 of 68 identical, divergent from tick 11,951,486, the title's lit `PLAY`; the roster numbered, the digits choose |
+| `secret-modify` | | | leg 14 |
+| `secret-modify-block` | modern-controls | `contrast secret-modify` | 5 of 53 identical, divergent from tick 11,951,486; Modify's fields white blocks |
 | `secret-boot-journal` | journal | `identical secret-boot` | the watch never reached: all 15 checkpoints |
 | `secret-camp-journal` | journal | `identical secret-camp` | entry 37 cited by the opening and logged, `N` never pressed and no move mode; the watch writes nothing the machine holds: all 106 checkpoints |
 | `secret-town-journal` | journal | `contrast secret-town` | `NOTES` on the move mode's bar, never chosen, and the walk step for step: 90 of 138 identical, divergent from tick 163,085,086, `MOVE`'s frame |
