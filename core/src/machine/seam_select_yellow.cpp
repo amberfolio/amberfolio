@@ -140,6 +140,17 @@
 // selected member, Modify's score and the seams' own selections are white
 // blocks beside it. Every "yellow" below is the selection's colour there.
 //
+// **On Secret of the Silver Blades** (#609) the mechanism is Curse's, with
+// the program's own facts in its row: the same blitter and string routine,
+// the highlight on paper, white. Two draws more: the routine that draws one
+// member's row again (a picker's step) has a selected-member arm of its
+// own, and Modify's score draws a mark beside a score that differs from the
+// character's own. A bar whose text has no command letter (the treasure
+// notice's `press <enter>/<return> to continue`) is given a group from
+// position 0 by the program and drawn as a white block; the leaf's reading
+// finds no key there, so the points decline it and it is the program's
+// block, with no margin.
+//
 // The selection already on the screen at a switch keeps its colour until
 // the program draws it again, as a face does. The icon editor's cell cursor
 // (a box drawn on a grid of pixels, in a colour that has to show against
@@ -205,6 +216,12 @@ struct select_yellow_facts {
   std::uint32_t bar_rest_call;
   std::uint32_t list_row_call;
 
+  /// In the menu-bar routine's frame, below its BP: the length of its copy
+  /// of the bar (a byte of its own), and the group table, a first and a
+  /// last position to a group, the first at `caller - caller_groups + 2g`.
+  std::uint16_t caller_bar_length;
+  std::uint16_t caller_groups;
+
   /// Whether the program draws its own highlight, the bar's group and the
   /// list's row, as paper in the highlight's colour with the ink black. A
   /// program that does draws a selection the seam's way already, but in its
@@ -217,13 +234,29 @@ struct select_yellow_facts {
   std::uint32_t roster_selected_call;
   std::uint32_t hit_points_chosen;
   std::uint32_t hit_points_string_call;
+  /// The hit points' draw's frame: its argument that says highlighted, a
+  /// byte this far above BP, and the colour it chooses, a local this far
+  /// below BP.
+  std::uint16_t hit_points_highlighted;
+  std::uint16_t hit_points_local_colour;
+  /// In the same module, a routine that draws one member's row again (the
+  /// one a picker steps the selection with): the string call at its
+  /// selected-member arm, and its frame's column and row bytes below BP (the
+  /// member's far pointer is where the drawer's is). Zero where there is no
+  /// such routine.
+  std::uint32_t row_selected_call;
+  std::uint16_t row_selected_column;
+  std::uint16_t row_selected_row;
 
   /// In the profile's `view_overlay`: the instruction after an ability
-  /// score's colour is chosen, and the string calls of the score and of
-  /// exceptional strength's percentage.
+  /// score's colour is chosen, and the string calls of the score, of
+  /// exceptional strength's percentage and, where the program draws one, of
+  /// the mark beside a score that differs from the character's own (zero
+  /// where it does not).
   std::uint32_t score_chosen;
   std::uint32_t score_string_call;
   std::uint32_t percentage_string_call;
+  std::uint32_t mark_string_call;
 
   /// In the profile's `roster_overlay`: the string call that draws the
   /// character editor's name field highlighted, in light magenta at the
@@ -278,13 +311,21 @@ constexpr select_yellow_facts pool_of_radiance_select_yellow{
     .bar_letter_call = 0x02CA,
     .bar_rest_call = 0x0305,
     .list_row_call = 0x09FD,
+    .caller_bar_length = 0x64,
+    .caller_groups = 0x8F,
     .highlight_on_paper = false,
     .roster_selected_call = 0x13AF,
     .hit_points_chosen = 0x153F,
     .hit_points_string_call = 0x155E,
+    .hit_points_highlighted = 6,
+    .hit_points_local_colour = 1,
+    .row_selected_call = 0,
+    .row_selected_column = 0,
+    .row_selected_row = 0,
     .score_chosen = 0x0918,
     .score_string_call = 0x0976,
     .percentage_string_call = 0x0A41,
+    .mark_string_call = 0,
     .name_string_call = 0,
     .row_writes = {0x74A2, 0x74C8},
     .row_write_count = 2,
@@ -313,13 +354,21 @@ constexpr select_yellow_facts curse_select_yellow{
     .bar_letter_call = 0x02DF,
     .bar_rest_call = 0x031D,
     .list_row_call = 0x0AFC,
+    .caller_bar_length = 0x64,
+    .caller_groups = 0x8F,
     .highlight_on_paper = true,
     .roster_selected_call = 0x0853,
     .hit_points_chosen = 0x09E6,
     .hit_points_string_call = 0x0A08,
+    .hit_points_highlighted = 6,
+    .hit_points_local_colour = 1,
+    .row_selected_call = 0,
+    .row_selected_column = 0,
+    .row_selected_row = 0,
     .score_chosen = 0x09C5,
     .score_string_call = 0x0A2A,
     .percentage_string_call = 0x0AF8,
+    .mark_string_call = 0,
     .name_string_call = 0x2775,
     .row_writes = {0x5A93, 0},
     .row_write_count = 1,
@@ -329,6 +378,52 @@ constexpr select_yellow_facts curse_select_yellow{
     .rectangle_filled = 0x4E4B,
     .picture_drawn = 0x3542,
     .string_glyph_return = 0x509B,
+    .glyph = {.colour = 8, .paper = 6, .row = 0x0A, .column = 0x0C},
+    .string = {.colour = 6, .paper = 4, .row = 8, .column = 0x0A},
+    .data_page_segments = {},
+    .fixed_page_segment = 0xA000};
+
+/// Secret of the Silver Blades (#609). Curse of the Azure Bonds' mechanism
+/// throughout, one compiler generation on. The bar leaf (`0x01D0`) and the
+/// list routine (`0x1565`) are overlay 29's, the leaf the same routine with
+/// the caller's bar length and group table four bytes further down its
+/// frame; the roster drawer, its one-row redraw and the hit points' draw
+/// overlay 27's; Modify's score overlay 22's and its name field overlay
+/// 20's. The blitter (paragraph `0x540`, `0x01E7`) and its EGA path are
+/// Curse's instruction for instruction, the program draws its highlight on
+/// paper as Curse's does, and the hit points' draw takes one argument more
+/// (whether to draw the maximum after the value), so its highlighted byte
+/// is at `BP+8` and its colour a local below a 256-byte buffer.
+constexpr select_yellow_facts secret_select_yellow{
+    .profile = secret_of_the_silver_blades,
+    .bar_group_call = 0x0271,
+    .bar_letter_call = 0x02CB,
+    .bar_rest_call = 0x0309,
+    .list_row_call = 0x104B,
+    .caller_bar_length = 0x68,
+    .caller_groups = 0x93,
+    .highlight_on_paper = true,
+    .roster_selected_call = 0x08A9,
+    .hit_points_chosen = 0x0BD5,
+    .hit_points_string_call = 0x0C0D,
+    .hit_points_highlighted = 8,
+    .hit_points_local_colour = 0x101,
+    .row_selected_call = 0x0A34,
+    .row_selected_column = 9,
+    .row_selected_row = 0x0A,
+    .score_chosen = 0x0AF9,
+    .score_string_call = 0x0B5E,
+    .percentage_string_call = 0x0C2C,
+    .mark_string_call = 0x0C8E,
+    .name_string_call = 0x256B,
+    .row_writes = {0x62B4, 0},
+    .row_write_count = 1,
+    .row_register = cpu::reg8::ah,
+    .row_write_depth = 1,
+    .cell_drawn = 0x56C0,
+    .rectangle_filled = 0x5573,
+    .picture_drawn = 0x3CBE,
+    .string_glyph_return = 0x57D4,
     .glyph = {.colour = 8, .paper = 6, .row = 0x0A, .column = 0x0C},
     .string = {.colour = 6, .paper = 4, .row = 8, .column = 0x0A},
     .data_page_segments = {},
@@ -344,7 +439,8 @@ constexpr std::uint32_t far_call = 5;
 //
 // The same on every program this build knows: the bar leaf, the list leaf,
 // the roster drawer and Modify's two draws are one routine each, built for
-// each game.
+// each game. Where a later program's frame has moved, the offset is a
+// member of the program's row instead (`select_yellow_facts`).
 
 /// The bar leaf's frame, above BP: the caller's BP, as the near argument
 /// the leaf reaches the caller's locals through. In the caller's frame, at
@@ -361,14 +457,12 @@ constexpr std::uint16_t caller_return_cs = 4;
 /// The leaf's own locals and argument: the position of the character it is
 /// drawing (one-based, a byte at BP - 1) and the group the highlight is on
 /// (a byte at BP + 8). And the caller's: the bar, a Pascal string whose
-/// length is a byte of its own and whose characters are numbered from one;
-/// and the group table, a pair of positions to a group, the first at
-/// `caller - 0x8F + 2g` and the last the byte after.
+/// characters are numbered from one (its length is a byte of its own, and
+/// the group table a pair of positions to a group, the first at
+/// `caller - caller_groups + 2g` and the last the byte after: the row's).
 constexpr std::uint16_t leaf_index = 1;
 constexpr std::uint16_t leaf_group = 8;
-constexpr std::uint16_t caller_bar_length = 0x64;
 constexpr std::uint16_t caller_bar = 0x53;
-constexpr std::uint16_t caller_groups = 0x8F;
 
 /// The glyph blitter's call, from the top of the stack: a fold flag, the
 /// character and a count, then the program's own `call_shape`.
@@ -394,11 +488,11 @@ constexpr std::uint16_t roster_column = 5;
 constexpr std::uint16_t roster_row = 6;
 constexpr std::uint16_t roster_member = 4;
 
-/// Modify's two score draws: the first argument is above BP at +6 (a
+/// Modify's ability score draw: the first argument is above BP at +6 (a
 /// nonzero byte means "highlighted"), and the colour is a local, below BP.
+/// The hit points' draw keeps the same two, where the row says.
 constexpr std::uint16_t score_highlighted = 6;
 constexpr std::uint16_t sheet_local_colour = 0x2B;
-constexpr std::uint16_t hit_points_local_colour = 1;
 
 /// A callee's frame, above its BP: the caller's BP, the far return address
 /// (offset, then segment) and the first of the arguments, the last pushed.
@@ -618,7 +712,7 @@ template <const select_yellow_facts& F>
   // The bar as the routine copied it, the character this call is drawing,
   // and the group the highlight is on.
   const std::uint8_t length =
-      at(static_cast<std::uint16_t>(caller - caller_bar_length));
+      at(static_cast<std::uint16_t>(caller - F.caller_bar_length));
   const std::uint8_t index = s.byte_below_bp(leaf_index);
   const std::uint8_t group = s.byte_above_bp(leaf_group);
   if (length == 0 || length > max_bar || index < 1 || index > length ||
@@ -632,7 +726,7 @@ template <const select_yellow_facts& F>
     return false;
   }
   const std::uint8_t letter =
-      at(static_cast<std::uint16_t>(caller - caller_groups + (2U * group)));
+      at(static_cast<std::uint16_t>(caller - F.caller_groups + (2U * group)));
   if (letter < 1 || letter > length || bar(letter) == ' ') {
     return false;
   }
@@ -649,7 +743,7 @@ template <const select_yellow_facts& F>
   // (#483). A word the group only begins, as on the icon editor's bar,
   // stays out.
   const std::uint8_t group_last = at(
-      static_cast<std::uint16_t>(caller - caller_groups + (2U * group) + 1U));
+      static_cast<std::uint16_t>(caller - F.caller_groups + (2U * group) + 1U));
   while (last + 1U < length &&
          bar(static_cast<std::uint8_t>(last + 1)) == ' ') {
     auto end = static_cast<std::uint8_t>(last + 2);
@@ -824,16 +918,20 @@ void at_list_row(machine& box, seam_context& ctx) {
 
 // --- Point 3: the roster's selected member ----------------------------------
 
+/// The selected member's string call in a routine whose frame keeps the
+/// cell's column and row bytes `column_at` and `row_at` below BP, and the
+/// member's far pointer where the drawer's is.
 template <const select_yellow_facts& F>
-void at_selected_member(machine& box, seam_context& ctx) {
+void selected_member(machine& box, seam_context& ctx, std::uint16_t column_at,
+                     std::uint16_t row_at) {
   const stack s = stack_of(box);
   // The call's own words against the drawer's frame: the cell and the
   // member it is drawing.
   const bool is_the_call =
       s.top(string_offset) == s.word_below_bp(roster_member) &&
       s.top(string_segment) == s.word_below_bp(roster_member - 2U) &&
-      s.top_byte(F.string.row) == s.byte_below_bp(roster_row) &&
-      s.top_byte(F.string.column) == s.byte_below_bp(roster_column) &&
+      s.top_byte(F.string.row) == s.byte_below_bp(row_at) &&
+      s.top_byte(F.string.column) == s.byte_below_bp(column_at) &&
       paper_of(s, F.string.paper) == 0;
   if (!is_the_call) {
     ctx.decline(seam_reason::point_not_recognized);
@@ -847,15 +945,28 @@ void at_selected_member(machine& box, seam_context& ctx) {
   }
 }
 
+template <const select_yellow_facts& F>
+void at_selected_member(machine& box, seam_context& ctx) {
+  selected_member<F>(box, ctx, roster_column, roster_row);
+}
+
+/// The same arm in the routine that draws one member's row again, where a
+/// program has one (Secret of the Silver Blades: a picker's step).
+template <const select_yellow_facts& F>
+void at_selected_row(machine& box, seam_context& ctx) {
+  selected_member<F>(box, ctx, F.row_selected_column, F.row_selected_row);
+}
+
 // --- Points 4 and 5: Modify's selected score --------------------------------
 
 /// A score draw's colour local: light magenta when the caller said
-/// "highlighted", green when it did not. Anything else is not the routine
-/// these facts describe.
-void choose_score_colour(machine& box, seam_context& ctx, std::uint16_t local,
+/// "highlighted" (the byte `highlighted_at` above BP), green when it did not.
+/// Anything else is not the routine these facts describe.
+void choose_score_colour(machine& box, seam_context& ctx,
+                         std::uint16_t highlighted_at, std::uint16_t local,
                          bool may_be_yellow, std::uint8_t selection) {
   const stack s = stack_of(box);
-  const bool highlighted = s.byte_above_bp(score_highlighted) != 0;
+  const bool highlighted = s.byte_above_bp(highlighted_at) != 0;
   const std::uint8_t colour = s.byte_below_bp(local);
   if (highlighted) {
     if (colour != colour_magenta) {
@@ -872,14 +983,15 @@ void choose_score_colour(machine& box, seam_context& ctx, std::uint16_t local,
 
 template <const select_yellow_facts& F>
 void at_ability_score(machine& box, seam_context& ctx) {
-  choose_score_colour(box, ctx, sheet_local_colour, false,
+  choose_score_colour(box, ctx, score_highlighted, sheet_local_colour, false,
                       F.profile.selection_colour);
 }
 
 template <const select_yellow_facts& F>
 void at_hit_points(machine& box, seam_context& ctx) {
   // A hit-point value is yellow when the character is hurt.
-  choose_score_colour(box, ctx, hit_points_local_colour, true,
+  choose_score_colour(box, ctx, F.hit_points_highlighted,
+                      F.hit_points_local_colour, true,
                       F.profile.selection_colour);
 }
 
@@ -991,19 +1103,27 @@ template <const select_yellow_facts& F>
   const std::uint32_t summary =
       module_start(s.cpu, ctx, F.profile.summary_overlay);
   if (returns_to(caller, bar, F.list_row_call) ||
-      returns_to(caller, summary, F.roster_selected_call)) {
+      returns_to(caller, summary, F.roster_selected_call) ||
+      (F.row_selected_call != 0 &&
+       returns_to(caller, summary, F.row_selected_call))) {
     return true;
   }
+  // Yellow is also a hurt character's hit points: the draw says whether it
+  // is the highlighted one, in the argument at `at` above its BP.
+  const auto highlighted = [&](std::uint16_t at) {
+    const std::uint16_t score = s.cpu.read_word(
+        s.ss, static_cast<std::uint16_t>(drawer + frame_saved_bp));
+    return s.cpu.read_byte(s.ss, static_cast<std::uint16_t>(score + at)) != 0;
+  };
   const std::uint32_t sheet = module_start(s.cpu, ctx, F.profile.view_overlay);
   if (returns_to(caller, sheet, F.score_string_call) ||
       returns_to(caller, sheet, F.percentage_string_call) ||
-      returns_to(caller, summary, F.hit_points_string_call)) {
-    // Yellow is also a hurt character's hit points: the draw says whether
-    // it is the highlighted one.
-    const std::uint16_t score = s.cpu.read_word(
-        s.ss, static_cast<std::uint16_t>(drawer + frame_saved_bp));
-    return s.cpu.read_byte(s.ss, static_cast<std::uint16_t>(
-                                     score + score_highlighted)) != 0;
+      (F.mark_string_call != 0 &&
+       returns_to(caller, sheet, F.mark_string_call))) {
+    return highlighted(score_highlighted);
+  }
+  if (returns_to(caller, summary, F.hit_points_string_call)) {
+    return highlighted(F.hit_points_highlighted);
   }
   // The name field, in the colour its point gave it, where there is one.
   return F.name_string_call != 0 &&
@@ -1396,12 +1516,14 @@ void at_picture_drawn(machine& box, seam_context& /*ctx*/) {
 // --- The definition ---------------------------------------------------------
 
 /// A program's points: the seven that choose a colour, the row writes, the
-/// three that settle the margin, and the name field's where the editor has
-/// one.
+/// three that settle the margin, the name field's where the editor has one,
+/// and the selected member's in the routine that draws one row again where
+/// the program has one.
 template <const select_yellow_facts& F>
 constexpr auto select_yellow_points_of() {
   constexpr std::size_t name_points = F.name_string_call != 0 ? 1 : 0;
-  std::array<seam_point, 10 + F.row_write_count + name_points> out{
+  constexpr std::size_t row_points = F.row_selected_call != 0 ? 1 : 0;
+  std::array<seam_point, 10 + F.row_write_count + name_points + row_points> out{
       {{.module = F.profile.menu_overlay,
         .offset = F.bar_group_call,
         .run = &at_bar_group<F>},
@@ -1451,6 +1573,13 @@ constexpr auto select_yellow_points_of() {
                    .offset = F.name_string_call,
                    .run = &at_name_field<F>};
   }
+  // Inside batches too, as the drawer's: a picker's step draws through it.
+  if constexpr (row_points != 0) {
+    out[next++] = {.module = F.profile.summary_overlay,
+                   .offset = F.row_selected_call,
+                   .run = &at_selected_row<F>,
+                   .inside_calls = true};
+  }
   return out;
 }
 
@@ -1463,6 +1592,11 @@ constexpr auto curse_select_yellow_point_table =
 static_assert(curse_select_yellow_point_table.size() ==
               curse_select_yellow_point_count);
 
+constexpr auto secret_select_yellow_point_table =
+    select_yellow_points_of<secret_select_yellow>();
+static_assert(secret_select_yellow_point_table.size() ==
+              secret_select_yellow_point_count);
+
 }  // namespace
 
 std::span<const seam_point> select_yellow_points() noexcept {
@@ -1471,6 +1605,10 @@ std::span<const seam_point> select_yellow_points() noexcept {
 
 std::span<const seam_point> curse_select_yellow_points() noexcept {
   return curse_select_yellow_point_table;
+}
+
+std::span<const seam_point> secret_select_yellow_points() noexcept {
+  return secret_select_yellow_point_table;
 }
 
 }  // namespace amberfolio::machine

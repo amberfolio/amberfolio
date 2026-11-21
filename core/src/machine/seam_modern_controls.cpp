@@ -49,8 +49,8 @@
 //     edition (edition.h), and Curse of the Azure Bonds for the eight
 //     pieces ported to it (#555): all of them, with points of their own
 //     in the definition's `programs`. On Secret of the Silver Blades it
-//     is `hero-keys`, at the party menu's member picker, and the two
-//     pieces that observe, `text-entry` and `aim-watch` (#609).
+//     is `hero-keys`, at the party menu's member picker, `select-yellow`,
+//     and the two pieces that observe, `text-entry` and `aim-watch` (#609).
 //     Every piece's addresses are facts about the program they name, and a
 //     seam is unavailable against any other.
 //   * **A piece no longer asks whether another is on.** `menu-cursor` took
@@ -81,8 +81,8 @@ namespace {
 
 /// The programs this seam's facts are about (program_profile.h): the
 /// baseline edition, every piece; Curse of the Azure Bonds, the pieces
-/// ported to it (#555); and Secret of the Silver Blades, the hero keys and
-/// the two that observe (#609). The seam is available on these and on no
+/// ported to it (#555); and Secret of the Silver Blades, the hero keys, the
+/// selection block and the two that observe (#609). The seam is available on these and on no
 /// other binary.
 constexpr auto modern_controls_binaries =
     fingerprints_of(std::array{&pool_of_radiance, &curse_of_the_azure_bonds,
@@ -129,16 +129,16 @@ struct curse_point_table {
   }
 };
 
-/// Secret's: the hero keys and the two pieces that observe, in the same
-/// order.
+/// Secret's: the hero keys, the selection block and the two pieces that
+/// observe, in the same order.
 struct secret_point_table {
   std::array<seam_point, secret_modern_controls_point_count> point{};
 
   secret_point_table() {
     std::size_t next = 0;
     for (const std::span<const seam_point> piece :
-         {secret_hero_keys_points(), secret_text_entry_points(),
-          secret_aim_watch_points()}) {
+         {secret_hero_keys_points(), secret_select_yellow_points(),
+          secret_text_entry_points(), secret_aim_watch_points()}) {
       for (const seam_point& each : piece) {
         point[next++] = each;
       }
@@ -166,7 +166,8 @@ const seam_definition& modern_controls_seam() noexcept {
           "arrows, Enter and Esc work at the game's lists, bars and menus, "
           "walking is a mode the party's bar starts and ends, the main menu "
           "has a cursor, and a selection is a block (yellow; white on Curse "
-          "of the Azure Bonds, its own highlight)",
+          "of the Azure Bonds and Secret of the Silver Blades, their own "
+          "highlight)",
       .fingerprints = modern_controls_binaries,
       .points = points.point,
       .programs = programs,

@@ -900,8 +900,8 @@ if (missing.length === 0) {
   );
   // Secret of the Silver Blades: its own screens, Notes among them, and with
   // every seam on only the message pause's rows, the automap's, the
-  // journal's and modern-controls' one, the number row at the party menu's
-  // picker.
+  // journal's and modern-controls' two, the number row at the party menu's
+  // picker and the selection's block on the bars' card.
   check(
     has(blades, 'explore') && has(blades, 'combat') && !has(blades, 'wilderness') &&
       !has(blades, 'journey') && has(blades, 'journal'),
@@ -915,7 +915,8 @@ if (missing.length === 0) {
           row.seam === 'message-pause' ||
           row.seam === 'automap' ||
           row.seam === 'journal' ||
-          (row.seam === 'modern-controls' && context.id === 'menu'),
+          (row.seam === 'modern-controls' &&
+            (context.id === 'menu' || context.id === 'bars')),
       ),
     ),
     "Secret of the Silver Blades' card shows a seam's key it does not take",

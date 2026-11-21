@@ -276,16 +276,22 @@ the start; a part whose screen the game has not loaded yet (the pick-lists'
 and command bars', the main menu's and Modify's) waits for it, and the rest
 work meanwhile.
 
-**In Secret of the Silver Blades** one of the parts above is there: the
-party menu's list shows each member's number, and when the party menu
+**In Secret of the Silver Blades** two of the parts above are there.
+The party menu's list shows each member's number, and when the party menu
 asks you to pick a character, the number row's 1 to 8 choose that member
 (the game has no member of its own to select at that menu; it asks each
 time). The game's own number row is its keypad, there and everywhere, so
 at that one prompt the number row's digits stop stepping the choice; the
-arrows and the keypad still do. The rest the game has already (lists the
-arrows move, bars that take Left, Right and Enter, its own walking mode,
-arrows that type nothing in a name), or is not done yet: its current
-member is shown by its colour alone. The toggle also lets a host tell
+arrows and the keypad still do. And every selection is a block: the game
+already lights a bar's word and a list's row as a white block, which gains
+the margin, and the current member in the party list and Modify's
+selected score, hit points and name, which it shows by colour alone, are
+white blocks too. The party menu's lone `SELECT` under its list is drawn
+unlit, as the first two games' list `Exit` is; the treasure screen's
+`PRESS <ENTER>` notice is the game's own block. The rest the game has
+already (lists the arrows move, bars that take Left, Right and Enter, its
+own walking mode, arrows that type nothing in a name). The toggle also
+lets a host tell
 whether the game is reading a line of text and where the combat aim
 cursor is (`docs/hosts.md` §12 and §13).
 
@@ -520,6 +526,14 @@ A block is a shape, and reads whatever colours you see. With the seam on:
   member, Modify's score, the menu cursor's row and the Notes screen's
   selections are white blocks beside them. A number the hero keys draw in
   front of a name stays white on black.
+- **In Secret of the Silver Blades the block is white too**, for the same
+  reason: the game's own white blocks gain the margin, and the current
+  member in the party list (at Pick Character too, moving with the
+  choice), Modify's selected score, hit points and name, and the Notes
+  screen's selections are white blocks. The party menu's lone `SELECT`
+  under its list is not lit: Enter there takes the row. The treasure
+  screen's `press <enter>/<return>` notice has no key letter at all, and
+  is left as the game draws it, a white block with no margin.
 - **A bar the game hands its colours the wrong way round** (the portrait
   screen's HEAD, BODY and KEEP bar, the temple's "pay for cure" and the
   detect-magic confirmations) is drawn like every other bar: key letters

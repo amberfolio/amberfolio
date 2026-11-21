@@ -810,6 +810,17 @@ inline constexpr seam_module adventure{
         "ed031f8d04921f25f716d5bbf6fe318f3f3fd1d6b042befb6e11eb748dc3b8ff",
     .load_segment_at = 0xD70};
 
+/// Overlay 20: the party menu's loop and the character editor, whose name
+/// field the selection block draws as a block (`seam_select_yellow.cpp`).
+/// The stub's record is at image `0x0EF0`.
+inline constexpr seam_module roster{
+    .file = "GAME.OVR",
+    .file_offset = 120220,
+    .length = 24595,
+    .digest =
+        "137eb22a8076dc67ecdaea4506590cd6eee527b6948292de6606d59d939c9fbd",
+    .load_segment_at = 0xF00};
+
 /// Overlay 22: the character view and its sheet, and the party menu's own
 /// member picker (`seam_hero_keys.cpp`). The stub's record is at image
 /// `0x1000`.
@@ -833,8 +844,8 @@ inline constexpr seam_module summary{
         "91be9289b184f1447cd89845902d92097c1e1f94623db95f961ca29c16899276",
     .load_segment_at = 0x1520};
 
-/// Overlay 29: the menu-bar routine. The stub's record is at image
-/// `0x16B0`.
+/// Overlay 29: the menu-bar routine, and the list routine that calls it
+/// (`pick_list_bar_return`). The stub's record is at image `0x16B0`.
 inline constexpr seam_module menu{
     .file = "GAME.OVR",
     .file_offset = 250323,
@@ -907,7 +918,7 @@ inline constexpr program_profile secret_of_the_silver_blades{
     .aim_overlay = secret_of_the_silver_blades_modules::aim,
     .adventure_overlay = secret_of_the_silver_blades_modules::adventure,
     .camp_overlay = {},
-    .roster_overlay = {},
+    .roster_overlay = secret_of_the_silver_blades_modules::roster,
     .slots_overlay = {},
     .view_overlay = secret_of_the_silver_blades_modules::view,
     .menu_overlay = secret_of_the_silver_blades_modules::menu,
@@ -922,7 +933,7 @@ inline constexpr program_profile secret_of_the_silver_blades{
     .menu_key_read_call = 0x05A0,
     .menu_local_bar = 0x53,
     .menu_bar_capacity = 40,
-    .pick_list_bar_return = {},
+    .pick_list_bar_return = 0x1651,
     .selection_colour = 0x0F,
     .area_bar_call = {},
     .area_bar_return = {},

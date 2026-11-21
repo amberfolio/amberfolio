@@ -24,7 +24,7 @@ to pull.
 | menu cursor | `seam_menu_cursor.cpp` | a cursor on the main menu | 2 |
 | hero keys | `seam_hero_keys.cpp` | at the main menu, the number row's 1 to 8 select a member and the party list shows each number | 5 |
 | edit keys | `seam_edit_keys.cpp` | an extended key types nothing at a text prompt | 1 |
-| selection block | `seam_select_yellow.cpp` | every selection a block, yellow (white on Curse of the Azure Bonds), a key letter a white one, with a margin all round | 11 |
+| selection block | `seam_select_yellow.cpp` | every selection a block, yellow (white on Curse of the Azure Bonds and Secret of the Silver Blades), a key letter a white one, with a margin all round | 11 |
 | move mode | `seam_move_mode.cpp` | on the party's own bar walking is a mode: `Move` starts it, `Exit` ends it, and in between Left and Right step the bar; `Area` is gone | 5 (3 on Curse) |
 | text entry | `seam_text_entry.cpp` | nothing on the screen: a host can ask whether the program is reading a line of text | 2 |
 | aim watch | `seam_aim_watch.cpp` | nothing on the screen: a host's scene says where the combat aim cursor is, who is under it and the range | 5 |
@@ -51,7 +51,7 @@ summed over the pieces.
   ninety-six).
 - **Three programs, several modules.** Every piece keys on the baseline
   edition (`docs/seams.md` §5), nine of them on Curse of the Azure Bonds
-  too and three on Secret of the Silver Blades, with points of their own
+  too and four on Secret of the Silver Blades, with points of their own
   (below), so the definition names all three. The modules are the
   pieces': overlay 25 for five of them, overlay 16 for the menu cursor's loop
   call, overlay 19 for Modify's score, overlay 14 for the move mode's party
@@ -334,26 +334,21 @@ selected member, asked in combat and out.
   `SeamCallProgram.FindsAnInsideCallsPointInAModuleTheProgramMoves`.
 
 **On Secret of the Silver Blades** (#609) the seam is available with
-three pieces: the hero keys, and the two that only observe, text entry
-and the aim watch, each the same mechanism with that program's facts in a
-row of its own (`hero_keys_facts`, `text_entry_facts`, `aim_watch_facts`)
-and their fifteen points in the definition's `programs`, in the
-baseline's order: the hero keys' eight, text entry's two, the aim watch's
-five. The observing pieces are there for a host's reads, the text-entry
-signal (`docs/hosts.md` §10) and the scene's aim (`docs/hosts.md` §13).
+four pieces: the hero keys, the selection block, and the two that only
+observe, text entry and the aim watch, each the same mechanism with that
+program's facts in a row of its own (`hero_keys_facts`,
+`select_yellow_facts`, `text_entry_facts`, `aim_watch_facts`) and their
+twenty-eight points in the definition's `programs`, in the baseline's
+order: the hero keys' eight, the selection block's thirteen, text entry's
+two, the aim watch's five. The observing pieces are there for a host's
+reads, the text-entry signal (`docs/hosts.md` §10) and the scene's aim
+(`docs/hosts.md` §13).
 
 The other pieces are not ported, because the program has them: its
 menus are lists the arrows move, its bars take Left, Right and Return,
 its party's bar has its own move mode and an arrow types nothing at a
 line of text (`docs/playable-secret.md`, "The program's own controls").
-**The selection block is not ported either**, though the roster's current
-member is told by colour alone here (white where the others are in their
-status colour, drawn by the roster drawer's string call at overlay 27
-`0x08A9` and by the one-row routine's at `0x0A34`): on the first two
-games it is one mechanism through the blitter's row write, with the
-margins round the program's own blocks, the bar leaf's glyph calls, the
-pick-list's and Modify's, and its port is that whole piece on this
-program's rewritten bar leaf (four glyph calls) and list routine.
+The selection block is below, after the hero keys.
 
 **The number row on this program is the keypad's everywhere**: the
 menu-bar routine (overlay 29) takes `4` and `6` as Left and Right where a
@@ -425,18 +420,14 @@ roster drawer is the first two games' routine, and the party menu's list
   class and its heading one right; at `PICK CHARACTER` `3` and Return show
   Epona's sheet, `6` and `S` Morgaine's, `8` (a party of six) nothing and
   then `1` and Return Guy's, the white name moving with each digit and
-  one row white at a time; `fired=155`, nothing declined. Seam off, the
-  same keys show Guy's sheet three times. With the seam on, the stills
-  from the adventuring bar on are the seam-off run's (307 of 340 stills
-  the same, all of them after frame 3,200), the number row there as the
-  program has it.
+  one row selected at a time (a white block, the selection block's). Seam
+  off, the same keys show Guy's sheet three times. From the adventuring
+  bar on the number row is the program's.
 - **With the automap** (`--seam automap --seam modern-controls`): the
   picker's `3` makes Epona the current member, and she is still at the
   adventuring bar; `Tab` puts the map over the roster, `Down` under it is
-  the automap's, `Tab` gives the roster back with Epona white and `Down`
-  steps to Malachite. With `1` at the picker instead, the stills are the
-  automap-alone run's from the end of the numbered party menu (frame
-  3,930) to the end.
+  the automap's, `Tab` gives the roster back with Epona selected and
+  `Down` steps to Malachite.
 - **Driven** with the seam on (`docs/playable-secret.md` legs 9 and 10):
   through leg 9's aim on Dominic's turn the watch fired 30 times, and the
   scene beside each still had the cursor's square, the sheet the panel
@@ -447,18 +438,95 @@ roster drawer is the first two games' routine, and the party menu's list
   at the stats' `REROLL` question before it or on the figure's editor
   after it.
 - **Fidelity**: the observing pieces write nothing of the machine's, and
-  the hero keys draw on sight, the party menu's roster numbered from the
-  first time it is drawn with a party in it. `secret-pick-heroes`
-  `contrast secret-pick` (the picker's digits: 23 of 68 checkpoints
-  identical, divergent from tick 43,291,822, the roster drawn after slot
-  A is loaded); `secret-name-controls` `identical secret-name` (on, a
-  name typed, no party to number: all 40). `secret-fight-controls` and
-  `secret-aim-controls` (on through leg 4 and leg 9) carry no relation:
-  they differ from `secret-fight` and `secret-aim` from that same tick
-  and are the same again from tick 91,654,574 in the opening (342 of 371
-  and 377 of 406 checkpoints identical), which neither `identical` nor
-  `contrast` describes. Unit: `SeamModernControlsOnSecret.*`,
-  `SceneOnSecret.*` (the aim watch's frames read through the scene).
+  two pieces draw on sight: the hero keys number the party menu's roster
+  from the first time it is drawn with a party in it, and the selection
+  block draws the first selection on the screen, the title's lit `PLAY`,
+  as a block with a margin. So there is no `identical` for the seam on
+  this program either: every run that reaches the title's `PLAY DEMO`
+  differs from its seam-off run there, at tick 11,951,486 in every
+  session here. `secret-pick-heroes` `contrast secret-pick` (the
+  picker's digits: 5 of 68 checkpoints identical, then divergent to the
+  end) and `secret-modify-block` `contrast secret-modify` (Modify's
+  fields: 5 of 53) are the exercised pairs. `secret-name-controls`,
+  `secret-fight-controls` and `secret-aim-controls` (on through leg 10,
+  leg 4 and leg 9) carry no relation: each differs from its seam-off run
+  from that tick and is the same again where nothing the seam drew is
+  left on the screen or in memory (13 of 40, 27 of 371 and 27 of 406
+  checkpoints identical; in the fights the first such stretch is from
+  tick 114,563,246, the treasure's notice below), which neither
+  `identical` nor `contrast` describes. Unit:
+  `SeamModernControlsOnSecret.*`, `SceneOnSecret.*` (the aim watch's
+  frames read through the scene).
+
+**The selection block** is Curse of the Azure Bonds' mechanism with this
+program's facts (`secret_select_yellow`). The program draws its own
+highlight the way Curse's does, a bar's lit word and a list's row as
+black ink on white paper, so a selection here is a white block too (the
+profile's `selection_colour`); what it tells by colour alone is the
+roster's current member (white letters where the others are in their
+status colour) and Modify's highlighted field (light magenta).
+
+| fact | Secret of the Silver Blades |
+| --- | --- |
+| the bar leaf; its glyph calls: the highlighted group's, a letter's, the rest's | overlay 29 `0x01D0`, Curse's leaf, its fourth glyph call (`0x0379`) the blanks after the bar as there; `0x0271`, `0x02CB`, `0x0309`. The leaf's frame as Curse's: the caller's BP at `BP+6`, the group at `BP+8`, the position at `BP-1` |
+| the menu-bar routine's frame | `color_hi` at `BP+0x0E`, `color_lo` at `+0x10`; the bar at `BP-0x53` as on the first two programs; **its length at `BP-0x68` and its group table at `BP-0x93`**, four bytes below the first two programs' (`caller_bar_length`, `caller_groups` in the row); the group count at `BP-0x92` |
+| the list routine; its call into the menu-bar routine | overlay 29 `0x1565` (`retf 0x28`); a near call at `0x164E`, returning to `0x1651` (the profile's `pick_list_bar_return`) |
+| the list's highlight-on leaf; its string call | overlay 29 `0x0FB4`, its context at `BP+6`, the highlight's colour at `+0x20` of it; `0x104B`, black ink on that colour's paper |
+| the roster's selected member: the drawer's string call; the one-row routine's | overlay 27 `0x08A9` (the drawer's frame: column `BP-5`, row `BP-6`, member `BP-4`); `0x0A34` (column `BP-9`, row `BP-0x0A`, member `BP-4`), a point of its own (`row_selected_call`) |
+| the hit points' draw: the colour chosen; its string call | overlay 27 `0x0BA6` (`retf 0x0C`), **highlighted at `BP+8`** (`BP+6` says whether the maximum follows, in green) and its colour at `BP-0x101`; `0x0BD5`; `0x0C0D` |
+| Modify's score draw: the colour chosen; the score's, the percentage's and the mark's string calls | overlay 22 `0x0AE2`, highlighted at `BP+6`, the colour at `BP-0x2B` as on the first two programs; `0x0AF9`; `0x0B5E`, `0x0C2C`, `0x0C8E` (the mark beside a score that is not the character's own, which the first two programs' draw has not) |
+| Modify's name field: the highlighted name's string call; the cursor's letter | overlay 20 (file offset 120220, 24595 bytes, digest `137eb22a…9c9fbd`, word `0x0F00`, the profile's `roster_overlay`) `0x256B`, light magenta at row 1, column 1; `0x25A5` and `0x25DB`, white on black over it |
+| the blitter's EGA row write; the step to the next cell; the fill's epilogue; the picture drawer's epilogue | image `0x62B4`, the mask out of AH, one frame below the blitter's, one page at `0xA000`; `0x56C0`; `0x5573`; `0x3CBE`. Curse's blitter and paths instruction for instruction; the frames the same |
+| the string routine; its call into the blitter | image `0x575D` (the profile's `draw_string_entry`); returns to `0x57D4`. Colour `+6`, paper `+4`, row `+8`, column `+0x0A` of its call, as Curse's |
+
+- **What it draws.** A bar's lit word: the program's white block, key and
+  rest, with the margin round it (the camp's `SAVE`, the party's bar's
+  `MOVE`, the move mode's `EXIT`, a shop's `BUY`, `YES NO`'s lit answer,
+  the save slot bar's `A`, the fight's and the aim bar's lit word, the
+  lone `TARGET` of the manual aim). A list's row (the party menu, the
+  creation lists, the spell lists, a shop's goods, the temple's cures, a
+  member's items): the program's white block with the margin. The
+  roster's current member, in camp, at the party's bar, on the treasure
+  screen and on the party menu: a white block, two columns right of its
+  number at the party menu, and at `PICK CHARACTER` the block moves with
+  the member the one-row routine draws. Modify: each highlighted score, the
+  hit points' value and the name a white block, the name's cursor letter
+  the gap in it. The journal reader's log row and its bar's lit command,
+  which ask `modern_controls_on`, are white blocks the same way.
+- **A list's lone `SELECT`.** The party menu is the list routine's, over
+  a bar of one command, `SELECT`, which the program lights. Under a list
+  Return takes the row, which is the selection, so the bar is drawn
+  unselected, white letters on black, as the first two programs' list
+  `Exit` is. Every other list's bar has two commands or more (`SELECT
+  EXIT`, `ITEMS: BUY EXIT`, `CHOOSE SPELL: MEMORIZE EXIT`) and its lit
+  word is a block.
+- **The notices.** A script's `PRESS <ENTER>/<RETURN> TO CONTINUE` has
+  one capital and is lit by its group as on the first two programs, one
+  white block from its first letter. **The treasure's notice is left as
+  the program draws it**: its text has no command letter at all, the
+  program gives it a group from position 0 to its end and draws it as a
+  white block, and the leaf's reading finds no key in the group (the
+  first two programs' rule has a lit notice start at its command letter),
+  so the three bar points decline every character of it (34 a draw) and
+  it is the program's block, with no margin. On the first two programs
+  their no-capital prompts have no group and are declined the same way.
+- **Left as the program draws it**, as on the first two programs: the
+  aim's box on the combat grid, and a hurt member's yellow hit points.
+- **Driven** (`docs/playable-secret.md`, "The selection block on this
+  program"): the party menu, the roster and `PICK CHARACTER` with `3`,
+  the creation lists and `REROLL STATS? YES NO`, the figure editor's bar,
+  the treasure screen, the party's bar, the move mode's `EXIT`, the camp
+  bar, its Magic bar and a spell list, a member's sheet and items, the
+  save slot bar and `QUIT TO DOS YES NO`, the armoury's bars and goods,
+  the temple's cures, the fight's bar, the aim bar and the manual aim,
+  Modify's six scores, its name and hit points, and the journal's log,
+  seam off and on, stills read; and the camp leg with `font-sans` and
+  with `font-chisel`, each block inverted through the face. With the
+  automap's panel up over the roster, the only pixels that differ from
+  the seam-off run are the bar's lit word's margin (41): no margin of the
+  covered roster's block is left on the panel. Through the camp leg every
+  decline of the bar points was the treasure notice's (read with a
+  temporary print, removed).
 
 ## The list arrows (#423, #435, #447, #469)
 
@@ -1484,25 +1552,27 @@ outside the block's cells.
 | Modify's two draws | the first argument at `BP+6` is non-zero for a highlighted draw; the colour is a local, at `BP-0x2B` for a score (overlay 19) and `BP-1` for hit points. Modify is the only caller that passes it |
 
 **The selection's colour, per program** (the profile's `selection_colour`).
-On Curse of the Azure Bonds the block is the program's own highlight
-colour, white, and not the baseline's yellow (#555): the program draws
-its bars' and lists' highlights as white blocks already, so a lit word
-there is drawn as the program draws it, with the margin round it.
+On Curse of the Azure Bonds and Secret of the Silver Blades the block is
+the program's own highlight colour, white, and not the baseline's yellow
+(#555, #609): each draws its bars' and lists' highlights as white blocks
+already, so a lit word there is drawn as the program draws it, with the
+margin round it. Secret of the Silver Blades has no main menu cursor (the
+party menu is a list of the program's own).
 
-| where | Pool of Radiance | Curse of the Azure Bonds |
+| where | Pool of Radiance | Curse of the Azure Bonds and Secret of the Silver Blades |
 | --- | --- | --- |
 | a bar's lit word | yellow, the key letter white | white, key and rest (the bar's bright is the selection's colour, so the key is white too) |
-| a one-command notice | yellow from its first letter | white from its first letter |
+| a one-command notice | yellow from its first letter | white from its first letter; on Secret a list's lone `SELECT` is unlit, and the treasure's notice, which has no command letter, is the program's block with no margin |
 | a pick-list's row | yellow | white, on the ink, where the program put it on the paper |
 | the roster's selected member | white made yellow | white, left as the program draws it, and made a block |
 | Modify's selected score and hit points | light magenta made yellow | light magenta made white |
 | Modify's highlighted name | none: the editor has no name field | light magenta made white, the cursor's letter left white on black, the gap in the block |
-| the main menu's cursor row | the key white, the rest yellow | white end to end |
+| the main menu's cursor row | the key white, the rest yellow | white end to end (Curse only) |
 | the journal's log row and its bar's lit command | yellow, the bar's key white | white |
 | the margin | painted in yellow, over black | painted in white, over black |
 | what a store takes for a selection's colour | yellow, from the calls named above | white, from the same calls |
 
-On Curse the hero keys' numbers, white on black, sit two columns left of
+On Curse and on Secret the hero keys' numbers, white on black, sit two columns left of
 a selected member's white block: the number is a white glyph on black
 and the name a white block with the letters black, so the two read as a
 key and a selection, as the yellow did, by shape rather than colour.
