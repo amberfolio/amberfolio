@@ -979,7 +979,11 @@ digest each row carries. Steam ships saved games A and B in its save
 directory. **GOG ships saved game A beside the program, not in the
 `SAVE` directory its configuration names**, which it ships empty, so the
 program's `LOAD SAVED GAME` finds nothing on that copy as sold. Saved
-games are not artifacts. Its key card is the rows that name no program.
+games are not artifacts. Its key card is its own (§11). Its party menu's
+`ADD CHARACTER TO PARTY` offers `CURSE` beside `SECRET`, and lists the
+Curse of the Azure Bonds characters (`.GUY` files) in its own save
+directory (`docs/playable-secret.md` leg 5): bringing a party over is
+putting those files there, which neither host does for a player.
 
 **`install` is the directory of the machine's filesystem the copy's files
 live in, which is also the DOS current directory when the program is
@@ -2367,19 +2371,26 @@ of rows of *keys*, *what they do* and, for a seam's key, the seam. Neither
 shell keeps a second copy, so a change to the card is a change to that
 file.
 
-**A program is shown its own card** (#556). A context or a row may name a
-program, by `key_card_program()`'s word for an edition (the stem of its
-configuration file in lower case: `pool`, `curse`), and is then shown
-only while that program runs; one that names none is true of both. Curse
-of the Azure Bonds has no wilderness context and has one for its
-overland journey; its Modify has a context of its own, for the name
-field; and where the two programs differ on a key each has a row. With
-no program, or one this build does not recognize, the card is the
-baseline's. The JSON carries `program` on every context and row (empty
-for both) and `programs`, each word with its program image's SHA-256,
-so a page gets the word from `Machine.programFingerprint()` through
-`keyCardProgram()`. A page that ignores `program` shows both games' rows
-together.
+**A program is shown its own card** (#556, #610). A context or a row may
+name a program, by `key_card_program()`'s word for an edition (the stem
+of its configuration file in lower case: `pool`, `curse`, `blades`), and
+is then shown only while that program runs; one that names none is true
+of every program, and only the desktop's own keys name none. A screen
+the first two games share is in the table once for each of them, over
+one list of rows, so a context's `id` is unique within a program's card
+and not across the table. Curse of the Azure Bonds has no wilderness
+context and has one for its overland journey; its Modify has a context
+of its own, for the name field; and where the first two programs differ
+on a key each has a row. Secret of the Silver Blades has six contexts of
+its own and no other (below). With no program, or one this build does
+not recognize, the card is the baseline's. The JSON carries `program` on
+every context and row and `programs`, each word with its program image's
+SHA-256 and its **note under the card** (`legend`; the top-level
+`legend` is the baseline's, and Secret of the Silver Blades' is its
+own), so a page gets the word from `Machine.programFingerprint()`
+through `keyCardProgram()` and the note through `keyCardLegend()`. A
+page that ignores `program` shows every game's contexts together. The
+JSON gained fields and no export moved, so the ABI version does not.
 
 | host | where | how it reads the table |
 | --- | --- | --- |
@@ -2395,7 +2406,9 @@ box, lists every controls improvement by screen, the enhancement each one
 needs and what each trades (#448), and the one look, the selection as a
 block (#453, #483, #555), in a part for each game (#556): a row is true
 of the game whose part it is in. Every one is the single
-`modern-controls` seam (#473), and the page says so in its legend. It is the dev page's furniture, served with it and
+`modern-controls` seam (#473), and the page says so in its legend.
+Secret of the Silver Blades' part says that no improvement is on that
+game yet and lists its own keys untagged (#610). It is the dev page's furniture, served with it and
 not released, like `index.html`; the keys per screen stay the card's.
 
 **A seam's keys show only while it is on.** A row names a seam id, and a
@@ -2418,7 +2431,9 @@ row. The card says so once, under every context, and adds that with
 `modern-controls` on walking is a mode the party's bar starts with `Move`
 and ends with `Exit`, and the number row's `1` to `8` pick a party member at
 the main menu (the keypad's digits keep their meaning; the seam tells them
-apart by scan code).
+apart by scan code). Secret of the Silver Blades' note says only what is
+true there: its number row's `8 2 4 6` are its arrows, and Home and End
+do nothing in its lists or at its party menu.
 
 **How each row was checked.** Driven under SDL's dummy drivers with
 `--press`, reading the screen text and the stills beside them
@@ -2471,6 +2486,35 @@ and `3` in a list, an arrow at combat's command bar starting a move
 every row the two programs share that is not named here. Left off its
 card because nothing verified them: T in Aim, moving into an enemy as an
 attack, Modify's `6` and `4`, and Return at Items.
+
+**Secret of the Silver Blades' rows** (#610) are its own on every
+screen: the exploring view, the command bars, the party menu, the
+pick-lists, combat and a line of text. Every one was driven on the Steam
+copy (`docs/playable-secret.md`, "The program's own controls" and its
+legs), with no seam unless one is named: at the party's bar Up and Down
+stepping the current member and Left and Right the lit word, on the
+arrows and the number row, and Escape, `,` and `.` doing nothing; `M`
+and Return on `MOVE` starting the program's own walk, and in it Up and
+`8` stepping, Left, Right and `4` turning, Down turning round, Return
+and `E` ending it and Escape doing nothing; a bar's letters, Return,
+Y and N, Escape leaving camp and a member's sheet, and `E` then `N`
+leaving a treasure screen; the party menu's Up, Down, `8` and `2`, and
+its letters, Home and End doing nothing; a list's Up, Down, `8`, `2` and
+Return, Home and End doing nothing, `E` leaving it and Escape leaving a
+shop's list and the one the party menu opens; in a fight `M` and the
+arrows moving the fighter, the bar counting the moves left, an arrow at
+the command bar stepping its lit word and moving nobody, Escape putting
+the fighter back where the move began, Aim with N, P, M, the arrows and
+E, View, Quick, Done's bar and `N` at the end; and a line's letters,
+digits, Backspace, Return, Escape accepting and the arrows typing
+nothing. With `message-pause` on, a key ends a pause and does nothing
+else (`docs/playable-secret.md`). Left off because nothing drove them:
+the member picker and Modify, PgUp and PgDn, combat's diagonals, `2`
+while walking, and Home and End at the party's bar, where `End` was seen
+to step the member back once and `Home` to do nothing, too little to
+write a row from. No `modern-controls` or `journal` row is on this
+card: on this program the one changes no key and the other has no
+`Notes`.
 
 ## 12. A line of text, being read (#504)
 

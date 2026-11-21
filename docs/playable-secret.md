@@ -64,10 +64,31 @@ from this table.
 
 At any bar `Left` and `Right` move the lit word and `Escape` leaves a
 view; at the adventuring bar `Up` and `Down` change which member is the
-current one. A digit is the keypad's, whichever row typed it: the
-program's raw mode turns `8` and `2` into `Up` and `Down` (driven: `8`
-at the adventuring bar makes the member above the current one), and `4`
-and `6` move the lit word.
+current one. The key card (`docs/hosts.md` §11) is this table and the
+rows below, as a player reads it.
+
+| where | key | what it does |
+|---|---|---|
+| the party menu | `8`, `2` on the number row or the keypad | as `Up` and `Down`; `Up` on the first row goes to the last |
+| the party menu | a letter, `Home`, `End` | nothing |
+| a pick list | `8`, `2`; `Escape` | as `Up` and `Down`; `Escape` leaves it (the party menu's `INITIALIZE MOUSE/JOYSTICK` list, leg 7's shop) |
+| the adventuring bar | `8`, `2`, `4`, `6`, the number row's or the keypad's | as the arrows: the current member, and the lit word |
+| the adventuring bar | `,`, `.`, `Escape` | nothing |
+| the adventuring bar | `M` | the move mode, as `Return` on `MOVE` |
+| the move mode | `Down`; `8` and `4`, the number row's or the keypad's | turns round; as `Up` and `Left` |
+| the move mode | `Return`, `E`; `Escape`, `Home`, `End` | the bar again, `MOVE` lit; nothing |
+| camp | `Escape` | at a member's sheet, back to the camp's bar; at that bar, out of camp |
+| a fight | `M`, then the arrows | `MOVE/ATTACK, MOVE LEFT = 12 DONE`: each arrow a square, the count going down |
+| a fight | `Escape` while moving | the combat bar, and the fighter back on the square the move began on |
+| a fight | an arrow at the combat bar | moves the lit word, and nobody |
+| a fight | `D`, `V` | `GUARD DELAY QUIT SPEED EXIT`; the member's sheet, which `E` leaves |
+| a line of text | `Backspace`, `Escape` | erases the last character; takes the line as typed |
+
+Driven over leg 1 to its adventuring bar, over leg 0 and its party menu,
+over leg 4 to its fight and over leg 10 to its name. `Home` and `End` at
+the adventuring bar were seen once each, too little to say: `End` took
+the current member from the second back to the first, and did nothing
+on the first; `Home` did nothing on the first.
 
 ## The watch list
 

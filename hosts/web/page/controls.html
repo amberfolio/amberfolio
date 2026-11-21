@@ -90,6 +90,7 @@ kbd { font: 500 12.5px/1 var(--mono); background: var(--key-bg); border: 1px sol
   <nav class="games" aria-label="Games">
     <a href="#pool-of-radiance">Pool of Radiance</a>
     <a href="#curse-of-the-azure-bonds">Curse of the Azure Bonds</a>
+    <a href="#secret-of-the-silver-blades">Secret of the Silver Blades</a>
   </nav>
 </header>
 
@@ -358,6 +359,82 @@ kbd { font: 500 12.5px/1 var(--mono); background: var(--key-bg); border: 1px sol
     <li>In Modify, Up and Down step the fields.</li>
   </ul>
 </div>
+</article>
+
+<article id="secret-of-the-silver-blades">
+<h2>Secret of the Silver Blades</h2>
+<p class="lede">No controls improvement is available in this game yet, and none is needed for the first ones the other two games got: its menus are lists the arrows already move, its bars take Left, Right and Enter, and walking is already a mode of its own. modern-controls can be switched on here, and changes no key and no pixel: it only lets a host read what the game is doing. So every row below is the game's own, and the key card shows the same.</p>
+
+<section>
+  <h3>The party menu <small>at the start and at a training hall</small></h3>
+  <div class="tbl"><table>
+    <tr><td class="k"><kbd>Up</kbd><kbd>Down</kbd></td><td>Move the highlight over the rows.</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>Enter</kbd></td><td>Take the highlighted row.</td><td class="t"></td></tr>
+    <tr><td class="k">letters, <kbd>Home</kbd><kbd>End</kbd></td><td>Do nothing here: a row is taken with Enter, not with its first letter.</td><td class="t"></td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h3>Pick-lists <small>race, class, alignment, a shop's goods, a temple's cures</small></h3>
+  <div class="tbl"><table>
+    <tr><td class="k"><kbd>Up</kbd><kbd>Down</kbd></td><td>Move the lit row.</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>Enter</kbd></td><td>Take the bar's lit command for the lit row.</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>E</kbd></td><td>Leave the list: the bar's Exit.</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>Esc</kbd></td><td>Leave a shop's list, or one opened from the party menu.</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>Home</kbd><kbd>End</kbd></td><td>Do nothing here.</td><td class="t"></td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h3>Command bars <small>the line along the bottom</small></h3>
+  <div class="tbl"><table>
+    <tr><td class="k"><kbd>Left</kbd><kbd>Right</kbd></td><td>Step the lit command, except where they walk or turn.</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>Enter</kbd></td><td>Take the lit command.</td><td class="t"></td></tr>
+    <tr><td class="k">first letter</td><td>Take that command (lower case works).</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>Y</kbd><kbd>N</kbd></td><td>Answer a Yes/No question.</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>Esc</kbd></td><td>Leave camp or a member's sheet. At the party's bar it does nothing.</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>E</kbd>, then <kbd>N</kbd></td><td>Leave a treasure screen with treasure still on it: N is the answer that leaves.</td><td class="t"></td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h3>Exploring <small>the town and the ruins</small></h3>
+  <div class="tbl"><table>
+    <tr><td class="k"><kbd>Up</kbd><kbd>Down</kbd></td><td>At the bar: the previous or next party member.</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>Left</kbd><kbd>Right</kbd></td><td>At the bar: step the lit command.</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>M</kbd>, or <kbd>Enter</kbd> on Move</td><td>Start walking. The bar reads Exit; Up steps forward, Left and Right turn, Down turns round.</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>Enter</kbd> <kbd>E</kbd></td><td>While walking: back to the bar, Move lit. <kbd>Esc</kbd> does nothing here.</td><td class="t"></td></tr>
+  </table></div>
+  <p class="note">The number row's 8, 2, 4 and 6 are the arrows, as the keypad's are, here and in the menus and lists.</p>
+</section>
+
+<section>
+  <h3>Combat</h3>
+  <div class="tbl"><table>
+    <tr><td class="k"><kbd>M</kbd>, then the arrows</td><td>Move one square a key; the bar counts the moves left. An arrow at the command bar steps the lit command and does not move.</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>Esc</kbd></td><td>While moving: back to the command bar, with the fighter back where the move began.</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>A</kbd></td><td>Aim: N and P choose a target, M a cursor the arrows move, E leaves.</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>Q</kbd></td><td>Quick: the computer plays this member to the end of the fight.</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>N</kbd></td><td>At Continue Battle, once no enemy stands: take the win.</td><td class="t"></td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h3>Typing <small>a name, a number</small></h3>
+  <div class="tbl"><table>
+    <tr><td class="k">letters, digits, <kbd>Backspace</kbd></td><td>Type and erase (lower case shows as capitals).</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>Enter</kbd> <kbd>Esc</kbd></td><td>Accept what is typed; Esc does not cancel.</td><td class="t"></td></tr>
+    <tr><td class="k">arrows</td><td>Do nothing: the game already types no letter for them.</td><td class="t"></td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h3>Everywhere, always on</h3>
+  <div class="tbl"><table>
+    <tr><td class="k">held key</td><td>Repeats, on the desktop build as on the web build and the original keyboard. The on-screen keyboard never repeats.</td><td class="t"><span class="chip c-base">desktop</span></td></tr>
+    <tr><td class="k">key card</td><td>Every screen's keys in one place, this game's own.</td><td class="t"><span class="chip c-base">both builds</span></td></tr>
+  </table></div>
+</section>
 </article>
 </div>
 </body>
