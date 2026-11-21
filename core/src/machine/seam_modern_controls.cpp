@@ -129,14 +129,16 @@ struct curse_point_table {
   }
 };
 
-/// Secret's: the two pieces that observe, in the same order.
+/// Secret's: the hero keys and the two pieces that observe, in the same
+/// order.
 struct secret_point_table {
   std::array<seam_point, secret_modern_controls_point_count> point{};
 
   secret_point_table() {
     std::size_t next = 0;
     for (const std::span<const seam_point> piece :
-         {secret_text_entry_points(), secret_aim_watch_points()}) {
+         {secret_hero_keys_points(), secret_text_entry_points(),
+          secret_aim_watch_points()}) {
       for (const seam_point& each : piece) {
         point[next++] = each;
       }

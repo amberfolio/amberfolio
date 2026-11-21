@@ -170,17 +170,47 @@ namespace {
 
 // --- One program's facts ---------------------------------------------------
 
+/// Where a routine that draws a member's row keeps, below BP, the column
+/// its names start at (a byte), the row it is on (a byte) and the far
+/// pointer to the record it is drawing.
+struct frame_layout {
+  std::uint16_t column;
+  std::uint16_t row;
+  std::uint16_t member;
+};
+
+/// The roster drawer's, on every program this build knows (the drawers are
+/// one routine, built three times).
+constexpr frame_layout drawer_frame{.column = 5, .row = 6, .member = 4};
+
 /// What this piece needs to know about one program, apart from its profile
 /// (the party list, the pushback slot, the menu overlay's read call, the
-/// modules): who the one caller is, and where in the roster drawer the
-/// numbers are drawn, with the two routines they are drawn and cut with.
+/// modules): who the one caller is and what it hands the party cursor, and
+/// where in the roster drawer the numbers are drawn, with the two routines
+/// they are drawn and cut with.
 struct hero_keys_facts {
   const program_profile& profile;
 
-  /// The main menu's call into the menu-bar routine: the instruction after
-  /// it, in the profile's `roster_overlay`. The title screen's and every
-  /// other screen the same loop serves are this one caller.
-  std::uint16_t main_menu_return;
+  /// The one caller whose screen a digit selects at: the load-segment word
+  /// of its module and the instruction after its call into the menu-bar
+  /// routine. On the first two programs the main menu's call (the title
+  /// screen's and every other screen the same loop serves are this one
+  /// caller), on Secret of the Silver Blades the party menu's member picker.
+  std::uint32_t caller_load_segment_at;
+  std::uint16_t caller_return;
+
+  /// The key the caller hands the party cursor as "the member before", as
+  /// the BIOS ring holds it: Home, which the routine returns as `G`, on the
+  /// first two programs; Up, returned as its scan code `H`, on Secret.
+  std::uint16_t step_back_key;
+
+  /// Where the program keeps the member whose row is to be drawn again
+  /// unselected (a far pointer in the data segment), or zero where its
+  /// caller redraws the whole list instead. On Secret the picker draws the
+  /// old member's row and then the new one's, and the routine that draws a
+  /// row takes the old member from here when it is set, which is where the
+  /// program's own pick by the mouse puts it.
+  std::uint16_t data_previous_member;
 
   /// In the roster drawer, in the profile's `summary_overlay`: the
   /// instruction after the call that clears a member's row (the name is
@@ -192,6 +222,15 @@ struct hero_keys_facts {
   std::uint32_t name_drawn;
   std::uint32_t ac_column_pushed;
   std::uint32_t heading_copied;
+
+  /// The routine that draws one member's row again, in the same module,
+  /// where a program has one (zero where it has none): before the name is
+  /// drawn (the row is not cleared), where its two name paths meet, and the
+  /// push of the armour class's column, as in the drawer; and its frame.
+  std::uint32_t row_name_next;
+  std::uint32_t row_name_drawn;
+  std::uint32_t row_ac_column_pushed;
+  frame_layout row_frame;
 
   /// The routines the seam asks the program to run, as the paragraph they
   /// were linked at (a routine reaches its own literals through CS, so it
@@ -216,11 +255,18 @@ struct hero_keys_facts {
 /// `0x135A`.
 constexpr hero_keys_facts pool_of_radiance_hero_keys{
     .profile = pool_of_radiance,
-    .main_menu_return = 0x02FD,
+    .caller_load_segment_at = pool_of_radiance.roster_overlay.load_segment_at,
+    .caller_return = 0x02FD,
+    .step_back_key = 0x4700,
+    .data_previous_member = 0,
     .row_cleared = 0x138F,
     .name_drawn = 0x13CB,
     .ac_column_pushed = 0x140F,
     .heading_copied = 0x135A,
+    .row_name_next = 0,
+    .row_name_drawn = 0,
+    .row_ac_column_pushed = 0,
+    .row_frame = {},
     .glyph_paragraph = 0x709,
     .glyph_offset = 0x01DF,
     .glyph_takes_paper = false,
@@ -232,17 +278,66 @@ constexpr hero_keys_facts pool_of_radiance_hero_keys{
 /// of Radiance's; its glyph blitter (paragraph `0x4CE`, `0x01DF`) takes the
 /// paper's colour after the colour, and its region clear is the profile's
 /// (image `0x17FD`, paragraph `0x133`, offset `0x04CD`).
-constexpr hero_keys_facts curse_hero_keys{.profile = curse_of_the_azure_bonds,
-                                          .main_menu_return = 0x0393,
-                                          .row_cleared = 0x0830,
-                                          .name_drawn = 0x086F,
-                                          .ac_column_pushed = 0x08B3,
-                                          .heading_copied = 0x07FB,
-                                          .glyph_paragraph = 0x4CE,
-                                          .glyph_offset = 0x01DF,
-                                          .glyph_takes_paper = true,
-                                          .clear_paragraph = 0x133,
-                                          .clear_offset = 0x04CD};
+constexpr hero_keys_facts curse_hero_keys{
+    .profile = curse_of_the_azure_bonds,
+    .caller_load_segment_at =
+        curse_of_the_azure_bonds.roster_overlay.load_segment_at,
+    .caller_return = 0x0393,
+    .step_back_key = 0x4700,
+    .data_previous_member = 0,
+    .row_cleared = 0x0830,
+    .name_drawn = 0x086F,
+    .ac_column_pushed = 0x08B3,
+    .heading_copied = 0x07FB,
+    .row_name_next = 0,
+    .row_name_drawn = 0,
+    .row_ac_column_pushed = 0,
+    .row_frame = {},
+    .glyph_paragraph = 0x4CE,
+    .glyph_offset = 0x01DF,
+    .glyph_takes_paper = true,
+    .clear_paragraph = 0x133,
+    .clear_offset = 0x04CD};
+
+/// Secret of the Silver Blades (#609). **The party menu has no member of
+/// its own to select**: its commands that act on a member ask for one with
+/// a picker of their own (overlay 22, `0x40C8`, called from the party
+/// menu's loop and nowhere else), whose call into the menu-bar routine is
+/// raw and returns at `0x4120`. The picker hands a raw key to the party
+/// cursor (overlay 22, `0x39AE`: `H` the member before, from the head the
+/// tail; `P` the member after, the tail staying; any other key the head),
+/// with the old member's row drawn again unselected before and the new
+/// one's selected after, by the routine at overlay 27 `0x0987`, which takes
+/// the old member from DGROUP `0x7D34` when it is set. So the picker is
+/// where a digit selects, and Up is the key that steps back.
+///
+/// The roster drawer is overlay 27's (the profile's `summary_overlay`, at
+/// `0x07C4`), the same routine as the first two programs' with the mouse's
+/// region noted beside it; its glyph blitter (paragraph `0x540`, `0x01E7`)
+/// takes the paper's colour after the colour, as Curse's does, and the
+/// region clear it clears a row with is paragraph `0x19D`, offset `0x0519`.
+/// The routine that draws one row again (`0x0987`) keeps its column at
+/// `BP-9`, its row at `BP-0x0A` and the member at `BP-4`.
+constexpr hero_keys_facts secret_hero_keys{
+    .profile = secret_of_the_silver_blades,
+    .caller_load_segment_at =
+        secret_of_the_silver_blades.view_overlay.load_segment_at,
+    .caller_return = 0x4120,
+    .step_back_key = 0x4800,
+    .data_previous_member = 0x7D34,
+    .row_cleared = 0x0887,
+    .name_drawn = 0x08C5,
+    .ac_column_pushed = 0x0909,
+    .heading_copied = 0x084F,
+    .row_name_next = 0x0A1B,
+    .row_name_drawn = 0x0A50,
+    .row_ac_column_pushed = 0x0A94,
+    .row_frame = {.column = 9, .row = 0x0A, .member = 4},
+    .glyph_paragraph = 0x540,
+    .glyph_offset = 0x01E7,
+    .glyph_takes_paper = true,
+    .clear_paragraph = 0x19D,
+    .clear_offset = 0x0519};
 
 // --- The menu-bar routine, in the menu overlay (the profile's) -----------
 
@@ -263,9 +358,6 @@ using party_select::read_pointer;
 using party_select::write_pointer;
 
 // --- The keys, as the BIOS ring holds them: scan code high, character low --
-
-/// Home: scan `0x47`, no character. The caller reads it as `G`.
-constexpr std::uint16_t key_home = 0x4700;
 
 /// The scan code of the number row's `1`; the digits count up from it.
 constexpr std::uint8_t number_row_scan_of_one = 0x02;
@@ -295,13 +387,14 @@ constexpr std::uint8_t number_row_scan_of_one = 0x02;
                        static_cast<std::uint16_t>(at));
 }
 
-/// Whether this call of the menu-bar routine came from the main menu. At
-/// every other bar with a party list, Up and Down select (`list-arrows`,
-/// and on the party's own bar `move-mode`), so the number row is the
-/// program's keypad layout again there (#479).
-[[nodiscard]] bool called_from_the_main_menu(const hero_keys_facts& f,
-                                             cpu::processor& cpu,
-                                             const seam_context& ctx) {
+/// Whether this call of the menu-bar routine came from the one caller a
+/// digit selects at: the main menu, or Secret of the Silver Blades' party
+/// menu's picker. At every other bar with a party list, Up and Down select
+/// (`list-arrows`, and on the party's own bar `move-mode`, or the program's
+/// own), so the number row is the program's keypad layout there (#479).
+[[nodiscard]] bool called_from_the_caller(const hero_keys_facts& f,
+                                          cpu::processor& cpu,
+                                          const seam_context& ctx) {
   cpu::registers& regs = cpu.regs();
   const std::uint16_t ss = regs[cpu::sreg::ss];
   const std::uint16_t bp = regs[cpu::reg16::bp];
@@ -309,11 +402,10 @@ constexpr std::uint8_t number_row_scan_of_one = 0x02;
       cpu.read_word(ss, static_cast<std::uint16_t>(bp + frame_return_ip));
   const std::uint16_t cs =
       cpu.read_word(ss, static_cast<std::uint16_t>(bp + frame_return_cs));
-  if (ip != f.main_menu_return) {
+  if (ip != f.caller_return) {
     return false;
   }
-  const std::uint16_t segment =
-      loaded_at(cpu, ctx, f.profile.roster_overlay.load_segment_at);
+  const std::uint16_t segment = loaded_at(cpu, ctx, f.caller_load_segment_at);
   return segment != 0 && segment == cs;
 }
 
@@ -347,7 +439,7 @@ void at_key_read(machine& box, seam_context& ctx) {
     // The head of the ring is not the key about to be read.
     return;
   }
-  if (!called_from_the_main_menu(F, cpu, ctx)) {
+  if (!called_from_the_caller(F, cpu, ctx)) {
     return;
   }
   if (!party_select::is_the_data_segment(profile, ctx, ds)) {
@@ -368,28 +460,35 @@ void at_key_read(machine& box, seam_context& ctx) {
     return;
   }
 
-  // The cursor's `G` goes to the member whose next is the current one, and
-  // from the head it wraps to the tail. So: the target's successor, or the
-  // head when the target is the last (or the only) member. The cursor
-  // then lands on the target by its own rule and the caller redraws.
+  // The cursor's step back goes to the member whose next is the current
+  // one, and from the head it wraps to the tail. So: the target's
+  // successor, or the head when the target is the last (or the only)
+  // member. The cursor then lands on the target by its own rule and the
+  // caller redraws.
   const far_pointer from =
       hero == members.size ? members.member[0] : members.member[hero];
+  if constexpr (F.data_previous_member != 0) {
+    // The row the caller draws unselected first is the one on the screen
+    // as selected now, not the successor's.
+    write_pointer(cpu, ds, F.data_previous_member,
+                  read_pointer(cpu, ds, profile.data_current_member));
+  }
   write_pointer(cpu, ds, profile.data_current_member, from);
-  cpu.write_word(bda::segment, ring_slot, key_home);
+  cpu.write_word(bda::segment, ring_slot, F.step_back_key);
 }
 
 // --- The roster drawer ------------------------------------------------------
 //
-// The drawer's frame is the same on both programs this build knows (the
-// drawers are one routine, built twice): the constants below are its
-// shape, and the addresses in it are each program's row's.
+// The drawer's frame is the same on every program this build knows (the
+// drawers are one routine, built three times): `drawer_frame` and the
+// constants below are its shape, and the addresses in it are each program's
+// row's. Secret of the Silver Blades' routine that draws one row again has
+// a frame of its own (`row_frame`), with the same three things in it.
 
-/// The roster drawer's frame: below BP, the column its names start at (a
-/// byte), the row it is on (a byte) and the far pointer to the record being
-/// drawn (offset then segment).
-constexpr std::uint16_t local_column = 5;
-constexpr std::uint16_t local_row = 6;
-constexpr std::uint16_t local_member = 4;
+/// The drawer's own locals, below BP, that only the drawer has: the column
+/// and row bytes, read by the heading's point.
+constexpr std::uint16_t local_column = drawer_frame.column;
+constexpr std::uint16_t local_row = drawer_frame.row;
 
 /// The columns the names start at: beside the viewport, and on the main
 /// menu.
@@ -427,13 +526,15 @@ constexpr std::uint8_t heading_length = 6;
 constexpr std::uint16_t first_ac_column = 0x20;
 constexpr std::uint16_t last_ac_column = 0x22;
 
-/// What the drawer's frame says at one of the points.
+/// What a row drawer's frame says at one of the points.
 struct roster_frame {
   std::uint16_t ss{};
   std::uint16_t bp{};
   std::uint8_t column{};
   std::uint8_t row{};
   far_pointer member{};
+  /// Where the column byte is, below BP.
+  std::uint16_t column_at{};
 };
 
 [[nodiscard]] std::uint16_t below(const roster_frame& frame,
@@ -441,15 +542,18 @@ struct roster_frame {
   return static_cast<std::uint16_t>(frame.bp - distance);
 }
 
-/// The drawer's frame, or false if it is not one these facts describe.
+/// The frame laid out as `layout` says, or false if it is not one these
+/// facts describe.
 [[nodiscard]] bool read_roster_frame(const program_profile& profile,
+                                     const frame_layout& layout,
                                      cpu::processor& cpu, roster_frame& frame) {
   cpu::registers& regs = cpu.regs();
   frame.ss = regs[cpu::sreg::ss];
   frame.bp = regs[cpu::reg16::bp];
-  frame.column = cpu.read_byte(frame.ss, below(frame, local_column));
-  frame.row = cpu.read_byte(frame.ss, below(frame, local_row));
-  frame.member = read_pointer(cpu, frame.ss, below(frame, local_member));
+  frame.column_at = layout.column;
+  frame.column = cpu.read_byte(frame.ss, below(frame, layout.column));
+  frame.row = cpu.read_byte(frame.ss, below(frame, layout.row));
+  frame.member = read_pointer(cpu, frame.ss, below(frame, layout.member));
   return frame.row >= first_row && frame.row < first_row + max_party &&
          is_record(profile, frame.member);
 }
@@ -493,12 +597,25 @@ void call_and_return_here(machine& box, seam_context& ctx,
                offset);
 }
 
-/// The roster drawer has cleared a member's row, and the name is next.
-template <const hero_keys_facts& F>
+/// The frame of the drawer, or of the routine that draws one row again.
+template <const hero_keys_facts& F, bool Row>
+[[nodiscard]] constexpr const frame_layout& layout_of() noexcept {
+  if constexpr (Row) {
+    return F.row_frame;
+  } else {
+    return drawer_frame;
+  }
+}
+
+/// The roster drawer has cleared a member's row, and the name is next; or
+/// the routine that draws one row again is about to draw the name, over
+/// the row as it is. The number is drawn either way: it is the same glyph
+/// in the same cell.
+template <const hero_keys_facts& F, bool Row>
 void at_row_cleared(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   roster_frame frame;
-  if (!read_roster_frame(F.profile, cpu, frame)) {
+  if (!read_roster_frame(F.profile, layout_of<F, Row>(), cpu, frame)) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
@@ -517,7 +634,7 @@ void at_row_cleared(machine& box, seam_context& ctx) {
 
   // The name moves right, which the program does for both of its paths
   // because both read this byte; it is put back at the next point.
-  cpu.write_byte(frame.ss, below(frame, local_column),
+  cpu.write_byte(frame.ss, below(frame, frame.column_at),
                  static_cast<std::uint8_t>(frame.column + name_shift));
 
   const unsigned hero = frame.row - first_row + 1U;
@@ -534,16 +651,16 @@ void at_row_cleared(machine& box, seam_context& ctx) {
 }
 
 /// The name is drawn, and the armour class is next.
-template <const hero_keys_facts& F>
+template <const hero_keys_facts& F, bool Row>
 void at_name_drawn(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   roster_frame frame;
-  if (!read_roster_frame(F.profile, cpu, frame)) {
+  if (!read_roster_frame(F.profile, layout_of<F, Row>(), cpu, frame)) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
   const auto put_column = [&](unsigned column) {
-    cpu.write_byte(frame.ss, below(frame, local_column),
+    cpu.write_byte(frame.ss, below(frame, frame.column_at),
                    static_cast<std::uint8_t>(column));
   };
 
@@ -580,11 +697,11 @@ void at_name_drawn(machine& box, seam_context& ctx) {
 }
 
 /// The drawer is about to push the armour class value's column.
-template <const hero_keys_facts& F>
+template <const hero_keys_facts& F, bool Row>
 void at_ac_column(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   roster_frame frame;
-  if (!read_roster_frame(F.profile, cpu, frame)) {
+  if (!read_roster_frame(F.profile, layout_of<F, Row>(), cpu, frame)) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
@@ -655,19 +772,44 @@ constexpr std::array<seam_point, 5> hero_keys_points_of() {
             .run = &at_key_read<F>},
            {.module = F.profile.summary_overlay,
             .offset = F.row_cleared,
-            .run = &at_row_cleared<F>,
+            .run = &at_row_cleared<F, false>,
             .inside_calls = true},
            {.module = F.profile.summary_overlay,
             .offset = F.name_drawn,
-            .run = &at_name_drawn<F>,
+            .run = &at_name_drawn<F, false>,
             .inside_calls = true},
            {.module = F.profile.summary_overlay,
             .offset = F.ac_column_pushed,
-            .run = &at_ac_column<F>,
+            .run = &at_ac_column<F, false>,
             .inside_calls = true},
            {.module = F.profile.summary_overlay,
             .offset = F.heading_copied,
             .run = &at_heading_copied,
+            .inside_calls = true}}};
+}
+
+/// A program's eight, where it has a routine that draws one row again: the
+/// five above, then the same three in that routine.
+template <const hero_keys_facts& F>
+constexpr std::array<seam_point, 8> hero_keys_points_with_row_of() {
+  static_assert(F.row_name_next != 0);
+  const std::array<seam_point, 5> five = hero_keys_points_of<F>();
+  return {{five[0],
+           five[1],
+           five[2],
+           five[3],
+           five[4],
+           {.module = F.profile.summary_overlay,
+            .offset = F.row_name_next,
+            .run = &at_row_cleared<F, true>,
+            .inside_calls = true},
+           {.module = F.profile.summary_overlay,
+            .offset = F.row_name_drawn,
+            .run = &at_name_drawn<F, true>,
+            .inside_calls = true},
+           {.module = F.profile.summary_overlay,
+            .offset = F.row_ac_column_pushed,
+            .run = &at_ac_column<F, true>,
             .inside_calls = true}}};
 }
 
@@ -678,6 +820,11 @@ static_assert(hero_keys_point_table.size() == hero_keys_point_count);
 constexpr std::array<seam_point, 5> curse_hero_keys_point_table =
     hero_keys_points_of<curse_hero_keys>();
 
+constexpr std::array<seam_point, 8> secret_hero_keys_point_table =
+    hero_keys_points_with_row_of<secret_hero_keys>();
+static_assert(secret_hero_keys_point_table.size() ==
+              secret_hero_keys_point_count);
+
 }  // namespace
 
 std::span<const seam_point> hero_keys_points() noexcept {
@@ -686,6 +833,10 @@ std::span<const seam_point> hero_keys_points() noexcept {
 
 std::span<const seam_point> curse_hero_keys_points() noexcept {
   return curse_hero_keys_point_table;
+}
+
+std::span<const seam_point> secret_hero_keys_points() noexcept {
+  return secret_hero_keys_point_table;
 }
 
 }  // namespace amberfolio::machine

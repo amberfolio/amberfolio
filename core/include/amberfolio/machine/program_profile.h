@@ -793,6 +793,39 @@ inline constexpr seam_module aim{
         "c0bb9c76500ad2cbcfe242ecb4e48a348c904325f266747dd40a1ef305874eb8",
     .load_segment_at = 0xCA0};
 
+/// Overlay 22: the character view and its sheet, and the party menu's own
+/// member picker (`seam_hero_keys.cpp`). The stub's record is at image
+/// `0x1000`.
+inline constexpr seam_module view{
+    .file = "GAME.OVR",
+    .file_offset = 160097,
+    .length = 16843,
+    .digest =
+        "8f0c705f86a9694145fceb945151cd315c240059dcd29071bfef2de9b97de643",
+    .load_segment_at = 0x1010};
+
+/// Overlay 27: the party summary, the roster drawer and the routine that
+/// draws one member's row again among others. The stub's record is at
+/// image `0x1510`, and its entries follow it in paragraph `0x151`: the
+/// roster drawer's is the third, at offset `0x2A`.
+inline constexpr seam_module summary{
+    .file = "GAME.OVR",
+    .file_offset = 229713,
+    .length = 15132,
+    .digest =
+        "91be9289b184f1447cd89845902d92097c1e1f94623db95f961ca29c16899276",
+    .load_segment_at = 0x1520};
+
+/// Overlay 29: the menu-bar routine. The stub's record is at image
+/// `0x16B0`.
+inline constexpr seam_module menu{
+    .file = "GAME.OVR",
+    .file_offset = 250323,
+    .length = 6648,
+    .digest =
+        "0bc319c3f01da7de302c09c691d0ffba9b9663bf30f59371e39562b73d013705",
+    .load_segment_at = 0x16C0};
+
 }  // namespace secret_of_the_silver_blades_modules
 
 /// Secret of the Silver Blades, the program Steam sells (v1.30;
@@ -805,6 +838,12 @@ inline constexpr seam_module aim{
 ///
 /// The record is the one the first two programs keep, longer again: the
 /// same fields in the same order, further in.
+///
+/// **The menu-bar routine reads its keys through a routine of its own**,
+/// image `0x7133`, which reads the mouse and the joystick and then the
+/// program's key read (`key_read_entry`); `menu_key_read_call` is the
+/// routine's far call to it. The read keeps an extended key's second half
+/// in `data_key_pushback`, as on the first two programs.
 ///
 /// **No view kind**, as on Curse of the Azure Bonds: the adventuring mode
 /// has one view, the grid, and the program is in that mode from its first
@@ -834,9 +873,9 @@ inline constexpr program_profile secret_of_the_silver_blades{
     .camp_overlay = {},
     .roster_overlay = {},
     .slots_overlay = {},
-    .view_overlay = {},
-    .menu_overlay = {},
-    .summary_overlay = {},
+    .view_overlay = secret_of_the_silver_blades_modules::view,
+    .menu_overlay = secret_of_the_silver_blades_modules::menu,
+    .summary_overlay = secret_of_the_silver_blades_modules::summary,
     .temple_load_segment_at = {},
     .post_combat_load_segment_at = {},
     .shop_load_segment_at = {},
@@ -844,7 +883,7 @@ inline constexpr program_profile secret_of_the_silver_blades{
     .rest_load_segment_at = {},
     .appraise_load_segment_at = {},
     .death_load_segment_at = 0x18C0,  // overlay 34
-    .menu_key_read_call = {},
+    .menu_key_read_call = 0x05A0,
     .menu_local_bar = {},
     .menu_bar_capacity = {},
     .pick_list_bar_return = {},
@@ -880,7 +919,7 @@ inline constexpr program_profile secret_of_the_silver_blades{
     .data_current_member = 0x7D38,
     .data_roster_head = 0x7D3C,
     .data_bar_highlight = {},
-    .data_key_pushback = {},
+    .data_key_pushback = 0xA6E9,
     .data_font_pointer = 0x7DC8,
     .data_view_column_bias = {},
     .data_sound_busy = {},
