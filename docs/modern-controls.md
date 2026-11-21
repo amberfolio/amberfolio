@@ -51,7 +51,7 @@ summed over the pieces.
   ninety-six).
 - **Three programs, several modules.** Every piece keys on the baseline
   edition (`docs/seams.md` §5), nine of them on Curse of the Azure Bonds
-  too and two on Secret of the Silver Blades, with points of their own
+  too and three on Secret of the Silver Blades, with points of their own
   (below), so the definition names all three. The modules are the
   pieces': overlay 25 for five of them, overlay 16 for the menu cursor's loop
   call, overlay 19 for Modify's score, overlay 14 for the move mode's party
@@ -333,18 +333,60 @@ selected member, asked in combat and out.
   `JournalReaderOnCurse.TheLogsCursorRowIsAWhiteBlockUnderModernControls`,
   `SeamCallProgram.FindsAnInsideCallsPointInAModuleTheProgramMoves`.
 
-**On Secret of the Silver Blades** (#609) the seam is available with the
-two pieces that only observe, text entry and the aim watch, each the same
-mechanism with that program's facts in a row of its own
-(`text_entry_facts`, `aim_watch_facts`) and their seven points in the
-definition's `programs`. No piece that takes a key or draws is ported, so
-**on this program the seam changes no key and no pixel**: it is there for
-a host's reads, the text-entry signal (`docs/hosts.md` §10) and the
-scene's aim (`docs/hosts.md` §13), and a player who switches it on sees
-nothing change.
+**On Secret of the Silver Blades** (#609) the seam is available with
+three pieces: the hero keys, and the two that only observe, text entry
+and the aim watch, each the same mechanism with that program's facts in a
+row of its own (`hero_keys_facts`, `text_entry_facts`, `aim_watch_facts`)
+and their fifteen points in the definition's `programs`, in the
+baseline's order: the hero keys' eight, text entry's two, the aim watch's
+five. The observing pieces are there for a host's reads, the text-entry
+signal (`docs/hosts.md` §10) and the scene's aim (`docs/hosts.md` §13).
+
+The other pieces are not ported, because the program has them: its
+menus are lists the arrows move, its bars take Left, Right and Return,
+its party's bar has its own move mode and an arrow types nothing at a
+line of text (`docs/playable-secret.md`, "The program's own controls").
+**The selection block is not ported either**, though the roster's current
+member is told by colour alone here (white where the others are in their
+status colour, drawn by the roster drawer's string call at overlay 27
+`0x08A9` and by the one-row routine's at `0x0A34`): on the first two
+games it is one mechanism through the blitter's row write, with the
+margins round the program's own blocks, the bar leaf's glyph calls, the
+pick-list's and Modify's, and its port is that whole piece on this
+program's rewritten bar leaf (four glyph calls) and list routine.
+
+**The number row on this program is the keypad's everywhere**: the
+menu-bar routine (overlay 29) takes `4` and `6` as Left and Right where a
+bar has two words or more, and in raw mode turns every other digit into a
+letter through the table at DGROUP `0x341E` (`1` to `9`: `O P Q K` space
+`M G H I`). The party cursor steps back on `H` (`8`), forward on `P`
+(`2`), and puts the selection on the first member on any other key, so at
+the adventuring bar `1`, `3`, `5`, `7` and `9` select the first member.
+Driven, seam off and on alike: at the adventuring bar `2`, `2`, `3` and
+`V` show Guy's sheet, `6`, `6` and Return take `CAST`, and the keypad's
+`2` selects Paine. The program reads the character, so the number row and
+the keypad with Num Lock on are one to it.
+
+**The hero keys** are the first two games' piece at its one caller. The
+party menu selects no member of its own: its commands that act on one
+(`VIEW`, `MODIFY`, `DROP`, `REMOVE`, training's `TRAIN`) ask with
+`PICK CHARACTER`, a picker of its own (overlay 22 `0x40C8`, called only
+from the party menu's overlay 20), so that is where a digit selects. The
+roster drawer is the first two games' routine, and the party menu's list
+(column one) is numbered as their main menu's is.
 
 | fact | Secret of the Silver Blades |
 | --- | --- |
+| the menu overlay: the menu-bar routine; its read call | overlay 29 (file offset 250323, 6648 bytes, digest `0bc319c3…3705`, word `0x16C0`) `0x03C9`; `0x05A0`, a far call to image `0x7133`, which reads the mouse and the joystick and then the program's key read (image `0xBA9C`), with the pushback slot at DGROUP `0xA6E9` |
+| the one caller: the party menu's picker; its call's return | overlay 22 (file offset 160097, 16843 bytes, digest `8f0c705f…e643`, word `0x1010`) `0x40C8`; `0x4120`, raw, `PICK CHARACTER` over `SELECT EXIT` |
+| what the picker hands the party cursor | a raw key: the cursor (overlay 22 `0x39AE`) steps back on `H` (Up), forward on `P` (Down, the tail staying), and to the head on any other key; so the seam writes Up, not Home |
+| how the picker redraws | the old member's row unselected, then the new one's selected, by overlay 27 `0x0987`, which takes the old member from DGROUP `0x7D34` when it is set (the program's own pick by the mouse sets it) and clears it |
+| the party | head DGROUP `0x7D3C`, selected member `0x7D38`, a record's next at `+0x19D` (the profile's) |
+| the party summary's module; the roster drawer | overlay 27 (file offset 229713, 15132 bytes, digest `91be9289…9276`, word `0x1520`); `0x07C4`, its stub entry `0x0151:0x002A` |
+| the drawer's points: the row cleared; the name paths meet; the armour class's column pushed; the heading copied | `0x0887`; `0x08C5`; `0x0909`; `0x084F`. Frame as on the first two games: column `BP-5`, row `BP-6`, member `BP-4`, heading `BP-0x0E` |
+| the one-row routine's points: before the name (no row cleared); the name paths meet; the armour class's column pushed | `0x0A1B`; `0x0A50`; `0x0A94`. Frame: column `BP-9`, row `BP-0x0A`, member `BP-4` |
+| the glyph blitter; the region clear | paragraph `0x540` `0x01E7` (image `0x55E7`; column, row, colour, paper, count, character, fold, `retf 0Eh`); paragraph `0x19D` `0x0519` (image `0x1EE9`; left, top, right, bottom, `retf 8`) |
+| the line editor; its one return | image `0x5B48` (`push bp`); `0x5D87` (`retf 0Ah`), Curse of the Azure Bonds' editor with its two calls of the key read |
 | the line editor; its one return | image `0x5B48` (`push bp`); `0x5D87` (`retf 0Ah`), Curse of the Azure Bonds' editor with its two calls of the key read |
 | the aim overlay | overlay 16 (file offset 85738, 16138 bytes, digest `c0bb9c76…74eb8`, word `0x0CA0`) |
 | target to target: routine; meeting point; return; attack flag; bar string | `0x2C85`; `0x2DE8`; `0x2E70`; `BP+0x10`; `BP-0x2A` |
@@ -362,6 +404,32 @@ nothing change.
   the target's square beside its record, and after manual's Exit it is
   handed a square and no record (`docs/hosts.md` §13 has what the scene
   says then).
+- **The hero keys at the picker.** A number-row digit with a member
+  behind it, from the picker's call: the selection goes on the target's
+  successor (the head for the last member), the member selected now goes
+  in `0x7D34`, and the key becomes Up; the picker draws that member's row
+  unselected, the cursor steps back onto the target, and the picker draws
+  the target's row selected. A digit with nobody behind it is the key the
+  routine throws away. The keypad's digits (their own scan codes) and
+  every other caller are left alone, so at the adventuring bar, camp and
+  the shops the number row is the program's. The one-row routine draws
+  the number again and the name two columns right, as the drawer does.
+- **What the piece takes from the program here**: at `PICK CHARACTER`
+  only, the number row's `2` and `8` (the member after and before), `4`
+  and `6` (the bar's `SELECT` and `EXIT`) and `1`, `3`, `5`, `7` (the first
+  member) become the member of that number; the arrows and the keypad
+  keep every one of those. The first two games' piece takes the number
+  row from their main menu the same way.
+- **Driven**, slot A, `--wall none`: with the seam on the party menu's
+  roster is numbered 1 to 6, the names two columns right, the armour
+  class and its heading one right; at `PICK CHARACTER` `3` and Return show
+  Epona's sheet, `6` and `S` Morgaine's, `8` (a party of six) nothing and
+  then `1` and Return Guy's, the white name moving with each digit and
+  one row white at a time; `fired=155`, nothing declined. Seam off, the
+  same keys show Guy's sheet three times. With the seam on, the stills
+  from the adventuring bar on are the seam-off run's (307 of 340 stills
+  the same, all of them after frame 3,200), the number row there as the
+  program has it.
 - **Driven** with the seam on (`docs/playable-secret.md` legs 9 and 10):
   through leg 9's aim on Dominic's turn the watch fired 30 times, and the
   scene beside each still had the cursor's square, the sheet the panel
@@ -371,12 +439,18 @@ nothing change.
   reading from the empty prompt through the name typed and not reading
   at the stats' `REROLL` question before it or on the figure's editor
   after it.
-- **Fidelity**: the seam writes nothing of the machine's on this
-  program, so its pairs are `identical` both ways: `secret-fight-controls`
-  `identical secret-fight` (on, neither piece reached, all 371
-  checkpoints), `secret-aim-controls` `identical secret-aim` (on, the aim
-  walked, all 406) and `secret-name-controls` `identical secret-name` (on,
-  a name typed, all 40). Unit: `SeamModernControlsOnSecret.*`,
+- **Fidelity**: the observing pieces write nothing of the machine's, and
+  the hero keys draw on sight, the party menu's roster numbered from the
+  first time it is drawn with a party in it. `secret-pick-heroes`
+  `contrast secret-pick` (the picker's digits: 23 of 68 checkpoints
+  identical, divergent from tick 43,291,822, the roster drawn after slot
+  A is loaded); `secret-name-controls` `identical secret-name` (on, a
+  name typed, no party to number: all 40). `secret-fight-controls` and
+  `secret-aim-controls` (on through leg 4 and leg 9) carry no relation:
+  they differ from `secret-fight` and `secret-aim` from that same tick
+  and are the same again from tick 91,654,574 in the opening (342 of 371
+  and 377 of 406 checkpoints identical), which neither `identical` nor
+  `contrast` describes. Unit: `SeamModernControlsOnSecret.*`,
   `SceneOnSecret.*` (the aim watch's frames read through the scene).
 
 ## The list arrows (#423, #435, #447, #469)

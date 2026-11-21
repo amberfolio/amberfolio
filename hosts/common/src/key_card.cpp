@@ -224,9 +224,10 @@ constexpr std::array journal_rows{
 
 // Secret of the Silver Blades has screens of the same names and other keys
 // on most of them, so each of its screens is a context of its own, with
-// the rows docs/playable-secret.md records as driven. No piece of
-// modern-controls takes a key or draws on this program, and its party's
-// bar has no Notes, so none of those rows is here; the message pause's is.
+// the rows docs/playable-secret.md records as driven. One piece of
+// modern-controls takes a key on this program, the hero keys at the party
+// menu's member picker, and its party's bar has no Notes, so of the seams'
+// rows only that one and the message pause's are here.
 
 constexpr std::array blades_explore_rows{
     key_row{"Up, Down", "at the bar: the previous or next party member"},
@@ -253,6 +254,9 @@ constexpr std::array blades_menu_rows{
     key_row{"Up, Down", "move the highlight over the rows"},
     key_row{"Return", "take the highlighted row"},
     key_row{"letters, Home, End", "nothing here: a row is taken by Return"},
+    key_row{"1-8 on the number row",
+            "at Pick Character: that member; the list is numbered",
+            "modern-controls"},
 };
 
 constexpr std::array blades_list_rows{
@@ -373,9 +377,11 @@ constexpr std::array legends{
         .text = "On the screens that use the arrows, the number row's 8 2 4 6 "
                 "are Up Down Left Right, as the keypad's are, so no keypad is "
                 "needed. Home and End do nothing in this game's lists or at "
-                "its party menu. Its keys are its own: no enhancement adds one "
-                "here, and a row that names a seam shows only while that seam "
-                "is on."},
+                "its party menu. Its keys are its own but one: with "
+                "modern-controls on, the number row's 1 to 8 choose a party "
+                "member at the party menu's Pick Character, where the keypad "
+                "keeps its digits. A row that names a seam shows only while "
+                "that seam is on."},
 };
 
 [[nodiscard]] std::string_view shell_word(card_shell shell) {

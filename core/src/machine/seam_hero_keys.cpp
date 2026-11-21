@@ -137,6 +137,18 @@
 // moves. Its blitter takes a paper colour after the colour, which the
 // number is drawn on black. `docs/modern-controls.md` has both rows.
 //
+// **On Secret of the Silver Blades** (#609) the party menu selects no
+// member itself: each of its commands that acts on one asks with a picker
+// of its own, and that picker is the one caller. It hands the party
+// cursor Up (`H`) where the first two hand it Home (`G`), and it draws the
+// old member's row and the new one's again rather than the whole list, by
+// a routine of its own with three more points. The number row there is
+// the program's keypad layout as everywhere in this game: 2 and 8 step the
+// member, 4 and 6 the bar's lit word, and the other digits put the
+// selection on the first member. The piece takes 1 to 8 from it at that
+// one prompt, as it does at the first two games' main menu; the arrows
+// and the keypad keep every one of those.
+//
 // The party-order screen is not a caller: with a member picked up, Home
 // and End move the member instead of the selection, and the seam cannot
 // tell which state it is in. Left out, too, are the combat screens and the

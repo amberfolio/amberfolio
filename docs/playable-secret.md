@@ -25,8 +25,9 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
 No `--install`: the Steam copy is recognized and laid out at `\SECRET`
 (`docs/hosts.md` §2c). No seam is needed to play, and the ones available
 on this program are the three debug cheats, the two text faces, the
-message pause, `modern-controls`, which here is only its two pieces
-that observe, for the host reads below, and the journal, which here is
+message pause, `modern-controls`, which here is its hero keys at the
+party menu's `PICK CHARACTER` (leg 12) and its two pieces that observe,
+for the host reads below, and the journal, which here is
 only its citation watch (`docs/seams.md` §10). Sixty
 frames to the virtual second; `TICKS = FRAME * 19,886` at `--speed 386`
 is close enough for `--until`.
@@ -72,7 +73,9 @@ rows below, as a player reads it.
 | the party menu | `8`, `2` on the number row or the keypad | as `Up` and `Down`; `Up` on the first row goes to the last |
 | the party menu | a letter, `Home`, `End` | nothing |
 | a pick list | `8`, `2`; `Escape` | as `Up` and `Down`; `Escape` leaves it (the party menu's `INITIALIZE MOUSE/JOYSTICK` list, leg 7's shop) |
+| the party menu's `PICK CHARACTER` | `8`, `2`, `4`, `6`; `1`, `3`, `5`, `7`, `9` | as the arrows: the member, and `SELECT` or `EXIT`; the first member (leg 12). With `modern-controls` on, the number row's `1` to `8` are the member of that number and the keypad's stay the arrows |
 | the adventuring bar | `8`, `2`, `4`, `6`, the number row's or the keypad's | as the arrows: the current member, and the lit word |
+| the adventuring bar | `1`, `3`, `5`, `7`, `9` | the first member becomes the current one |
 | the adventuring bar | `,`, `.`, `Escape` | nothing |
 | the adventuring bar | `M` | the move mode, as `Return` on `MOVE` |
 | the move mode | `Down`; `8` and `4`, the number row's or the keypad's | turns round; as `Up` and `Left` |
@@ -416,6 +419,27 @@ gem fetched down to 10. `secret-heal` is this leg, with that seam.
 and then the menu is back with no message and the member unchanged:
 tried with the shipped party and with a new character carrying 300
 platinum. What it wants is not known.
+
+## Leg 12: the party menu's member picker
+
+```
+... leg 0 ...
+--press Down@1500 --press Down@1560 --press Return@1620 --press A@2100
+--press Down@2400 --press Return@2500                 # VIEW CHARACTER
+--press 3@2800 --press Return@3000 --press Escape@3300
+--press Return@3600 --press 6@3900 --press S@4100 --press Escape@4400
+--press Return@4700 --press 8@5000 --press 1@5200 --press Return@5400
+--press Escape@5700
+```
+
+The party menu's `VIEW CHARACTER` asks `PICK CHARACTER` over `SELECT
+EXIT`, with the current member's name white in the roster. Its digits
+are the keypad's: `3`, `6` and `1` put the selection on the first member
+and `8` steps it back to the last, so all three sheets are Guy's. With
+`--seam modern-controls` the roster is numbered 1 to 6 and the number
+row chooses: Epona's sheet, then Morgaine's, then, `8` being nobody in a
+party of six, Guy's. `secret-pick` and `secret-pick-heroes` are this leg.
+
 ## The host reads on this program
 
 | run | what it shows |
@@ -487,7 +511,7 @@ where that mechanism is (`docs/seams.md` §10).
 
 ## The sessions
 
-Twenty-two, `secret-*`, each on the Steam copy with its shipped slots (the
+Twenty-four, `secret-*`, each on the Steam copy with its shipped slots (the
 `secret-slots` snapshot) at `--speed 386` and `--wall none`.
 
 | session | seams | relation | what it is |
@@ -508,8 +532,10 @@ Twenty-two, `secret-*`, each on the Steam copy with its shipped slots (the
 | `secret-fight-pause` | message-pause | `contrast secret-fight` | 315 of 371 identical, divergent from tick 476,011,182, in the two pauses that open the encounter |
 | `secret-aim` | | | leg 9 |
 | `secret-name` | | | leg 10 |
-| `secret-fight-controls` | modern-controls | `identical secret-fight` | neither piece reached: all 371 checkpoints |
-| `secret-aim-controls` | modern-controls | `identical secret-aim` | the aim watched at every key of the aim: all 406 checkpoints |
-| `secret-name-controls` | modern-controls | `identical secret-name` | the line editor watched from entry to return: all 40 checkpoints |
+| `secret-fight-controls` | modern-controls | | leg 4, nothing reached; the party menu's roster numbered, so 342 of 371 checkpoints are `secret-fight`'s: different from tick 43,291,822 and the same again from 91,654,574, in the opening. No relation describes a difference that does not last |
+| `secret-aim-controls` | modern-controls | | the aim watched at every key of the aim; 377 of 406 `secret-aim`'s, the same two ticks |
+| `secret-name-controls` | modern-controls | `identical secret-name` | the line editor watched from entry to return, no party to number: all 40 checkpoints |
+| `secret-pick` | | | leg 12 |
+| `secret-pick-heroes` | modern-controls | `contrast secret-pick` | 23 of 68 identical, divergent from tick 43,291,822, the roster numbered; the digits choose |
 | `secret-boot-journal` | journal | `identical secret-boot` | the watch never reached: all 15 checkpoints |
 | `secret-camp-journal` | journal | `identical secret-camp` | entry 37 cited by the opening and logged; the watch writes nothing the machine holds: all 106 checkpoints |
