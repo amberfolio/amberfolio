@@ -384,7 +384,7 @@ roster drawer is the first two games' routine, and the party menu's list
 | the party | head DGROUP `0x7D3C`, selected member `0x7D38`, a record's next at `+0x19D` (the profile's) |
 | the party summary's module; the roster drawer | overlay 27 (file offset 229713, 15132 bytes, digest `91be9289…9276`, word `0x1520`); `0x07C4`, its stub entry `0x0151:0x002A` |
 | the drawer's points: the row cleared; the name paths meet; the armour class's column pushed; the heading copied | `0x0887`; `0x08C5`; `0x0909`; `0x084F`. Frame as on the first two games: column `BP-5`, row `BP-6`, member `BP-4`, heading `BP-0x0E` |
-| the one-row routine's points: before the name (no row cleared); the name paths meet; the armour class's column pushed | `0x0A1B`; `0x0A50`; `0x0A94`. Frame: column `BP-9`, row `BP-0x0A`, member `BP-4` |
+| the one-row routine's points: before the name (no row cleared); the name paths meet; the armour class's column pushed | `0x0A1B`; `0x0A50`; `0x0A94`. Frame: column `BP-9`, row `BP-0x0A`, member `BP-4`. The routine is the automap's one-row redraw, whose `retf 6` at `0x0B17` is its roster point (`docs/seams.md` §10); the drawer's `retf 4` at `0x0984` is the other |
 | the glyph blitter; the region clear | paragraph `0x540` `0x01E7` (image `0x55E7`; column, row, colour, paper, count, character, fold, `retf 0Eh`); paragraph `0x19D` `0x0519` (image `0x1EE9`; left, top, right, bottom, `retf 8`) |
 | the line editor; its one return | image `0x5B48` (`push bp`); `0x5D87` (`retf 0Ah`), Curse of the Azure Bonds' editor with its two calls of the key read |
 | the line editor; its one return | image `0x5B48` (`push bp`); `0x5D87` (`retf 0Ah`), Curse of the Azure Bonds' editor with its two calls of the key read |

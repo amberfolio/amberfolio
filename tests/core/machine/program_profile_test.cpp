@@ -88,10 +88,25 @@ TEST(ProgramProfile, SecretsIsThePartItsSeamsAndItsReadsUse) {
   EXPECT_TRUE(secret.view_overlay.has_load_segment());
   // No view kind, as on Curse: the adventuring mode has one view.
   EXPECT_EQ(secret.data_view_kind, 0U);
+  // The automap's (seam_automap.cpp, #609): the key poll and its pushback
+  // slot, the region and screen clears, the menu-bar thunk, the adventure
+  // loop's module and its call into the bar, and the roster drawer's
+  // overlay and the stub entry it is called through. No bar in the data
+  // segment: the loop's bar is a copy on the stack, as everybody's is.
+  EXPECT_NE(secret.key_pending_entry, 0U);
+  EXPECT_NE(secret.data_key_pushback, 0U);
+  EXPECT_NE(secret.clear_region_entry, 0U);
+  EXPECT_NE(secret.clear_screen_entry, 0U);
+  EXPECT_NE(secret.command_bar_entry, 0U);
+  EXPECT_TRUE(secret.adventure_overlay.has_load_segment());
+  EXPECT_EQ(secret.view_bar_return, secret.view_bar_call + 5U);
+  EXPECT_TRUE(secret.summary_overlay.has_load_segment());
+  EXPECT_NE(secret.screen_paragraph, 0U);
+  EXPECT_NE(secret.roster_draw_offset, 0U);
+  EXPECT_EQ(secret.data_view_bar, 0U);
   // And nothing pretending to be a fact: what no seam or read available
   // on this program uses is zero until somebody measures it.
   EXPECT_EQ(secret.data_bar_highlight, 0U);
-  EXPECT_EQ(secret.command_bar_entry, 0U);
   EXPECT_FALSE(secret.roster_overlay.has_load_segment());
 }
 

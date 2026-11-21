@@ -227,7 +227,7 @@ constexpr std::array journal_rows{
 // the rows docs/playable-secret.md records as driven. One piece of
 // modern-controls takes a key on this program, the hero keys at the party
 // menu's member picker, and its party's bar has no Notes, so of the seams'
-// rows only that one and the message pause's are here.
+// rows only that one, the message pause's and the automap's are here.
 
 constexpr std::array blades_explore_rows{
     key_row{"Up, Down", "at the bar: the previous or next party member"},
@@ -239,6 +239,7 @@ constexpr std::array blades_explore_rows{
     key_row{"Down", "walking: turn around"},
     key_row{"Return, E", "walking: back to the bar, Move lit"},
     key_row{"Esc", "nothing here, at the bar or walking"},
+    key_row{"Tab", "show or hide the map over the party list", "automap"},
 };
 
 constexpr std::array blades_bar_rows{
@@ -377,11 +378,10 @@ constexpr std::array legends{
         .text = "On the screens that use the arrows, the number row's 8 2 4 6 "
                 "are Up Down Left Right, as the keypad's are, so no keypad is "
                 "needed. Home and End do nothing in this game's lists or at "
-                "its party menu. Its keys are its own but one: with "
-                "modern-controls on, the number row's 1 to 8 choose a party "
-                "member at the party menu's Pick Character, where the keypad "
-                "keeps its digits. A row that names a seam shows only while "
-                "that seam is on."},
+                "its party menu. With modern-controls on, the number row's 1 "
+                "to 8 choose a party member at the party menu's Pick "
+                "Character, where the keypad keeps its digits. A row that "
+                "names a seam shows only while that seam is on."},
 };
 
 [[nodiscard]] std::string_view shell_word(card_shell shell) {

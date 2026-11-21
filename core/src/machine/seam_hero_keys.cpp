@@ -327,7 +327,8 @@ constexpr hero_keys_facts curse_hero_keys{
 /// `0x07C4`), the same routine as the first two programs' with the mouse's
 /// region noted beside it; its glyph blitter (paragraph `0x540`, `0x01E7`)
 /// takes the paper's colour after the colour, as Curse's does, and the
-/// region clear it clears a row with is paragraph `0x19D`, offset `0x0519`.
+/// region clear it clears a row with is the profile's (image `0x1EE9`,
+/// paragraph `0x19D`, offset `0x0519`), whose arrival the automap watches.
 /// The routine that draws one row again (`0x0987`) keeps its column at
 /// `BP-9`, its row at `BP-0x0A` and the member at `BP-4`.
 constexpr hero_keys_facts secret_hero_keys{
