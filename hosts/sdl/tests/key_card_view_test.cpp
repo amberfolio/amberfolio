@@ -148,6 +148,35 @@ TEST(KeyCardView, TheCardIsTheRunningProgramsOwn) {
   }
 }
 
+TEST(KeyCardView, SecretOfTheSilverBladesIsShownItsOwnCardAndNote) {
+  const auto programs = machine::known_editions();
+  ASSERT_GE(programs.size(), 3U);
+  machine::seam_engine engine;
+  sha256_digest digest{};
+  ASSERT_TRUE(machine::parse_digest(programs[2].fingerprint, digest));
+  engine.loaded(digest, machine::image_load_segment);
+  const std::vector<host::key_page> secret = card_pages(engine);
+  // No wilderness, no journey, no Notes, no member picker of its own yet.
+  EXPECT_TRUE(has_page(secret, "explore"));
+  EXPECT_FALSE(has_page(secret, "wilderness"));
+  EXPECT_FALSE(has_page(secret, "journey"));
+  EXPECT_FALSE(has_page(secret, "journal"));
+  EXPECT_FALSE(has_page(secret, "picker"));
+  EXPECT_TRUE(has_page(secret, "desktop"));
+  for (const host::key_page& page : secret) {
+    EXPECT_TRUE(page.context->program.empty() ||
+                page.context->program == "blades")
+        << page.context->id;
+  }
+  // The note under it is that program's, on every page.
+  const std::string_view legend = card_legend(engine);
+  EXPECT_EQ(legend, host::key_card_legend("blades"));
+  EXPECT_NE(legend, host::key_card_legend());
+  const std::string opening(legend.substr(0, 40));
+  std::size_t at = 0;
+  EXPECT_TRUE(any_line_has(card_lines(secret, at, legend), opening));
+}
+
 TEST(KeyCardView, AnEmptyCardSaysSo) {
   const std::vector<host::key_page> none;
   std::size_t page = 3;

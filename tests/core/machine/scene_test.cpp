@@ -1745,7 +1745,10 @@ TEST(SceneOnSecret, SaysWhereThePartyIsAndNamesTheAreaByItsNumber) {
   // and another way through is an opening.
   EXPECT_EQ(s.view[0].face(south), scene_face::opening);
   EXPECT_EQ(s.view[0].face(west), scene_face::shut);
-  EXPECT_FALSE(s.map_kept) << "no automap on this program";
+  EXPECT_FALSE(s.map_kept) << "the automap is off";
+  // On, it is keeping this program's map (#609).
+  ASSERT_EQ(r.box->seams().enable("automap"), seam_reason::none);
+  EXPECT_TRUE(r.read().map_kept);
 }
 
 TEST(SceneOnSecret, NeverUsesAnotherProgramsNameForTheSameNumbers) {

@@ -2147,7 +2147,7 @@ TEST(AutomapFidelity, AResetMachineHasExploredNothing) {
   EXPECT_FALSE(r.map_state().panel_open());
 }
 
-TEST(AutomapDefinition, ItIsACommandAndNotAPullAndItNamesBothPrograms) {
+TEST(AutomapDefinition, ItIsACommandAndNotAPullAndItNamesEveryProgram) {
   const rig r;
   const seam_definition* automap = r.pc().seams().find("automap");
   ASSERT_NE(automap, nullptr);
@@ -2162,13 +2162,14 @@ TEST(AutomapDefinition, ItIsACommandAndNotAPullAndItNamesBothPrograms) {
     EXPECT_EQ(point.module.file, resident_image.file);
   }
   // The baseline's points are the definition's own; Curse of the Azure
-  // Bonds' are its program row (seam_automap_curse_test.cpp).
-  ASSERT_EQ(automap->fingerprints.size(), 2u);
+  // Bonds' and Secret of the Silver Blades' are their program rows
+  // (seam_automap_curse_test.cpp, seam_automap_secret_test.cpp).
+  ASSERT_EQ(automap->fingerprints.size(), 3u);
   EXPECT_EQ(automap->fingerprints.front(),
             known_editions().front().fingerprint);
-  ASSERT_EQ(automap->programs.size(), 1u);
-  EXPECT_EQ(automap->programs.front().fingerprint,
-            automap->fingerprints.back());
+  ASSERT_EQ(automap->programs.size(), 2u);
+  EXPECT_EQ(automap->programs[0].fingerprint, automap->fingerprints[1]);
+  EXPECT_EQ(automap->programs[1].fingerprint, automap->fingerprints[2]);
 }
 
 }  // namespace
