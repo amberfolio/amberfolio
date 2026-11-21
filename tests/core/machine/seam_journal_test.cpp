@@ -4753,9 +4753,7 @@ TEST(JournalReaderOnCurse, NeverOpenedItDrawsNothing) {
 // ---------------------------------------------------------------------------
 //
 // The citation watch on a third program, with that program's facts
-// (seam_journal.cpp, `secret_journal`). The watch alone: `Notes` does not
-// fit on this program's bar, so the reader has no way in and none of its
-// points is there.
+// (seam_journal.cpp, `secret_journal`).
 
 namespace secret {
 constexpr std::uint16_t dgroup_paragraphs = 0xDE2;
@@ -4815,20 +4813,6 @@ struct secret_rig : rig {
   }
 };
 
-TEST(JournalOnSecret, IsAvailableWithTheWatchAlone) {
-  const secret_rig r;
-  const seam_definition* journal = r.pc().seams().find("journal");
-  ASSERT_NE(journal, nullptr);
-  const std::span<const seam_point> mine = points_on(*journal, secret_digest());
-  ASSERT_EQ(mine.size(), 1u)
-      << "the message box, and no key, bar, clear or roster point: the "
-         "reader has no way in on this program";
-  EXPECT_NE(mine.data(), journal->points.data());
-  EXPECT_EQ(mine[0].offset, secret::message_box);
-  EXPECT_EQ(mine[0].module.file, resident_image.file);
-  EXPECT_EQ(r.pc().seams().status("journal").reason, seam_reason::none);
-}
-
 TEST(JournalOnSecret, ACitationInTwoPiecesGoesOnTheLog) {
   // The opening's page prints its sentence and the entry's number, the
   // number with the flag clear: one message, one citation.
@@ -4886,13 +4870,580 @@ TEST(JournalOnSecret, ADataSegmentThatIsNotTheProgramsIsDeclined) {
   EXPECT_EQ(r.reader().seen().size(), 1u);
 }
 
-TEST(JournalOnSecret, SwitchedOffItIsOwedNothing) {
-  // No splice on this program, so the stop has nothing to take out.
+TEST(JournalOnSecret, SwitchedOffAfterACitationItIsOwedNothing) {
   const secret_rig r;
   r.secret_draws("READ JOURNAL ENTRY 37", 0x0001);
   const auto before = hash_state(r.pc());
   ASSERT_EQ(r.pc().seams().disable("journal"), seam_reason::none);
   EXPECT_EQ(hash_state(r.pc()), before);
+}
+
+// ---------------------------------------------------------------------------
+// The reader on Secret of the Silver Blades (#609)
+// ---------------------------------------------------------------------------
+//
+// The two ways in this program has instead of `Notes` on the party's bar,
+// which has no room: `N` at that bar, taken by the program's frames, and
+// `Notes` spliced into the menu-bar routine's own copy of the move mode's
+// bar with its group in the routine's table and the count left alone.
+// The screen is Curse's: the outer frame (handed one word here), a title
+// line, a string drawer that takes a background, and the composer behind
+// an overlay stub.
+
+namespace secret {
+constexpr std::uint16_t key_pending = 0xBA8A;
+constexpr std::uint16_t key_read = 0xBA9C;
+constexpr std::uint16_t clear_region = 0x1EE9;
+constexpr std::uint16_t clear_screen = 0x5EE4;
+constexpr std::uint16_t outer_frame = 0x19D0;
+constexpr std::uint16_t draw_string = 0x575D;
+constexpr std::uint16_t draw_string_cleans = 0x0C;
+constexpr std::uint16_t composer_stub = 0x1510 + 0x00E3;
+constexpr std::uint16_t read_poll_return = 0x7144;
+constexpr std::uint16_t data_game_mode = 0x67E7;
+constexpr std::uint16_t data_key_pushback = 0xA6E9;
+constexpr std::uint16_t data_bar_highlight = 0x8A61;
+constexpr std::uint16_t adventure_load_segment_at = 0xD70;
+constexpr std::uint16_t menu_load_segment_at = 0x16C0;
+constexpr std::uint32_t adventure_file_offset = 102484;
+constexpr std::uint32_t summary_file_offset = 229713;
+constexpr std::uint32_t menu_file_offset = 250323;
+constexpr std::uint16_t party_bar_return = 0x092D;
+constexpr std::uint16_t move_bar_return = 0x0AD1;
+constexpr std::uint16_t groups_parsed = 0x0426;
+constexpr std::uint16_t roster_drawn = 0x0984;
+constexpr std::uint16_t roster_row = 0x0B17;
+/// Below the menu-bar routine's BP: its copy of the bar, and its table of
+/// groups (the count one byte in, then two bytes a group from the first).
+constexpr std::uint16_t local_bar = 0x53;
+constexpr std::uint16_t group_table = 0x93;
+constexpr std::uint16_t out_flag_below_bp = 4;
+
+/// Where the stand-ins keep what they were handed, in the data segment.
+constexpr std::uint16_t frame_calls = 0x7000;
+constexpr std::uint16_t frame_word = 0x7002;
+constexpr std::uint16_t composer_calls = 0x7004;
+constexpr std::uint16_t string_calls = 0x7006;
+constexpr std::uint16_t clear_calls = 0x7008;
+constexpr std::uint16_t string_trace = 0x7800;
+
+/// The frames the tests build: the key routine's wrapper, the menu-bar
+/// routine's, and the stack under them.
+constexpr std::uint16_t wrapper_bp = 0x0500;
+constexpr std::uint16_t routine_bp = 0x0600;
+constexpr std::uint16_t adventure_segment = 0x6000;
+constexpr std::uint16_t menu_segment = 0x6800;
+}  // namespace secret
+
+struct secret_reader_rig : secret_rig {
+  secret_reader_rig() {
+    attach_video();
+    const std::uint16_t ds = secret_dgroup();
+    put_byte(ds, secret::data_game_mode, mode_adventure);
+    put_byte(ds, secret::data_key_pushback, 0);
+    frame_stand_in();
+    counting_routine(secret::clear_region, secret::clear_calls, 0x08);
+    counting_routine(secret::composer_stub, secret::composer_calls, 0);
+    string_stand_in();
+    for (const std::uint16_t at :
+         {secret::frame_calls, secret::frame_word, secret::composer_calls,
+          secret::string_calls, secret::clear_calls}) {
+      put_word(ds, at, 0);
+    }
+    put_word(image_load_segment, secret::adventure_load_segment_at,
+             secret::adventure_segment);
+    put_word(image_load_segment, secret::menu_load_segment_at,
+             secret::menu_segment);
+  }
+
+  /// The outer frame: keeps the one word it is handed, counts, `retf 2`.
+  void frame_stand_in() const {
+    std::uint16_t put = secret::outer_frame;
+    emit_at(put, {0x55, 0x89, 0xE5});
+    emit_keep(put, 0x06, secret::frame_word);
+    emit_at(put, {0xFF, 0x06});
+    emit_word_at(put, secret::frame_calls);
+    emit_at(put, {0x5D, 0xCA, 0x02, 0x00});
+  }
+
+  /// The string drawer: for every call its column, row, colour and
+  /// background, from its own frame.
+  void string_stand_in() const {
+    std::uint16_t put = secret::draw_string;
+    emit_at(put, {0x55, 0x89, 0xE5});  // push bp; mov bp, sp
+    emit_at(put, {0x8B, 0x1E});        // mov bx, [string_calls]
+    emit_word_at(put, secret::string_calls);
+    emit_at(put, {0xD1, 0xE3, 0xD1, 0xE3, 0xD1, 0xE3});  // eight a call
+    constexpr std::array<std::uint8_t, 4> from{0x10, 0x0E, 0x0C, 0x0A};
+    for (std::size_t nth = 0; nth < from.size(); ++nth) {
+      emit_at(put, {0x8B, 0x46, from[nth], 0x89, 0x87});  // mov ax, [bp+from]
+      emit_word_at(
+          put, static_cast<std::uint16_t>(secret::string_trace + (nth * 2U)));
+    }
+    emit_at(put, {0xFF, 0x06});
+    emit_word_at(put, secret::string_calls);
+    emit_at(put, {0x5D, 0xCA});
+    emit_word_at(put, secret::draw_string_cleans);
+  }
+
+  [[nodiscard]] unsigned secret_word(std::uint16_t offset) const {
+    return word_at(secret_dgroup(), offset);
+  }
+
+  struct string_call {
+    unsigned column;
+    unsigned row;
+    unsigned colour;
+    unsigned background;
+    [[nodiscard]] bool operator==(const string_call&) const = default;
+  };
+  [[nodiscard]] string_call nth_string(unsigned nth) const {
+    const auto at =
+        static_cast<std::uint16_t>(secret::string_trace + (nth * 8U));
+    return {.column = secret_word(at),
+            .row = secret_word(static_cast<std::uint16_t>(at + 2)),
+            .colour = secret_word(static_cast<std::uint16_t>(at + 4)),
+            .background = secret_word(static_cast<std::uint16_t>(at + 6))};
+  }
+
+  /// The menu-bar routine's frame, called from `returns_to` in the
+  /// adventuring loop's module, under the key routine's wrapper.
+  void the_routine_called_from(std::uint16_t returns_to) const {
+    const std::uint16_t ss = secret_dgroup();
+    put_word(ss, secret::wrapper_bp, secret::routine_bp);
+    put_word(ss, static_cast<std::uint16_t>(secret::wrapper_bp + 2), 0x0599);
+    put_word(ss, static_cast<std::uint16_t>(secret::wrapper_bp + 4),
+             secret::menu_segment);
+    put_word(ss, secret::routine_bp, 0);
+    put_word(ss, static_cast<std::uint16_t>(secret::routine_bp + 2),
+             returns_to);
+    put_word(ss, static_cast<std::uint16_t>(secret::routine_bp + 4),
+             secret::adventure_segment);
+  }
+
+  /// The program asks whether a key is waiting, from inside the routine
+  /// `the_routine_called_from()` built, the poll's far return `returns_to`
+  /// in the image, and whatever that queued runs.
+  void secret_poll(std::uint16_t returns_to = 0x72A4) const {
+    const std::uint16_t ss = secret_dgroup();
+    box->memory()
+        .ram()[cpu::physical_address(image_load_segment, secret::key_pending)] =
+        0xF4;
+    box->processor().reset();
+    cpu::registers& r = box->processor().regs();
+    r[cpu::sreg::cs] = image_load_segment;
+    r.ip = secret::key_pending;
+    r[cpu::sreg::ds] = ss;
+    r[cpu::sreg::ss] = ss;
+    r[cpu::reg16::sp] = 0x0400;
+    r[cpu::reg16::bp] = secret::wrapper_bp;
+    put_word(ss, 0x0400, returns_to);
+    put_word(ss, 0x0402, image_load_segment);
+    box->step();
+    run_the_calls();
+  }
+
+  /// At the party's bar, sitting in the routine's key loop.
+  void at_the_partys_bar() const {
+    the_routine_called_from(secret::party_bar_return);
+  }
+
+  /// `N` typed at the party's bar and polled for.
+  void open_the_log() const {
+    at_the_partys_bar();
+    type(key_next);
+    secret_poll();
+  }
+
+  void until_it_settles() const {
+    for (unsigned pass = 0; pass < 8 && !reader().on_screen(); ++pass) {
+      secret_poll();
+    }
+  }
+
+  /// The menu-bar routine has just cut its copy of the bar into groups:
+  /// `bar` in its frame, one group a word, called from `returns_to`.
+  void routine_has_cut(std::string_view bar, std::uint16_t returns_to) const {
+    const std::uint16_t ss = secret_dgroup();
+    const auto copy =
+        static_cast<std::uint16_t>(secret::routine_bp - secret::local_bar);
+    const auto table =
+        static_cast<std::uint16_t>(secret::routine_bp - secret::group_table);
+    for (std::uint16_t at = 0; at < 41; ++at) {
+      put_byte(ss, static_cast<std::uint16_t>(copy + at), 0);
+    }
+    for (std::uint16_t at = 0; at < 42; ++at) {
+      put_byte(ss, static_cast<std::uint16_t>(table + at), 0);
+    }
+    put_byte(ss, copy, static_cast<std::uint8_t>(bar.size()));
+    std::uint8_t groups = 0;
+    for (std::size_t i = 0; i < bar.size(); ++i) {
+      put_byte(ss, static_cast<std::uint16_t>(copy + 1 + i),
+               static_cast<std::uint8_t>(bar[i]));
+      if (bar[i] >= 'A' && bar[i] <= 'Z') {
+        ++groups;
+        put_byte(ss, static_cast<std::uint16_t>(table + (2U * groups)),
+                 static_cast<std::uint8_t>(i + 1));
+      }
+      if (groups != 0 && (i + 1 == bar.size() || bar[i + 1] == ' ')) {
+        put_byte(ss, static_cast<std::uint16_t>(table + (2U * groups) + 1U),
+                 static_cast<std::uint8_t>(i + 1));
+      }
+    }
+    put_byte(ss, static_cast<std::uint16_t>(table + 1), groups);
+    put_word(ss, static_cast<std::uint16_t>(secret::routine_bp + 2),
+             returns_to);
+    put_word(ss, static_cast<std::uint16_t>(secret::routine_bp + 4),
+             secret::adventure_segment);
+    the_cut_is_offered();
+  }
+
+  /// Stand on the point after the cut, in the routine's frame, and step.
+  void the_cut_is_offered() const {
+    const std::uint16_t ss = secret_dgroup();
+    box->memory().ram()[cpu::physical_address(secret::menu_segment,
+                                              secret::groups_parsed)] = 0xF4;
+    box->processor().reset();
+    cpu::registers& r = box->processor().regs();
+    r[cpu::sreg::cs] = secret::menu_segment;
+    r.ip = secret::groups_parsed;
+    r[cpu::sreg::ds] = ss;
+    r[cpu::sreg::ss] = ss;
+    r[cpu::reg16::sp] = 0x0500;
+    r[cpu::reg16::bp] = secret::routine_bp;
+    box->step();
+  }
+
+  [[nodiscard]] std::string routine_copy() const {
+    return pascal_at(
+        secret_dgroup(),
+        static_cast<std::uint16_t>(secret::routine_bp - secret::local_bar));
+  }
+  [[nodiscard]] std::uint8_t table_byte(unsigned at) const {
+    return byte_at(secret_dgroup(),
+                   static_cast<std::uint16_t>(secret::routine_bp -
+                                              secret::group_table + at));
+  }
+
+  /// The move mode's call has come back with `letter` and `out_flag`.
+  void move_bar_back(std::uint8_t letter, std::uint8_t out_flag = 0) const {
+    const std::uint16_t ss = secret_dgroup();
+    box->memory().ram()[cpu::physical_address(secret::adventure_segment,
+                                              secret::move_bar_return)] = 0xF4;
+    box->processor().reset();
+    cpu::registers& r = box->processor().regs();
+    r[cpu::sreg::cs] = secret::adventure_segment;
+    r.ip = secret::move_bar_return;
+    r[cpu::sreg::ds] = ss;
+    r[cpu::sreg::ss] = ss;
+    r[cpu::reg16::sp] = 0x0700;
+    r[cpu::reg16::bp] = 0x0680;
+    r.set(cpu::reg8::al, letter);
+    put_byte(ss, static_cast<std::uint16_t>(0x0680 - secret::out_flag_below_bp),
+             out_flag);
+    box->step();
+  }
+};
+
+TEST(JournalOnSecret, IsAvailableWithTheReadersPointsAndTheWatch) {
+  const secret_rig r;
+  const seam_definition* journal = r.pc().seams().find("journal");
+  ASSERT_NE(journal, nullptr);
+  const std::span<const seam_point> mine = points_on(*journal, secret_digest());
+  ASSERT_EQ(mine.size(), 9u)
+      << "the keyboard's two, the watch, the two clears, the roster's two "
+         "returns, the menu-bar routine's cut and the move bar's return";
+  EXPECT_NE(mine.data(), journal->points.data());
+  EXPECT_EQ(mine[0].offset, secret::key_pending);
+  EXPECT_EQ(mine[1].offset, secret::key_read);
+  EXPECT_EQ(mine[2].offset, secret::message_box);
+  EXPECT_EQ(mine[2].module.file, resident_image.file);
+  EXPECT_EQ(mine[3].offset, secret::clear_region);
+  EXPECT_EQ(mine[4].offset, secret::clear_screen);
+  EXPECT_EQ(mine[5].module.file_offset, secret::summary_file_offset);
+  EXPECT_EQ(mine[5].offset, secret::roster_drawn);
+  EXPECT_EQ(mine[6].module.file_offset, secret::summary_file_offset);
+  EXPECT_EQ(mine[6].offset, secret::roster_row);
+  EXPECT_EQ(mine[7].module.file_offset, secret::menu_file_offset);
+  EXPECT_EQ(mine[7].offset, secret::groups_parsed);
+  EXPECT_EQ(mine[8].module.file_offset, secret::adventure_file_offset);
+  EXPECT_EQ(mine[8].offset, secret::move_bar_return);
+  EXPECT_EQ(r.pc().seams().status("journal").reason, seam_reason::none);
+}
+
+TEST(JournalReaderOnSecret, NAtThePartysBarOpensTheLog) {
+  const secret_reader_rig r;
+  r.open_the_log();
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::listing);
+  EXPECT_EQ(r.keys_waiting(), 0u) << "taken before the routine sees it";
+  EXPECT_EQ(r.secret_word(secret::frame_calls), 1u) << "and drawn at once";
+}
+
+TEST(JournalReaderOnSecret, EitherCaseOfNOpensIt) {
+  const secret_reader_rig r;
+  r.at_the_partys_bar();
+  r.type(key_next_lower);
+  r.secret_poll();
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::listing);
+}
+
+TEST(JournalReaderOnSecret, NAtAnyOtherBarIsTheProgramsKey) {
+  // The move mode's bar (which has its own word), and a call from anywhere
+  // else: the key stays in the ring for the routine to read.
+  for (const std::uint16_t returns_to :
+       {secret::move_bar_return, std::uint16_t{0x1234}}) {
+    const secret_reader_rig r;
+    r.the_routine_called_from(returns_to);
+    r.type(key_next);
+    r.secret_poll();
+    EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed) << returns_to;
+    EXPECT_EQ(r.keys_waiting(), 1u) << returns_to;
+  }
+}
+
+TEST(JournalReaderOnSecret, NIsNotTakenInAnotherModuleAtTheSameOffset) {
+  const secret_reader_rig r;
+  r.at_the_partys_bar();
+  r.put_word(secret_rig::secret_dgroup(),
+             static_cast<std::uint16_t>(secret::routine_bp + 4), 0x5000);
+  r.type(key_next);
+  r.secret_poll();
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed);
+  EXPECT_EQ(r.keys_waiting(), 1u);
+}
+
+TEST(JournalReaderOnSecret, NIsNotTakenWhileThePushbackIsArmed) {
+  const secret_reader_rig r;
+  r.at_the_partys_bar();
+  r.put_byte(secret_rig::secret_dgroup(), secret::data_key_pushback, 0x31);
+  r.type(key_next);
+  r.secret_poll();
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed);
+  EXPECT_EQ(r.keys_waiting(), 1u);
+}
+
+TEST(JournalReaderOnSecret, AnyOtherKeyAtThePartysBarIsTheProgramsKey) {
+  const secret_reader_rig r;
+  r.at_the_partys_bar();
+  r.type(key_exit);
+  r.secret_poll();
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed);
+  EXPECT_EQ(r.keys_waiting(), 1u);
+}
+
+TEST(JournalReaderOnSecret, NotesGoesOnTheMoveBarsCopyWithItsGroupUncounted) {
+  const secret_reader_rig r;
+  r.routine_has_cut("Exit", secret::move_bar_return);
+  EXPECT_EQ(r.routine_copy(), "Exit Notes");
+  EXPECT_EQ(r.table_byte(1), 1u)
+      << "one group counted: Left and Right still go back to the loop, "
+         "which turns the party";
+  EXPECT_EQ(r.table_byte(4), 6u) << "the group begins at its letter";
+  EXPECT_EQ(r.table_byte(5), 10u) << "and ends with the word";
+  EXPECT_EQ(r.table_byte(2), 1u) << "Exit's group is the program's";
+  EXPECT_EQ(r.table_byte(3), 4u);
+}
+
+TEST(JournalReaderOnSecret, OfferedAgainItIsNotSplicedTwice) {
+  const secret_reader_rig r;
+  r.routine_has_cut("Exit", secret::move_bar_return);
+  r.the_cut_is_offered();
+  EXPECT_EQ(r.routine_copy(), "Exit Notes");
+  EXPECT_EQ(r.table_byte(1), 1u);
+}
+
+TEST(JournalReaderOnSecret, AnyOtherBarsCopyIsLeftAlone) {
+  const secret_reader_rig r;
+  r.routine_has_cut("Move Area Cast View Encamp Search Look",
+                    secret::party_bar_return);
+  EXPECT_EQ(r.routine_copy(), "Move Area Cast View Encamp Search Look");
+  EXPECT_EQ(r.table_byte(1), 7u);
+  r.routine_has_cut("Exit", 0x1234);
+  EXPECT_EQ(r.routine_copy(), "Exit");
+  EXPECT_EQ(r.table_byte(4), 0u);
+}
+
+TEST(JournalReaderOnSecret, ChoosingItOpensTheLogAndPutsTheHighlightBack) {
+  const secret_reader_rig r;
+  r.put_byte(secret_rig::secret_dgroup(), secret::data_bar_highlight, 1);
+  r.routine_has_cut("Exit", secret::move_bar_return);
+  // The routine sets the highlight to the group it matched: `Notes`, the
+  // second, which the program's own bar does not have.
+  r.put_byte(secret_rig::secret_dgroup(), secret::data_bar_highlight, 2);
+  r.move_bar_back('N');
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::listing);
+  EXPECT_EQ(r.byte_at(secret_rig::secret_dgroup(), secret::data_bar_highlight),
+            1)
+      << "what the routine was entered with";
+}
+
+TEST(JournalReaderOnSecret, AKeyTheRoutineHandledItselfIsNotTheCommand) {
+  const secret_reader_rig r;
+  r.routine_has_cut("Exit", secret::move_bar_return);
+  r.move_bar_back('N', 1);
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed);
+}
+
+TEST(JournalReaderOnSecret, AnNFromACallItDidNotSpliceIsNobodys) {
+  // Switched on while the move mode's bar was already up: the running call
+  // has no `Notes`, so an `N` it answers cannot be one.
+  const secret_reader_rig r;
+  r.move_bar_back('N');
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed);
+}
+
+TEST(JournalReaderOnSecret, TheBoxIsTheOuterFrameHandedOneWordAndATitle) {
+  const secret_reader_rig r;
+  r.open_the_log();
+  EXPECT_EQ(r.secret_word(secret::frame_calls), 1u);
+  EXPECT_EQ(r.secret_word(secret::frame_word), 1u)
+      << "the word its own callers push, which it never reads";
+  EXPECT_EQ(r.secret_word(secret::clear_calls), 0u);
+  ASSERT_GE(r.secret_word(secret::string_calls), 1u);
+  EXPECT_EQ(r.nth_string(0),
+            (secret_reader_rig::string_call{.column = 9,
+                                            .row = screen_top,
+                                            .colour = bar_key_colour,
+                                            .background = 0}));
+}
+
+TEST(JournalReaderOnSecret, EveryLineIsHandedABlackBackground) {
+  const secret_reader_rig r;
+  r.reader().note_seen(Entry(37), 1, 1, 0, 1);
+  r.open_the_log();
+  r.until_it_settles();
+  ASSERT_TRUE(r.reader().on_screen());
+  const unsigned strings = r.secret_word(secret::string_calls);
+  ASSERT_EQ(strings, 4u)
+      << "the title, the log's one row, the bar, its initial";
+  EXPECT_EQ(r.nth_string(1).row, screen_first_row);
+  EXPECT_EQ(r.nth_string(2).row, screen_footer_row);
+  for (unsigned nth = 0; nth < strings; ++nth) {
+    EXPECT_EQ(r.nth_string(nth).background, 0u) << "call " << nth;
+  }
+}
+
+TEST(JournalReaderOnSecret, TheLogsCursorRowIsWhiteUnderModernControls) {
+  // The program's own highlight is black on a white block, so a selection
+  // is white, as on Curse.
+  const secret_reader_rig r;
+  ASSERT_EQ(r.box->seams().enable("modern-controls"), seam_reason::none);
+  r.reader().note_seen(Entry(37), 1, 1, 0, 1);
+  r.open_the_log();
+  r.until_it_settles();
+  ASSERT_GE(r.secret_word(secret::string_calls), 2u);
+  EXPECT_EQ(r.nth_string(1).row, screen_first_row);
+  EXPECT_EQ(r.nth_string(1).colour, 0x800Fu);
+}
+
+TEST(JournalReaderOnSecret, ClosingIsTheComposersStubAndASpace) {
+  const secret_reader_rig r;
+  r.open_the_log();
+  r.until_it_settles();
+  ASSERT_TRUE(r.reader().on_screen());
+  r.type(key_escape);
+  r.secret_poll();
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed);
+  EXPECT_EQ(r.secret_word(secret::composer_calls), 1u)
+      << "called through its stub entry, at the stub's own paragraph";
+  ASSERT_EQ(r.keys_waiting(), 1u);
+  EXPECT_EQ(r.word_at(bda::segment,
+                      r.word_at(bda::segment, bda::keyboard_buffer_head)),
+            key_space);
+}
+
+TEST(JournalReaderOnSecret, AKeyTakenAtTheReadsOwnPollIsAnsweredAtOnce) {
+  // The read routine polls and then reads whatever its poll said: a key
+  // taken at that poll would leave the read waiting inside the BIOS, so the
+  // ignorable key is put where it reads.
+  const secret_reader_rig r;
+  r.open_the_log();
+  r.until_it_settles();
+  r.type(key_prev);
+  r.secret_poll(secret::read_poll_return);
+  ASSERT_EQ(r.keys_waiting(), 1u);
+  EXPECT_EQ(r.word_at(bda::segment,
+                      r.word_at(bda::segment, bda::keyboard_buffer_head)),
+            key_ignored);
+}
+
+TEST(JournalReaderOnSecret, AKeyTakenAtTheBarsOwnPollIsNotAnswered) {
+  const secret_reader_rig r;
+  r.open_the_log();
+  r.until_it_settles();
+  r.type(key_prev);
+  r.secret_poll();
+  EXPECT_EQ(r.keys_waiting(), 0u)
+      << "the bar's poll is told no and polls again";
+}
+
+TEST(JournalReaderOnSecret, NAtTheReadsOwnPollIsAnsweredToo) {
+  const secret_reader_rig r;
+  r.at_the_partys_bar();
+  r.type(key_next);
+  r.secret_poll(secret::read_poll_return);
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::listing);
+  ASSERT_EQ(r.keys_waiting(), 1u);
+  EXPECT_EQ(r.word_at(bda::segment,
+                      r.word_at(bda::segment, bda::keyboard_buffer_head)),
+            key_ignored);
+}
+
+TEST(JournalReaderOnSecret, NeverOpenedItDrawsNothing) {
+  const secret_reader_rig r;
+  r.at_the_partys_bar();
+  r.type(key_exit);
+  r.secret_poll();
+  r.routine_has_cut("Exit", secret::move_bar_return);
+  r.move_bar_back('E');
+  EXPECT_EQ(r.secret_word(secret::frame_calls), 0u);
+  EXPECT_EQ(r.secret_word(secret::string_calls), 0u);
+  EXPECT_EQ(r.secret_word(secret::composer_calls), 0u);
+}
+
+TEST(JournalReaderOnSecret, OnAndNeverAskedTheMachineIsThePlainOnes) {
+  // A key that is not `N` at the party's bar, and a bar that is not the
+  // move mode's: nothing is written that a seam-off machine does not have.
+  const secret_reader_rig r;
+  const secret_reader_rig plain;
+  ASSERT_EQ(plain.pc().seams().disable("journal"), seam_reason::none);
+  for (const secret_reader_rig* one : {&r, &plain}) {
+    one->at_the_partys_bar();
+    one->type(key_exit);
+    one->secret_poll();
+    one->routine_has_cut("Move Area Cast View Encamp Search Look",
+                         secret::party_bar_return);
+  }
+  EXPECT_EQ(hash_state(r.pc()), hash_state(plain.pc()));
+}
+
+TEST(JournalReaderOnSecret, SwitchedOffMidBarTheRunningCallKeepsItsWord) {
+  // The word is in the routine's own copy, which goes with its frame: the
+  // stop has nothing of the program's to put back, the running call keeps
+  // `Notes` until it returns, and the next call is the program's.
+  const secret_reader_rig r;
+  r.routine_has_cut("Exit", secret::move_bar_return);
+  ASSERT_EQ(r.routine_copy(), "Exit Notes");
+  const auto before = hash_state(r.pc());
+  ASSERT_EQ(r.pc().seams().disable("journal"), seam_reason::none);
+  EXPECT_EQ(hash_state(r.pc()), before) << "nothing owed";
+  r.routine_has_cut("Exit", secret::move_bar_return);
+  EXPECT_EQ(r.routine_copy(), "Exit") << "the next call is the program's";
+}
+
+TEST(JournalReaderOnSecret, SwitchedOnAgainItSplicesAsBefore) {
+  const secret_reader_rig r;
+  r.routine_has_cut("Exit", secret::move_bar_return);
+  ASSERT_EQ(r.pc().seams().disable("journal"), seam_reason::none);
+  r.move_bar_back('N');
+  r.enable();
+  r.move_bar_back('N');
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed)
+      << "an N from the call before is nobody's";
+  r.routine_has_cut("Exit", secret::move_bar_return);
+  EXPECT_EQ(r.routine_copy(), "Exit Notes");
+  r.move_bar_back('N');
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::listing);
 }
 
 }  // namespace
