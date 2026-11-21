@@ -810,6 +810,17 @@ inline constexpr seam_module adventure{
         "ed031f8d04921f25f716d5bbf6fe318f3f3fd1d6b042befb6e11eb748dc3b8ff",
     .load_segment_at = 0xD70};
 
+/// Overlay 22: the character view and its sheet, and the party menu's own
+/// member picker (`seam_hero_keys.cpp`). The stub's record is at image
+/// `0x1000`.
+inline constexpr seam_module view{
+    .file = "GAME.OVR",
+    .file_offset = 160097,
+    .length = 16843,
+    .digest =
+        "8f0c705f86a9694145fceb945151cd315c240059dcd29071bfef2de9b97de643",
+    .load_segment_at = 0x1010};
+
 /// Overlay 27: the party summary, the roster drawer, the roster's one-row
 /// redraw, the screen composer and the status line among others. The
 /// stub's record is at image `0x1510`, and its entries follow it in
@@ -844,6 +855,12 @@ inline constexpr seam_module menu{
 ///
 /// The record is the one the first two programs keep, longer again: the
 /// same fields in the same order, further in.
+///
+/// **The menu-bar routine reads its keys through a routine of its own**,
+/// image `0x7133`, which reads the mouse and the joystick and then the
+/// program's key read (`key_read_entry`); `menu_key_read_call` is the
+/// routine's far call to it. The read keeps an extended key's second half
+/// in `data_key_pushback`, as on the first two programs.
 ///
 /// **No view kind**, as on Curse of the Azure Bonds: the adventuring mode
 /// has one view, the grid, and the program is in that mode from its first
@@ -892,7 +909,7 @@ inline constexpr program_profile secret_of_the_silver_blades{
     .camp_overlay = {},
     .roster_overlay = {},
     .slots_overlay = {},
-    .view_overlay = {},
+    .view_overlay = secret_of_the_silver_blades_modules::view,
     .menu_overlay = secret_of_the_silver_blades_modules::menu,
     .summary_overlay = secret_of_the_silver_blades_modules::summary,
     .temple_load_segment_at = {},
@@ -902,7 +919,7 @@ inline constexpr program_profile secret_of_the_silver_blades{
     .rest_load_segment_at = {},
     .appraise_load_segment_at = {},
     .death_load_segment_at = 0x18C0,  // overlay 34
-    .menu_key_read_call = {},
+    .menu_key_read_call = 0x05A0,
     .menu_local_bar = 0x53,
     .menu_bar_capacity = 40,
     .pick_list_bar_return = {},

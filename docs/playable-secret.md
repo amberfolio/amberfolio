@@ -25,9 +25,10 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
 No `--install`: the Steam copy is recognized and laid out at `\SECRET`
 (`docs/hosts.md` §2c). No seam is needed to play, and the ones available
 on this program are the three debug cheats, the two text faces, the
-message pause, the automap, `modern-controls`, which here is only its
-two pieces that observe, for the host reads below, and the journal,
-opened by `N` at the party's bar (`docs/seams.md` §10). Sixty
+message pause, the automap, `modern-controls`, which here is its hero
+keys at the party menu's `PICK CHARACTER` (leg 13) and its two pieces
+that observe, for the host reads below, and the journal, opened by `N`
+at the party's bar (`docs/seams.md` §10). Sixty
 frames to the virtual second; `TICKS = FRAME * 19,886` at `--speed 386`
 is close enough for `--until`.
 
@@ -72,7 +73,9 @@ rows below, as a player reads it.
 | the party menu | `8`, `2` on the number row or the keypad | as `Up` and `Down`; `Up` on the first row goes to the last |
 | the party menu | a letter, `Home`, `End` | nothing |
 | a pick list | `8`, `2`; `Escape` | as `Up` and `Down`; `Escape` leaves it (the party menu's `INITIALIZE MOUSE/JOYSTICK` list, leg 7's shop) |
+| the party menu's `PICK CHARACTER` | `8`, `2`, `4`, `6`; `1`, `3`, `5`, `7`, `9` | as the arrows: the member, and `SELECT` or `EXIT`; the first member (leg 13). With `modern-controls` on, the number row's `1` to `8` are the member of that number and the keypad's stay the arrows |
 | the adventuring bar | `8`, `2`, `4`, `6`, the number row's or the keypad's | as the arrows: the current member, and the lit word |
+| the adventuring bar | `1`, `3`, `5`, `7`, `9` | the first member becomes the current one |
 | the adventuring bar | `,`, `.`, `Escape` | nothing |
 | the adventuring bar | `M` | the move mode, as `Return` on `MOVE` |
 | the adventuring bar, the move mode | `N` | nothing: it is none of either bar's commands (with `journal` on it opens Notes, below) |
@@ -453,6 +456,26 @@ or a journey between places, this one has the town's gates and, the
 mayor says, a teleporter in his house; neither has shown a travel mode
 (game mode 3) in anything driven.
 
+## Leg 13: the party menu's member picker
+
+```
+... leg 0 ...
+--press Down@1500 --press Down@1560 --press Return@1620 --press A@2100
+--press Down@2400 --press Return@2500                 # VIEW CHARACTER
+--press 3@2800 --press Return@3000 --press Escape@3300
+--press Return@3600 --press 6@3900 --press S@4100 --press Escape@4400
+--press Return@4700 --press 8@5000 --press 1@5200 --press Return@5400
+--press Escape@5700
+```
+
+The party menu's `VIEW CHARACTER` asks `PICK CHARACTER` over `SELECT
+EXIT`, with the current member's name white in the roster. Its digits
+are the keypad's: `3`, `6` and `1` put the selection on the first member
+and `8` steps it back to the last, so all three sheets are Guy's. With
+`--seam modern-controls` the roster is numbered 1 to 6 and the number
+row chooses: Epona's sheet, then Morgaine's, then, `8` being nobody in a
+party of six, Guy's. `secret-pick` and `secret-pick-heroes` are this leg.
+
 ## The host reads on this program
 
 | run | what it shows |
@@ -543,7 +566,7 @@ where that mechanism is (`docs/seams.md` §10).
 
 ## The sessions
 
-Thirty, `secret-*`, at `--speed 386` and `--wall none`: `secret-load`
+Thirty-two, `secret-*`, at `--speed 386` and `--wall none`: `secret-load`
 on the disk `secret-save` leaves (the `secret-saved` snapshot), and the
 rest on the Steam copy with its shipped slots (`secret-slots`).
 
@@ -567,9 +590,11 @@ rest on the Steam copy with its shipped slots (`secret-slots`).
 | `secret-fight-pause` | message-pause | `contrast secret-fight` | 315 of 371 identical, divergent from tick 476,011,182, in the two pauses that open the encounter |
 | `secret-aim` | | | leg 9 |
 | `secret-name` | | | leg 10 |
-| `secret-fight-controls` | modern-controls | `identical secret-fight` | neither piece reached: all 371 checkpoints |
-| `secret-aim-controls` | modern-controls | `identical secret-aim` | the aim watched at every key of the aim: all 406 checkpoints |
-| `secret-name-controls` | modern-controls | `identical secret-name` | the line editor watched from entry to return: all 40 checkpoints |
+| `secret-fight-controls` | modern-controls | | leg 4, nothing reached; the party menu's roster numbered, so 342 of 371 checkpoints are `secret-fight`'s: different from tick 43,291,822 and the same again from 91,654,574, in the opening. No relation describes a difference that does not last |
+| `secret-aim-controls` | modern-controls | | the aim watched at every key of the aim; 377 of 406 `secret-aim`'s, the same two ticks |
+| `secret-name-controls` | modern-controls | `identical secret-name` | the line editor watched from entry to return, no party to number: all 40 checkpoints |
+| `secret-pick` | | | leg 13 |
+| `secret-pick-heroes` | modern-controls | `contrast secret-pick` | 23 of 68 identical, divergent from tick 43,291,822, the roster numbered; the digits choose |
 | `secret-boot-journal` | journal | `identical secret-boot` | the watch never reached: all 15 checkpoints |
 | `secret-camp-journal` | journal | `identical secret-camp` | entry 37 cited by the opening and logged, `N` never pressed and no move mode; the watch writes nothing the machine holds: all 106 checkpoints |
 | `secret-town-journal` | journal | `contrast secret-town` | `NOTES` on the move mode's bar, never chosen, and the walk step for step: 90 of 138 identical, divergent from tick 163,085,086, `MOVE`'s frame |

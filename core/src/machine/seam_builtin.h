@@ -111,11 +111,15 @@ inline constexpr std::size_t curse_modern_controls_point_count =
 [[nodiscard]] std::span<const seam_point> curse_text_entry_points() noexcept;
 [[nodiscard]] std::span<const seam_point> curse_aim_watch_points() noexcept;
 
-/// Secret of the Silver Blades' (#609): the two pieces that only observe,
-/// which the host reads rest on. No piece that changes a key or a colour is
-/// ported to it.
+/// Secret of the Silver Blades' (#609): the hero keys, at the party menu's
+/// member picker, with three points more than the baseline's in the routine
+/// that draws one member's row again; and the two pieces that only observe,
+/// which the host reads rest on.
+inline constexpr std::size_t secret_hero_keys_point_count = 8;
 inline constexpr std::size_t secret_modern_controls_point_count =
-    text_entry_point_count + aim_watch_point_count;
+    secret_hero_keys_point_count + text_entry_point_count +
+    aim_watch_point_count;
+[[nodiscard]] std::span<const seam_point> secret_hero_keys_points() noexcept;
 [[nodiscard]] std::span<const seam_point> secret_text_entry_points() noexcept;
 [[nodiscard]] std::span<const seam_point> secret_aim_watch_points() noexcept;
 

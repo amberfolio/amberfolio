@@ -224,11 +224,12 @@ constexpr std::array journal_rows{
 
 // Secret of the Silver Blades has screens of the same names and other keys
 // on most of them, so each of its screens is a context of its own, with
-// the rows docs/playable-secret.md records as driven. No piece of
-// modern-controls takes a key or draws on this program, so none of those
-// rows is here; the message pause's, the automap's and the journal's are.
-// Its party's bar has no room for Notes: `N` there opens the log with no
-// word on the bar, and the walking bar carries the word (#609).
+// the rows docs/playable-secret.md records as driven. One piece of
+// modern-controls takes a key on this program, the hero keys at the party
+// menu's member picker, so of its rows only that one is here; the message
+// pause's, the automap's and the journal's are too. Its party's bar has no
+// room for Notes: `N` there opens the log with no word on the bar, and the
+// walking bar carries the word (#609).
 
 constexpr std::array blades_explore_rows{
     key_row{"Up, Down", "at the bar: the previous or next party member"},
@@ -256,6 +257,9 @@ constexpr std::array blades_menu_rows{
     key_row{"Up, Down", "move the highlight over the rows"},
     key_row{"Return", "take the highlighted row"},
     key_row{"letters, Home, End", "nothing here: a row is taken by Return"},
+    key_row{"1-8 on the number row",
+            "at Pick Character: that member; the list is numbered",
+            "modern-controls"},
 };
 
 constexpr std::array blades_list_rows{
@@ -391,10 +395,12 @@ constexpr std::array legends{
         .text = "On the screens that use the arrows, the number row's 8 2 4 6 "
                 "are Up Down Left Right, as the keypad's are, so no keypad is "
                 "needed. Home and End do nothing in this game's lists or at "
-                "its party menu. Its keys are its own but the ones a row names "
-                "a seam for, which show only while that seam is on: the "
-                "journal's N, at the party's bar, opens Notes with no word on "
-                "the bar, which has no room for one."},
+                "its party menu. With modern-controls on, the number row's 1 "
+                "to 8 choose a party member at the party menu's Pick "
+                "Character, where the keypad keeps its digits. With the "
+                "journal on, N at the party's bar opens Notes, with no word on "
+                "the bar, which has no room for one. A row that names a seam "
+                "shows only while that seam is on."},
 };
 
 [[nodiscard]] std::string_view shell_word(card_shell shell) {

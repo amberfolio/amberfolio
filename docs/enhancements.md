@@ -276,11 +276,18 @@ the start; a part whose screen the game has not loaded yet (the pick-lists'
 and command bars', the main menu's and Modify's) waits for it, and the rest
 work meanwhile.
 
-**In Secret of the Silver Blades** none of the keys or colours above is
-there yet. The toggle is, because it is also what lets a host tell
+**In Secret of the Silver Blades** one of the parts above is there: the
+party menu's list shows each member's number, and when the party menu
+asks you to pick a character, the number row's 1 to 8 choose that member
+(the game has no member of its own to select at that menu; it asks each
+time). The game's own number row is its keypad, there and everywhere, so
+at that one prompt the number row's digits stop stepping the choice; the
+arrows and the keypad still do. The rest the game has already (lists the
+arrows move, bars that take Left, Right and Enter, its own walking mode,
+arrows that type nothing in a name), or is not done yet: its current
+member is shown by its colour alone. The toggle also lets a host tell
 whether the game is reading a line of text and where the combat aim
-cursor is (`docs/hosts.md` §12 and §13); switched on in that game, it
-changes nothing you see or press.
+cursor is (`docs/hosts.md` §12 and §13).
 
 ### The list arrows
 
