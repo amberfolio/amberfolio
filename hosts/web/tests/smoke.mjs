@@ -898,18 +898,22 @@ if (missing.length === 0) {
     has(curse, 'journey') && !has(curse, 'wilderness'),
     "Curse's card shows a wilderness it does not have, or no journey",
   );
-  // Secret of the Silver Blades: its own screens, no Notes, and with every
-  // seam on only the message pause's rows and the automap's, since
-  // modern-controls and the journal take no key on it.
+  // Secret of the Silver Blades: its own screens, Notes among them, and with
+  // every seam on only the message pause's rows, the automap's and the
+  // journal's, since modern-controls takes no key on it.
   check(
     has(blades, 'explore') && has(blades, 'combat') && !has(blades, 'wilderness') &&
-      !has(blades, 'journey') && !has(blades, 'journal'),
+      !has(blades, 'journey') && has(blades, 'journal'),
     "Secret of the Silver Blades' card is not its own",
   );
   check(
     blades.every((context) =>
       context.rows.every(
-        (row) => row.seam === '' || row.seam === 'message-pause' || row.seam === 'automap',
+        (row) =>
+          row.seam === '' ||
+          row.seam === 'message-pause' ||
+          row.seam === 'automap' ||
+          row.seam === 'journal',
       ),
     ),
     "Secret of the Silver Blades' card shows a seam's key it does not take",

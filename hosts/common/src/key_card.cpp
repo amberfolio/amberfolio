@@ -225,9 +225,10 @@ constexpr std::array journal_rows{
 // Secret of the Silver Blades has screens of the same names and other keys
 // on most of them, so each of its screens is a context of its own, with
 // the rows docs/playable-secret.md records as driven. No piece of
-// modern-controls takes a key or draws on this program, and its party's
-// bar has no Notes, so none of those rows is here; the message pause's
-// and the automap's are.
+// modern-controls takes a key or draws on this program, so none of those
+// rows is here; the message pause's, the automap's and the journal's are.
+// Its party's bar has no room for Notes: `N` there opens the log with no
+// word on the bar, and the walking bar carries the word (#609).
 
 constexpr std::array blades_explore_rows{
     key_row{"Up, Down", "at the bar: the previous or next party member"},
@@ -277,6 +278,19 @@ constexpr std::array blades_combat_rows{
     key_row{"N, the fight over", "at Continue Battle: no, take the win"},
     key_row{"any key", "end a message's pause; that key does no more",
             "message-pause"},
+};
+
+constexpr std::array blades_journal_rows{
+    key_row{"N", "at the party's bar: open the Notes log", "journal"},
+    key_row{"N, walking", "Notes on the walking bar: open the log", "journal"},
+    key_row{"Up, Down", "in the log: the entry above or below", "journal"},
+    key_row{"Return", "open the entry under the cursor", "journal"},
+    key_row{"N, P", "in an entry: next and previous page", "journal"},
+    key_row{"Left, Right",
+            "with modern-controls on: step the lit word of the bar", "journal"},
+    key_row{"Return, bar lit",
+            "take the lit command; in the log, after Left or Right", "journal"},
+    key_row{"Esc", "close the entry, then the log", "journal"},
 };
 
 constexpr std::array blades_text_rows{
@@ -350,6 +364,8 @@ constexpr std::array contexts{
                 card_shell::both, pool},
     key_context{"journal", "Notes (the journal)", journal_rows,
                 card_shell::both, curse},
+    key_context{"journal", "Notes (the journal)", blades_journal_rows,
+                card_shell::both, blades},
     key_context{"desktop", "This window (the desktop host)", desktop_rows,
                 card_shell::desktop},
 };
@@ -375,9 +391,10 @@ constexpr std::array legends{
         .text = "On the screens that use the arrows, the number row's 8 2 4 6 "
                 "are Up Down Left Right, as the keypad's are, so no keypad is "
                 "needed. Home and End do nothing in this game's lists or at "
-                "its party menu. Its keys are its own: no enhancement adds one "
-                "here, and a row that names a seam shows only while that seam "
-                "is on."},
+                "its party menu. Its keys are its own but the ones a row names "
+                "a seam for, which show only while that seam is on: the "
+                "journal's N, at the party's bar, opens Notes with no word on "
+                "the bar, which has no room for one."},
 };
 
 [[nodiscard]] std::string_view shell_word(card_shell shell) {
