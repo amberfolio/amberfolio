@@ -1511,6 +1511,9 @@ constexpr std::uint16_t record_geo = 0x18A;
 constexpr std::uint16_t area_shown_column = 0x3FA;
 constexpr std::uint16_t area_shown_row = 0x3FC;
 constexpr std::uint16_t shown_none = 0xFF;
+/// And the quarter turns from the stored grid to the script's numbering,
+/// which the line adds twice to the facing byte while the 3D word is set.
+constexpr std::uint16_t area_shown_turn = 0x3FE;
 
 constexpr std::uint16_t data_slot_records = 0x8571;
 constexpr std::uint16_t data_slot_squares = 0x7EDF;
@@ -1784,17 +1787,136 @@ TEST(SceneOnSecret, AScriptedMoveIsNoScene) {
   EXPECT_EQ(r.read().screen, scene_screen::none);
 }
 
-TEST(SceneOnSecret, WhereTheStatusLinePrintsAScriptsSquareTheGridIsNoScene) {
-  // The ruins: the line prints the area record's two words, not the
-  // stored square, and this read does not say either yet.
+/// The status line printing the script's square (`x`, `y`) with the grid
+/// turned `turns` quarter turns, the 3D word set as it is in the ruins.
+void numbered(const secret_rig& r, std::uint16_t x, std::uint16_t y,
+              std::uint16_t turns) {
+  r.record_word(secret::area_shown_column, x);
+  r.record_word(secret::area_shown_row, y);
+  r.record_word(secret::area_shown_turn, turns);
+  r.record_word(record_3d, 1);
+}
+
+TEST(SceneOnSecret, WhereTheStatusLinePrintsAScriptsSquareTheSceneSaysBoth) {
+  // The ruins' arrival: the line prints 0,15 where the party stands on
+  // stored 11,2, whose walls and view the read gives beside it.
   const secret_rig r;
   r.grid(11, 2, east, 0x20, 0x20);
+  r.face(11, 2, north, 3, 0);
+  r.face(11, 2, west, 7, 0);
   ASSERT_EQ(r.read().screen, scene_screen::explore);
-  r.record_word(secret::area_shown_column, 0);
-  r.record_word(secret::area_shown_row, 15);
+  EXPECT_FALSE(r.read().numbered);
+  EXPECT_EQ(r.json().find("stored"), std::string::npos)
+      << "where the line prints the stored square there is one square";
+
+  numbered(r, 0, 15, 0);
+  const scene s = r.read();
+  ASSERT_EQ(r.last, scene_trouble::none) << r.json();
+  EXPECT_EQ(s.screen, scene_screen::explore);
+  EXPECT_TRUE(s.numbered);
+  EXPECT_EQ(s.x, 0);
+  EXPECT_EQ(s.y, 15);
+  EXPECT_EQ(s.facing, east);
+  EXPECT_EQ(s.stored_x, 11);
+  EXPECT_EQ(s.stored_y, 2);
+  EXPECT_EQ(s.stored_facing, east);
+  ASSERT_GT(s.view_count, 0U);
+  EXPECT_EQ(s.view[0].x, 11) << "the view is the stored grid's";
+  EXPECT_EQ(s.view[0].y, 2);
+  EXPECT_EQ(std::string_view(s.zone.data(), s.zone_length), "AREA 32");
+  const std::string text = r.json();
+  EXPECT_NE(text.find(R"("x":0,"y":15,"facing":"east",)"
+                      R"("stored":{"x":11,"y":2,"facing":"east"},)"
+                      R"("around":{"ahead":"open","right":"open",)"
+                      R"("behind":"wall","left":"wall"})"),
+            std::string::npos)
+      << text;
+}
+
+TEST(SceneOnSecret, WhereTheScriptTurnsTheGridTheLinesFacingIsTurned) {
+  // Stored 11,4 facing south, turned half round: the line prints 13,19
+  // north. `around` is the party's own, whichever way the grid is turned.
+  const secret_rig r;
+  r.grid(11, 4, south, 0x20, 0x20);
+  r.face(11, 4, north, 7, 0);
+  r.face(11, 4, south, 3, 0);
+  numbered(r, 13, 19, 2);
+  const scene s = r.read();
+  ASSERT_EQ(r.last, scene_trouble::none) << r.json();
+  EXPECT_EQ(s.facing, north);
+  EXPECT_EQ(s.stored_facing, south);
+  const std::string text = r.json();
+  EXPECT_NE(text.find(R"("x":13,"y":19,"facing":"north",)"
+                      R"("stored":{"x":11,"y":4,"facing":"south"},)"
+                      R"("around":{"ahead":"wall","right":"open",)"
+                      R"("behind":"wall","left":"open"})"),
+            std::string::npos)
+      << text;
+
+  // A quarter turn each way.
+  numbered(r, 13, 19, 1);
+  EXPECT_EQ(r.read().facing, west);
+  numbered(r, 13, 19, 3);
+  EXPECT_EQ(r.read().facing, east);
+}
+
+TEST(SceneOnSecret, ATurnBetweenTwoFacingsIsNoScene) {
+  // With the 3D word clear the line adds the turns once, and an odd sum
+  // is no facing it names.
+  const secret_rig r;
+  r.grid(11, 4, south, 0x20, 0x20);
+  numbered(r, 13, 19, 1);
+  r.record_word(record_3d, 0);
   EXPECT_EQ(r.read().screen, scene_screen::none);
   EXPECT_EQ(r.last, scene_trouble::elsewhere);
-  EXPECT_EQ(r.json(), "null");
+}
+
+TEST(SceneOnSecret, TheMapThereIsTheAutomapsPageInTheScriptsNumbers) {
+  // Stored 14,2's east face is solid; the script carried the party through
+  // it to stored 10,3, one square east in its numbering. The automap's page
+  // says what its panel draws: the squares as numbered, each with its
+  // stored square's faces, and the face walked through a door.
+  const secret_rig r;
+  r.grid(10, 3, east, 0x20, 0x20);
+  r.face(14, 2, east, 8, 0);
+  r.face(14, 2, north, 3, 0);
+  r.face(10, 3, west, 7, 0);
+  r.face(12, 4, east, 4, 0);
+  numbered(r, 4, 15, 0);
+  ASSERT_EQ(r.box->seams().enable("automap"), seam_reason::none);
+  automap_state& kept = r.box->automap();
+  automap_record& page = kept.record_for_numbered(1, 0x20, 0x20, 4, 15);
+  kept.stand_on_numbered(page, 3, 15, 14, 2, 0);
+  kept.stand_on_numbered(page, 4, 15, 10, 3, 0);
+  kept.cross_numbered(page, 3, 15, page, east);
+  // A turned square, on the page below.
+  automap_record& below = kept.record_for_numbered(1, 0x20, 0x20, 12, 19);
+  kept.stand_on_numbered(below, 12, 19, 12, 4, 2);
+
+  const scene s = r.read();
+  ASSERT_EQ(r.last, scene_trouble::none) << r.json();
+  ASSERT_TRUE(s.map_kept);
+  EXPECT_EQ(s.map_count, 2U) << "the page the party is on, and no other";
+  const scene_square* before = square(s.map, s.map_count, 3, 15);
+  const scene_square* after = square(s.map, s.map_count, 4, 15);
+  ASSERT_NE(before, nullptr);
+  ASSERT_NE(after, nullptr);
+  EXPECT_EQ(before->face(east), scene_face::door) << "walked through";
+  EXPECT_EQ(before->face(north), scene_face::wall);
+  EXPECT_EQ(after->face(west), scene_face::door);
+  EXPECT_EQ(after->face(north), scene_face::open);
+
+  // On the page below, the turned square: its stored east face is its
+  // west in the script's numbering.
+  r.sdata(secret::data_x, 12);
+  r.sdata(secret::data_y, 4);
+  numbered(r, 12, 19, 2);
+  const scene turned = r.read();
+  ASSERT_EQ(turned.map_count, 1U);
+  EXPECT_EQ(turned.map[0].x, 12);
+  EXPECT_EQ(turned.map[0].y, 19);
+  EXPECT_EQ(turned.map[0].face(west), scene_face::wall);
+  EXPECT_EQ(turned.map[0].face(east), scene_face::open);
 }
 
 TEST(SceneOnSecret, AFightThereStillReads) {

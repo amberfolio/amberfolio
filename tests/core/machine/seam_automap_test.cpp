@@ -628,6 +628,84 @@ TEST(AutomapState, TheOverlandCarriesNoMarks) {
   EXPECT_EQ(map.marker_count, 0u);
 }
 
+// --- A script's numbering (#609) ---------------------------------------------
+
+TEST(AutomapState, ANumberedMapIsKeptInPagesOfSixteenSquares) {
+  // The status line prints a byte each way; sixteen by sixteen of them is
+  // a page, the page's column in the low nibble and its row in the high.
+  EXPECT_EQ(automap_numbered_page(0, 15), 0x00u);
+  EXPECT_EQ(automap_numbered_page(9, 16), 0x10u);
+  EXPECT_EQ(automap_numbered_page(83, 56), 0x35u);
+  EXPECT_EQ(automap_numbered_page(255, 255), 0xFFu);
+
+  automap_state state;
+  automap_record& top = state.record_for_numbered(1, 32, 32, 3, 15);
+  automap_record& below = state.record_for_numbered(1, 32, 32, 3, 16);
+  EXPECT_NE(&top, &below);
+  EXPECT_EQ(&state.record_for_numbered(1, 32, 32, 15, 0), &top);
+  EXPECT_EQ(top.kind, automap_map_kind::numbered);
+  EXPECT_EQ(below.page, 0x10u);
+  EXPECT_EQ(state.find(1, 32, 32), nullptr) << "not the stored grid's record";
+}
+
+TEST(AutomapState, StandingOnANumberedSquareKeepsWhatItIsDrawnFrom) {
+  automap_state state;
+  automap_record& page = state.record_for_numbered(1, 32, 32, 13, 19);
+  const std::uint32_t before = state.serial();
+  EXPECT_TRUE(state.stand_on_numbered(page, 13, 19, 11, 4, 2));
+  EXPECT_GT(state.serial(), before);
+  EXPECT_TRUE(automap_state::seen(page, 13, 19));
+  EXPECT_EQ(automap_state::numbered_stored_x(page, 13, 19), 11u);
+  EXPECT_EQ(automap_state::numbered_stored_y(page, 13, 19), 4u);
+  EXPECT_EQ(automap_state::numbered_turns(page, 13, 19), 2u);
+
+  const std::uint32_t again = state.serial();
+  EXPECT_FALSE(state.stand_on_numbered(page, 13, 19, 11, 4, 2))
+      << "the same square from the same stored square is nothing new";
+  EXPECT_EQ(state.serial(), again);
+
+  EXPECT_FALSE(
+      state.stand_on_numbered(state.record_for(1, 16, 16), 3, 3, 3, 3, 0))
+      << "a grid's record has no numbering";
+}
+
+TEST(AutomapState, ACrossedBorderIsMarkedOnBothSidesAcrossAPageEdge) {
+  automap_state state;
+  automap_record& top = state.record_for_numbered(1, 32, 32, 9, 15);
+  automap_record& below = state.record_for_numbered(1, 32, 32, 9, 16);
+  state.stand_on_numbered(top, 9, 15, 15, 3, 0);
+  state.stand_on_numbered(below, 9, 16, 15, 4, 0);
+  state.cross_numbered(top, 9, 15, below, 4);  // south
+  EXPECT_TRUE(automap_state::numbered_crossed(top, 9, 15, 4));
+  EXPECT_TRUE(automap_state::numbered_crossed(below, 9, 16, 0));
+  EXPECT_FALSE(automap_state::numbered_crossed(top, 9, 15, 0));
+  EXPECT_EQ(automap_state::numbered_turns(top, 9, 15), 0u)
+      << "the crossings sit beside the turns, not over them";
+}
+
+TEST(AutomapState, ANumberedMapsMarksGoOnThePageTheSquareIsOn) {
+  // From the town into the ruins and on: the town's exit on its grid, the
+  // ruins' entrance on the page the line's first square is on, and a step
+  // onto the next page is no map change.
+  automap_state state;
+  for (int i = 0; i < 3; ++i) {
+    state.observe(1, 16, 16, 15, 8);
+  }
+  for (int i = 0; i < 3; ++i) {
+    state.observe(automap_map_kind::numbered, 1, 32, 32, 0, 15);
+  }
+  ASSERT_TRUE(state.settled());
+  const automap_record* town = state.find(1, 16, 16);
+  ASSERT_NE(town, nullptr);
+  EXPECT_EQ(automap_state::marker_at(*town, 15, 8), automap_marker::exit);
+  const automap_record* ruins = state.find_numbered(1, 32, 32, 0, 15);
+  ASSERT_NE(ruins, nullptr);
+  EXPECT_EQ(automap_state::marker_at(*ruins, 0, 15), automap_marker::entrance);
+
+  EXPECT_TRUE(state.observe(automap_map_kind::numbered, 1, 32, 32, 0, 16));
+  EXPECT_EQ(state.settled_y(), 16) << "believed at once: the same map";
+}
+
 TEST(AutomapState, ClearingDropsEverything) {
   automap_state state;
   automap_record& map = state.record_for(1, 2, 3);

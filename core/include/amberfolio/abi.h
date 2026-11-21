@@ -1612,7 +1612,9 @@ uint32_t af_machine_text_entry(const af_machine* box);
 //
 // Where the party is and what is around it, as data: on the interior
 // screen its square, its facing, the faces of the squares the 3D view
-// draws and of every square the automap has revealed; on the overland its
+// draws and of every square the automap has revealed (and, where an area's
+// script numbers the squares itself, the stored square beside its own,
+// #609); on the overland its
 // column and row and the 5x5 window's terrain; in a fight the figures, whose
 // turn it is and the tactical window's ground (#521) (`machine/scene.h`,
 // `docs/hosts.md` §13 has the shape). A read, like the screen text: taken

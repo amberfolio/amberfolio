@@ -525,6 +525,22 @@ border border_of(const grid& map, unsigned x, unsigned y, unsigned lane,
   return found;
 }
 
+border numbered_border_of(const grid& map, const automap_record& page,
+                          unsigned x, unsigned y, unsigned lane,
+                          std::uint16_t doors, std::uint16_t seen) noexcept {
+  const unsigned turns = automap_state::numbered_turns(page, x, y);
+  border found = border_of(map, automap_state::numbered_stored_x(page, x, y),
+                           automap_state::numbered_stored_y(page, x, y),
+                           stored_lane(lane, turns), doors, seen);
+  if (found.kind == border_kind::wall &&
+      automap_state::numbered_crossed(page, x, y, lane)) {
+    found.kind = border_kind::door;
+    found.shut = false;
+    found.why = automap_door_evidence::walked;
+  }
+  return found;
+}
+
 std::size_t sight_from(const grid& map, unsigned x, unsigned y, unsigned facing,
                        std::span<sight_cell, sight_cells_max> out) noexcept {
   const unsigned ahead = facing & 7U;

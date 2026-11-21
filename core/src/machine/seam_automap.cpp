@@ -431,13 +431,6 @@ struct automap_facts {
   /// adventuring mode through pages of story that have none.
   bool geometry_says_a_grid_is_up{};
 
-  /// Where in the area record a script may keep a square of its own for
-  /// the status line, the column word, with `shown_none` there where the
-  /// line prints the party's stored square. A map whose script numbers its
-  /// squares itself is not drawn or recorded (docs/seams.md §10). Zero on a
-  /// program whose line always prints the stored square.
-  std::uint16_t area_shown_column{};
-
   /// Whether the program's own key reader polls before it reads, and reads
   /// unconditionally when that poll says no (Secret of the Silver Blades:
   /// a bar polls through one wrapper and, told yes, reads through another
@@ -463,8 +456,8 @@ constexpr std::array<std::uint8_t, 4> keeps_the_moves{0x48, 0x4B, 0x4D, 0x50};
 constexpr std::array<std::uint8_t, 6> roster_chars_beside_moves{'1', '3', '5',
                                                                 '7', '9', '\\'};
 
-/// What the area record's shown column holds where the status line prints
-/// the stored square.
+/// What the area record's shown column (the profile's `area_shown_column`)
+/// holds where the status line prints the stored square.
 constexpr std::uint16_t shown_none = 0xFF;
 
 /// Pool of Radiance: the baseline edition (program_profile.h). The
@@ -621,7 +614,8 @@ void note_secret_bar(machine& box, const seam_context& ctx, std::uint16_t ds) {
 /// same routine. No place has a name and no wall set a measured door row
 /// (`secret_of_the_silver_blades_places()`). The roster drawer is overlaid
 /// as Curse's is. Its move mode is the program's own, with a bar of its
-/// own; the status line's square is the area script's where it keeps one.
+/// own; the status line's square is the area script's where it keeps one,
+/// and such an area is mapped in the script's squares (`sample::numbered`).
 constexpr automap_facts secret_automap{
     .profile = secret_of_the_silver_blades,
     .places = &map_format::secret_of_the_silver_blades_places,
@@ -643,7 +637,6 @@ constexpr automap_facts secret_automap{
     .data_move_mode = secret_data_move_mode,
     .move_bar_return = secret_of_the_silver_blades.move_bar_return,
     .geometry_says_a_grid_is_up = true,
-    .area_shown_column = 0x3FA,
     .polls_before_its_read = true,
     .floor_when_unset = 8};
 
@@ -756,6 +749,14 @@ void reveal_from(automap_state& state, automap_record& map,
 /// Everything one pass of the tick reads off the data segment, which is
 /// also everything the panel is drawn from. Gathered once, so that the
 /// several things that want it are not several reads of the same byte.
+///
+/// **Where the status line prints a square of the area script's own**
+/// (`numbered`, #609), `x`, `y` and `facing` are the line's: the square of
+/// the script's numbering and the facing it prints, which are what the
+/// panel is drawn in. `stored_x`, `stored_y` and `stored_facing` are the
+/// party's square on the loaded grid, whose faces that square is drawn
+/// with, and `turns` how many quarter turns the script has the grid turned
+/// by. Elsewhere the two are the same square and `turns` is zero.
 struct sample {
   std::uint8_t disk;
   std::uint8_t area;
@@ -767,6 +768,11 @@ struct sample {
   std::uint8_t frame_colour;
   std::uint16_t map_offset;
   std::uint16_t map_segment;
+  bool numbered;
+  std::uint8_t stored_x;
+  std::uint8_t stored_y;
+  std::uint8_t stored_facing;
+  std::uint8_t turns;
 };
 
 // ---------------------------------------------------------------------------
@@ -1283,9 +1289,11 @@ constexpr std::uint8_t colour_label = 14;
 void draw_label(const automap_facts& f, panel_pixels& panel, const sample& now,
                 const map_grid& grid, const font_table& font) noexcept {
   zone_fallback fallback{};
-  const std::string_view name =
-      zone_label(f.places(), now.disk, now.area, now.geo,
-                 {.map = &grid, .x = now.x, .y = now.y}, fallback);
+  // The place is where the party stands on the loaded grid, which is the
+  // square itself except where a script numbers its own (`sample`).
+  const std::string_view name = zone_label(
+      f.places(), now.disk, now.area, now.geo,
+      {.map = &grid, .x = now.stored_x, .y = now.stored_y}, fallback);
 
   constexpr auto columns = static_cast<std::size_t>(automap_text_columns);
   constexpr int band_x = static_cast<int>(automap_band_x);
@@ -1475,13 +1483,22 @@ void render(const automap_facts& f, automap_state& state,
   const auto cell = static_cast<int>(automap_cell_pixels);
   // Only the place the party is in: a wilderness lair shares its grid
   // with the area's other lairs, and what was explored of those is
-  // somewhere else (`map_format::place_of`).
-  const map_format::place_squares here =
-      map_format::place_of(f.places(), now.disk, now.area, now.geo,
-                           {.map = &grid, .x = now.x, .y = now.y});
+  // somewhere else (`map_format::place_of`). A page of a script's
+  // numbering is the place it is in, whole.
+  const map_format::place_squares here = map_format::place_of(
+      f.places(), now.disk, now.area, now.geo,
+      {.map = &grid, .x = now.stored_x, .y = now.stored_y});
   const auto shown = [&](unsigned cx, unsigned cy) {
-    return here[map_format::cell_of(cx, cy)] &&
+    return (now.numbered || here[map_format::cell_of(cx, cy)]) &&
            automap_state::seen(map, cx, cy);
+  };
+  // A border as the panel draws it: on a page of a script's numbering, the
+  // stored square's it was stood on, turned (`numbered_border_of`).
+  const auto border_at = [&](unsigned cx, unsigned cy, unsigned lane) {
+    return now.numbered
+               ? map_format::numbered_border_of(grid, map, cx, cy, lane, doors,
+                                                seen_kinds)
+               : map_format::border_of(grid, cx, cy, lane, doors, seen_kinds);
   };
 
   for (unsigned cy = 0; cy < automap_map_side; ++cy) {
@@ -1500,8 +1517,7 @@ void render(const automap_facts& f, automap_state& state,
       for (const unsigned lane : lanes) {
         // Both sides of the border, by the rule the scene read says in
         // words (`map_format::border_of`).
-        const map_format::border edge =
-            map_format::border_of(grid, cx, cy, lane, doors, seen_kinds);
+        const map_format::border edge = border_at(cx, cy, lane);
         if (edge.kind == map_format::border_kind::open) {
           continue;
         }
@@ -1555,9 +1571,8 @@ void render(const automap_facts& f, automap_state& state,
   draw_mark(panel, party_x0, party_y0, arrow_for(facing), colour_white);
   if (f.doors_over_party) {
     for (const unsigned lane : lanes) {
-      if (map_format::border_of(grid, px & 0x0FU, py & 0x0FU, lane, doors,
-                                seen_kinds)
-              .kind == map_format::border_kind::door) {
+      if (border_at(px & 0x0FU, py & 0x0FU, lane).kind ==
+          map_format::border_kind::door) {
         leaf_beside_mark(panel, party_x0, party_y0, lane);
       }
     }
@@ -1788,7 +1803,7 @@ enum class claimable : std::uint8_t {
       cpu.read_word(ds, at(profile.data_map_pointer, 2)) == 0) {
     return false;
   }
-  if (!f.geometry_says_a_grid_is_up && f.area_shown_column == 0) {
+  if (!f.geometry_says_a_grid_is_up) {
     return true;
   }
   const std::uint16_t record_offset =
@@ -1798,19 +1813,10 @@ enum class claimable : std::uint8_t {
   if (record_segment == 0) {
     return false;
   }
-  if (f.geometry_says_a_grid_is_up &&
-      cpu.read_word(record_segment,
-                    at(record_offset, profile.area_geometry_block)) == 0) {
-    // Pages of story whose script has no grid: the map pointer is the
-    // last area's, or nobody's.
-    return false;
-  }
-  // A script that numbers its squares itself moves the party between
-  // parts of its grid at doors the grid says are walls, so a map of the
-  // stored squares is not the place the player walks (docs/seams.md §10).
-  return f.area_shown_column == 0 ||
-         cpu.read_word(record_segment,
-                       at(record_offset, f.area_shown_column)) == shown_none;
+  // Pages of story whose script has no grid: the map pointer is the last
+  // area's, or nobody's.
+  return cpu.read_word(record_segment,
+                       at(record_offset, profile.area_geometry_block)) != 0;
 }
 
 /// Everything one pass needs off the data segment. The geometry block
@@ -1838,11 +1844,43 @@ enum class claimable : std::uint8_t {
   out.frame_colour = cpu.read_byte(ds, f.data_frame_colour);
   out.map_offset = cpu.read_word(ds, profile.data_map_pointer);
   out.map_segment = cpu.read_word(ds, at(profile.data_map_pointer, 2));
+  out.numbered = false;
+  out.stored_x = out.x;
+  out.stored_y = out.y;
+  out.stored_facing = out.facing;
+  out.turns = 0;
 
   // The facing byte indexes the map's own lane numbering, and only the
   // four cardinals are in it. Anything else is not a party facing.
   if ((out.facing & 1U) != 0 || out.facing > lane_west) {
     return false;
+  }
+
+  if (profile.area_shown_column != 0 &&
+      cpu.read_word(record_segment,
+                    at(record_offset, profile.area_shown_column)) !=
+          shown_none) {
+    // The status line prints the script's square (#609): the line's
+    // routine prints the two words' low bytes, and the facing byte plus the
+    // script's turns, twice them while the 3D word is set, as a lane. A
+    // turn that lands between two lanes is not a facing the line names.
+    const std::uint16_t turn = cpu.read_word(
+        record_segment, at(record_offset, profile.area_shown_turn));
+    const bool in_3d =
+        cpu.read_word(record_segment,
+                      at(record_offset, profile.area_shown_in_3d)) != 0;
+    const unsigned lanes_turned = in_3d ? 2U * turn : turn;
+    if ((lanes_turned & 1U) != 0) {
+      return false;
+    }
+    out.numbered = true;
+    out.turns = static_cast<std::uint8_t>((lanes_turned / 2U) & 3U);
+    out.x = cpu.read_byte(record_segment,
+                          at(record_offset, profile.area_shown_column));
+    out.y = cpu.read_byte(record_segment,
+                          at(record_offset, profile.area_shown_row));
+    out.facing = static_cast<std::uint8_t>(
+        map_format::numbered_lane(out.stored_facing, out.turns));
   }
   // A floor that is fog-black would draw an explored cell as an
   // unexplored one. The program has not set the byte (`floor_when_unset`).
@@ -2113,16 +2151,35 @@ template <const automap_facts& F>
   return false;
 }
 
+/// Note which map the party's own bar is up on, on a program whose area
+/// scripts may number their squares (`automap_state::set_bar_map`), and
+/// forget it under anybody else's bar.
+template <const automap_facts& F>
+void note_bar_map(machine& box, std::uint16_t ds) {
+  if (F.profile.area_shown_column == 0) {
+    return;
+  }
+  automap_state& state = box.automap();
+  sample now{};
+  if (state.at_command_bar() && adventuring(F, box.processor(), ds) &&
+      take_sample(F, box.processor(), ds, now)) {
+    state.set_bar_map(now.disk, now.area, now.geo);
+  } else {
+    state.forget_bar_map();
+  }
+}
+
 /// The first key point since the seam was switched on: say whose bar is up
 /// from the program's frames, once (#628). Every bar's entry after it says
 /// so itself.
 template <const automap_facts& F>
-void read_the_bar_once(machine& box, seam_context& ctx) {
+void read_the_bar_once(machine& box, seam_context& ctx, std::uint16_t ds) {
   if (ctx.scratch(word_bar_read) != 0) {
     return;
   }
   ctx.set_scratch(word_bar_read, 1);
   box.automap().set_at_command_bar(inside_the_party_bar<F>(box, ctx));
+  note_bar_map<F>(box, ds);
 }
 
 // ---------------------------------------------------------------------------
@@ -2139,7 +2196,7 @@ void at_key_pending(machine& box, seam_context& ctx) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
-  read_the_bar_once<F>(box, ctx);
+  read_the_bar_once<F>(box, ctx, ds);
   automap_state& state = box.automap();
 
   if (!state.at_command_bar()) {
@@ -2198,6 +2255,13 @@ void at_key_pending(machine& box, seam_context& ctx) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
+  if (now.numbered && !state.bar_map_is(now.disk, now.area, now.geo)) {
+    // A square of a script's numbering, and the party's bar has not come
+    // up on this map since it changed: the numbering may be the last
+    // script's, and the square the one the party left
+    // (`automap_state::set_bar_map`). Nothing is believed until it has.
+    return;
+  }
 
   // Where the party is, as one number: what the fog was last brought up
   // to date from, and most of what the panel was last drawn from.
@@ -2207,8 +2271,24 @@ void at_key_pending(machine& box, seam_context& ctx) {
   where = mix(where, now.x);
   where = mix(where, now.y);
   where = mix(where, now.facing);
+  if (now.numbered) {
+    // And the stored square and the turns the script's square is drawn
+    // from. Mixed only there, so every other map signs as it always has.
+    where = mix(where, now.stored_x);
+    where = mix(where, now.stored_y);
+    where = mix(where, now.turns);
+  }
 
-  const bool settled = state.observe(now.disk, now.area, now.geo, now.x, now.y);
+  const automap_map_kind kind =
+      now.numbered ? automap_map_kind::numbered : automap_map_kind::grid;
+  const bool was_settled = state.settled() && state.settled_kind() == kind &&
+                           state.settled_disk() == now.disk &&
+                           state.settled_area() == now.area &&
+                           state.settled_geo() == now.geo;
+  const std::uint8_t was_x = state.settled_x();
+  const std::uint8_t was_y = state.settled_y();
+  const bool settled =
+      state.observe(kind, now.disk, now.area, now.geo, now.x, now.y);
   if (!settled) {
     // The party's position is not to be believed yet — the program's own
     // arrival script has not placed it. Nothing is revealed and nothing
@@ -2285,10 +2365,37 @@ void at_key_pending(machine& box, seam_context& ctx) {
   if (want_appearance) {
     learn_appearance(F, box, ds, now, grid, banks);
   }
+  const std::uint32_t was = state.serial();
+  if (now.numbered && was_settled) {
+    // A step from one square of the script's numbering to the next: the
+    // border between them is one the party crossed, whatever the stored
+    // grid has there (`automap_door_evidence::walked`).
+    for (const unsigned lane : lanes) {
+      const map_format::step to = map_format::step_of(lane);
+      if (static_cast<int>(was_x) + to.dx == static_cast<int>(now.x) &&
+          static_cast<int>(was_y) + to.dy == static_cast<int>(now.y)) {
+        state.cross_numbered(state.record_for_numbered(now.disk, now.area,
+                                                       now.geo, was_x, was_y),
+                             was_x, was_y,
+                             state.record_for_numbered(now.disk, now.area,
+                                                       now.geo, now.x, now.y),
+                             lane);
+      }
+    }
+  }
   if (want_reveal) {
-    const std::uint32_t was = state.serial();
-    reveal_from(state, state.record_for(now.disk, now.area, now.geo), grid,
-                now.x, now.y, now.facing);
+    if (now.numbered) {
+      // The square the party stands on, drawn from the stored square under
+      // it. Only that one: what sight reaches on the stored grid may be
+      // across a door the script carries the party through, which is
+      // somewhere else in its numbering.
+      (void)state.stand_on_numbered(
+          state.record_for_numbered(now.disk, now.area, now.geo, now.x, now.y),
+          now.x, now.y, now.stored_x, now.stored_y, now.turns);
+    } else {
+      reveal_from(state, state.record_for(now.disk, now.area, now.geo), grid,
+                  now.x, now.y, now.facing);
+    }
     state.set_revealed_signature(where);
     if (state.serial() != was) {
       // Something is explored that was not (M5-E2c). The host is told so
@@ -2304,7 +2411,10 @@ void at_key_pending(machine& box, seam_context& ctx) {
     return;
   }
 
-  const automap_record* map = state.find(now.disk, now.area, now.geo);
+  const automap_record* map =
+      now.numbered
+          ? state.find_numbered(now.disk, now.area, now.geo, now.x, now.y)
+          : state.find(now.disk, now.area, now.geo);
   if (map == nullptr) {
     return;
   }
@@ -2343,7 +2453,7 @@ void at_key_read(machine& box, seam_context& ctx) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
-  read_the_bar_once<F>(box, ctx);
+  read_the_bar_once<F>(box, ctx, ds);
   // A read straight after a poll that took the key it was going to read
   // (`polls_before_its_read`): the ring is empty and the program is about
   // to sleep in the BIOS, so it is answered as a claim here is.
@@ -2393,6 +2503,7 @@ void at_command_bar(machine& box, seam_context& ctx) {
   // cannot come to different conclusions about whose screen this is
   // (`automap_overland.h`).
   F.note_bar(box, ctx, ds);
+  note_bar_map<F>(box, ds);
   ctx.set_scratch(word_bar_read, 1);
 }
 

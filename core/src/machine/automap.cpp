@@ -10,6 +10,7 @@
 
 #include "amberfolio/machine/automap.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -60,6 +61,10 @@ void automap_state::clear() noexcept {
   stranded_ = false;
   roster_over_stranded_ = false;
   at_command_bar_ = false;
+  bar_map_known_ = false;
+  bar_disk_ = 0;
+  bar_area_ = 0;
+  bar_geo_ = 0;
   unsettle();
   settled_kind_ = automap_map_kind::grid;
   appearance_valid_ = false;
@@ -79,10 +84,11 @@ void automap_state::clear() noexcept {
 
 automap_record& automap_state::record_for(automap_map_kind kind,
                                           std::uint8_t disk, std::uint8_t area,
-                                          std::uint8_t geo) noexcept {
+                                          std::uint8_t geo,
+                                          std::uint8_t page) noexcept {
   for (automap_record& map : records_) {
     if (map.used && map.kind == kind && map.disk == disk && map.area == area &&
-        map.geo == geo) {
+        map.geo == geo && map.page == page) {
       return map;
     }
   }
@@ -94,6 +100,7 @@ automap_record& automap_state::record_for(automap_map_kind kind,
       map.disk = disk;
       map.area = area;
       map.geo = geo;
+      map.page = page;
       ++serial_;
       return map;
     }
@@ -110,20 +117,101 @@ automap_record& automap_state::record_for(automap_map_kind kind,
   map.disk = disk;
   map.area = area;
   map.geo = geo;
+  map.page = page;
   ++serial_;
   return map;
 }
 
 const automap_record* automap_state::find(automap_map_kind kind,
                                           std::uint8_t disk, std::uint8_t area,
-                                          std::uint8_t geo) const noexcept {
+                                          std::uint8_t geo,
+                                          std::uint8_t page) const noexcept {
   for (const automap_record& map : records_) {
     if (map.used && map.kind == kind && map.disk == disk && map.area == area &&
-        map.geo == geo) {
+        map.geo == geo && map.page == page) {
       return &map;
     }
   }
   return nullptr;
+}
+
+bool automap_state::stand_on_numbered(automap_record& map, unsigned x,
+                                      unsigned y, unsigned stored_x,
+                                      unsigned stored_y,
+                                      unsigned turns) noexcept {
+  if (map.kind != automap_map_kind::numbered) {
+    return false;
+  }
+  const std::size_t cell = automap_cell_index(map.kind, x, y);
+  const auto from = static_cast<std::uint8_t>(
+      automap_cell_index(map.kind, stored_x, stored_y));
+  const auto turn =
+      static_cast<std::uint8_t>((map.drawn_turn[cell] & ~automap_turn_mask) |
+                                (turns & automap_turn_mask));
+  bool changed = reveal(map, x, y);
+  if (map.drawn_from[cell] != from || map.drawn_turn[cell] != turn) {
+    // The square is drawn from where the party stands on it now. A square
+    // of the numbering the script put on two stored squares would be drawn
+    // from the later one; no run has shown one.
+    map.drawn_from[cell] = from;
+    map.drawn_turn[cell] = turn;
+    ++serial_;
+    changed = true;
+  }
+  return changed;
+}
+
+void automap_state::cross_numbered(automap_record& from, unsigned x0,
+                                   unsigned y0, automap_record& to,
+                                   unsigned lane) noexcept {
+  if (from.kind != automap_map_kind::numbered ||
+      to.kind != automap_map_kind::numbered) {
+    return;
+  }
+  // The lanes are the map format's (automap_faces.h): north 0, east 2,
+  // south 4, west 6; y grows southward.
+  const auto bit = [](unsigned l) {
+    return static_cast<std::uint8_t>(
+        1U << (automap_crossed_shift + ((l & 7U) / 2U)));
+  };
+  constexpr std::array<int, 4> step_x{0, 1, 0, -1};
+  constexpr std::array<int, 4> step_y{-1, 0, 1, 0};
+  const unsigned quarter = (lane & 7U) / 2U;
+  const auto x1 = static_cast<unsigned>(static_cast<int>(x0) + step_x[quarter]);
+  const auto y1 = static_cast<unsigned>(static_cast<int>(y0) + step_y[quarter]);
+  std::uint8_t& near = from.drawn_turn[automap_cell_index(from.kind, x0, y0)];
+  std::uint8_t& far = to.drawn_turn[automap_cell_index(to.kind, x1, y1)];
+  const std::uint8_t near_was = near;
+  const std::uint8_t far_was = far;
+  near = static_cast<std::uint8_t>(near | bit(lane));
+  far = static_cast<std::uint8_t>(far | bit(lane + 4U));
+  if (near != near_was || far != far_was) {
+    ++serial_;
+  }
+}
+
+unsigned automap_state::numbered_stored_x(const automap_record& map, unsigned x,
+                                          unsigned y) noexcept {
+  return map.drawn_from[automap_cell_index(map.kind, x, y)] & 0x0FU;
+}
+
+unsigned automap_state::numbered_stored_y(const automap_record& map, unsigned x,
+                                          unsigned y) noexcept {
+  return static_cast<unsigned>(
+             map.drawn_from[automap_cell_index(map.kind, x, y)]) >>
+         4U;
+}
+
+unsigned automap_state::numbered_turns(const automap_record& map, unsigned x,
+                                       unsigned y) noexcept {
+  return map.drawn_turn[automap_cell_index(map.kind, x, y)] & automap_turn_mask;
+}
+
+bool automap_state::numbered_crossed(const automap_record& map, unsigned x,
+                                     unsigned y, unsigned lane) noexcept {
+  const unsigned bit = automap_crossed_shift + ((lane & 7U) / 2U);
+  return ((map.drawn_turn[automap_cell_index(map.kind, x, y)] >> bit) & 1U) !=
+         0;
 }
 
 bool automap_state::seen(const automap_record& map, unsigned x,
@@ -155,7 +243,7 @@ void automap_state::mark(automap_record& map, unsigned x, unsigned y,
   if (kind == automap_marker::none) {
     return;
   }
-  if (map.kind != automap_map_kind::grid) {
+  if (map.kind == automap_map_kind::overland) {
     // The overland carries no marks. Nothing draws them there — the
     // explored overlay (#179) has no panel to put a way-in glyph on — and
     // the marker coordinates are four-bit, which a row of 35 is not. A
@@ -253,6 +341,9 @@ void automap_state::count_door_drawn(automap_door_evidence why) noexcept {
     case automap_door_evidence::no_evidence:
       ++doors_drawn_.no_evidence;
       break;
+    case automap_door_evidence::walked:
+      ++doors_drawn_.walked;
+      break;
   }
 }
 
@@ -296,7 +387,8 @@ bool automap_state::observe(automap_map_kind kind, std::uint8_t disk,
     // that was ever true, so it is the one worth marking, and everything
     // about the new map has to be waited for.
     automap_record& previous =
-        record_for(settled_kind_, settled_disk_, settled_area_, settled_geo_);
+        record_at(settled_kind_, settled_disk_, settled_area_, settled_geo_,
+                  settled_x_, settled_y_);
     mark(previous, settled_x_, settled_y_, automap_marker::exit);
     unsettle();
     // ...and wherever the party turns out to be standing when it stops
@@ -334,7 +426,8 @@ bool automap_state::observe(automap_map_kind kind, std::uint8_t disk,
   settled_x_ = x;
   settled_y_ = y;
   if (pending_entrance_) {
-    mark(record_for(kind, disk, area, geo), x, y, automap_marker::entrance);
+    mark(record_at(kind, disk, area, geo, x, y), x, y,
+         automap_marker::entrance);
     pending_entrance_ = false;
   }
   return true;
@@ -374,6 +467,14 @@ constexpr std::size_t field_marker_x = field_seen + automap_seen_bytes;
 constexpr std::size_t field_marker_y = field_marker_x + automap_max_markers;
 constexpr std::size_t field_marker_kind = field_marker_y + automap_max_markers;
 
+/// And version 3's three after them (automap.h), on every row of such a
+/// file and filled only on a numbered page's.
+constexpr std::size_t field_page = automap_sidecar_record_bytes;
+constexpr std::size_t field_drawn_from = field_page + 1;
+constexpr std::size_t field_drawn_turn = field_drawn_from + automap_map_cells;
+static_assert(field_drawn_turn + automap_map_cells ==
+              automap_sidecar_numbered_record_bytes);
+
 /// And where they sat in version 1, which had no kind byte and a bitmap
 /// of thirty-two. Every record in such a file is a grid.
 constexpr std::size_t v1_field_marker_count = 3;
@@ -385,11 +486,15 @@ constexpr std::size_t v1_field_marker_y =
 constexpr std::size_t v1_field_marker_kind =
     v1_field_marker_y + automap_max_markers;
 
-/// Whether a byte is a map kind this build knows. Same rule as the
-/// marker kinds below: an unknown one is not guessed at.
-[[nodiscard]] bool known_map_kind(std::uint8_t kind) noexcept {
+/// Whether a byte is a map kind a file of this version can hold. Same
+/// rule as the marker kinds below: an unknown one is not guessed at. A
+/// numbered page needs the fields only version 3 has.
+[[nodiscard]] bool known_map_kind(std::uint8_t kind,
+                                  std::uint8_t version) noexcept {
   return kind == static_cast<std::uint8_t>(automap_map_kind::grid) ||
-         kind == static_cast<std::uint8_t>(automap_map_kind::overland);
+         kind == static_cast<std::uint8_t>(automap_map_kind::overland) ||
+         (version == automap_sidecar_numbered_version &&
+          kind == static_cast<std::uint8_t>(automap_map_kind::numbered));
 }
 
 [[nodiscard]] std::uint16_t word_at(std::span<const std::uint8_t> bytes,
@@ -423,9 +528,20 @@ void automap_state::forget_records() noexcept {
   drawn_signature_ = 0;
 }
 
+bool automap_state::holds_numbered() const noexcept {
+  for (const automap_record& map : records_) {
+    if (map.used && map.kind == automap_map_kind::numbered) {
+      return true;
+    }
+  }
+  return false;
+}
+
 std::size_t automap_state::sidecar_bytes() const noexcept {
   return automap_sidecar_header_bytes +
-         (records_used() * automap_sidecar_record_bytes);
+         (records_used() * (holds_numbered()
+                                ? automap_sidecar_numbered_record_bytes
+                                : automap_sidecar_record_bytes));
 }
 
 std::size_t automap_state::write_sidecar(
@@ -438,17 +554,22 @@ std::size_t automap_state::write_sidecar(
   for (std::size_t i = 0; i < automap_sidecar_magic.size(); ++i) {
     out[i] = static_cast<std::uint8_t>(automap_sidecar_magic[i]);
   }
-  out[automap_sidecar_magic.size()] = automap_sidecar_version;
+  // Version 2 unless a numbered page needs version 3's fields, so a store
+  // without one is written byte for byte as the build before them wrote it.
+  const bool numbered = holds_numbered();
+  const std::size_t row_bytes = numbered ? automap_sidecar_numbered_record_bytes
+                                         : automap_sidecar_record_bytes;
+  out[automap_sidecar_magic.size()] =
+      numbered ? automap_sidecar_numbered_version : automap_sidecar_version;
   put_word(out, 4, static_cast<std::uint16_t>(records_used()));
-  put_word(out, 6, static_cast<std::uint16_t>(automap_sidecar_record_bytes));
+  put_word(out, 6, static_cast<std::uint16_t>(row_bytes));
 
   std::size_t at = automap_sidecar_header_bytes;
   for (const automap_record& map : records_) {
     if (!map.used) {
       continue;
     }
-    const std::span<std::uint8_t> row =
-        out.subspan(at, automap_sidecar_record_bytes);
+    const std::span<std::uint8_t> row = out.subspan(at, row_bytes);
     row[field_disk] = map.disk;
     row[field_area] = map.area;
     row[field_geo] = map.geo;
@@ -463,7 +584,14 @@ std::size_t automap_state::write_sidecar(
       row[field_marker_kind + m] =
           static_cast<std::uint8_t>(map.marker_kind[m]);
     }
-    at += automap_sidecar_record_bytes;
+    if (numbered) {
+      row[field_page] = map.page;
+      for (std::size_t c = 0; c < automap_map_cells; ++c) {
+        row[field_drawn_from + c] = map.drawn_from[c];
+        row[field_drawn_turn + c] = map.drawn_turn[c];
+      }
+    }
+    at += row_bytes;
   }
   return wanted;
 }
@@ -478,21 +606,25 @@ bool automap_state::read_sidecar(std::span<const std::uint8_t> in) noexcept {
     }
   }
 
-  // **Two versions are read and one is written** (automap.h). A player's
-  // `AFMAP<S>.DAT` from the build before the overland existed has to open:
-  // a version bump that refused it would throw away exactly what the
-  // sidecar is for. Anything else is still refused with nothing touched.
+  // **Three versions are read** (automap.h). A player's `AFMAP<S>.DAT`
+  // from the build before the overland existed has to open: a version bump
+  // that refused it would throw away exactly what the sidecar is for. The
+  // third is written only by a store with a numbered page in it. Anything
+  // else is still refused with nothing touched.
   const std::uint8_t version = in[automap_sidecar_magic.size()];
   if (version != automap_sidecar_version &&
+      version != automap_sidecar_numbered_version &&
       version != automap_sidecar_first_version) {
     return false;
   }
   const bool first = version == automap_sidecar_first_version;
+  const bool numbered = version == automap_sidecar_numbered_version;
 
   const std::size_t count = word_at(in, 4);
   const std::size_t stride = word_at(in, 6);
-  if (stride != (first ? automap_sidecar_v1_record_bytes
-                       : automap_sidecar_record_bytes)) {
+  if (stride != (first      ? automap_sidecar_v1_record_bytes
+                 : numbered ? automap_sidecar_numbered_record_bytes
+                            : automap_sidecar_record_bytes)) {
     return false;
   }
   if (count > max_records) {
@@ -527,7 +659,7 @@ bool automap_state::read_sidecar(std::span<const std::uint8_t> in) noexcept {
     // than guessed at, and its bitmap comes across unchanged — the row is
     // still a row, and a reader that invented a kind would address it
     // wrongly.
-    map.kind = (!first && known_map_kind(row[field_kind]))
+    map.kind = (!first && known_map_kind(row[field_kind], version))
                    ? static_cast<automap_map_kind>(row[field_kind])
                    : automap_map_kind::grid;
     map.disk = row[field_disk];
@@ -546,6 +678,13 @@ bool automap_state::read_sidecar(std::span<const std::uint8_t> in) noexcept {
       map.marker_kind[m] = known_marker(kind)
                                ? static_cast<automap_marker>(kind)
                                : automap_marker::none;
+    }
+    if (map.kind == automap_map_kind::numbered) {
+      map.page = row[field_page];
+      for (std::size_t c = 0; c < automap_map_cells; ++c) {
+        map.drawn_from[c] = row[field_drawn_from + c];
+        map.drawn_turn[c] = row[field_drawn_turn + c];
+      }
     }
   }
   if (next_slot_ >= max_records) {

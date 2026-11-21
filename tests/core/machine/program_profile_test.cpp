@@ -78,6 +78,15 @@ TEST(ProgramProfile, SecretsIsThePartItsSeamsAndItsReadsUse) {
   EXPECT_NE(secret.data_wall_set, 0U);
   EXPECT_NE(secret.data_in_transition, 0U);
   EXPECT_TRUE(secret.aim_overlay.has_load_segment());
+  // The scene's and the automap's both (#609): the square, the row and
+  // the turns an area's script gives the status line, three words of the
+  // area record in a row. The first two programs' lines print the stored
+  // square, and they have none.
+  EXPECT_NE(secret.area_shown_column, 0U);
+  EXPECT_EQ(secret.area_shown_row, secret.area_shown_column + 2U);
+  EXPECT_EQ(secret.area_shown_turn, secret.area_shown_column + 4U);
+  EXPECT_EQ(pool_of_radiance.area_shown_column, 0U);
+  EXPECT_EQ(curse_of_the_azure_bonds.area_shown_column, 0U);
   // The hero keys' (seam_hero_keys.cpp, #609): the menu-bar routine's
   // module and its read call, the pushback slot, the roster drawer's
   // module and the party menu's picker's.

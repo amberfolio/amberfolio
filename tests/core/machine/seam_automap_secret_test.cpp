@@ -73,7 +73,13 @@ constexpr std::uint16_t data_game_mode = 0x67E7;
 constexpr std::uint16_t data_in_transition = 0x59B5;
 constexpr std::uint16_t data_area_record = 0x67C6;
 constexpr std::uint16_t record_geometry_block = 0x18A;
+/// The status line's square where the area's script numbers its own: the
+/// column (`0xFF`: the stored square), the row and the quarter turns; and
+/// the 3D word, which makes a turn two of the facing byte's steps.
 constexpr std::uint16_t record_shown_column = 0x3FA;
+constexpr std::uint16_t record_shown_row = 0x3FC;
+constexpr std::uint16_t record_shown_turn = 0x3FE;
+constexpr std::uint16_t record_3d = 0x1CC;
 constexpr std::uint16_t data_disk_number = 0x7420;
 constexpr std::uint16_t data_area_id = 0xA4C2;
 constexpr std::uint16_t data_party_x = 0x89D7;
@@ -334,22 +340,142 @@ TEST(SeamAutomapOnSecret, TabDrawsThePanelOnceAGridIsUp) {
   EXPECT_NE(r.map_state().find(1, 16, 16), nullptr);
 }
 
-TEST(SeamAutomapOnSecret, AnAreaWhoseScriptNumbersItsSquaresIsNotMapped) {
-  // The ruins: the status line prints a square of the script's, and the
-  // stored grid is not the place the player walks.
+// --- An area whose script numbers its squares (#609) --------------------------
+
+/// The ruins as their script has them: area 32 with its block, the party
+/// on stored square (`sx`, `sy`) facing `facing`, and the status line
+/// printing (`x`, `y`) with the grid turned `turns` quarter turns, the 3D
+/// word set.
+void in_the_ruins(const secret_rig& r, std::uint8_t sx, std::uint8_t sy,
+                  std::uint8_t facing, std::uint16_t x, std::uint16_t y,
+                  std::uint16_t turns) {
+  const std::uint16_t ds = secret_rig::dgroup();
+  r.put_byte(ds, data_area_id, 32);
+  r.put_word(record_segment, record_geometry_block, 32);
+  r.put_word(record_segment, record_shown_column, x);
+  r.put_word(record_segment, record_shown_row, y);
+  r.put_word(record_segment, record_shown_turn, turns);
+  r.put_word(record_segment, record_3d, 1);
+  r.put_byte(ds, data_party_x, sx);
+  r.put_byte(ds, data_party_y, sy);
+  r.put_byte(ds, data_party_facing, facing);
+}
+
+/// One face of one stored square: its wall kind and its two style bits.
+void face(const secret_rig& r, unsigned x, unsigned y, unsigned lane,
+          std::uint8_t kind, std::uint8_t style) {
+  const auto cell = static_cast<std::uint16_t>((y * 16U) + x);
+  const auto faces =
+      static_cast<std::uint16_t>((lane < 4 ? 0U : 0x100U) + cell);
+  const bool high = lane == 0 || lane == 4;
+  const std::uint8_t was = r.byte(map_segment, faces);
+  r.put_byte(map_segment, faces,
+             high ? static_cast<std::uint8_t>((was & 0x0FU) | (kind << 4U))
+                  : static_cast<std::uint8_t>((was & 0xF0U) | kind));
+  const auto styles = static_cast<std::uint16_t>(0x300U + cell);
+  const std::uint8_t had = r.byte(map_segment, styles);
+  r.put_byte(map_segment, styles,
+             static_cast<std::uint8_t>((had & ~(3U << lane)) |
+                                       (unsigned{style} << lane)));
+}
+
+TEST(SeamAutomapOnSecret, AnAreaWhoseScriptNumbersItsSquaresIsMappedInThem) {
+  // The ruins' arrival: stored 11,2 facing east, the line printing 0,15.
   const secret_rig r;
   r.enable();
   r.adventuring();
-  r.put_word(record_segment, record_shown_column, 0);
+  in_the_ruins(r, 11, 2, 2, 0, 15, 0);
+  r.put_up_the_bar(adventure_segment, move_bar_return);
   r.type(key_tab);
   r.poll(6);
-  EXPECT_TRUE(r.map_state().panel_open());
-  EXPECT_FALSE(r.map_state().panel_on_screen());
-  EXPECT_EQ(r.map_state().find(1, 16, 16), nullptr);
+  EXPECT_TRUE(r.map_state().panel_on_screen());
+  EXPECT_EQ(r.map_state().find(1, 32, 32), nullptr)
+      << "no map of the stored grid";
+  const automap_record* page = r.map_state().find_numbered(1, 32, 32, 0, 15);
+  ASSERT_NE(page, nullptr);
+  EXPECT_TRUE(automap_state::seen(*page, 0, 15));
+  EXPECT_EQ(automap_state::numbered_stored_x(*page, 0, 15), 11U);
+  EXPECT_EQ(automap_state::numbered_stored_y(*page, 0, 15), 2U);
+  EXPECT_FALSE(automap_state::seen(*page, 1, 15))
+      << "only the square stood on: sight is the stored grid's";
 
-  r.put_word(record_segment, record_shown_column, 0xFF);
+  // The party's mark is on the line's square, bottom-left of the page.
+  constexpr unsigned x0 = 0;
+  constexpr unsigned y0 = 15 * automap_cell_pixels;
+  EXPECT_EQ(r.pixel(x0 + 3, y0 + 1), 15U) << "the arrow's tip";
+  EXPECT_EQ(
+      r.pixel((11 * automap_cell_pixels) + 3, (2 * automap_cell_pixels) + 1),
+      0U)
+      << "and nothing where the stored square is";
+
+  in_the_ruins(r, 11, 1, 0, 0, 14, 0);
+  r.poll(1);
+  EXPECT_TRUE(automap_state::seen(*page, 0, 14)) << "a step north, one square";
+}
+
+TEST(SeamAutomapOnSecret, ItsSquareIsBelievedOnceThePartysBarIsUpOnTheMap) {
+  // Between the area's load and its script, the record still holds the last
+  // script's numbering and the party the square it left.
+  const secret_rig r;
+  r.enable();
+  r.adventuring();
+  r.type(key_tab);
   r.poll(6);
-  EXPECT_TRUE(r.map_state().panel_on_screen()) << "back where it prints ours";
+  ASSERT_TRUE(r.map_state().panel_on_screen());
+  in_the_ruins(r, 15, 8, 2, 0, 15, 0);
+  r.poll(6);
+  EXPECT_EQ(r.map_state().find_numbered(1, 32, 32, 0, 15), nullptr)
+      << "the bar has not come up here";
+
+  r.put_up_the_bar(adventure_segment, move_bar_return);
+  r.poll(6);
+  EXPECT_NE(r.map_state().find_numbered(1, 32, 32, 0, 15), nullptr);
+}
+
+TEST(SeamAutomapOnSecret,
+     AFaceTheGridHasSolidIsADoorOnceTheScriptCarriesThePartyThrough) {
+  // Stored 14,2's east face is a wall of kind 8 with no way through; the
+  // script carries the party through it to stored 10,3, one square east in
+  // its numbering.
+  const secret_rig r;
+  face(r, 14, 2, 2, 8, 0);
+  face(r, 10, 3, 6, 7, 0);
+  r.enable();
+  r.adventuring();
+  in_the_ruins(r, 14, 2, 2, 3, 15, 0);
+  r.put_up_the_bar(adventure_segment, move_bar_return);
+  r.type(key_tab);
+  r.poll(6);
+  EXPECT_EQ(r.map_state().doors_drawn().walked, 0U) << "not crossed yet";
+
+  in_the_ruins(r, 10, 3, 2, 4, 15, 0);
+  r.poll(2);
+  const automap_record* page = r.map_state().find_numbered(1, 32, 32, 4, 15);
+  ASSERT_NE(page, nullptr);
+  EXPECT_TRUE(automap_state::numbered_crossed(*page, 3, 15, 2));
+  EXPECT_TRUE(automap_state::numbered_crossed(*page, 4, 15, 6));
+  EXPECT_EQ(r.map_state().doors_drawn().walked, 2U)
+      << "the border, drawn from each side of it";
+}
+
+TEST(SeamAutomapOnSecret, APieceTheScriptTurnsIsDrawnTurned) {
+  // Stored 11,4 facing south, the grid turned half round: the line prints
+  // 13,19 facing north, and so does the panel.
+  const secret_rig r;
+  r.enable();
+  r.adventuring();
+  in_the_ruins(r, 11, 4, 4, 13, 19, 2);
+  r.put_up_the_bar(adventure_segment, move_bar_return);
+  r.type(key_tab);
+  r.poll(6);
+  ASSERT_TRUE(r.map_state().panel_on_screen());
+  const automap_record* page = r.map_state().find_numbered(1, 32, 32, 13, 19);
+  ASSERT_NE(page, nullptr);
+  EXPECT_EQ(automap_state::numbered_turns(*page, 13, 19), 2U);
+  constexpr unsigned x0 = 13 * automap_cell_pixels;
+  constexpr unsigned y0 = 3 * automap_cell_pixels;
+  // The arrow's second row is three wide pointing north, one pointing south.
+  EXPECT_EQ(r.pixel(x0 + 2, y0 + 2), 15U) << "an arrow pointing north";
 }
 
 TEST(SeamAutomapOnSecret, TheFloorIsDarkGreyWhereTheGroundByteIsNotSet) {
