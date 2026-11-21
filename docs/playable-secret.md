@@ -26,7 +26,7 @@ No `--install`: the Steam copy is recognized and laid out at `\SECRET`
 (`docs/hosts.md` §2c). No seam is needed to play, and the ones available
 on this program are the three debug cheats, the two text faces, the
 message pause, the automap, `modern-controls`, which here is its hero
-keys at the party menu's `PICK CHARACTER` (leg 12) and its two pieces
+keys at the party menu's `PICK CHARACTER` (leg 13) and its two pieces
 that observe, for the host reads below, and the journal, which here is
 only its citation watch (`docs/seams.md` §10). Sixty
 frames to the virtual second; `TICKS = FRAME * 19,886` at `--speed 386`
@@ -73,7 +73,7 @@ rows below, as a player reads it.
 | the party menu | `8`, `2` on the number row or the keypad | as `Up` and `Down`; `Up` on the first row goes to the last |
 | the party menu | a letter, `Home`, `End` | nothing |
 | a pick list | `8`, `2`; `Escape` | as `Up` and `Down`; `Escape` leaves it (the party menu's `INITIALIZE MOUSE/JOYSTICK` list, leg 7's shop) |
-| the party menu's `PICK CHARACTER` | `8`, `2`, `4`, `6`; `1`, `3`, `5`, `7`, `9` | as the arrows: the member, and `SELECT` or `EXIT`; the first member (leg 12). With `modern-controls` on, the number row's `1` to `8` are the member of that number and the keypad's stay the arrows |
+| the party menu's `PICK CHARACTER` | `8`, `2`, `4`, `6`; `1`, `3`, `5`, `7`, `9` | as the arrows: the member, and `SELECT` or `EXIT`; the first member (leg 13). With `modern-controls` on, the number row's `1` to `8` are the member of that number and the keypad's stay the arrows |
 | the adventuring bar | `8`, `2`, `4`, `6`, the number row's or the keypad's | as the arrows: the current member, and the lit word |
 | the adventuring bar | `1`, `3`, `5`, `7`, `9` | the first member becomes the current one |
 | the adventuring bar | `,`, `.`, `Escape` | nothing |
@@ -425,8 +425,37 @@ gem fetched down to 10. `secret-heal` is this leg, with that seam.
 and then the menu is back with no message and the member unchanged:
 tried with the shipped party and with a new character carrying 300
 platinum. What it wants is not known.
+## Leg 12: a save, and its load
 
-## Leg 12: the party menu's member picker
+```
+... leg 1 ...
+--press E@8200                                        # ENCAMP
+--press S@8500 --press C@8800                         # SAVE, into slot C
+--press N@9100                                        # do not quit to DOS
+--press E@9400
+```
+
+The save writes `SAVGAMC.DAT` and a `CHRDATC<N>.SAV` for each of the
+six, with an `.SFX` beside three of them, ten files. `secret-save` is
+this leg, and the disk it leaves is the `secret-saved` snapshot.
+
+```
+... leg 0, on that disk ...
+--press Down@1500 --press Down@1560 --press Return@1620 --press C@2100
+--press Down@2700 ... five, 60 frames apart ... --press Return@3100
+--press V@3700 --press E@4000
+```
+
+`LOAD WHICH GAME` offers `A B C`, and `BEGIN ADVENTURING` puts the party
+at the adventuring bar where it was saved, in the mayor's house, with no
+opening to turn through. `secret-load` is this leg, pinned to that disk.
+
+**There is no overland.** Where the first two games have a wilderness
+or a journey between places, this one has the town's gates and, the
+mayor says, a teleporter in his house; neither has shown a travel mode
+(game mode 3) in anything driven.
+
+## Leg 13: the party menu's member picker
 
 ```
 ... leg 0 ...
@@ -529,8 +558,9 @@ where that mechanism is (`docs/seams.md` §10).
 
 ## The sessions
 
-Twenty-seven, `secret-*`, each on the Steam copy with its shipped slots
-(the `secret-slots` snapshot) at `--speed 386` and `--wall none`.
+Twenty-nine, `secret-*`, at `--speed 386` and `--wall none`: `secret-load`
+on the disk `secret-save` leaves (the `secret-saved` snapshot), and the
+rest on the Steam copy with its shipped slots (`secret-slots`).
 
 | session | seams | relation | what it is |
 |---|---|---|---|
@@ -539,6 +569,8 @@ Twenty-seven, `secret-*`, each on the Steam copy with its shipped slots
 | `secret-new-party` | | | leg 5 |
 | `secret-buy` | | | leg 7 |
 | `secret-vault` | | | leg 8 |
+| `secret-save` | | | leg 12, the save |
+| `secret-load` | | | leg 12, the load |
 | `secret-heal` | cheat-wound-party, pulled | | leg 11 |
 | `secret-camp-cheats` | the three cheats, none pulled | `identical secret-camp` | no point acts: all 106 checkpoints |
 | `secret-camp-wound` | cheat-wound-party, pulled | `contrast secret-camp` | 93 of 106 identical, divergent from tick 169,050,886, the pull |
@@ -553,7 +585,7 @@ Twenty-seven, `secret-*`, each on the Steam copy with its shipped slots
 | `secret-fight-controls` | modern-controls | | leg 4, nothing reached; the party menu's roster numbered, so 342 of 371 checkpoints are `secret-fight`'s: different from tick 43,291,822 and the same again from 91,654,574, in the opening. No relation describes a difference that does not last |
 | `secret-aim-controls` | modern-controls | | the aim watched at every key of the aim; 377 of 406 `secret-aim`'s, the same two ticks |
 | `secret-name-controls` | modern-controls | `identical secret-name` | the line editor watched from entry to return, no party to number: all 40 checkpoints |
-| `secret-pick` | | | leg 12 |
+| `secret-pick` | | | leg 13 |
 | `secret-pick-heroes` | modern-controls | `contrast secret-pick` | 23 of 68 identical, divergent from tick 43,291,822, the roster numbered; the digits choose |
 | `secret-boot-journal` | journal | `identical secret-boot` | the watch never reached: all 15 checkpoints |
 | `secret-camp-journal` | journal | `identical secret-camp` | entry 37 cited by the opening and logged; the watch writes nothing the machine holds: all 106 checkpoints |
