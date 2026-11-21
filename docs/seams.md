@@ -1666,8 +1666,8 @@ three things of this program's own besides the facts above:
     and the town write the files they always wrote. Versions 1 to 3 are
     read.
   - **A page at a time.** The panel shows the page the party is on, so a
-    step from `9,15` to `9,16` turns to the page below, where the ruins'
-    first street already is. The script's own table of where the party
+    step from `9,15` to `9,16` turns to the page below, and the first
+    street stays on the page above. The script's own table of where the party
     arrives from the other areas reaches `83,56`, six pages across.
 - **Driven** on slot A (`docs/playable-secret.md` leg 3) with Tab at
   the party's bar: the panel stays up in the move mode and through the
@@ -1699,8 +1699,9 @@ three things of this program's own besides the facts above:
   to `10,17`; through stored `10,2`'s south face to `11,20`; along to
   `13,20` and through stored `5,0`'s north face onto a piece turned half
   round, stored `11,4` facing south drawn at `13,19` with the arrow
-  north, as the line prints it, and its faces turned; a step west on the
-  stored grid is `12,19`, one square west on the panel. Back the same
+  north, as the line prints it, and its faces turned (in the runs beside
+  the leg, a step east on the stored grid, west as the line has it, is
+  `12,19`, one square west on the panel). Back the same
   way, every square the one the walk out drew, and west through the gate
   the town's panel. Leg 4's fight in the ruins gives the panel back at
   `0,13` after it. With `--save-sidecars`, a save at camp on the turned

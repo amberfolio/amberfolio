@@ -7,8 +7,8 @@ and has the method in full; `docs/first-light.md` stops at the party
 menu. Nothing in this repository can run any of it (PLAN.md §6).
 
 The legs here are the ones driven so far. What is still to be driven is
-on #608: a training carried through, and the ruins past the six of their
-script's doors leg 14 and its runs went through.
+on #608: a training carried through, and the ruins beyond the six of
+their script's doors that leg 14 and the runs beside it went through.
 
 ---
 
@@ -156,7 +156,8 @@ a table of fifteen arrivals (the gate's is `0,15`, the farthest `83,56`),
 and counts from there. A face across which the script carries the party is
 solid on the grid on both sides (stored `14,2`'s east and `10,3`'s west,
 `5,0`'s north and `11,4`'s north); a border between two pieces that the
-script has no door for is the wall the grid has there (`13,20`'s east).
+script has no door for is the wall the grid has there (the line's
+`13,20`, east).
 
 ---
 
@@ -513,8 +514,8 @@ party of six, Guy's. `secret-pick` and `secret-pick-heroes` are this leg.
   Right Up Up Right Up                           # 10,2
   Up Up Left Up Up                               # 15,5
   Right Up Up Left Up Up Up Up Up Up             # 14,2
-  Right Up Left Up Up Up Left Up Right Up        # out of the gate's west side
-  Up                                             # 14,8 in the town, at frame 20,950
+  Right Up Left Up Up Up Left Up Right Up        # west out of the first square
+  Up Up                                          # 13,8 in the town, the last key at frame 20,950
 ```
 
 Out of the town as leg 3, then through four of the script's doors and
@@ -525,7 +526,7 @@ first street to `3,15`, the second from `4,15` to `9,15` and south to
 party on stored `11,4` facing south with the line saying north. `Right
 Right` turns it there and the same doors in the other order put it on
 the line's squares it walked out on, each the same stored square, and
-out of the gate's west side into the town at `15,8`, the line printing
+west out of the first square into the town at `15,8`, the line printing
 the stored square again. Nothing on the way stops the walk.
 `secret-ruins` is this leg, 279 checkpoints.
 
