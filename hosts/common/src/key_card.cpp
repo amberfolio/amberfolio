@@ -226,7 +226,8 @@ constexpr std::array journal_rows{
 // on most of them, so each of its screens is a context of its own, with
 // the rows docs/playable-secret.md records as driven. No piece of
 // modern-controls takes a key or draws on this program, and its party's
-// bar has no Notes, so none of those rows is here; the message pause's is.
+// bar has no Notes, so none of those rows is here; the message pause's
+// and the automap's are.
 
 constexpr std::array blades_explore_rows{
     key_row{"Up, Down", "at the bar: the previous or next party member"},
@@ -238,6 +239,7 @@ constexpr std::array blades_explore_rows{
     key_row{"Down", "walking: turn around"},
     key_row{"Return, E", "walking: back to the bar, Move lit"},
     key_row{"Esc", "nothing here, at the bar or walking"},
+    key_row{"Tab", "show or hide the map over the party list", "automap"},
 };
 
 constexpr std::array blades_bar_rows{

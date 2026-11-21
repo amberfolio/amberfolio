@@ -1646,6 +1646,7 @@ The table is what has been watched so far, on the Steam copy.
 | `CHRDAT<S><N>.STF` | saves | member | no | what that member carries |
 | `CHRDAT<S><N>.SFX` | saves | member | no | the effects that member is under |
 | `VAULT.DAT` | saves | vault | no | what has been deposited at the town's vault: one file for every slot, written at a deposit (28 bytes after a first one) |
+| `AFMAP<S>.DAT` | saves | sidecar | no | **ours**: the automap's exploration, as slot `<S>` was written |
 | `AFSEEN<S>.DAT` | saves | sidecar | no | **ours**: the journal's read log, as slot `<S>` was written |
 | `BLADES.CFG` | start | config | no | the program's settings — **a game file** |
 | `<NAME>.WHO` | saves | character | no | a character kept under a name the player chose |
@@ -1677,8 +1678,13 @@ which is that game's file. `AFSEEN<S>.DAT` is the journal's read log
 (#609): with `--seam journal --save-sidecars`, a save to slot C at the
 camp after the opening's citation of entry 37 writes `AFSEENC.DAT` (one
 row, entry 37 unread), and loading C reads it back
-(`save-sidecars writes=0 reads=1 slot=C trouble=none`). The automap is
-not on this program, so it has no `AFMAP<S>.DAT` row. A page that writes
+(`save-sidecars writes=0 reads=1 slot=C trouble=none`). `AFMAP<S>.DAT`
+is the automap's exploration (#609): with `--seam automap
+--save-sidecars`, Tab at the party's bar, three steps south, then
+`ENCAMP`, `SAVE`, `C` and `N` to `QUIT TO DOS` write `AFMAPC.DAT` (121
+bytes: one record, disk 1, area 16, block 16, fifteen squares;
+`save-sidecars writes=1 reads=0 slot=C trouble=none`), and loading C
+reads it back, the panel at `3,6 S` drawing the mayor's house. A page that writes
 a playthrough back keeps the rows above and nothing else, so a file
 that is not a row does not survive a reload there.
 
@@ -2836,7 +2842,9 @@ A fight (game mode 5, the tactical grid):
     the loaded map says itself, as on a map of Pool of Radiance the
     table has no row for: the kinds it has shut somewhere, or, with none
     shut, every way through. Every `zone` is `AREA <n>`.
-  - **`map` is always `null`**: the automap is not on this program.
+  - **`map` is the automap's**, as on the first two programs, while it
+    is on (#609): driven down leg 3, at `15,8 E` it lists the squares
+    walked from the mayor's house, his door a `door` south of `3,4`.
   - **The titles and the opening's pages are `null`.** The program is in
     mode 4 from start-up: the area number is zero until the first
     script is loaded, and the geometry block's word is zero while the

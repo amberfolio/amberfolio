@@ -215,14 +215,17 @@ the sweep and on the wasm module (`drive.mjs --install '\CURSE'
 
 ### Secret of the Silver Blades
 
-Twenty-two sessions, `secret-*`, on the Steam copy at `--speed 386` and
+Twenty-five sessions, `secret-*`, on the Steam copy at `--speed 386` and
 `--wall none` (#608, #609), each `disk external` and pinned to the copy with
 its shipped slots A and B (`secret-slots`). `docs/playable-secret.md`
 has the legs and the table: the boot, a camp, a wandering fight, a new
 party, a purchase at the armoury, a deposit at the vault, the fight with
-its aim walked (`secret-aim`) and a character's name (`secret-name`)
-with no seam, a cure at the temple on a party the wound cheat has hurt
-(`secret-heal`), and the cheats' pairs, `secret-camp-cheats` `identical
+its aim walked (`secret-aim`), a character's name (`secret-name`) and
+the walk through the town to the ruins (`secret-town`) with no seam, a
+cure at the temple on a party the wound cheat has hurt (`secret-heal`),
+the automap's pair, `secret-camp-automap` `identical secret-camp` (Tab
+never pressed) and `secret-town-map` `contrast secret-town` (the walk
+with the map up), and the cheats' pairs, `secret-camp-cheats` `identical
 secret-camp` (all three on, none pulled) and `secret-camp-wound`,
 `secret-fight-cheat` and `secret-fight-kill` each a `contrast` with the
 run it differs from; and the text faces', `secret-boot-font-sans` and
@@ -250,7 +253,7 @@ sweep.
 | `encamp-fix` | `camp-fix` | `quiet-encamp` |
 | `roster-fix` (built in, always on) | `roster-add` | none can exist: there is no off. Every other session verifies with it on, `party` reaching it twice |
 | `timer-fix` (built in, always on) | `walk-quick`, at every sound after a skipped wait | none can exist: there is no off. Every session without quick steps verifies with it on: the driver's vector is the BIOS's at every install |
-| `automap` | `walk-map`; on Curse `curse-town-map`, `curse-temple-map`, `curse-map-reader` | `quiet-automap`; on Curse `curse-quiet-automap` and `curse-quiet-all` |
+| `automap` | `walk-map`; on Curse `curse-town-map`, `curse-temple-map`, `curse-map-reader`; on Secret `secret-town-map` | `quiet-automap`; on Curse `curse-quiet-automap` and `curse-quiet-all`; on Secret `secret-camp-automap` |
 | `journal` | `reader`, `notes`, `cite`; on Curse `curse-notes`, `curse-cite`, `curse-map-reader`; on Secret `secret-camp-journal` (an `identical`: on that program the seam is its citation watch alone, which writes nothing the machine holds) | `quiet-journal` (a `contrast`); on Curse `curse-quiet-journal` (a `contrast`) and `curse-journey-journal` (an `identical`: the party's bar is never drawn); on Secret `secret-boot-journal` (an `identical`) |
 | `explored` | `wild-trail` | `quiet-explored` |
 | the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party`; on Curse `curse-fight-cheat`, `curse-fight-kill`, `curse-camp-wound`; on Secret `secret-fight-cheat`, `secret-fight-kill`, `secret-camp-wound` | `quiet-cheats`; on Curse `curse-quiet-cheats` and `curse-quiet-all`; on Secret `secret-camp-cheats` |
