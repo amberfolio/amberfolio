@@ -430,6 +430,13 @@ roster drawer is the first two games' routine, and the party menu's list
   from the adventuring bar on are the seam-off run's (307 of 340 stills
   the same, all of them after frame 3,200), the number row there as the
   program has it.
+- **With the automap** (`--seam automap --seam modern-controls`): the
+  picker's `3` makes Epona the current member, and she is still at the
+  adventuring bar; `Tab` puts the map over the roster, `Down` under it is
+  the automap's, `Tab` gives the roster back with Epona white and `Down`
+  steps to Malachite. With `1` at the picker instead, the stills are the
+  automap-alone run's from the end of the numbered party menu (frame
+  3,930) to the end.
 - **Driven** with the seam on (`docs/playable-secret.md` legs 9 and 10):
   through leg 9's aim on Dominic's turn the watch fired 30 times, and the
   scene beside each still had the cursor's square, the sheet the panel
