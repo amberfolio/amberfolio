@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // modern-controls on Secret of the Silver Blades (#609): the hero keys at
-// the party menu's member picker, and the two pieces that observe,
-// `text-entry` and `aim-watch`, with points of their own. Each test stands
+// the party menu's member picker, the selection block, and the two pieces
+// that observe, `text-entry` and `aim-watch`, with points of their own. Each test stands
 // the processor on one of the program's points (a HLT there, so the step is
 // the arrival and nothing else) and reads what the handler left; the
 // scene's side of the aim is in scene_test.cpp.
@@ -68,6 +68,34 @@ constexpr std::array<std::uint16_t, 3> row_points{0x0A1B, 0x0A50, 0x0A94};
 constexpr std::uint16_t glyph_paragraph = 0x0540;
 constexpr std::uint16_t glyph_offset = 0x01E7;
 
+/// The selection block's: the bar leaf's three glyph calls and the list
+/// routine's highlighted row's string call (overlay 29); the roster drawer's
+/// selected member, the hit points' colour chosen and the one-row routine's
+/// selected member (overlay 27); an ability score's colour chosen (overlay
+/// 22); the name field's string call (overlay 20, word `0xF00`); in the
+/// resident image the row write, the step to the next cell, the fill's and
+/// the picture's epilogues. The string calls a store follows back to: the
+/// hit points', a score's, its mark's, the name's cursor letter's.
+constexpr std::uint16_t word_roster = 0xF00;
+constexpr std::uint16_t bar_group_call = 0x0271;
+constexpr std::uint16_t bar_letter_call = 0x02CB;
+constexpr std::uint16_t bar_rest_call = 0x0309;
+constexpr std::uint16_t list_row_call = 0x104B;
+constexpr std::uint16_t list_bar_return = 0x1651;
+constexpr std::uint16_t roster_selected_call = 0x08A9;
+constexpr std::uint16_t hit_points_chosen = 0x0BD5;
+constexpr std::uint16_t row_selected_call = 0x0A34;
+constexpr std::uint16_t score_chosen = 0x0AF9;
+constexpr std::uint16_t name_string_call = 0x256B;
+constexpr std::array<std::uint16_t, 4> blitter_points{0x62B4, 0x56C0, 0x5573,
+                                                      0x3CBE};
+constexpr std::uint16_t string_glyph_return = 0x57D4;
+constexpr std::uint16_t hit_points_string_call = 0x0C0D;
+constexpr std::uint16_t hit_points_maximum_call = 0x0C60;
+constexpr std::uint16_t score_string_call = 0x0B5E;
+constexpr std::uint16_t mark_string_call = 0x0C8E;
+constexpr std::uint16_t name_cursor_call = 0x25A5;
+
 /// The data segment; the selected member, the head and the member whose
 /// row is drawn again unselected, far pointers; a record's next member;
 /// the pushback slot.
@@ -83,6 +111,7 @@ constexpr std::uint16_t aim_segment = 0x6C00;
 constexpr std::uint16_t menu_segment = 0x6000;
 constexpr std::uint16_t picker_segment = 0x6400;
 constexpr std::uint16_t summary_segment = 0x6800;
+constexpr std::uint16_t roster_segment = 0x7000;
 constexpr std::uint16_t party_segment = 0x5800;
 constexpr std::uint16_t stack_segment = 0x5000;
 constexpr std::uint16_t frame_base = 0x0600;
@@ -118,6 +147,7 @@ struct secret_rig {
     put_word(image_load_segment, word_menu, menu_segment);
     put_word(image_load_segment, word_picker, picker_segment);
     put_word(image_load_segment, word_summary, summary_segment);
+    put_word(image_load_segment, word_roster, roster_segment);
   }
 
   [[nodiscard]] static std::uint16_t data_segment() {
@@ -230,11 +260,12 @@ struct secret_rig {
   return all_seams().front();
 }
 
-TEST(SeamModernControlsOnSecret, IsTheHeroKeysAndTheTwoPiecesThatObserve) {
+TEST(SeamModernControlsOnSecret,
+     IsTheHeroKeysTheSelectionBlockAndTheTwoPiecesThatObserve) {
   const std::span<const seam_point> mine =
       points_on(definition(), secret_digest());
-  // Hero keys 8, text entry 2, aim watch 5.
-  ASSERT_EQ(mine.size(), 15U);
+  // Hero keys 8, the selection block 13, text entry 2, aim watch 5.
+  ASSERT_EQ(mine.size(), 28U);
   EXPECT_NE(mine.data(), definition().points.data());
   EXPECT_EQ(mine[0].offset, read_point);
   EXPECT_EQ(mine[0].module.load_segment_at, word_menu);
@@ -251,16 +282,42 @@ TEST(SeamModernControlsOnSecret, IsTheHeroKeysAndTheTwoPiecesThatObserve) {
     EXPECT_EQ(mine[i].module.load_segment_at, word_summary) << i;
     EXPECT_TRUE(mine[i].inside_calls) << i;
   }
-  EXPECT_EQ(mine[8].offset, editor_entry);
-  EXPECT_EQ(mine[9].offset, editor_return);
-  for (std::size_t i = 8; i < 10; ++i) {
+  // The selection block's thirteen: the seven that choose a colour, the
+  // row write and the three that settle the margin, the name field's, and
+  // the selected member's in the routine that draws one row again.
+  const std::array<std::uint16_t, 7> colours{
+      bar_group_call,    list_row_call,   roster_selected_call, score_chosen,
+      hit_points_chosen, bar_letter_call, bar_rest_call};
+  const std::array<std::uint16_t, 7> words{
+      word_menu,    word_menu, word_summary, word_picker,
+      word_summary, word_menu, word_menu};
+  for (std::size_t i = 0; i < colours.size(); ++i) {
+    EXPECT_EQ(mine[8 + i].offset, colours[i]) << i;
+    EXPECT_EQ(mine[8 + i].module.load_segment_at, words[i]) << i;
+    EXPECT_EQ(mine[8 + i].inside_calls, i == 2) << i;
+  }
+  for (std::size_t i = 0; i < blitter_points.size(); ++i) {
+    EXPECT_EQ(mine[15 + i].offset, blitter_points[i]) << i;
+    EXPECT_TRUE(mine[15 + i].module.is_resident_image()) << i;
+    EXPECT_TRUE(mine[15 + i].inside_calls) << i;
+  }
+  EXPECT_EQ(mine[19].offset, name_string_call);
+  EXPECT_EQ(mine[19].module.load_segment_at, word_roster);
+  EXPECT_FALSE(mine[19].inside_calls);
+  EXPECT_EQ(mine[20].offset, row_selected_call);
+  EXPECT_EQ(mine[20].module.load_segment_at, word_summary);
+  EXPECT_TRUE(mine[20].inside_calls) << "a picker's step is drawn in a batch";
+
+  EXPECT_EQ(mine[21].offset, editor_entry);
+  EXPECT_EQ(mine[22].offset, editor_return);
+  for (std::size_t i = 21; i < 23; ++i) {
     EXPECT_TRUE(mine[i].module.is_resident_image()) << i;
   }
   for (std::size_t i = 0; i < aim_points.size(); ++i) {
-    EXPECT_EQ(mine[10 + i].offset, aim_points[i]) << i;
-    EXPECT_EQ(mine[10 + i].module.load_segment_at, word_aim) << i;
+    EXPECT_EQ(mine[23 + i].offset, aim_points[i]) << i;
+    EXPECT_EQ(mine[23 + i].module.load_segment_at, word_aim) << i;
   }
-  for (std::size_t i = 8; i < mine.size(); ++i) {
+  for (std::size_t i = 21; i < mine.size(); ++i) {
     EXPECT_FALSE(mine[i].inside_calls) << i;
   }
   for (const seam_point& p : mine) {
@@ -414,6 +471,360 @@ TEST(SeamModernControlsOnSecret,
   EXPECT_EQ(r.box->seams().status(seam_id).declined, 0U);
 }
 
+// --- The selection block -----------------------------------------------------
+
+/// The bar leaf's frame for one character of `Save View`, the highlight on
+/// its first word, and the glyph call the leaf makes for it, with the
+/// program's colour on the ink or on the paper. The menu-bar routine keeps
+/// its copy's length at `caller - length_below` and its group table at
+/// `caller - groups_below`, and returns to `back` in overlay 29.
+void lay_bar_call(const secret_rig& r, std::uint8_t index, std::uint8_t ink,
+                  std::uint8_t paper, std::string_view bar = "Save View",
+                  std::uint16_t length_below = 0x68,
+                  std::uint16_t groups_below = 0x93,
+                  std::uint16_t back = 0x0100) {
+  constexpr std::uint16_t caller = 0x0800;
+  r.put_word(stack_segment, frame_base + 6, caller);
+  r.put_byte(stack_segment, frame_base + 8, 1);
+  r.put_byte(stack_segment, frame_base - 1, index);
+  r.put_word(stack_segment, caller + 2, back);
+  r.put_word(stack_segment, caller + 4, menu_segment);
+  r.put_byte(stack_segment, caller + 0x0E, 0x0F);
+  r.put_byte(stack_segment, caller + 0x10, 0x0A);
+  r.put_byte(stack_segment, static_cast<std::uint16_t>(caller - length_below),
+             static_cast<std::uint8_t>(bar.size()));
+  for (std::size_t i = 0; i < bar.size(); ++i) {
+    r.put_byte(stack_segment, static_cast<std::uint16_t>(caller - 0x53 + 1 + i),
+               static_cast<std::uint8_t>(bar[i]));
+  }
+  // `Save` from 1 to 4, then `View` from 6 to 9 where there is one.
+  const auto groups = static_cast<std::uint16_t>(caller - groups_below);
+  r.put_byte(stack_segment, groups + 2, 1);
+  r.put_byte(stack_segment, groups + 3, 4);
+  r.put_byte(stack_segment, groups + 4, bar.size() > 4 ? 6 : 0);
+  r.put_byte(stack_segment, groups + 5, bar.size() > 4 ? 9 : 0);
+  // The call, from the top: fold, character, count, paper, ink, row,
+  // column.
+  const std::array<std::uint16_t, 7> words{
+      1,    static_cast<std::uint16_t>(bar[index - 1U]), 1, paper, ink, 0x18,
+      index};
+  for (std::size_t i = 0; i < words.size(); ++i) {
+    r.put_word(stack_segment, static_cast<std::uint16_t>(0x0400 + (2 * i)),
+               words[i]);
+  }
+}
+
+TEST(SeamModernControlsOnSecret, TheBarsWhitePaperBecomesAWhiteWord) {
+  const secret_rig r;
+  r.arm();
+  // The program draws its highlighted group black on white paper: the word
+  // comes out white, key and rest, on black paper, for the row write to
+  // make the same white block of.
+  lay_bar_call(r, 1, 0, 0x0F);
+  r.stand_on(menu_segment, bar_group_call);
+  r.box->step();
+  EXPECT_EQ(r.byte(stack_segment, 0x0408), 0x0F) << "the key";
+  EXPECT_EQ(r.byte(stack_segment, 0x0406), 0x00);
+
+  lay_bar_call(r, 2, 0, 0x0F);
+  r.stand_on(menu_segment, bar_group_call);
+  r.box->step();
+  EXPECT_EQ(r.byte(stack_segment, 0x0408), 0x0F) << "the rest of the word";
+  EXPECT_EQ(r.byte(stack_segment, 0x0406), 0x00);
+
+  // Outside the highlight the letters and the rest keep their colours.
+  lay_bar_call(r, 6, 0x0F, 0);
+  r.stand_on(menu_segment, bar_letter_call);
+  r.box->step();
+  EXPECT_EQ(r.byte(stack_segment, 0x0408), 0x0F);
+  lay_bar_call(r, 7, 0x0A, 0);
+  r.stand_on(menu_segment, bar_rest_call);
+  r.box->step();
+  EXPECT_EQ(r.byte(stack_segment, 0x0408), 0x0A);
+  EXPECT_EQ(r.byte(stack_segment, 0x0406), 0x00);
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0U);
+}
+
+TEST(SeamModernControlsOnSecret, ABarInTheFirstTwoProgramsFrameIsNotRead) {
+  const secret_rig r;
+  r.arm();
+  // The length and the group table four bytes higher, where Pool of
+  // Radiance's and Curse of the Azure Bonds' routine keeps them: not this
+  // program's frame, and nothing is touched.
+  lay_bar_call(r, 2, 0, 0x0F, "Save View", 0x64, 0x8F);
+  r.put_byte(stack_segment, 0x0800 - 0x68, 0);
+  r.stand_on(menu_segment, bar_group_call);
+  r.box->step();
+  EXPECT_EQ(r.byte(stack_segment, 0x0406), 0x0F);
+  EXPECT_EQ(r.byte(stack_segment, 0x0408), 0x00);
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 1U);
+}
+
+TEST(SeamModernControlsOnSecret, AListsLoneCommandIsDrawnUnselected) {
+  const secret_rig r;
+  r.arm();
+  // `Select` alone under the party menu's list: Return takes the row, which
+  // is the selection, so the word is white letters on black.
+  lay_bar_call(r, 2, 0, 0x0F, "Save", 0x68, 0x93, list_bar_return);
+  r.stand_on(menu_segment, bar_group_call);
+  r.box->step();
+  EXPECT_EQ(r.byte(stack_segment, 0x0408), 0x0F);
+  EXPECT_EQ(r.byte(stack_segment, 0x0406), 0x00);
+
+  // Under any other caller a lone command is lit, as on the first two
+  // programs: drawn white on black here, and a block at the row write.
+  lay_bar_call(r, 2, 0, 0x0F, "Save", 0x68, 0x93, 0x0100);
+  r.stand_on(menu_segment, bar_group_call);
+  r.box->step();
+  EXPECT_EQ(r.byte(stack_segment, 0x0408), 0x0F);
+  EXPECT_EQ(r.byte(stack_segment, 0x0406), 0x00);
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0U);
+}
+
+/// The row write's frames for a glyph of a string the string routine draws
+/// in `colour` for a caller that returns to `segment:offset`, the caller's
+/// own frame at `caller`, and AH the glyph's row.
+void lay_string_glyph(const secret_rig& r, std::uint16_t colour,
+                      std::uint16_t segment, std::uint16_t offset,
+                      std::uint16_t caller = 0) {
+  constexpr std::uint16_t blitter = frame_base + 0x40;
+  constexpr std::uint16_t drawer = frame_base + 0x80;
+  // The EGA path's frame (BP) holds the blitter's BP; the blitter's frame
+  // returns into the string routine, whose frame returns to the caller.
+  r.put_word(stack_segment, frame_base, blitter);
+  r.put_word(stack_segment, blitter, drawer);
+  r.put_word(stack_segment, blitter + 2, string_glyph_return);
+  r.put_word(stack_segment, blitter + 4, image_load_segment);
+  r.put_word(stack_segment, drawer, caller);
+  r.put_word(stack_segment, drawer + 2, offset);
+  r.put_word(stack_segment, drawer + 4, segment);
+  r.put_word(stack_segment, drawer + 0x0C, colour);
+  r.stand_on(image_load_segment, blitter_points[0]);
+  r.box->processor().regs().set(cpu::reg8::ah, 0x3C);
+}
+
+[[nodiscard]] std::uint8_t row_after_step(const secret_rig& r) {
+  r.box->step();
+  return r.box->processor().regs().get(cpu::reg8::ah);
+}
+
+/// The row write's frames for a character of the bar `lay_bar_call` laid,
+/// drawn through the leaf's call at `call`: the EGA path's frame holds the
+/// blitter's BP, whose frame returns into the leaf and holds the leaf's BP,
+/// its arguments the call's words.
+void stand_on_bar_row_write(const secret_rig& r, std::uint16_t call) {
+  constexpr std::uint16_t path = 0x0300;
+  constexpr std::uint16_t blitter = 0x0400 - 6;
+  r.put_word(stack_segment, path, blitter);
+  r.put_word(stack_segment, blitter, frame_base);
+  r.put_word(stack_segment, blitter + 2, call + 5U);
+  r.put_word(stack_segment, blitter + 4, menu_segment);
+  r.stand_on(image_load_segment, blitter_points[0]);
+  r.box->processor().regs()[cpu::reg16::bp] = path;
+  r.box->processor().regs().set(cpu::reg8::ah, 0x3C);
+}
+
+TEST(SeamModernControlsOnSecret, TheLitWordIsABlockAndAListsLoneCommandIsNot) {
+  const secret_rig r;
+  r.arm();
+  // A character of the lit word, as the point left it: white ink.
+  lay_bar_call(r, 2, 0x0F, 0);
+  stand_on_bar_row_write(r, bar_group_call);
+  EXPECT_EQ(row_after_step(r), 0xC3);
+  // A character outside it.
+  lay_bar_call(r, 7, 0x0A, 0);
+  stand_on_bar_row_write(r, bar_rest_call);
+  EXPECT_EQ(row_after_step(r), 0x3C);
+  // A lone command: lit under any caller but the list routine.
+  lay_bar_call(r, 2, 0x0F, 0, "Save", 0x68, 0x93, 0x0100);
+  stand_on_bar_row_write(r, bar_group_call);
+  EXPECT_EQ(row_after_step(r), 0xC3);
+  lay_bar_call(r, 2, 0x0F, 0, "Save", 0x68, 0x93, list_bar_return);
+  stand_on_bar_row_write(r, bar_group_call);
+  EXPECT_EQ(row_after_step(r), 0x3C);
+}
+
+TEST(SeamModernControlsOnSecret, AListsRowIsHandedWhiteInkAndInverted) {
+  const secret_rig r;
+  r.arm();
+  // The highlight-on leaf's string call: black ink on the list's white
+  // paper, the list's context saying white.
+  constexpr std::uint16_t context = 0x0700;
+  r.put_word(stack_segment, frame_base + 6, context);
+  r.put_byte(stack_segment, context + 0x20, 0x0F);
+  // From the top: the string's offset and segment, the paper, the ink.
+  r.put_word(stack_segment, 0x0400, 0x0300);
+  r.put_word(stack_segment, 0x0402, stack_segment);
+  r.put_word(stack_segment, 0x0404, 0x0F);
+  r.put_word(stack_segment, 0x0406, 0x00);
+  r.stand_on(menu_segment, list_row_call);
+  r.box->step();
+  EXPECT_EQ(r.byte(stack_segment, 0x0404), 0x00) << "black paper";
+  EXPECT_EQ(r.byte(stack_segment, 0x0406), 0x0F) << "white ink";
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0U);
+
+  lay_string_glyph(r, 0x0F, menu_segment, list_row_call + 5U);
+  EXPECT_EQ(row_after_step(r), 0xC3);
+  // Black, the program's own ink, is not a selection; nor is white from a
+  // call nobody named.
+  lay_string_glyph(r, 0x00, menu_segment, list_row_call + 5U);
+  EXPECT_EQ(row_after_step(r), 0x3C);
+  lay_string_glyph(r, 0x0F, menu_segment, 0x0100);
+  EXPECT_EQ(row_after_step(r), 0x3C);
+}
+
+TEST(SeamModernControlsOnSecret, TheSelectedMemberIsAWhiteBlockInBothRoutines) {
+  const secret_rig r;
+  r.arm();
+  // The drawer's selected-member arm and the one-row routine's draw white,
+  // and white is the selection here.
+  for (const std::uint16_t call : {roster_selected_call, row_selected_call}) {
+    lay_string_glyph(r, 0x0F, summary_segment, call + 5U);
+    EXPECT_EQ(row_after_step(r), 0xC3) << call;
+    lay_string_glyph(r, 0x0B, summary_segment, call + 5U);
+    EXPECT_EQ(row_after_step(r), 0x3C) << call;
+  }
+}
+
+/// The selected member's string call at the top of the stack: the member's
+/// far pointer, black paper, white, the row and the column; and the frame
+/// of the routine that makes it, with its column and row bytes
+/// `column_below` and `row_below` below BP.
+void lay_selected_call(const secret_rig& r, std::uint16_t column_below,
+                       std::uint16_t row_below) {
+  lay_row_frame(r, column_below, row_below, 0x03);
+  const std::array<std::uint16_t, 6> words{0x0400, party_segment, 0, 0x0F,
+                                           6,      0x03};
+  for (std::size_t i = 0; i < words.size(); ++i) {
+    r.put_word(stack_segment, static_cast<std::uint16_t>(0x0400 + (2 * i)),
+               words[i]);
+  }
+}
+
+TEST(SeamModernControlsOnSecret, EachSelectedMemberCallIsReadInItsOwnFrame) {
+  const secret_rig r;
+  r.arm();
+  lay_selected_call(r, 5, 6);
+  r.stand_on(summary_segment, roster_selected_call);
+  r.box->step();
+  lay_selected_call(r, 9, 0x0A);
+  r.stand_on(summary_segment, row_selected_call);
+  r.box->step();
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0U);
+  EXPECT_EQ(r.word(stack_segment, 0x0406), 0x0F) << "white is left as it is";
+
+  // The drawer's frame at the one-row routine's call is not the call these
+  // facts describe.
+  r.put_byte(stack_segment, frame_base - 9, 0x00);
+  r.put_byte(stack_segment, frame_base - 0x0A, 0x00);
+  lay_selected_call(r, 5, 6);
+  r.stand_on(summary_segment, row_selected_call);
+  r.box->step();
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 1U);
+}
+
+TEST(SeamModernControlsOnSecret, ModifysHighlightedScoreAndItsMarkAreWhite) {
+  const secret_rig r;
+  r.arm();
+  // A highlighted draw (a nonzero first argument) in light magenta.
+  r.put_byte(stack_segment, frame_base + 6, 1);
+  r.put_byte(stack_segment, frame_base - 0x2B, 0x0D);
+  r.stand_on(picker_segment, score_chosen);
+  r.box->step();
+  EXPECT_EQ(r.byte(stack_segment, frame_base - 0x2B), 0x0F);
+
+  // The score, its percentage and the mark beside it are blocks when the
+  // draw is the highlighted one.
+  constexpr std::uint16_t score = frame_base + 0x100;
+  for (const std::uint16_t call : {score_string_call, mark_string_call}) {
+    r.put_byte(stack_segment, score + 6, 1);
+    lay_string_glyph(r, 0x0F, picker_segment, call + 5U, score);
+    EXPECT_EQ(row_after_step(r), 0xC3) << call;
+    r.put_byte(stack_segment, score + 6, 0);
+    lay_string_glyph(r, 0x0F, picker_segment, call + 5U, score);
+    EXPECT_EQ(row_after_step(r), 0x3C) << call;
+  }
+}
+
+TEST(SeamModernControlsOnSecret, ModifysHighlightedHitPointsAreWhite) {
+  const secret_rig r;
+  r.arm();
+  // The draw's highlighted argument at BP+8 and its colour below a buffer
+  // of its own, at BP-0x101; BP+6 says whether the maximum follows.
+  r.put_byte(stack_segment, frame_base + 6, 0);
+  r.put_byte(stack_segment, frame_base + 8, 1);
+  r.put_byte(stack_segment, frame_base - 0x101, 0x0D);
+  r.stand_on(summary_segment, hit_points_chosen);
+  r.box->step();
+  EXPECT_EQ(r.byte(stack_segment, frame_base - 0x101), 0x0F);
+
+  // Not highlighted, with the maximum to follow: a hurt member's yellow is
+  // left, and is not a block.
+  r.put_byte(stack_segment, frame_base + 6, 1);
+  r.put_byte(stack_segment, frame_base + 8, 0);
+  r.put_byte(stack_segment, frame_base - 0x101, 0x0E);
+  r.stand_on(summary_segment, hit_points_chosen);
+  r.box->step();
+  EXPECT_EQ(r.byte(stack_segment, frame_base - 0x101), 0x0E);
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0U);
+
+  constexpr std::uint16_t draw = frame_base + 0x100;
+  r.put_byte(stack_segment, draw + 6, 0);
+  r.put_byte(stack_segment, draw + 8, 1);
+  lay_string_glyph(r, 0x0F, summary_segment, hit_points_string_call + 5U, draw);
+  EXPECT_EQ(row_after_step(r), 0xC3);
+  // The maximum after it is the program's green, and is not a block.
+  lay_string_glyph(r, 0x0F, summary_segment, hit_points_maximum_call + 5U,
+                   draw);
+  EXPECT_EQ(row_after_step(r), 0x3C);
+  // The maximum's flag alone is not highlighted.
+  r.put_byte(stack_segment, draw + 6, 1);
+  r.put_byte(stack_segment, draw + 8, 0);
+  lay_string_glyph(r, 0x0F, summary_segment, hit_points_string_call + 5U, draw);
+  EXPECT_EQ(row_after_step(r), 0x3C);
+}
+
+TEST(SeamModernControlsOnSecret, TheNameIsABlockAndItsCursorLetterIsNot) {
+  const secret_rig r;
+  r.arm();
+  // The name field's string call: the name's far pointer, the paper, light
+  // magenta, the first row and the first column.
+  const std::array<std::uint16_t, 6> words{0x0010, party_segment, 0, 0x050D, 1,
+                                           1};
+  for (std::size_t i = 0; i < words.size(); ++i) {
+    r.put_word(stack_segment, static_cast<std::uint16_t>(0x0400 + (2 * i)),
+               words[i]);
+  }
+  r.stand_on(roster_segment, name_string_call);
+  r.box->step();
+  EXPECT_EQ(r.word(stack_segment, 0x0406), 0x050F);
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0U);
+
+  lay_string_glyph(r, 0x0F, roster_segment, name_string_call + 5U);
+  EXPECT_EQ(row_after_step(r), 0xC3);
+  lay_string_glyph(r, 0x0F, roster_segment, name_cursor_call + 5U);
+  EXPECT_EQ(row_after_step(r), 0x3C);
+}
+
+TEST(SeamModernControlsOnSecret, ASeamsMarkedStringIsInverted) {
+  const secret_rig r;
+  r.arm();
+  // A string a batch draws, its colour word marked a selection (#483).
+  lay_string_glyph(r, 0x800F, 0xF000, 0x0800);
+  EXPECT_EQ(row_after_step(r), 0xC3);
+  lay_string_glyph(r, 0x000F, 0xF000, 0x0800);
+  EXPECT_EQ(row_after_step(r), 0x3C);
+}
+
+TEST(SeamModernControlsOnSecret, CursesRowWriteIsNotAPointHere) {
+  const secret_rig r;
+  r.arm();
+  lay_string_glyph(r, 0x800F, 0xF000, 0x0800);
+  r.stand_on(image_load_segment, 0x5A93);
+  r.box->processor().regs().set(cpu::reg8::ah, 0x3C);
+  EXPECT_EQ(row_after_step(r), 0x3C);
+}
+
 TEST(SeamModernControlsOnSecret, IsUnknownUntilItIsOn) {
   const secret_rig r;
   EXPECT_EQ(text_entry_now(*r.box), text_entry::unknown);
@@ -453,6 +864,7 @@ TEST(SeamModernControlsOnSecret,
   off.put_word(image_load_segment, word_menu, menu_segment);
   off.put_word(image_load_segment, word_picker, picker_segment);
   off.put_word(image_load_segment, word_summary, summary_segment);
+  off.put_word(image_load_segment, word_roster, roster_segment);
   const auto same = [&](std::uint16_t segment, std::uint16_t offset) {
     on.arrive(segment, offset);
     off.arrive(segment, offset);
