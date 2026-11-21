@@ -8,7 +8,7 @@ menu. Nothing in this repository can run any of it (PLAN.md §6).
 
 The legs here are the ones driven so far. What is still to be driven is
 on #608: a training carried through, and the ruins beyond the six of
-their script's doors that leg 14 and the runs beside it went through.
+their script's doors that leg 15 and the runs beside it went through.
 
 ---
 
@@ -26,8 +26,9 @@ No `--install`: the Steam copy is recognized and laid out at `\SECRET`
 (`docs/hosts.md` §2c). No seam is needed to play, and the ones available
 on this program are the three debug cheats, the two text faces, the
 message pause, the automap, `modern-controls`, which here is its hero
-keys at the party menu's `PICK CHARACTER` (leg 13) and its two pieces
-that observe, for the host reads below, and the journal, opened by `N`
+keys at the party menu's `PICK CHARACTER` (leg 13), its selection block
+(below) and its two pieces that observe, for the host reads below, and
+the journal, opened by `N`
 at the party's bar (`docs/seams.md` §10). Sixty
 frames to the virtual second; `TICKS = FRAME * 19,886` at `--speed 386`
 is close enough for `--until`.
@@ -134,7 +135,7 @@ whose map, wall set and geometry block stay the same over every step
 driven, cut into pieces; through a door it carries the party to another
 piece, which it may turn as well as move, and it adds one to the line's
 square in the direction of every step, so its numbers are the party's
-walk and run far past fifteen. The pieces leg 14 and its runs met, the
+walk and run far past fifteen. The pieces leg 15 and its runs met, the
 line's square being the stored one less the offset, or turned:
 
 | the line's squares | stored squares | turn | reached through |
@@ -149,7 +150,7 @@ line's square being the stored one less the offset, or turned:
 
 Over every still of every run, 49 of the line's squares, from `0,13` to
 `18,26`: no square of the line's was ever two stored squares or two
-turns, and no stored square two of the line's. The four doors leg 14
+turns, and no stored square two of the line's. The four doors leg 15
 goes through each went back the way it came. The area's script (block 32
 of `ECL1.DAX`) sets the line's square only where the party arrives, from
 a table of fifteen arrivals (the gate's is `0,15`, the farthest `83,56`),
@@ -233,7 +234,7 @@ through. A door it does not mark opens to a step all the same, and the
 one east of stored `14,2` leads out to a street: from the arrival,
 `Left Up Right Up Up Up Right Up` reach `14,2` facing south, `Left Up`
 goes through it to stored `10,3`, and five more `Up` reach stored
-`15,3`, the line saying `9,15`. Leg 14 goes on from there.
+`15,3`, the line saying `9,15`. Leg 15 goes on from there.
 
 ## Leg 4: a fight
 
@@ -501,7 +502,46 @@ and `8` steps it back to the last, so all three sheets are Guy's. With
 row chooses: Epona's sheet, then Morgaine's, then, `8` being nobody in a
 party of six, Guy's. `secret-pick` and `secret-pick-heroes` are this leg.
 
-## Leg 14: through the ruins and back
+## Leg 14: Modify
+
+```
+... leg 0 ...
+--press Down@1500 --press Down@1560 --press Return@1620 --press A@2100
+--press Return@2400 --press Return@2600               # MODIFY CHARACTER, Guy
+--press Down@2900 ... eight, 200 frames apart         # each field in turn
+```
+
+The party menu comes back from slot A with `MODIFY CHARACTER` lit, and
+`PICK CHARACTER` with the first member selected, so two `Return` open
+Modify on Guy, `MODIFY: ADD SUBTRACT KEEP EXIT`, strength highlighted.
+`Down` steps the highlighted field, the program's own: strength,
+intelligence, wisdom, dexterity, constitution, charisma, the name (its
+cursor's letter white on black over it), the hit points' value, and round
+to strength. The highlighted field is light magenta. `secret-modify` and
+`secret-modify-block` are this leg.
+
+## The selection block on this program
+
+`--seam modern-controls` draws every selection as a white block with a
+margin (`docs/modern-controls.md`, the Secret of the Silver Blades
+section). Each run is the leg with the seam off and on, stills read side
+by side:
+
+| run | what it shows |
+|---|---|
+| leg 2 | the title's `PLAY`, the party menu's row, the roster's current member and the bars' lit words (treasure, party's bar, camp, a sheet's `CURE`) a block with a margin; the party menu's lone `SELECT` white letters; the script's notices one block from `P`, the treasure's notice the program's block with no margin |
+| leg 13 | `PICK CHARACTER`'s `SELECT` a block; the current member's block moving to Epona at `3` |
+| leg 10 | the creation lists' rows and `SELECT`, `REROLL STATS? YES NO`'s `YES`, the figure editor's `1ST-COLOR` a block, whole, where the program's own block ends in half a letter |
+| leg 12 | `SAVE WHICH GAME`'s `A` and `QUIT TO DOS`'s `NO` |
+| leg 1, then `E@8200 Down@8350 M@8500 M@8800 Down@9100 Down@9250` | the second member's block, the Magic bar's `CAST`, a spell list's row and `MEMORIZE` |
+| leg 7, leg 11 | the armoury's goods and `BUY`, a member's items and `READY`, the temple's cures and `HEAL` |
+| leg 9 (the `secret-aim` recording) | the fight's `MOVE`, the aim bar's `NEXT`, the manual aim's lone `TARGET`; the aim's box as the program draws it |
+| leg 14 | each of Modify's fields a white block in turn, the name with its cursor's letter the gap in it, the hit points' value without the maximum |
+| leg 1 with `--seam automap`, `Tab@8100 Down@8400 Tab@8700 Down@9000` | with the panel up the only pixels that differ from the seam-off run are the bar's margin; the roster comes back with its block |
+| leg 1 with `--seam journal` and the store, `N@8100 Right@8400` | the log's row a white block, and `EXIT` after `Right` |
+| leg 2 with `--seam font-sans`, `--seam font-chisel` | the same blocks in each face |
+
+## Leg 15: through the ruins and back
 
 ```
 ... leg 3 ...
@@ -546,7 +586,7 @@ stored square) were not driven.
 | run | what it shows |
 |---|---|
 | leg 3 | the scene at every step through the town: the square and facing the status line prints, the faces around it (the mayor's door one square ahead at `3,4`, a door on the right at each sign on the street, the gate ahead at `15,8`) |
-| leg 14 with `--seam automap` | the scene at every step through the ruins: `x`, `y` and `facing` the line's and `stored` the party's square and facing on the loaded grid, 63 stills checked against the area record and the party's bytes; on the turned piece the line's north is the stored south; `map` the page the panel draws |
+| leg 15 with `--seam automap` | the scene at every step through the ruins: `x`, `y` and `facing` the line's and `stored` the party's square and facing on the loaded grid, 63 stills checked against the area record and the party's bytes; on the turned piece the line's north is the stored south; `map` the page the panel draws |
 | leg 4 | the fight's figures, hit points, turns and fallen, the window and its ground |
 | leg 9 with `--seam modern-controls` | the aim at each of its keys, the seam fired 30 times |
 | leg 10 with `--seam modern-controls` | `text-entry reading` from the empty `CHARACTER NAME:` through `TOR`, `not-reading` at `REROLL` before it and on the figure's editor after it; the line editor's entry and its return each reached once |
@@ -572,9 +612,9 @@ ticks (`tests/sessions/README.md`).
 | run | what it shows |
 |---|---|
 | leg 3 with `--press Tab@8200` | the panel over the roster from `MOVE` on, drawn again at every step of the walk: the mayor's house and its door at `3,4`, the street south and the east street with the five doors on it (`7,7`, `10,7`, `14,7` north, `7,8`, `10,8` south) and the gate east of `15,8`; the roster for the gate's question, and in the ruins the panel on the first page of their script's numbering |
-| leg 14 with `--press Tab@8200` | the town as above, then the ruins on the pages of the line's squares, each square as the stored square under it draws it: the entrance mark at `0,15`; the door just walked through a leaf on both sides; `9,15` to `9,16` the page below; on the turned piece the mark the line's square and facing and the walls turned with it; the walk back drawing the squares the walk out drew, and the town's panel again west of the gate (`docs/seams.md` §10) |
+| leg 15 with `--press Tab@8200` | the town as above, then the ruins on the pages of the line's squares, each square as the stored square under it draws it: the entrance mark at `0,15`; the door just walked through a leaf on both sides; `9,15` to `9,16` the page below; on the turned piece the mark the line's square and facing and the walls turned with it; the walk back drawing the squares the walk out drew, and the town's panel again west of the gate (`docs/seams.md` §10) |
 | leg 4 with `--press Tab@8200` | the panel through the pacing on the first street, the fight's screen over it, and the panel at `0,13` when the treasure screen is left |
-| leg 14's walk out and on to stored `12,7` with `--press Tab@8200 --save-sidecars`, then `E`, `E`, `S`, `C`, `N`, `E` | `AFMAPC.DAT` at version 3, 2,512 bytes; slot C loaded, `Tab` draws the turned piece's page from it and the walk back goes on drawing |
+| leg 15's walk out and on to stored `12,7` with `--press Tab@8200 --save-sidecars`, then `E`, `E`, `S`, `C`, `N`, `E` | `AFMAPC.DAT` at version 3, 2,512 bytes; slot C loaded, `Tab` draws the turned piece's page from it and the walk back goes on drawing |
 | leg 1 with `Tab@8100`, then `Up`, `Tab`, `Down`, `Tab`, `Tab`, `8`, `Tab`, 150 frames apart | `Up` taken with the panel up, the member unchanged; `Down` and `8` with it down step the member, and each next `Tab` draws the panel |
 | leg 1 with `Tab@8100`, then leg 2's `E`, `V`, `E`, `E` 300 frames apart from 8,250 | the camp's bar and the sheet take the panel away with the roster drawn, and `EXIT` from camp brings it back |
 | leg 1 with `Tab@8100`, `A`, `A` | `AREA` draws the program's own overhead map in the viewport beside the panel, and `A` again the 3D view |
@@ -635,7 +675,7 @@ where that mechanism is (`docs/seams.md` §10).
 
 ## The sessions
 
-Thirty-five, `secret-*`, at `--speed 386` and `--wall none`: `secret-load`
+Thirty-seven, `secret-*`, at `--speed 386` and `--wall none`: `secret-load`
 on the disk `secret-save` leaves (the `secret-saved` snapshot), and the
 rest on the Steam copy with its shipped slots (`secret-slots`).
 
@@ -659,11 +699,13 @@ rest on the Steam copy with its shipped slots (`secret-slots`).
 | `secret-fight-pause` | message-pause | `contrast secret-fight` | 315 of 371 identical, divergent from tick 476,011,182, in the two pauses that open the encounter |
 | `secret-aim` | | | leg 9 |
 | `secret-name` | | | leg 10 |
-| `secret-fight-controls` | modern-controls | | leg 4, nothing reached; the party menu's roster numbered, so 342 of 371 checkpoints are `secret-fight`'s: different from tick 43,291,822 and the same again from 91,654,574, in the opening. No relation describes a difference that does not last |
-| `secret-aim-controls` | modern-controls | | the aim watched at every key of the aim; 377 of 406 `secret-aim`'s, the same two ticks |
-| `secret-name-controls` | modern-controls | `identical secret-name` | the line editor watched from entry to return, no party to number: all 40 checkpoints |
+| `secret-fight-controls` | modern-controls | | leg 4, no key of the seam's pressed; the roster numbered and every selection a block, so 27 of 371 checkpoints are `secret-fight`'s: different from tick 11,951,486, the title's lit `PLAY`, and the same again in stretches with nothing the seam drew left, the first from 114,563,246. No relation describes a difference that does not last |
+| `secret-aim-controls` | modern-controls | | the aim watched at every key of the aim; 27 of 406 `secret-aim`'s, the same way |
+| `secret-name-controls` | modern-controls | | the line editor watched from entry to return; the lists' blocks, so 13 of 40 `secret-name`'s, the same again while the name is typed |
 | `secret-pick` | | | leg 13 |
-| `secret-pick-heroes` | modern-controls | `contrast secret-pick` | 23 of 68 identical, divergent from tick 43,291,822, the roster numbered; the digits choose |
+| `secret-pick-heroes` | modern-controls | `contrast secret-pick` | 5 of 68 identical, divergent from tick 11,951,486, the title's lit `PLAY`; the roster numbered, the digits choose |
+| `secret-modify` | | | leg 14 |
+| `secret-modify-block` | modern-controls | `contrast secret-modify` | 5 of 53 identical, divergent from tick 11,951,486; Modify's fields white blocks |
 | `secret-boot-journal` | journal | `identical secret-boot` | the watch never reached: all 15 checkpoints |
 | `secret-camp-journal` | journal | `identical secret-camp` | entry 37 cited by the opening and logged, `N` never pressed and no move mode; the watch writes nothing the machine holds: all 106 checkpoints |
 | `secret-town-journal` | journal | `contrast secret-town` | `NOTES` on the move mode's bar, never chosen, and the walk step for step: 90 of 138 identical, divergent from tick 163,085,086, `MOVE`'s frame |
@@ -672,6 +714,6 @@ rest on the Steam copy with its shipped slots (`secret-slots`).
 | `secret-town` | | | leg 3, to the ruins at frame 11,600 |
 | `secret-camp-automap` | automap | `identical secret-camp` | `Tab` never pressed: all 106 checkpoints |
 | `secret-town-map` | automap | `contrast secret-town` | `Tab` on `MOVE`'s frame, 8,200: 90 of 138 identical, divergent from tick 163,085,086 |
-| `secret-ruins` | | | leg 14, out through four of the ruins' script's doors and back into the town, 279 checkpoints |
+| `secret-ruins` | | | leg 15, out through four of the ruins' script's doors and back into the town, 279 checkpoints |
 | `secret-ruins-automap` | automap | `identical secret-ruins` | `Tab` never pressed, the town and the ruins' pages recorded: all 279 checkpoints |
 | `secret-ruins-map` | automap | `contrast secret-ruins` | `Tab` on `MOVE`'s frame, 8,200: 90 of 279 identical, divergent from tick 163,085,086 |

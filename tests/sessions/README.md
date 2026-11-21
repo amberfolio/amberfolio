@@ -215,7 +215,7 @@ the sweep and on the wasm module (`drive.mjs --install '\CURSE'
 
 ### Secret of the Silver Blades
 
-Thirty-five sessions, `secret-*`, on the Steam copy at `--speed 386` and
+Thirty-seven sessions, `secret-*`, on the Steam copy at `--speed 386` and
 `--wall none` (#608, #609), each `disk external`: `secret-load` is pinned
 to the disk `secret-save` wrote (the `secret-saved` snapshot) and the
 rest to the copy with its shipped slots A and B (`secret-slots`). `docs/playable-secret.md`
@@ -224,9 +224,9 @@ party, a purchase at the armoury, a deposit at the vault, a save at
 camp and its load, the fight with
 its aim walked (`secret-aim`), a character's name (`secret-name`), the
 walk through the town to the ruins (`secret-town`), on through four of
-the ruins' doors and back into the town (`secret-ruins`) and the party menu's
-member picker answered with the number row (`secret-pick`), each with no
-seam, a cure at the temple on a party the wound cheat has hurt
+the ruins' doors and back into the town (`secret-ruins`), the party menu's
+member picker answered with the number row (`secret-pick`) and Modify's
+fields stepped (`secret-modify`), each with no seam, a cure at the temple on a party the wound cheat has hurt
 (`secret-heal`), the automap's two pairs, `secret-camp-automap` `identical
 secret-camp` (Tab never pressed) and `secret-town-map` `contrast
 secret-town` (the walk with the map up), and over the ruins
@@ -241,18 +241,21 @@ run it differs from; and the text faces', `secret-boot-font-sans` and
 message pause's, `secret-camp-message-pause` `identical secret-camp` (no
 message pause reached) and `secret-fight-pause` `contrast secret-fight`
 (every combat line stands the setting); and `modern-controls`', whose
-hero keys number the party menu's roster on sight and whose other two
-pieces on this program only observe: `secret-pick-heroes` `contrast
-secret-pick` (3, 6 and 1 at the picker choose Epona, Morgaine and Guy
-where the seam-off run shows Guy three times; 23 of 68 identical,
-divergent from tick 43,291,822, the roster drawn after slot A is loaded)
-and `secret-name-controls` `identical secret-name` (no party to number,
-the line editor watched from entry to return). `secret-fight-controls`
-and `secret-aim-controls`, the seam on through leg 4 and leg 9 (the aim
-watched at every key), carry no relation: they differ from their runs
-without it at the party menu, from that same tick, and are the same again
-from tick 91,654,574 in the opening (342 of 371 and 377 of 406
-identical), which neither relation describes; and the journal's:
+hero keys number the party menu's roster on sight, whose selection block
+draws the first selection on the screen, the title's lit `PLAY`, as a
+block with a margin, and whose other two pieces on this program only
+observe. So, as on the first two programs, no `identical` pair can exist
+for it here: every run differs from its seam-off run from tick
+11,951,486. `secret-pick-heroes` `contrast secret-pick` (3, 6 and 1 at
+the picker choose Epona, Morgaine and Guy where the seam-off run shows
+Guy three times; 5 of 68 identical) and `secret-modify-block` `contrast
+secret-modify` (Modify's fields each a white block in turn; 5 of 53) are
+the exercised pairs. `secret-name-controls`, `secret-fight-controls` and
+`secret-aim-controls`, the seam on through leg 10, leg 4 and leg 9 (the
+line editor and the aim watched), carry no relation: each differs from
+its run without the seam from that tick and is the same again in
+stretches where nothing the seam drew is left (13 of 40, 27 of 371 and
+27 of 406 identical), which neither relation describes; and the journal's:
 `secret-boot-journal` `identical secret-boot` (the watch never reached),
 `secret-camp-journal` `identical secret-camp` (entry 37 cited by the
 opening and logged, `N` never pressed and no move mode, so nothing the
@@ -275,7 +278,7 @@ host through the sweep.
 | `journal` | `reader`, `notes`, `cite`; on Curse `curse-notes`, `curse-cite`, `curse-map-reader`; on Secret `secret-notes`, and `secret-camp-journal` (an `identical`: a citation logged writes nothing the machine holds) | `quiet-journal` (a `contrast`); on Curse `curse-quiet-journal` (a `contrast`) and `curse-journey-journal` (an `identical`: the party's bar is never drawn); on Secret `secret-boot-journal` (an `identical`) and `secret-town-journal` (a `contrast`: `NOTES` on the move mode's bar) |
 | `explored` | `wild-trail` | `quiet-explored` |
 | the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party`; on Curse `curse-fight-cheat`, `curse-fight-kill`, `curse-camp-wound`; on Secret `secret-fight-cheat`, `secret-fight-kill`, `secret-camp-wound` | `quiet-cheats`; on Curse `curse-quiet-cheats` and `curse-quiet-all`; on Secret `secret-camp-cheats` |
-| `modern-controls` | `list-down-arrows`, `camp-down-arrows`, `camp-pad-arrows`, `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys`, `bar-esc-keys`, `bar-script-keys`, `bar-portrait-keys`, `menu-down-cursor`, `move-walk-mode`, `door-pick-3`, `list-keys-yellow`, `name-arrows-edit` (each a `contrast`; `door-pick-3` has the seam on at both ends and differs by its keys); on Curse `curse-camp-arrows`, `curse-name-arrows`, `curse-menu-cursor`, `curse-modify-arrows`, `curse-move-walk-mode`, `curse-door-arrows`, `curse-script-esc`; on Secret `secret-pick-heroes` (a `contrast`) and `secret-name-controls` (an `identical`: no party to number), and `secret-aim-controls` (no relation, above) | on Secret `secret-fight-controls` (no relation, above). Elsewhere none can exist: three of its pieces draw on sight, so `quiet-modern-controls`, `menu-letters-cursor` and `quiet-all-on-sight` are `contrast`s too (the pair is a `contrast`, as the faces' is). On Curse the same three draw on sight, the menu cursor, the hero keys and the selection block, so `curse-quiet-controls` is a `contrast curse-quiet` and `curse-quiet-all-on-sight` a `contrast curse-quiet-all` |
+| `modern-controls` | `list-down-arrows`, `camp-down-arrows`, `camp-pad-arrows`, `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys`, `bar-esc-keys`, `bar-script-keys`, `bar-portrait-keys`, `menu-down-cursor`, `move-walk-mode`, `door-pick-3`, `list-keys-yellow`, `name-arrows-edit` (each a `contrast`; `door-pick-3` has the seam on at both ends and differs by its keys); on Curse `curse-camp-arrows`, `curse-name-arrows`, `curse-menu-cursor`, `curse-modify-arrows`, `curse-move-walk-mode`, `curse-door-arrows`, `curse-script-esc`; on Secret `secret-pick-heroes` and `secret-modify-block` (each a `contrast`), and `secret-name-controls` and `secret-aim-controls` (no relation, above) | on Secret none can exist: the selection block draws the title's lit `PLAY`, and `secret-fight-controls` (no relation, above) is the seam on and its keys never pressed. Elsewhere none can exist either: three of its pieces draw on sight, so `quiet-modern-controls`, `menu-letters-cursor` and `quiet-all-on-sight` are `contrast`s too (the pair is a `contrast`, as the faces' is). On Curse the same three draw on sight, the menu cursor, the hero keys and the selection block, so `curse-quiet-controls` is a `contrast curse-quiet` and `curse-quiet-all-on-sight` a `contrast curse-quiet-all` |
 | `quick-steps` | `walk-quick` | `menu-letters-quick`. Not in `quiet-all`: `quiet`'s movement keys click |
 | `message-pause` | `fight-pause`; on Curse `curse-fight-pause`; on Secret `secret-fight-pause` | `quiet-message-pause`, and `quiet-all`; on Curse `curse-quiet-message-pause`, and `curse-quiet-all`; on Secret `secret-camp-message-pause` |
 | `fanfare` | `quiet-fanfare` (a `contrast`); on Curse `curse-quiet-fanfare` (a `contrast`) | none can exist: every boot runs the titles, where it starts. Not in `quiet-all` or `curse-quiet-all` |

@@ -126,11 +126,19 @@ TEST(ProgramProfile, SecretsIsThePartItsSeamsAndItsReadsUse) {
   EXPECT_NE(secret.draw_string_entry, 0U);
   EXPECT_NE(secret.screen_composer_offset, 0U);
   EXPECT_NE(secret.selection_colour, 0U);
+  // The selection block's (seam_select_yellow.cpp, #609): the menu-bar
+  // routine's and the summary's modules, the sheet's for Modify's scores,
+  // the party menu's for its name field, the list routine's call into the
+  // menu-bar routine, and the selection's colour, the program's own white.
+  EXPECT_TRUE(secret.roster_overlay.has_load_segment());
+  EXPECT_NE(secret.roster_overlay.load_segment_at,
+            secret.view_overlay.load_segment_at);
+  EXPECT_NE(secret.pick_list_bar_return, 0U);
+  EXPECT_EQ(secret.selection_colour, 0x0FU);
   // And nothing pretending to be a fact: what no seam or read available
   // on this program uses is zero until somebody measures it.
   EXPECT_EQ(secret.draw_frame_entry, 0U);
   EXPECT_FALSE(secret.camp_overlay.has_load_segment());
-  EXPECT_FALSE(secret.roster_overlay.has_load_segment());
   // The move mode's bar is this program's alone.
   EXPECT_EQ(pool_of_radiance.move_bar_return, 0U);
   EXPECT_EQ(curse_of_the_azure_bonds.move_bar_return, 0U);

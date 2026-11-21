@@ -2916,7 +2916,7 @@ A fight (game mode 5, the tactical grid):
     the wall on the right; east along the street, a `door` on the right
     at `7,8` and `10,8` where the program prints the sign over a door,
     and at `15,8` the gate a `door` ahead and a wall on the right; the
-    square the status line prints each time. The ruins (leg 14, with the
+    square the status line prints each time. The ruins (leg 15, with the
     automap on): at every step out and back `x`, `y` and `facing` were
     the line's and `stored` the party's bytes; at the arrival `0,15`
     east, `stored` `11,2` east; after stored `14,2`'s east face, `4,15`

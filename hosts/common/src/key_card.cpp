@@ -226,8 +226,9 @@ constexpr std::array journal_rows{
 // on most of them, so each of its screens is a context of its own, with
 // the rows docs/playable-secret.md records as driven. One piece of
 // modern-controls takes a key on this program, the hero keys at the party
-// menu's member picker, so of its rows only that one is here; the message
-// pause's, the automap's and the journal's are too. Its party's bar has no
+// menu's member picker, and one draws every selection as a block, so of its
+// rows only those two are here; the message pause's, the automap's and the
+// journal's are too. Its party's bar has no
 // room for Notes: `N` there opens the log with no word on the bar, and the
 // walking bar carries the word (#609).
 
@@ -251,6 +252,8 @@ constexpr std::array blades_bar_rows{
     key_row{"Y, N", "answer a Yes/No question"},
     key_row{"Esc", "leave camp or a member's sheet; not the party's bar"},
     key_row{"E, then N", "leave a treasure screen with treasure still on it"},
+    key_row{"the selection", "a block, white: the lit word, row or member",
+            "modern-controls"},
 };
 
 constexpr std::array blades_menu_rows{
