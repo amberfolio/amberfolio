@@ -7,8 +7,8 @@ and has the method in full; `docs/first-light.md` stops at the party
 menu. Nothing in this repository can run any of it (PLAN.md §6).
 
 The legs here are the ones driven so far. What is still to be driven is
-on #608: a cure and a training carried through, and the ruins past
-their first street.
+on #608: a training carried through, and the ruins past their first
+street.
 
 ---
 
@@ -25,9 +25,9 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
 No `--install`: the Steam copy is recognized and laid out at `\SECRET`
 (`docs/hosts.md` §2c). No seam is needed to play, and the ones available
 on this program are the three debug cheats, the two text faces, the
-message pause, the automap and `modern-controls`, which here is only its
-two pieces that observe, for the host reads below (`docs/seams.md` §10).
-Sixty
+message pause, the automap, `modern-controls`, which here is only its
+two pieces that observe, for the host reads below, and the journal,
+which here is only its citation watch (`docs/seams.md` §10). Sixty
 frames to the virtual second; `TICKS = FRAME * 19,886` at `--speed 386`
 is close enough for `--until`.
 
@@ -52,7 +52,7 @@ from this table.
 | a prompt on the bottom line | `LOAD WHICH GAME: A B`, `YES NO` | the letter |
 | a page of story | text under a picture, `PRESS <ENTER>/<RETURN> TO CONTINUE` | `Return` |
 | a command bar | words on the bottom line, the first one lit | the word's first letter; `Return` takes the lit one |
-| the adventuring bar | `MOVE AREA CAST VIEW ENCAMP SEARCH LOOK` | `Return` on the lit `MOVE` starts the program's own move mode: the bar is `EXIT`, `Up` steps, `Left` and `Right` turn, `E` ends it |
+| the adventuring bar | `MOVE AREA CAST VIEW ENCAMP SEARCH LOOK` | `M`, or `Return` while `MOVE` is the lit word (it is not after a camp), starts the program's own move mode: the bar is `EXIT`, `Up` steps, `Left` and `Right` turn, `E` ends it |
 | the treasure bar | `VIEW TAKE POOL SHARE EXIT` | `E` leaves; with treasure left the program asks whether to go back, and **`N` is the one that leaves** |
 | the camp bar | `SAVE VIEW MAGIC REST ALTER FIX EXIT` | letters; the program has its own `FIX` |
 | a character's view | a sheet over `HEAL CURE EXIT` (what a member can do varies) | `E` leaves |
@@ -136,8 +136,8 @@ the party. **Nothing is asked on the way**: no question, no document.
   menu comes back with six members and nine rows, its highlight on the
   third; five `Down` reach `BEGIN ADVENTURING`.
 - Eight `Return` turn the opening's pages: a picture, then the mayor.
-  **One of the pages cites a journal entry by number**, which is where
-  S3's journal reader will start from. The mode byte is 4 from the first
+  **The seventh cites journal entry 37 by number**, which the journal's
+  watch puts on its log (below). The mode byte is 4 from the first
   page.
 - The opening ends in experience points and a treasure screen (mode 6):
   `Return`, then `E` and `N` to leave what is there.
@@ -325,6 +325,7 @@ after this one: one file, no slot's own (`docs/hosts.md` §6).
 
 **After a save at camp the program asks `QUIT TO DOS YES NO`**; `N`
 goes on.
+
 ## Leg 9: the aim
 
 ```
@@ -372,6 +373,34 @@ program's line editor. `TOR` and `Return` take the name, and the
 figure's editor is up by frame 3,050. `secret-name` is this leg, 40
 checkpoints.
 
+## Leg 11: a cure at the temple
+
+```
+... leg 7's opening ...
+--press E@8200                                        # ENCAMP
+--press E@8650 --pull cheat-wound-party@8650          # the party on one hit point each, and out
+--press M@9100                                        # MOVE
+--press Up@9250 ... four Up, Left, seven Up, Right, two Up ...   # to 10,9
+--press Y@11800
+--press A@12100 --press Return@12400 --press Return@12700 --press E@13000
+                                                      # APPRAISE, GEMS, SELL, and out
+--press H@13300                                       # HEAL
+--press Down@13600 --press Down@13750                 # to the third cure of the list
+--press Return@14050 --press Return@14350 --press Return@14650
+--press E@14950 --press V@15250 --press E@15550 --press E@15850
+```
+
+With `--seam cheat-wound-party`, because no shipped party is hurt and a
+fight's wounds are a long walk from this door. The temple's list is for
+the current member; each `Return` buys the lit cure, and three of them
+take the first member from 1 hit point to 15 and the fifty platinum the
+gem fetched down to 10. `secret-heal` is this leg, with that seam.
+
+**The training hall has not trained anybody.** `TRAIN CHARACTER` asks
+`PICK CHARACTER`, where `Up` and `Down` choose and `Return` takes one,
+and then the menu is back with no message and the member unchanged:
+tried with the shipped party and with a new character carrying 300
+platinum. What it wants is not known.
 ## The host reads on this program
 
 | run | what it shows |
@@ -424,6 +453,19 @@ the rest in the fight.
 A script written for the seam leaves a second and a half after each
 line, or presses a key to end the pause and another for the command.
 
+## The journal on this program
+
+The seam is its citation watch alone: what the game cites goes on the
+log, and with `--save-sidecars` the log goes beside the slot's save.
+There is no `Notes` on the party's bar, so the reader does not open
+(`docs/seams.md` §10 has why).
+
+| run | what it shows |
+|---|---|
+| leg 2 with `--seam journal` | the seventh page of the opening, at frame 5,122, puts entry 37 on the log, unread; one `journal-seen` callout, the message box reached 39 times, and the run is leg 2's |
+| leg 1, then `E@8200 S@8500 C@8800 N@9100`, with `--seam journal --save-sidecars` | the camp's save into slot C writes `AFSEENC.DAT`, one row: entry 37, unread |
+| leg 0, then `Down@1500 Down@1560 Return@1620 C@2100`, over that disk, with the same two flags | loading C reads `AFSEENC.DAT` back (`reads=1`); four `Down`, `Return` and `D` save the party to D from the party menu, and `AFSEEND.DAT` holds the same row |
+
 ## The copy protection
 
 The program has two questions, and **the Steam copy asks neither**: in
@@ -442,7 +484,7 @@ where that mechanism is (`docs/seams.md` §10).
 
 ## The sessions
 
-Twenty-two, `secret-*`, each on the Steam copy with its shipped slots
+Twenty-five, `secret-*`, each on the Steam copy with its shipped slots
 (the `secret-slots` snapshot) at `--speed 386` and `--wall none`.
 
 | session | seams | relation | what it is |
@@ -452,6 +494,7 @@ Twenty-two, `secret-*`, each on the Steam copy with its shipped slots
 | `secret-new-party` | | | leg 5 |
 | `secret-buy` | | | leg 7 |
 | `secret-vault` | | | leg 8 |
+| `secret-heal` | cheat-wound-party, pulled | | leg 11 |
 | `secret-camp-cheats` | the three cheats, none pulled | `identical secret-camp` | no point acts: all 106 checkpoints |
 | `secret-camp-wound` | cheat-wound-party, pulled | `contrast secret-camp` | 93 of 106 identical, divergent from tick 169,050,886, the pull |
 | `secret-fight` | | | leg 4 |
@@ -465,6 +508,8 @@ Twenty-two, `secret-*`, each on the Steam copy with its shipped slots
 | `secret-fight-controls` | modern-controls | `identical secret-fight` | neither piece reached: all 371 checkpoints |
 | `secret-aim-controls` | modern-controls | `identical secret-aim` | the aim watched at every key of the aim: all 406 checkpoints |
 | `secret-name-controls` | modern-controls | `identical secret-name` | the line editor watched from entry to return: all 40 checkpoints |
+| `secret-boot-journal` | journal | `identical secret-boot` | the watch never reached: all 15 checkpoints |
+| `secret-camp-journal` | journal | `identical secret-camp` | entry 37 cited by the opening and logged; the watch writes nothing the machine holds: all 106 checkpoints |
 | `secret-town` | | | leg 3, to the ruins at frame 11,600 |
 | `secret-camp-automap` | automap | `identical secret-camp` | `Tab` never pressed: all 106 checkpoints |
 | `secret-town-map` | automap | `contrast secret-town` | `Tab` on `MOVE`'s frame, 8,200: 90 of 138 identical, divergent from tick 163,085,086 |

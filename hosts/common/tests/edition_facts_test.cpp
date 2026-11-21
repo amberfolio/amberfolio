@@ -36,6 +36,7 @@
 namespace amberfolio::host {
 namespace {
 
+using ::testing::ElementsAre;
 using ::testing::IsEmpty;
 using ::testing::Not;
 
@@ -149,14 +150,14 @@ TEST(EditionFacts, TheStoreReleaseIsTheBaselineAndTheRepackKeepsItsId) {
 
 TEST(EditionFacts, SecretsSteamRowIsItsFortyFilesAndItsConfiguration) {
   // Counted on the copy (#606): forty program and data files, and
-  // BLADES.CFG as Steam ships it. And one document, the journal Steam
-  // ships beside it (#609), which the GOG row names too, as both of
-  // Curse's rows name both of its journals: either serves the one
+  // BLADES.CFG as Steam ships it. And two documents, the journal Steam
+  // ships beside it (#609) and the one GOG does (#633), on both rows, as
+  // both of Curse's rows name both of its journals: either serves the one
   // program.
   for (const edition_requirements* edition : {&secret(), &secret_gog()}) {
     std::size_t files = 0;
     std::size_t configurations = 0;
-    std::size_t documents = 0;
+    std::vector<std::string_view> documents;
     for (const edition_artifact& artifact : edition->artifacts) {
       switch (artifact.kind) {
         case artifact_kind::file:
@@ -168,18 +169,19 @@ TEST(EditionFacts, SecretsSteamRowIsItsFortyFilesAndItsConfiguration) {
           EXPECT_THAT(artifact.fingerprint, Not(IsEmpty()));
           break;
         case artifact_kind::document:
-          ++documents;
+          documents.push_back(artifact.fingerprint);
           EXPECT_EQ(artifact.document, machine::document_kind::journal);
-          EXPECT_EQ(
-              artifact.fingerprint,
-              "153190ec7189e3cd72cdb608fad54aa89786a5a6b0e959a898c514b45d9e"
-              "66c3");
           break;
       }
     }
     EXPECT_EQ(files, 40U) << edition->id;
     EXPECT_EQ(configurations, 1U) << edition->id;
-    EXPECT_EQ(documents, 1U) << edition->id;
+    EXPECT_THAT(
+        documents,
+        ElementsAre(
+            "153190ec7189e3cd72cdb608fad54aa89786a5a6b0e959a898c514b45d9e66c3",
+            "f26c90627c1cdb2dfacf92ad3f795545a659c7b8c6d0f44a8996f8f3a9a48a74"))
+        << edition->id;
   }
   EXPECT_EQ(secret().boot, "START.EXE");
 

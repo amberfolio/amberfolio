@@ -430,7 +430,7 @@ TEST(SeamPanel, AProgramWithAFewSeamsListsThoseAndNoOther) {
   for (const std::string_view ported :
        {"cheat-invulnerable", "cheat-kill-all", "cheat-wound-party",
         "font-sans", "font-chisel", "message-pause", "modern-controls",
-        "automap"}) {
+        "journal", "automap"}) {
     EXPECT_TRUE(lists(rows, ported)) << ported;
   }
   for (const std::string_view absent : {"encamp-fix", "explored"}) {

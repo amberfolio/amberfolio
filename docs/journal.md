@@ -64,7 +64,7 @@ amberfolio <dir> <program.exe> --seam journal
 
 ## 3. Adding an edition
 
-Five editions are in the table:
+Six editions are in the table:
 
 | edition | fingerprint | its words are | pieces | pictures |
 | --- | --- | --- | --- | --- |
@@ -73,6 +73,7 @@ Five editions are in the table:
 | Curse of the Azure Bonds, the Steam release's (#555) | `68bd9d47…fec8031` | text, read out of the document (§3a) | 121 items in 141 pieces | 9 on 9 entries |
 | Curse of the Azure Bonds, the GOG release's (#585) | `7c918ead…d8529bb` | scans, `/DCTDecode` (§4a), read by an engine | 121 items in 255 pieces | 9 on the same 9 entries |
 | Secret of the Silver Blades, the Steam release's (#609) | `153190ec…d9e66c3` | text, read out of the document (§3a) | 72 items in 86 pieces | 19 on 19 entries |
+| Secret of the Silver Blades, the GOG release's (#633) | `f26c9062…a9a48a74` | scans, `/DCTDecode` (§4a), read by an engine | 72 items in 220 pieces | 19 on the same 19 entries |
 
 Curse's journal has two numbered sections, fifty-nine entries and
 sixty-two tavern tales. Its two editions have the same 121 items by the
@@ -80,13 +81,12 @@ same numbers and the same nine pictures on the same nine entries, which
 the suite checks row for row.
 
 Secret of the Silver Blades' journal has one numbered section,
-seventy-two entries. Its one edition in the table is the Steam
-release's: a booklet of thirty-three pages that is the game's rules as
-well, with the entries on nine of them. **Its GOG journal is not in the
-table**: it is the printed booklet as page scans (`f26c9062…a9a48a74`),
-thirty-three pages, every one a `/DCTDecode` RGB image, which would need
-an engine and a fact table measured off the scans the way §3 measures
-Curse's.
+seventy-two entries, in a booklet of thirty-three pages that is the
+game's rules as well, with the entries on nine of them. Its two editions
+have the same seventy-two entries and the same nineteen pictures on the
+same nineteen entries, which the suite checks row for row: the Steam
+release's typesets the booklet as text, and the GOG release's is the
+printed booklet scanned.
 
 Pool of Radiance's two have the same ninety-nine items by the same
 numbers — 58 entries, 23 tales, 18 proclamations — which the suite
@@ -111,7 +111,10 @@ An edition is data in two places:
    `/DecodeParms /Predictor`, whether it is `/Decode [1 0]`, the
    rectangle of that image which is that piece, and whether that piece
    opens a paragraph (step 7 below). Pictures are a second span, `art`
-   (§11.1).
+   (§11.1). One edition's rows, Secret of the Silver Blades' GOG
+   journal's, are in `journal_facts_secret_gog.cpp` beside it, because
+   with them `journal_facts.cpp` would be over the content guard's
+   256 KiB cap; the table names them through that unit's header.
 
 CI checks the two against each other, and every row's shape: region
 inside its image, no two rows for one *(section, number)*, pieces in
@@ -223,17 +226,77 @@ page with no item on them. The items are on twelve of the spreads.
   start within four samples of it and three start 28 to 30 right of it,
   in entries 1, 3 and 12.
 
+**Secret of the Silver Blades' GOG edition** (#633) is the same job
+again. It is thirty-three pages, every one `/DCTDecode` RGB: thirty-one
+two-page spreads of 1650 by 1275 samples and a single first and last
+page. The entries are on nine of the spreads, pages 16 to 24.
+
+- **Headings are found by their ink** (step 2), red here and the body
+  blue: a line band whose ink is nearly all red, a heading's height and
+  opening with the printed checkbox is a heading. All seventy-two
+  headings read back, with a whitelist, as the number the chain gives
+  them.
+- **A heading is a piece of its own, and so is its title.** Every
+  entry's heading opens with the checkbox, and sixty-eight have a title
+  under it in red capitals, set at the checkbox's margin. So the first
+  piece is the heading's line from right of the checkbox, the title is
+  the next piece and the body the one after, each opening a paragraph:
+  72 headings, 68 titles and 80 pieces of body, 220 in all. Twelve
+  entries are a heading, a title and a map.
+- **A piece hugs its own ink**, as in Curse's. The bands are cut between
+  samples 420 and 429 and between 1235 and 1247, in the gutter between
+  a printed page's two columns, and either side of the spine's shadow.
+- **The order is not the numbering** on page 19 (step 4): entry 33 opens
+  at the foot of the first column and is carried on under entry 32's
+  map at the head of the second, and entry 37 opens beside its picture
+  under entry 35's map and is carried on under entry 36's map. A piece
+  with no heading at its head is given to the entry the page says it
+  carries on.
+- **Matter outside the grid** (step 3): the section's title above entry
+  1, and a rule across a printed page under which a map spans both
+  columns, on both printed pages of page 21 and the right-hand one of
+  page 24. The entry before is carried on at the top of both columns,
+  above the rule.
+- **Seven drawings are set in their entry's column** with its prose
+  beside them. A body is cut where it comes level with a drawing, eight
+  samples above it or less, and where it leaves it, so the prose beside
+  a drawing is a piece of its own; entry 37's heading, title and prose
+  are a frame of their own beside its picture.
+- **The boundaries** (step 7): twenty pieces carry a body on. This
+  edition sets its paragraphs apart rather than indenting them, so a
+  break is read the way §3a reads Secret's Steam edition: by whether the
+  word a piece opens with, and a space of seven samples, would have
+  fitted on the line before it. The measure is the column's widest line
+  on that page, 333 to 343 samples, or a frame's own. Three fit, with 30
+  to 105 samples to spare, in entries 44, 50 and 53; seventeen are 2 to
+  61 samples too wide. All twenty agree with the Steam edition's
+  paragraphs.
+- **Two maps are not rectangles** (§11.1): a heading and its title are
+  set in the notch of each, so the rectangle of entry 38's map holds its
+  own heading and title and entry 40's, and that of entry 45's its own
+  and entry 47's. None of those eight text rectangles holds a sample of
+  the map; no other text rectangle overlaps a picture.
+
 **What an engine makes of a heading depends on how it is handed the
 page** (#585). The linked engine reads each rectangle on its own and
 reads all 121 headings. An engine handed the whole spread segments the
-page itself: the desktop's Tesseract run as a program reads nothing at
-all where three of this edition's headings are, and runs the checkbox
-into the first letter of eight more. The hosts differ on what follows a
-piece that read nothing: the page drops it and keeps the rest of the
-item (`journal.mjs`), and the desktop's program-driven engine fails the
-item (`hosts/sdl/src/tesseract_ocr.cpp`), so that engine reports 118 of
-121 (§7). The browser's engine is handed the whole spread too, drawn
-twice the size, and has not read this edition.
+page before it recognizes anything, and a heading set close above a
+drawing can go into the drawing's region, where nothing is read: the
+desktop's Tesseract run as a program reads no word where the headings
+of entries 9, 39 and 55 are, and tesseract.js on the page none where
+entry 39's and tale 14's are. The rectangle is right; the engine never
+looked inside it. So both of those engines read **a piece the page's
+reading kept nothing of again on its own**, the rectangle handed over
+as one block the way the linked engine reads every piece (§5), and with
+it each reads all 121 (§7). The program-driven engine also runs the
+checkbox into the first letter of eight headings. Where a piece reads
+nothing even so, the hosts differ: the page drops it and keeps the rest
+of the item (`journal.mjs`), and the desktop's program-driven engine
+fails the item (`hosts/sdl/src/tesseract_ocr.cpp`). On Secret of the
+Silver Blades' GOG edition the program-driven engine reads something in
+every piece and recognizes all 72 entries, with the checkbox read as a
+character in front of eleven of the headings; the linked engine begins
+all 72 with their own heading. The browser has not read that edition.
 
 ## 3a. An edition typeset as text (#398)
 
@@ -569,6 +632,19 @@ segmentation mode must match the picture. Whole-page paths (the
 `/DCTDecode` carry) ask for automatic; the decoded path and the linked
 engine's `SetRectangle` hand over one block and keep single block.
 
+**A piece the whole page's reading kept nothing of is read again on
+its own** (#585), because automatic segmentation can file a heading
+under the drawing below it and read nothing there (§3). The second
+reading is the rectangle alone at single block: on the page,
+tesseract.js's `rectangle` option over the page as drawn; on the
+desktop, a zone file beside the page (`entry.uzn`, `tesseract_zone` in
+`hosts/sdl/src/tsv_words.h`), which the CLI reads zone by zone at
+`--psm 6`. Neither crops or decodes anything, and both answer words in
+the page's coordinates, so the same filter keeps them. Only a piece that
+read nothing is read twice, so every other piece reads exactly as it
+did: Pool of Radiance's GOG edition comes out of a browser as the same
+store with this rule as without it.
+
 Rejected, measured: `user_defined_dpi=300`, `preserve_interword_spaces=1`
 and reading the region as grey changed not one character; a
 `--user-words` list would fix two misreadings in 341 words for a table to
@@ -577,12 +653,14 @@ errors while putting noise in front of a reader, so confidence is a
 per-entry score instead.
 
 **The asymmetry.** Drawing the page 2x needs it decoded. The browser does
-that (`createImageBitmap` and a canvas, one recognition per scan); the
+that (`createImageBitmap` and a canvas, one recognition per scan and one
+for each piece read again); the
 program-driven desktop engine hands the CLI a file and Tesseract's CLI
 has no crop or scale flag, so a default desktop ingestion reads worse
 than a browser one, and the linked engine (#216) is the way to close
-that. The desktop's engine run as a program has been measured once, on
-Curse's GOG edition (§7). (§11.4's
+that. The desktop's engine run as a program has been measured on two
+editions, Curse of the Azure Bonds' and Secret of the Silver Blades' GOG
+ones (§7). (§11.4's
 decoder is not the missing piece: it would decode the page, but the CLI
 takes a path and this host does not write an image out.)
 
@@ -684,9 +762,10 @@ a sidecar beside the saves, per slot, off unless the player asked
 | --- | --- |
 | `\SAVE\AFSEEN<L>.DAT` | slot `L`'s log, written at that slot's save and read **over** the log in hand at its load, even when it is not there |
 
-On Curse of the Azure Bonds the same file sits in that program's save
-directory, one per slot `A` to `J` (`docs/hosts.md` §6), and the citation
-watch is what fills it there (`docs/seams.md` §10).
+On Curse of the Azure Bonds and Secret of the Silver Blades the same
+file sits in that program's save directory, one per slot `A` to `J`
+(`docs/hosts.md` §6), and the citation watch is what fills it there
+(`docs/seams.md` §10).
 
 Nothing keeps the log between saves. A run starts at the program's main
 menu with no party; a load brings the slot's list and a new party's is
@@ -806,33 +885,60 @@ entries 4 and 45 with their pictures decoded out of the store, entry 18
 across two sheets, entry 44 in its three pieces and entry 50 across a
 tabled break; each has the page's words and its paragraphs. The same
 host reads Pool of Radiance's and Curse's Steam editions as before, 99
-of 99 and 121 of 121, each item against its digest. Not done: this
-document through the wasm module or in a browser, and an entry opened in
-the game: the reader is on Pool of Radiance and Curse of the Azure Bonds
-and not on this program.
+of 99 and 121 of 121, each item against its digest. In the game, with
+`journal` on, the opening's citation puts entry 37 on the log
+(`docs/seams.md` §10). Not done: this document through the wasm module
+or in a browser, and an entry opened in the game: on this program the
+seam is its citation watch alone, with no `Notes` and no reader.
 
-**By hand, Curse's GOG edition** (#585), through the desktop host, each
-reading scored by §5a's harness against the Steam edition's text put in
-the store as every item's correction:
+**By hand, Curse's GOG edition** (#585), through the desktop host and
+on the built page in a browser (Chromium, headless, the page's own
+document control), each reading scored by §5a's harness against the
+Steam edition's text put in the store as every item's correction:
 
 | engine | read | characters | words |
 | --- | --- | --- | --- |
 | linked, Tesseract 5.5.1 (`AMBERFOLIO_LINK_TESSERACT`) | `entries=121 extracted=121 recognized=121`, `pictures=9/9` | 2.07% | 6.67% |
-| the same Tesseract run as a program (`--journal-ocr`) | `entries=121 extracted=121 recognized=118`, `pictures=9/9` | 2.17% | 7.13% |
+| the same Tesseract run as a program (`--journal-ocr`) | `entries=121 extracted=121 recognized=121`, `pictures=9/9` | 2.15% | 7.06% |
+| tesseract.js 6.0.1, on the page | `121 of 121 entries`, `9 of 9 pictures` | 1.71% | 5.70% |
 
 The harness counts every curly quotation mark and every word hyphenated
 at a line's end, which the reader folds and joins (§9); with those two
-folded the linked reading differs in 0.87% of its characters. All 121 of
-the linked engine's items begin with their own heading, and the three
+folded the linked reading differs in 0.87% of its characters. Every item
+of all three readings begins with its own heading, and the three
 boundaries the table calls paragraph breaks are breaks in the Steam
-edition's text. The three items the program-driven engine does not
-recognize are entries 9, 39 and 55 (§3). The longest item is about three
-kilobytes. In the game, on the GOG copy with `journal` on over the
-linked engine's store: the innkeeper's citation (`docs/playable-curse.md`
-leg 2) puts entry 31 on the log, and Return opens it, one page of text
-under its heading. Not done: this document in a browser, and one of its
-pictures on the game's screen (the nine were looked at decoded out of
-the store).
+edition's text. Entries 9, 39 and 55 on the program-driven engine, and
+entry 39 and tale 14 on the page, are read by the second reading of §5a;
+without it that engine recognizes 118 and the page 120, tale 14 without
+its heading. Three ingestions on the page made one store. The longest item
+is about three kilobytes. In the game, on the GOG copy with `journal`
+on: over the linked engine's store, the innkeeper's citation
+(`docs/playable-curse.md` leg 2) puts entry 31 on the log, and Return
+opens it, one page of text under its heading; on the page, over the
+page's own store and the page's *Cite them all* (§10), entries 20, 39
+and 59 open as their heading's page and then their picture, drawn in
+the box on the game's screen.
+
+**By hand, Secret of the Silver Blades' GOG edition** (#633), through
+the desktop host, each reading scored by §5a's harness against the Steam
+edition's text (`sha256=1db3fb66…a570600`, above) put in the store as
+every entry's correction:
+
+| engine | read | characters | words |
+| --- | --- | --- | --- |
+| linked, Tesseract 5.5.1 (`AMBERFOLIO_LINK_TESSERACT`) | `entries=72 extracted=72 recognized=72`, `pictures=19/19` | 1.54% | 5.38% |
+| the same Tesseract run as a program (`--journal-ocr`) | `entries=72 extracted=72 recognized=72`, `pictures=19/19` | 1.81% | 5.71% |
+
+With curly quotation marks and words hyphenated at a line's end folded,
+the linked reading differs in 0.93% of its characters and the
+program-driven one in 1.19%. All 72 of the linked engine's entries begin
+with their own heading, and 61 of the program-driven engine's (§3). The
+three boundaries the table calls paragraph breaks are breaks in the
+Steam edition's text and the other seventeen are not. The longest entry
+is under two kilobytes. The nineteen pictures were looked at decoded out
+of the store; entries 38's and 45's show the headings set in their
+notch (§11.1). Not done: this document in a browser, and an entry opened
+in the game, since the reader is not on this program.
 
 **By hand, the Steam edition** (§3a): every item through the desktop host
 and through the module under node with the page's own `journal.mjs`, one
@@ -1075,6 +1181,17 @@ labels in the image, on entries 1, 32, 35, 36, 38, 41, 45, 49, 52, 66,
 beside them, on entries 4, 15, 22, 25, 37, 55 and 63. Not in the table:
 the rule drawn across the head of every page, and the pictures on the
 booklet's other pages, which belong to no numbered item.
+
+Secret of the Silver Blades' GOG edition (#633) has the same nineteen,
+on the same entries, each the bounding box of its ink in a box searched
+around it: the twelve maps with their keys and labels inside, and the
+seven drawings, which are set in their entry's column with the prose cut
+around them. Two of the maps are not rectangles, and the rectangle that
+holds all of one holds what is set in its notch as well: entry 38's
+holds its own heading and title and entry 40's, and entry 45's its own
+and entry 47's, so those words are drawn in the picture. Not in the
+table, as in the Steam edition: the pictures on the booklet's other
+pages.
 
 The Steam edition's fourteen are the same drawings on the same entries,
 each an image of its own. Entry 37's first two maps are one image there,

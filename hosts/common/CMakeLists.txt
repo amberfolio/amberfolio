@@ -165,6 +165,9 @@ add_library(amberfolio-host-services STATIC
   # desktop ingestion and a browser one is which OCR engine is on the far
   # side of journal_ocr.h.
   src/journal_facts.cpp
+  # One edition's rows, in a unit of its own for the content guard's
+  # size cap (#633).
+  src/journal_facts_secret_gog.cpp
   src/journal_extract.cpp
   src/journal_store.cpp
   src/journal_ingest.cpp

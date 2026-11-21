@@ -1643,6 +1643,7 @@ The table is what has been watched so far, on the Steam copy.
 | `CHRDAT<S><N>.SFX` | saves | member | no | the effects that member is under |
 | `VAULT.DAT` | saves | vault | no | what has been deposited at the town's vault: one file for every slot, written at a deposit (28 bytes after a first one) |
 | `AFMAP<S>.DAT` | saves | sidecar | no | **ours**: the automap's exploration, as slot `<S>` was written |
+| `AFSEEN<S>.DAT` | saves | sidecar | no | **ours**: the journal's read log, as slot `<S>` was written |
 | `BLADES.CFG` | start | config | no | the program's settings — **a game file** |
 | `<NAME>.WHO` | saves | character | no | a character kept under a name the player chose |
 | `<NAME>.STF` | saves | character | no | what that character carries |
@@ -1666,16 +1667,20 @@ of eight is the first two games' until a seventh record is seen. A
 character created and kept wrote a `.WHO` and an `.SFX` under its name,
 and a first deposit at the town's vault created `VAULT.DAT`, 28 bytes,
 in the save directory: one file whichever slot is loaded, so a host
-that splits a playthrough by slot keeps it with all of them.
-`AFMAP<S>.DAT` is the automap's exploration (#609): with `--seam
-automap --save-sidecars`, Tab at the party's bar, three steps south,
-then `ENCAMP`, `SAVE`, `C` and `N` to `QUIT TO DOS` write `AFMAPC.DAT`
-(121 bytes: one record, disk 1, area 16, block 16, fifteen squares;
-`save-sidecars writes=1 reads=0 slot=C trouble=none`), and loading C
-reads it back, the panel at `3,6 S` drawing the mayor's house. **Not a
+that splits a playthrough by slot keeps it with all of them. **Not a
 row**: a Curse of the Azure Bonds character (`*.GUY`) put there for the
 program's `ADD` to list and take (`docs/playable-secret.md` leg 5),
-which is that game's file. A page that writes
+which is that game's file. `AFSEEN<S>.DAT` is the journal's read log
+(#609): with `--seam journal --save-sidecars`, a save to slot C at the
+camp after the opening's citation of entry 37 writes `AFSEENC.DAT` (one
+row, entry 37 unread), and loading C reads it back
+(`save-sidecars writes=0 reads=1 slot=C trouble=none`). `AFMAP<S>.DAT`
+is the automap's exploration (#609): with `--seam automap
+--save-sidecars`, Tab at the party's bar, three steps south, then
+`ENCAMP`, `SAVE`, `C` and `N` to `QUIT TO DOS` write `AFMAPC.DAT` (121
+bytes: one record, disk 1, area 16, block 16, fifteen squares;
+`save-sidecars writes=1 reads=0 slot=C trouble=none`), and loading C
+reads it back, the panel at `3,6 S` drawing the mayor's house. A page that writes
 a playthrough back keeps the rows above and nothing else, so a file
 that is not a row does not survive a reload there.
 
@@ -2217,13 +2222,12 @@ desktop's rebuilds the rows from the engine anyway.
 
 ### The documents this build recognises
 
-Seven (`machine/document.cpp`). Pool of Radiance has four, two releases'
+Eight (`machine/document.cpp`). Pool of Radiance has four, two releases'
 worth, the same four `document` artifacts on both of its rows of
 `data/editions.json`, because any of them serves the one program; the
 GOG release's two are named `archive release` in the table. Curse of the
-Azure Bonds has two journals, on both of its rows for the same reason.
-Secret of the Silver Blades has one, the Steam release's journal, on
-both of its rows:
+Azure Bonds has two journals, on both of its rows for the same reason,
+and so has Secret of the Silver Blades:
 
 | document | kind | sha256 |
 | --- | --- | --- |
@@ -2234,6 +2238,7 @@ both of its rows:
 | Curse of the Azure Bonds, the Steam release's Adventurer's Journal (PDF) | journal | `68bd9d47…fec8031` |
 | Curse of the Azure Bonds, the GOG release's Adventurer's Journal (PDF) | journal | `7c918ead…d8529bb` |
 | Secret of the Silver Blades, the Steam release's Adventurer's Journal (PDF) | journal | `153190ec…d9e66c3` |
+| Secret of the Silver Blades, the GOG release's Adventurer's Journal (PDF) | journal | `f26c9062…a9a48a74` |
 
 A code wheel is a fact that gates nothing (#290). Every journal is
 read, by one of two routes (`docs/journal.md` §3): each GOG release's
@@ -2793,7 +2798,9 @@ A fight (game mode 5, the tactical grid):
     the loaded map says itself, as on a map of Pool of Radiance the
     table has no row for: the kinds it has shut somewhere, or, with none
     shut, every way through. Every `zone` is `AREA <n>`.
-  - **`map` is always `null`**: the automap is not on this program.
+  - **`map` is the automap's**, as on the first two programs, while it
+    is on (#609): driven down leg 3, at `15,8 E` it lists the squares
+    walked from the mayor's house, his door a `door` south of `3,4`.
   - **The titles and the opening's pages are `null`.** The program is in
     mode 4 from start-up: the area number is zero until the first
     script is loaded, and the geometry block's word is zero while the

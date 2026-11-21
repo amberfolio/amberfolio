@@ -197,6 +197,11 @@ TEST(SaveLayer, SecretsSlotIsItsRecordsAndTheirEffects) {
             save_file_kind::character);
   EXPECT_EQ(row("SECRET\\SAVE\\HERO.SFX").file->kind,
             save_file_kind::character);
+  // The journal's read log, slot C's (#609), beside the automap's.
+  const save_layer_row seen = row("SECRET\\SAVE\\AFSEENC.DAT");
+  ASSERT_NE(seen.file, nullptr);
+  EXPECT_EQ(seen.file->kind, save_file_kind::sidecar);
+  EXPECT_EQ(seen.slot, 'C');
   // The other two programs' names are not this one's.
   EXPECT_EQ(row("SECRET\\SAVE\\HERO.GUY").file, nullptr);
   EXPECT_EQ(row("SECRET\\SAVE\\CHRDATC4.SWG").file, nullptr);
