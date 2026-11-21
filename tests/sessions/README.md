@@ -215,11 +215,13 @@ the sweep and on the wasm module (`drive.mjs --install '\CURSE'
 
 ### Secret of the Silver Blades
 
-Twenty-eight sessions, `secret-*`, on the Steam copy at `--speed 386` and
-`--wall none` (#608, #609), each `disk external` and pinned to the copy with
-its shipped slots A and B (`secret-slots`). `docs/playable-secret.md`
+Thirty sessions, `secret-*`, on the Steam copy at `--speed 386` and
+`--wall none` (#608, #609), each `disk external`: `secret-load` is pinned
+to the disk `secret-save` wrote (the `secret-saved` snapshot) and the
+rest to the copy with its shipped slots A and B (`secret-slots`). `docs/playable-secret.md`
 has the legs and the table: the boot, a camp, a wandering fight, a new
-party, a purchase at the armoury, a deposit at the vault, the fight with
+party, a purchase at the armoury, a deposit at the vault, a save at
+camp and its load, the fight with
 its aim walked (`secret-aim`), a character's name (`secret-name`) and
 the walk through the town to the ruins (`secret-town`) with no seam, a
 cure at the temple on a party the wound cheat has hurt (`secret-heal`),
