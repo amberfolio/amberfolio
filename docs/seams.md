@@ -411,12 +411,15 @@ BIOS reaches no address of its own, so no address can pace it.
   hold something too: a string of the program's it changed at one point
   and puts back at a later one, while the program sits between the two
   as long as a player likes (the journal's `Notes`, between the bar
-  routine's call and its return). It says so with `hold(true)` and lets
+  routine's call and its return), or pixels it painted where the program
+  never draws (`modern-controls`' margin beside a selection block, #655).
+  It says so with `hold(true)` and lets
   go with `hold(false)`, and a `disable()` while it holds owes its stop
   the same way. `enable()`, `disable()` and `clear()` let go. Its stop
   writes back only what its own seam wrote, and only where the program
   is known not to be reading it at that instruction (§10 says why, for
-  the journal).
+  the journal; `docs/modern-controls.md`, the selection block, for the
+  margin).
 - **Cost**: `machine::step()` asks `due(now)` beside `wants(at)`, one
   comparison against the earliest moment any seam has asked for; with
   none asked it is false at every tick. A stop owed is due now.

@@ -28,6 +28,13 @@ length.
 - **`device.h`**: `claims()`, `read_port`/`write_port`/`read_memory`/
   `write_memory`, `reset()`, `report_fault()`. No time on this interface
   (§4).
+- **`ega.h`**: beside its bus cycles the card has read-only introspection
+  (`plane_byte()`, `latches()`, `map_mask()`, the palette) and one native
+  setter, `restore_latches()`: what a seam's stop, which runs at no known
+  instruction, uses to leave the read path as it found it after reading
+  the screen (`docs/modern-controls.md`, the selection block, #655).
+  `ega::of(box.memory().owner(0xA0000))` finds the card among a
+  machine's devices.
 - **`service_floor.h`**: the IVT and BDA are real memory. Every provided
   vector points at a one-byte `IRET` stub in segment F000; the machine
   compares CS at each step boundary, runs the native handler when

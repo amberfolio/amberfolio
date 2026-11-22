@@ -59,6 +59,10 @@
 //     answer is now always yes, and the second asks `modern_controls_on()`.
 //   * **Off is the plain machine, and on is all nine.** There is no setting
 //     in between, so no piece's handlers are reached with another's off.
+//     Switched off with a selection block on the screen, the seam's stop
+//     takes back the margin `select-yellow` painted beside it, which the
+//     program never draws over (#655); the block's own cells are the
+//     program's, and go at its next draw of them.
 //
 // The one thing a merged seam cannot be is *idle*: three of the pieces draw
 // as soon as what they draw is on the screen (the menu's cursor, the
@@ -146,6 +150,14 @@ struct secret_point_table {
   }
 };
 
+/// Switched off with a selection block on the screen (#655): the margin the
+/// selection block painted beside it goes, which the program would never
+/// draw over (seam.h's "A point at a moment", the stop; `select-yellow`
+/// says it holds one through `seam_context::hold`).
+void switched_off(machine& box, seam_context& /*ctx*/) {
+  take_back_selection_margins(box);
+}
+
 }  // namespace
 
 const seam_definition& modern_controls_seam() noexcept {
@@ -171,6 +183,7 @@ const seam_definition& modern_controls_seam() noexcept {
       .fingerprints = modern_controls_binaries,
       .points = points.point,
       .programs = programs,
+      .stop = &switched_off,
       .schema = seam_schema_version};
   return definition;
 }

@@ -33,7 +33,8 @@
 //
 // On automap.h's three terms: `machine::reset()` drops it, the state
 // serialization never sees it, and a replay rebuilds it by drawing the same
-// cells again. The seam is its one writer.
+// cells again. The seam is its one writer, and its stop, switched off, takes
+// back every margin pixel it still holds and drops the rest (#655).
 
 #pragma once
 

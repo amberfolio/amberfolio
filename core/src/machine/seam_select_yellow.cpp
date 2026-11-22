@@ -171,6 +171,7 @@
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/ega.h"
 #include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/memory_map.h"
 #include "amberfolio/machine/overlay.h"
 #include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/seam.h"
@@ -1377,6 +1378,19 @@ void settle(machine& box, unsigned page, std::uint16_t segment,
   }
 }
 
+/// Whether a page holds a block or a margin pixel of this machine's, said
+/// to the engine after each of the three points below: a seam switched off
+/// while it holds one has no point left to take its margin back with, and
+/// is owed its stop (seam.h, `seam_context::hold`; #655).
+void note_holding(const machine& box, seam_context& ctx) noexcept {
+  const selection_margins& margins = box.margins();
+  bool any = false;
+  for (unsigned page = 0; page < selection_margins::pages; ++page) {
+    any = any || margins.any(page);
+  }
+  ctx.hold(any);
+}
+
 /// The display segments the blitter draws to, without a repeat.
 template <const select_yellow_facts& F>
 [[nodiscard]] std::array<std::uint16_t, 2> drawn_pages(const stack& s,
@@ -1428,9 +1442,10 @@ void at_cell_drawn(machine& box, seam_context& ctx) {
         {{r, c}, {r - 1, c}, {r, c + 1}, {r - 1, c + 1}}};
     settle(box, page, segments[i], cells, cells.size());
   }
+  note_holding(box, ctx);
 }
 
-void at_rectangle_filled(machine& box, seam_context& /*ctx*/) {
+void at_rectangle_filled(machine& box, seam_context& ctx) {
   const stack s = stack_of(box);
   const unsigned page = s.byte_above_bp(fill_page);
   if (page >= selection_margins::pages || !box.margins().any(page)) {
@@ -1464,6 +1479,7 @@ void at_rectangle_filled(machine& box, seam_context& /*ctx*/) {
     }
   }
   settle(box, page, segment, cells, count);
+  note_holding(box, ctx);
 }
 
 // A picture the program lays over a margin (the frame's chain above a bar,
@@ -1474,7 +1490,7 @@ void at_rectangle_filled(machine& box, seam_context& /*ctx*/) {
 // drawer finds its page through a line table of its own, not the blitter's
 // words, so every page that holds a margin is settled, and one the picture
 // did not touch has lost nothing.
-void at_picture_drawn(machine& box, seam_context& /*ctx*/) {
+void at_picture_drawn(machine& box, seam_context& ctx) {
   const stack s = stack_of(box);
   const std::uint16_t offset = s.above_bp(picture_pointer);
   const std::uint16_t segment = s.above_bp(picture_pointer + 2);
@@ -1511,6 +1527,7 @@ void at_picture_drawn(machine& box, seam_context& /*ctx*/) {
              cells, count);
     }
   }
+  note_holding(box, ctx);
 }
 
 // --- The definition ---------------------------------------------------------
@@ -1609,6 +1626,63 @@ std::span<const seam_point> curse_select_yellow_points() noexcept {
 
 std::span<const seam_point> secret_select_yellow_points() noexcept {
   return secret_select_yellow_point_table;
+}
+
+// The seam switched off with a margin on the screen (#655). The program
+// never draws in most of the margin's pixels (the frame's black above a
+// bar, the column right of the roster's names), so with the seam off
+// nothing would settle them: every one this machine still holds, on both
+// pages, goes back to black now, only where it is still this machine's
+// colour, as `settle` takes one back. The blocks are left: their cells are
+// the program's, drawn by its own blitter with the rows inverted, and they
+// are the program's again at its next draw of them. Then the bookkeeping
+// goes, so a seam switched on again starts from what it draws itself.
+void take_back_selection_margins(machine& box) {
+  selection_margins& margins = box.margins();
+  // The stop lands at no known instruction, perhaps between the program's
+  // read that loads the latches and the latched write after it, so the
+  // latches are put back as they were after the last write here; the
+  // registers are, by `adapter_kept`. The three points leave the latches
+  // as their last read loaded them, as they always have; putting them back
+  // there too would change the state of every run with the seam on.
+  ega* const video =
+      ega::of(box.memory().owner(std::uint32_t{first_page_segment} * 16U));
+  std::array<std::uint8_t, ega::plane_count> latched{};
+  if (video != nullptr) {
+    latched = video->latches();
+  }
+  std::optional<adapter_kept> adapter;
+  for (unsigned page = 0; page < selection_margins::pages; ++page) {
+    if (!margins.any(page)) {
+      continue;
+    }
+    const auto segment = static_cast<std::uint16_t>(first_page_segment +
+                                                    (page * page_paragraphs));
+    for (unsigned row = 0; row < selection_margins::rows; ++row) {
+      for (unsigned column = 0; column < selection_margins::columns; ++column) {
+        const selection_margins::strip& held = margins.owned(page, row, column);
+        for (unsigned line = 0; line < selection_margins::lines; ++line) {
+          if (held.bits[line] == 0) {
+            continue;
+          }
+          if (!adapter) {
+            adapter.emplace(box);
+          }
+          const std::uint16_t at = offset_of(row, column, line);
+          const std::uint8_t back = adapter->in_colour(
+              segment, at, held.colour[line], held.bits[line]);
+          if (back != 0) {
+            adapter->paint(segment, at, 0, back);
+          }
+        }
+      }
+    }
+  }
+  adapter.reset();
+  if (video != nullptr) {
+    video->restore_latches(latched);
+  }
+  margins.clear();
 }
 
 }  // namespace amberfolio::machine

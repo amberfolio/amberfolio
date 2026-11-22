@@ -313,8 +313,10 @@
 // A seam with no moments can hold something too: a string of the
 // program's it changed at one point and puts back at a later one, the
 // journal's word on the party's bar between the bar routine's call and
-// its return (#627). The program can sit between those two points for as
-// long as the player likes, so that is where it is switched off. Such a
+// its return (#627); or pixels it painted where the program never draws,
+// the margin beside a selection block (#655). The program can sit between
+// those two points for as long as the player likes, and leaves those
+// pixels for ever, so that is where it is switched off. Such a
 // seam says so with `seam_context::hold()`, and a `disable()` while it
 // holds owes its stop the same way. The stop writes back only what its
 // own seam wrote, and only where the program is known not to be reading
