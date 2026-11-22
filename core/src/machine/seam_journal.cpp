@@ -379,25 +379,27 @@ struct journal_facts {
   /// the program's own callers hands it.
   bool outer_frame_takes_word;
 
-  /// **`N` at the party's bar, with no word on it** (#609): on a program
-  /// whose party's bar has no room for `Notes`, the key opens the reader
-  /// there, taken out of the ring before the menu-bar routine sees it,
-  /// while the program's frames say the routine running is the loop's
-  /// call with that bar (`view_bar_return`). Nowhere else.
-  bool notes_key_at_bar;
-
-  /// **`Notes` on the move mode's bar** (#609), on a program whose move
-  /// mode has a bar of its own (the profile's `move_bar_return`): spliced
-  /// into the menu-bar routine's own copy of the bar once the routine has
-  /// cut that copy into its groups. `menu_groups_parsed` is the
-  /// instruction after that cut, in the menu overlay; `menu_group_table`
-  /// is how far below the routine's `BP` the table of groups begins: the
-  /// group count at `BP - menu_group_table + 1`, and group `n`'s first and
-  /// last character at `BP - menu_group_table + 2n` and the byte after.
-  /// Zero on a program whose bar has room, where `Notes` goes into the
-  /// loop's own string before the call.
+  /// **`Notes` in another command's place on the party's bar** (#609), on
+  /// a program whose bar has no room for a word more and is not a string
+  /// in the data segment: written into the menu-bar routine's own copy of
+  /// the bar once the routine has cut that copy into its groups, over the
+  /// group whose command letter is `bar_word_replaced`.
+  /// `menu_groups_parsed` is the instruction after that cut, in the menu
+  /// overlay; `menu_group_table` is how far below the routine's `BP` the
+  /// table of groups begins: the group count at
+  /// `BP - menu_group_table + 1`, and group `n`'s first and last character
+  /// at `BP - menu_group_table + 2n` and the byte after. Zero on a program
+  /// whose bar has room, where `Notes` goes into the loop's own string
+  /// before the call.
   std::uint16_t menu_groups_parsed;
   std::uint16_t menu_group_table;
+  std::uint8_t bar_word_replaced;
+
+  /// The byte that says the program's overhead view is up, which the
+  /// replaced command toggles: while it is set the bar is left the
+  /// program's, so a seam switched on with the view up leaves the player
+  /// the command that takes it down.
+  std::uint16_t data_overhead_view;
 
   /// On a program whose key read first polls itself and then reads
   /// whatever the poll said (#609): the instruction after that poll's call,
@@ -422,9 +424,10 @@ constexpr journal_facts pool_of_radiance_journal{
     .outer_frame_entry = 0,
     .string_takes_background = false,
     .outer_frame_takes_word = false,
-    .notes_key_at_bar = false,
     .menu_groups_parsed = 0,
     .menu_group_table = 0,
+    .bar_word_replaced = 0,
+    .data_overhead_view = 0,
     .read_poll_return = 0};
 
 /// Curse of the Azure Bonds (#555). Its narration goes through a message
@@ -460,9 +463,10 @@ constexpr journal_facts curse_journal{.profile = curse_of_the_azure_bonds,
                                       .outer_frame_entry = 0x1330,
                                       .string_takes_background = true,
                                       .outer_frame_takes_word = false,
-                                      .notes_key_at_bar = false,
                                       .menu_groups_parsed = 0,
                                       .menu_group_table = 0,
+                                      .bar_word_replaced = 0,
+                                      .data_overhead_view = 0,
                                       .read_poll_return = 0};
 
 /// Curse's overlay 25, the party summary drawer and the screen composer
@@ -483,23 +487,22 @@ constexpr std::uint16_t curse_roster_drawn_return = 0x092E;
 /// by the script's print command, so a citation goes on the log as it does
 /// on Curse, and from there into the slot's sidecar.
 ///
-/// **`Notes` does not fit on the party's bar**: thirty-eight characters,
-/// a constant of the adventuring loop's own module copied to a stack
-/// temporary of exactly its length before every call, and the menu-bar
-/// routine keeps forty. So the reader has two ways in here, both decided
-/// by the maintainer (#609):
-///
-///   * **`N` at the party's bar**, with no word on the bar
-///     (`notes_key_at_bar`). `N` is none of that bar's commands, so with
-///     the seam off the routine reads it and waits for another key.
-///   * **`Notes` after `Exit` on the move mode's bar**, spliced into the
-///     menu-bar routine's own forty-character copy of that bar once the
-///     routine has cut it into groups, and the group added to the
-///     routine's table **without counting it** (`menu_groups_parsed`). The
-///     count is what decides whether `Left` and `Right` move the lit word
-///     or go back to the loop, which turns the party with them; a bar of
-///     one group hands them back, so the move mode still turns. `N` finds
-///     the group by its letter, as a command's letter does.
+/// **`Notes` does not fit on the party's bar beside the program's seven**:
+/// thirty-eight characters, a constant of the adventuring loop's own
+/// module copied to a stack temporary of exactly its length before every
+/// call, and the menu-bar routine keeps forty. So **`Notes` takes `Area`'s
+/// place**, decided by the maintainer (#609): in the menu-bar routine's
+/// own forty-character copy of that bar, once the routine has cut it into
+/// groups (`menu_groups_parsed`), the second group's word becomes `Notes`
+/// and every group after it begins and ends one character on. The count
+/// of groups and their numbering are the program's, so the highlight
+/// means the same word on both bars but for that one. `A` is then none of
+/// the bar's commands, and the overhead view it toggled is not reachable
+/// with this seam on, as it is not under the first two programs' move
+/// mode (`seam_move_mode.cpp`); the automap is the overhead view. With
+/// that view already up (`data_overhead_view`, the byte `A` toggles) the
+/// bar is left the program's. The move mode's bar, `Exit`, is the
+/// program's.
 ///
 /// The outer frame is Curse's, at image `0x19D0` (`019D:0000`), clearing
 /// rows 1 to `0x16` and columns 1 to `0x26`, and takes one word it never
@@ -514,9 +517,10 @@ constexpr journal_facts secret_journal{.profile = secret_of_the_silver_blades,
                                        .outer_frame_entry = 0x19D0,
                                        .string_takes_background = true,
                                        .outer_frame_takes_word = true,
-                                       .notes_key_at_bar = true,
                                        .menu_groups_parsed = 0x0426,
                                        .menu_group_table = 0x93,
+                                       .bar_word_replaced = 'A',
+                                       .data_overhead_view = 0x89D6,
                                        .read_poll_return = 0x7144};
 
 /// Secret's overlay 27 (the profile's `summary_overlay`): the roster
@@ -878,21 +882,16 @@ constexpr std::uint8_t notes_key_ascii = 'N';
 constexpr unsigned word_spliced_segment = 0;
 constexpr unsigned word_spliced_bar = 1;
 
-/// On a program that splices `Notes` into the menu-bar routine's own copy
-/// of the move mode's bar (`menu_groups_parsed`): non-zero from the splice
-/// to that call's return, which is what says the `N` it answers is this
+/// On a program that writes `Notes` into the menu-bar routine's own copy
+/// of the party's bar (`menu_groups_parsed`): non-zero from the write to
+/// that call's return, which is what says the `N` it answers is this
 /// seam's. Nothing of the program's is held: the copy is the routine's own
 /// and goes with its frame.
-constexpr unsigned word_move_spliced = 2;
+constexpr unsigned word_copy_spliced = 2;
 
 /// The most groups the menu-bar routine's table has room for: forty bytes,
 /// two to a group.
 constexpr std::uint8_t menu_most_groups = 20;
-
-/// How many of the program's frames are climbed looking for the party's
-/// bar's call (`inside_the_partys_bar()`): the menu-bar routine's frame is
-/// the second above a key point, under the key routine's own wrapper.
-constexpr unsigned bar_frames_walked = 8;
 
 // ---------------------------------------------------------------------------
 // Reading the machine
@@ -1880,81 +1879,6 @@ enum class claimable : std::uint8_t {
       static_cast<std::uint16_t>(f.profile.adventure_overlay.load_segment_at));
 }
 
-/// Whether the routine running is the adventuring loop's call into the
-/// menu-bar routine with the party's own bar, read off the program's
-/// frames (#609): each routine keeps its caller's `BP` at `[BP]` and its
-/// far return above it, and the key routines are reached from the menu-bar
-/// routine through a wrapper of their own, so a key point is two frames
-/// under it. A frame whose far return is the loop's, just past that call,
-/// in the segment the manager's word says the loop is at, says yes; a chain
-/// that runs out or does not climb says no. The automap reads the same
-/// chain when it is switched on at a bar already up (#628).
-[[nodiscard]] bool inside_the_partys_bar(const journal_facts& f,
-                                         cpu::processor& cpu,
-                                         const seam_context& ctx) {
-  const std::uint16_t adventure = adventure_segment(f, cpu, ctx);
-  if (adventure == 0 || f.profile.view_bar_return == 0) {
-    return false;
-  }
-  const cpu::registers& regs = cpu.regs();
-  const std::uint16_t ss = regs[cpu::sreg::ss];
-  std::uint16_t bp = regs[cpu::reg16::bp];
-  for (unsigned frame = 0; frame < bar_frames_walked && bp != 0; ++frame) {
-    if (cpu.read_word(ss, at(bp, 4)) == adventure &&
-        cpu.read_word(ss, at(bp, 2)) == f.profile.view_bar_return) {
-      return true;
-    }
-    const std::uint16_t caller = cpu.read_word(ss, bp);
-    if (caller <= bp) {
-      return false;
-    }
-    bp = caller;
-  }
-  return false;
-}
-
-/// **`N` at the party's bar** (`notes_key_at_bar`, #609): take it out of
-/// the ring and open the log, on a program whose party's bar has no room
-/// for the word. True when it was taken.
-///
-/// Only with the reader down, only `N` (either case: the routine upper-cases
-/// what it reads), never while the program's pushback slot is armed, and
-/// only inside the loop's call with the party's bar, which is the one
-/// place the composer is a give-back that may be used (#305). `N` is none
-/// of that bar's commands, so the program had nothing to do with it.
-[[nodiscard]] bool open_on_the_key(const journal_facts& f, machine& box,
-                                   const seam_context& ctx, std::uint16_t ds) {
-  if (!f.notes_key_at_bar) {
-    return false;
-  }
-  cpu::processor& cpu = box.processor();
-  if (cpu.read_byte(ds, f.profile.data_key_pushback) != 0) {
-    return false;
-  }
-  const std::uint16_t head =
-      cpu.read_word(bda::segment, bda::keyboard_buffer_head);
-  if (head == cpu.read_word(bda::segment, bda::keyboard_buffer_tail)) {
-    return false;
-  }
-  const auto character =
-      static_cast<std::uint8_t>(cpu.read_word(bda::segment, head) & 0xFFU);
-  if (character != notes_key_ascii && character != key_next_lower) {
-    return false;
-  }
-  if (!inside_the_partys_bar(f, cpu, ctx)) {
-    return false;
-  }
-  auto next = static_cast<std::uint16_t>(head + 2U);
-  if (next >= bda::keyboard_buffer_end) {
-    next = bda::keyboard_buffer;
-  }
-  cpu.write_word(bda::segment, bda::keyboard_buffer_head, next);
-  journal_state& state = box.journal();
-  state.set_page_from_list(false);
-  state.set_reader(journal_reader_mode::listing);
-  return true;
-}
-
 /// A key taken at the poll a key read makes before it reads
 /// (`read_poll_return`, #609): that read is about to wait inside the BIOS
 /// for a key the ring no longer has, so it is handed the ignorable one now,
@@ -2901,9 +2825,9 @@ void give_the_rows_the_bar(journal_state& state) {
                                bool& claimed) {
   journal_state& state = box.journal();
   if (state.reader() == journal_reader_mode::closed) {
-    // With the reader down nothing is claimed but `N` at the party's bar,
-    // and that only on a program whose bar has no room for the word.
-    claimed = open_on_the_key(f, box, ctx, ds);
+    // With the reader down no key is this seam's: `Notes` is a command on
+    // the party's own bar, and the routine answers its letter.
+    claimed = false;
     return false;
   }
   std::uint16_t key = 0;
@@ -3470,28 +3394,32 @@ void switched_off(machine& box, seam_context& ctx) {
 }
 
 /// The menu-bar routine has cut its own copy of the bar it was handed into
-/// groups (`menu_groups_parsed`, #609): on the move mode's bar, put
-/// `Notes` after its last word and its group in the routine's table, and
-/// leave the routine's count of groups as the program made it.
+/// groups (`menu_groups_parsed`, #609): on the party's bar, write `Notes`
+/// over the word of the group whose command letter is `bar_word_replaced`,
+/// move what follows it along, and tell the routine's table where each
+/// group now begins and ends. The count of groups is the program's.
 ///
 /// **Whose bar it is** is the routine's far return, two words above its
-/// `BP`: the loop's move-mode call (`move_bar_return`) in the segment the
-/// manager's word says the loop is at. Anybody else's bar is left alone,
-/// quietly, because this point is reached for every bar there is.
+/// `BP`: the loop's call with the party's bar (`view_bar_return`) in the
+/// segment the manager's word says the loop is at. Anybody else's bar is
+/// left alone, quietly, because this point is reached for every bar there
+/// is, the move mode's among them.
 ///
 /// **Into the routine's copy, not the loop's string**: the loop's is a
 /// stack temporary of exactly its own length, and the routine's has room
 /// for forty. The copy is the routine's own and goes when it returns, so
 /// nothing of the program's is held, and a seam switched off while it is
-/// up leaves the running call its word and the next one none.
+/// up leaves the running call its word and the next one the program's.
 ///
-/// **The count is not changed.** The routine reads it to decide whether
-/// `Left` and `Right` move the lit word (more than one group) or go back
-/// to the loop, which turns the party; one group keeps the move mode's
-/// arrows the program's. `N` is matched by the routine's scan of every
-/// character, which then looks the group up by its first character in
-/// the table, so the group is found without being counted. The highlight
-/// is noted for the return to put back.
+/// **The same count, the same numbering**: the word goes where a word
+/// was, so the highlight's value means the same group on this bar and on
+/// the program's, and nothing has to be put back when the call returns.
+/// The routine matches a key against the bar's capitals, so `N` is
+/// answered and the replaced command's letter is none of the bar's.
+///
+/// **Not while the overhead view is up** (`data_overhead_view`): the
+/// replaced command is the one that takes it down, and with this seam on
+/// from the start nothing puts it up.
 template <const journal_facts& F>
 void at_menu_groups_parsed(machine& box, seam_context& ctx) {
   const journal_facts& f = F;
@@ -3506,11 +3434,13 @@ void at_menu_groups_parsed(machine& box, seam_context& ctx) {
   const std::uint16_t bp = regs[cpu::reg16::bp];
   const std::uint16_t adventure = adventure_segment(f, cpu, ctx);
   if (adventure == 0 || cpu.read_word(ss, at(bp, 4)) != adventure ||
-      cpu.read_word(ss, at(bp, 2)) != f.profile.move_bar_return) {
+      cpu.read_word(ss, at(bp, 2)) != f.profile.view_bar_return) {
     return;
   }
-  journal_state& state = box.journal();
-  state.set_bar_live(true);
+  box.journal().set_bar_live(true);
+  if (cpu.read_byte(ds, f.data_overhead_view) != 0) {
+    return;
+  }
   const auto bar = static_cast<std::uint16_t>(bp - f.profile.menu_local_bar);
   const auto table = static_cast<std::uint16_t>(bp - f.menu_group_table);
   const std::uint8_t length = cpu.read_byte(ss, bar);
@@ -3518,35 +3448,74 @@ void at_menu_groups_parsed(machine& box, seam_context& ctx) {
   if (find_notes(cpu, ss, bar, length) != 0) {
     return;  // offered again: already there
   }
-  if (length == 0 || length + notes_item_length > f.profile.menu_bar_capacity ||
-      groups == 0 || groups >= menu_most_groups) {
+  if (length == 0 || length > f.profile.menu_bar_capacity || groups == 0 ||
+      groups > menu_most_groups) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
-  state.note_bar_highlight(cpu.read_byte(ds, f.profile.data_bar_highlight));
-  for (unsigned nth = 0; nth < notes_item_length; ++nth) {
-    cpu.write_byte(ss, at(bar, static_cast<std::uint16_t>(length + 1U + nth)),
-                   notes_item[nth]);
+
+  // The group the word goes over: the one that begins with the replaced
+  // command's letter. A bar without it is not the bar the facts describe.
+  unsigned nth = 0;
+  std::uint8_t first = 0;
+  std::uint8_t last = 0;
+  for (unsigned group = 1; group <= groups && nth == 0; ++group) {
+    first =
+        cpu.read_byte(ss, at(table, static_cast<std::uint16_t>(2U * group)));
+    last = cpu.read_byte(
+        ss, at(table, static_cast<std::uint16_t>((2U * group) + 1U)));
+    if (first != 0 && first <= last && last <= length &&
+        cpu.read_byte(ss, at(bar, first)) == f.bar_word_replaced) {
+      nth = group;
+    }
   }
-  cpu.write_byte(ss, bar,
-                 static_cast<std::uint8_t>(length + notes_item_length));
-  const auto group = static_cast<std::uint16_t>(2U * (groups + 1U));
-  cpu.write_byte(ss, at(table, group), static_cast<std::uint8_t>(length + 2U));
-  cpu.write_byte(ss, at(table, static_cast<std::uint16_t>(group + 1U)),
-                 static_cast<std::uint8_t>(length + notes_item_length));
-  ctx.set_scratch(word_move_spliced, 1);
+  const unsigned word = notes_item_length - 1U;  // without its separator
+  const unsigned was = nth == 0 ? 0U : (last - first) + 1U;
+  if (nth == 0 || was > word ||
+      length + (word - was) > f.profile.menu_bar_capacity) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  const unsigned grown = word - was;
+
+  // What follows the word moves along, last character first; then the
+  // word, the length, this group's end and every later group's two ends.
+  for (unsigned from = length; from > last; --from) {
+    cpu.write_byte(
+        ss, at(bar, static_cast<std::uint16_t>(from + grown)),
+        cpu.read_byte(ss, at(bar, static_cast<std::uint16_t>(from))));
+  }
+  for (unsigned put = 0; put < word; ++put) {
+    cpu.write_byte(ss, at(bar, static_cast<std::uint16_t>(first + put)),
+                   notes_item[put + 1U]);
+  }
+  cpu.write_byte(ss, bar, static_cast<std::uint8_t>(length + grown));
+  cpu.write_byte(ss, at(table, static_cast<std::uint16_t>((2U * nth) + 1U)),
+                 static_cast<std::uint8_t>(last + grown));
+  for (unsigned group = nth + 1U; group <= groups; ++group) {
+    for (const unsigned end : {2U * group, (2U * group) + 1U}) {
+      const auto where = at(table, static_cast<std::uint16_t>(end));
+      cpu.write_byte(
+          ss, where,
+          static_cast<std::uint8_t>(cpu.read_byte(ss, where) + grown));
+    }
+  }
+  ctx.set_scratch(word_copy_spliced, 1);
 }
 
-/// The move mode's bar has come back (#609): if the routine answered this
-/// seam's `N`, put the highlight back where the routine found it and open
-/// the log. Any other answer is the loop's.
+/// The party's bar has come back (`view_bar_return`, #609): if the routine
+/// answered this seam's `N`, open the log. Any other answer is the loop's,
+/// and so is this one once the log is open: the loop compares the letter
+/// with its own commands, matches none and goes round. Nothing is written
+/// to the machine here; the highlight stays on the word chosen, as the
+/// program leaves it on a command that keeps the party at the bar.
 template <const journal_facts& F>
-void at_move_bar_after(machine& box, seam_context& ctx) {
+void at_copy_bar_after(machine& box, seam_context& ctx) {
   const journal_facts& f = F;
   journal_state& state = box.journal();
   state.set_bar_live(false);
-  const bool was_spliced = ctx.scratch(word_move_spliced) != 0;
-  ctx.set_scratch(word_move_spliced, 0);
+  const bool was_spliced = ctx.scratch(word_copy_spliced) != 0;
+  ctx.set_scratch(word_copy_spliced, 0);
   cpu::processor& cpu = box.processor();
   const std::uint16_t ds = data_segment(f, cpu, ctx);
   if (ds == 0 || !was_spliced) {
@@ -3559,10 +3528,6 @@ void at_move_bar_after(machine& box, seam_context& ctx) {
   if (out_flag != 0 || regs.get(cpu::reg8::al) != notes_key_ascii) {
     return;
   }
-  if (state.bar_highlight_known()) {
-    cpu.write_byte(ds, f.profile.data_bar_highlight, state.bar_highlight());
-  }
-  state.forget_bar_highlight();
   if (state.reader() != journal_reader_mode::closed) {
     return;
   }
@@ -3657,11 +3622,11 @@ constexpr std::array<seam_point, 8> curse_journal_points{
       .run = &at_view_bar_after<curse_journal>}}};
 
 /// On Secret of the Silver Blades, Curse's first six with the roster's
-/// one-row redraw beside its drawer, and two of this program's own for the
-/// move mode's `Notes`: the menu-bar routine once it has cut its copy of
-/// the bar into groups, and the loop's move-mode call's return. There is
-/// no point at the party's bar's call: `N` there is taken at the key
-/// points, by the program's frames (`secret_journal`).
+/// one-row redraw beside its drawer, and two for `Notes` on the party's
+/// bar: the menu-bar routine once it has cut its copy of the bar into
+/// groups, and the loop's call's return. There is no point at that call
+/// itself: the bar it hands over has no room, and the routine's copy has
+/// (`secret_journal`).
 constexpr std::array<seam_point, 9> secret_journal_points{
     {{.module = resident_image,
       .offset = secret_of_the_silver_blades.key_pending_entry,
@@ -3688,8 +3653,8 @@ constexpr std::array<seam_point, 9> secret_journal_points{
       .offset = secret_journal.menu_groups_parsed,
       .run = &at_menu_groups_parsed<secret_journal>},
      {.module = secret_of_the_silver_blades.adventure_overlay,
-      .offset = secret_of_the_silver_blades.move_bar_return,
-      .run = &at_move_bar_after<secret_journal>}}};
+      .offset = secret_of_the_silver_blades.view_bar_return,
+      .run = &at_copy_bar_after<secret_journal>}}};
 
 /// The points on every program but the baseline, whose points are the
 /// definition's own (seam.h, schema 9).
