@@ -408,7 +408,24 @@ roster drawer is the first two games' routine, and the party menu's list
   routine throws away. The keypad's digits (their own scan codes) and
   every other caller are left alone, so at the adventuring bar, camp and
   the shops the number row is the program's. The one-row routine draws
-  the number again and the name two columns right, as the drawer does.
+  the number again and the name two columns right, as the drawer does,
+  once the list has been drawn whole with the seam on (below).
+- **Switched on or off with the roster up** (#656). The one-row routine
+  draws over the row without clearing it, so a row drawn in one layout
+  over a list in the other leaves both on the screen: the old first letter
+  between the new number and the name, `66` for an armour class of `6`.
+  **Switched on**, the rows stay unnumbered until the drawer draws the
+  whole list again, heading first (out of Modify, a sheet or any screen
+  back to the party menu): driven, slot A, the seam on at `PICK
+  CHARACTER`, then `Down` and `Up`, the two rows the picker drew again are
+  the program's; `Return` into Modify and `E` out of it, and the list is
+  numbered, and the picker's `Down` after that draws a numbered row over a
+  numbered list. **Switched off** with the numbered list up, the picker's
+  next step still lays the program's unnumbered row over a numbered one
+  (`GUY DE VALOIS S`, `PAINENE`, `66`) until the next whole draw. Putting
+  the list back at the switch-off would mean drawing the roster, which a
+  stop, at no known instruction, cannot ask the program to do; that is not
+  done.
 - **What the piece takes from the program here**: at `PICK CHARACTER`
   only, the number row's `2` and `8` (the member after and before), `4`
   and `6` (the bar's `SELECT` and `EXIT`) and `1`, `3`, `5`, `7` (the first
@@ -1476,6 +1493,18 @@ same loop serves. Its Up and Down are the menu cursor's.
   moves**: the hit points and their heading stay. **Beside the viewport the
   list is the program's own**: no number, no name moved or cut, the
   armour class and the heading where the program draws them.
+- **From the whole list on** (#656). The numbers start at the first draw
+  of the whole list after the seam comes on: the heading's point notes it
+  in the seam's word 10 (`hero_keys_numbered_scratch`), and the row and
+  armour class points leave a row the program's until then. A seam
+  switched on part-way through a draw, or with the list up, never lays a
+  numbered row over an unnumbered list. Here the drawer always draws the
+  whole list, clearing each row, so a switch either way is one layout at
+  any moment: driven at the main menu with one member added, the seam on
+  and `End`, off and `End`, the list numbered and then unnumbered whole,
+  heading included. Curse of the Azure Bonds, slot A, the same. Secret of
+  the Silver Blades draws one row again, and is the case this is for
+  (above).
 - **Where the numbers are drawn**: the main menu's party list, driven with
   six members added. Every other party list is the program's.
 - **Why a point at the name's call and not the program's draw routines.**
@@ -1495,8 +1524,10 @@ same loop serves. Its Up and Down are the menu cursor's.
   with a font of our own, because the face seams would not reach it; the
   party-order screen, for the reason above.
 
-**State**: none: the two display points keep their one value in the drawer's
-own frame and put it back, and the key point decides from the machine.
+**State**: the two display points keep their one value in the drawer's
+own frame and put it back, and the key point decides from the machine; the
+seam's own word 10 says the list has been drawn whole since the seam came
+on, configuration that an enable starts at zero.
 **Host services**: none. **Keys**: the number row's `1` to `8` at the main
 menu.
 
@@ -1505,7 +1536,10 @@ is drawn with a member in it, so a run with the seam on is not the run with
 it off (`docs/seams.md` §8.5). `quiet-modern-controls` is a `contrast` to `quiet` and
 `quiet-all-on-sight` one to `quiet-all`. What a digit does at the main menu
 is pinned by the unit suite and the stand-in programs. Off, the engine is
-not consulted (`docs/seams.md` §7). Unit: `SeamHeroKeys.*`; stand-ins: `hero_keys_probe_off`,
+not consulted (`docs/seams.md` §7). Unit: `SeamHeroKeys.*` (#656:
+`ARowDrawnBeforeTheWholeRosterSinceTheSeamCameOnIsThePrograms`,
+`SwitchedOffAndOnItWaitsForTheWholeRosterAgain`,
+`SeamModernControlsOnSecret.SwitchedOn*`); stand-ins: `hero_keys_probe_off`,
 `hero_keys_probe_on`.
 
 ## The selection block (#453, #483)

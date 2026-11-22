@@ -389,6 +389,13 @@ struct rig {
                 static_cast<std::uint16_t>(drawer_bp - local_column));
   }
 
+  /// The drawer has begun the whole roster at the main menu's column,
+  /// heading first: the rows are numbered from here (#656).
+  void roster_drawn_whole() const {
+    lay_heading(0x01);
+    arrive_at_roster(heading_copied);
+  }
+
   /// Stand on a roster point with the stack where it was, and step.
   void arrive_at_roster(std::uint16_t point, std::uint16_t ax = 0) const {
     const std::uint32_t at = cpu::physical_address(image_load_segment, point);
@@ -831,6 +838,7 @@ TEST(SeamHeroKeys, DeclinesAPartyItCannotRead) {
 TEST(SeamHeroKeys, TheNumberIsDrawnBeforeTheNameMovesRight) {
   const rig r;
   r.arm();
+  r.roster_drawn_whole();
   r.lay_party(4);
   for (unsigned member = 0; member < 4; ++member) {
     for (const std::uint8_t column : {std::uint8_t{0x01}}) {
@@ -857,6 +865,7 @@ TEST(SeamHeroKeys, TheNumberIsDrawnBeforeTheNameMovesRight) {
 TEST(SeamHeroKeys, ReachedAgainAfterTheNumberTheProgramGoesOn) {
   const rig r;
   r.arm();
+  r.roster_drawn_whole();
   r.lay_party(4);
   r.lay_row(0x01, 5, 1, 6);
   r.arrive_at_roster(row_cleared);
@@ -935,6 +944,7 @@ TEST(SeamHeroKeys, BesideTheViewportThePartyListIsTheProgramsOwn) {
 TEST(SeamHeroKeys, TheMainMenusNamesAreNeverCut) {
   const rig r;
   r.arm();
+  r.roster_drawn_whole();
   for (const std::uint8_t length : {std::uint8_t{6}, std::uint8_t{15}}) {
     const row_run run = run_a_row(r, 0x01, 4, length);
     EXPECT_EQ(run.calls.size(), 1u) << int{length};
@@ -946,6 +956,7 @@ TEST(SeamHeroKeys, TheMainMenusNamesAreNeverCut) {
 TEST(SeamHeroKeys, ANameOfNoCharactersIsNotCut) {
   const rig r;
   r.arm();
+  r.roster_drawn_whole();
   const row_run run = run_a_row(r, 0x01, 4, 0);
   EXPECT_EQ(run.calls.size(), 1u);
   EXPECT_EQ(run.final_column, 0x01);
@@ -991,6 +1002,7 @@ TEST(SeamHeroKeys, DeclinesARosterFrameTheFactsDoNotDescribe) {
 TEST(SeamHeroKeys, DrawsTheNumbersOneToEightForTheRowsFourToEleven) {
   const rig r;
   r.arm();
+  r.roster_drawn_whole();
   r.lay_party(8);
   for (std::uint8_t row = 4; row <= 11; ++row) {
     r.lay_row(0x01, row, row - 4U, 6);
@@ -1002,11 +1014,47 @@ TEST(SeamHeroKeys, DrawsTheNumbersOneToEightForTheRowsFourToEleven) {
   }
 }
 
+TEST(SeamHeroKeys,
+     ARowDrawnBeforeTheWholeRosterSinceTheSeamCameOnIsThePrograms) {
+  // #656: switched on part-way through the list, or with the list up and a
+  // routine drawing one row of it again, the row stays in the program's
+  // layout: no number, the name and the armour class where they were.
+  const rig r;
+  r.arm();
+  r.lay_party(4);
+  r.lay_row(0x01, 5, 1, 6);
+  r.arrive_at_roster(row_cleared);
+  EXPECT_EQ(r.column(), 0x01);
+  EXPECT_EQ(r.box->processor().regs()[cpu::reg16::sp], drawer_sp)
+      << "no number drawn";
+  r.arrive_at_roster(ac_column_pushed, 0x21);
+  EXPECT_EQ(r.box->processor().regs()[cpu::reg16::ax], 0x21u);
+
+  r.roster_drawn_whole();
+  r.lay_row(0x01, 5, 1, 6);
+  r.arrive_at_roster(row_cleared);
+  EXPECT_EQ(r.column(), 0x03) << "numbered from the whole draw on";
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
+}
+
+TEST(SeamHeroKeys, SwitchedOffAndOnItWaitsForTheWholeRosterAgain) {
+  const rig r;
+  r.arm();
+  r.roster_drawn_whole();
+  ASSERT_EQ(r.box->seams().disable(seam_id), seam_reason::none);
+  r.arm();
+  r.lay_party(4);
+  r.lay_row(0x01, 5, 1, 6);
+  r.arrive_at_roster(row_cleared);
+  EXPECT_EQ(r.column(), 0x01);
+}
+
 // --- The armour class and its heading, one column right ---------------------
 
 TEST(SeamHeroKeys, TheArmourClassColumnMovesOneRightAtEveryWidth) {
   const rig r;
   r.arm();
+  r.roster_drawn_whole();
   r.lay_party(4);
   // The drawer computes 0x20 for a three-character value (-10 or lower),
   // 0x21 for two and 0x22 for one, so the value ends in 0x23 at most and
@@ -1026,6 +1074,7 @@ TEST(SeamHeroKeys, TheArmourClassColumnMovesOneRightAtEveryWidth) {
 TEST(SeamHeroKeys, TheArmourClassColumnIsLeftAloneOffTheFacts) {
   const rig r;
   r.arm();
+  r.roster_drawn_whole();
   r.lay_party(4);
   // A column the drawer does not compute, a row it is not on, and a name
   // column the program is not at between rows.

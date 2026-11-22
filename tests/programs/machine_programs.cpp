@@ -3410,6 +3410,7 @@ struct hero_keys_layout {
   std::array<std::uint32_t, 6> key_offsets{};
   std::uint32_t row_cleared{};
   std::uint32_t name_drawn{};
+  std::uint32_t heading{};
 };
 
 /// One scenario's setup, then the arrival and its answers:
@@ -3541,6 +3542,20 @@ void hero_keys_row(assembler& a, std::uint8_t column, std::uint8_t row,
     // and one with six on the main menu's column.
     a.db({0xBD});
     a.dw(hero_keys_drawer_frame);  // mov bp, 3000h
+    // The whole roster begins with its heading on row two at the main
+    // menu's column, a stand-in copy of its shape at [bp-0Eh]: the rows
+    // are numbered from here (#656).
+    a.db({0xC6, 0x46, 0xFB, 0x01});  // mov byte [bp-5], 1
+    a.db({0xC6, 0x46, 0xFA, 0x02});  // mov byte [bp-6], 2
+    {
+      const std::array<std::uint8_t, 7> heading{6,   'Q', 'R', ' ',
+                                                ' ', 'S', 'T'};
+      for (std::size_t i = 0; i < heading.size(); ++i) {
+        // mov byte [bp-0Eh+i], heading[i]
+        a.db({0xC6, 0x46, static_cast<std::uint8_t>(0xF2 + i), heading[i]});
+      }
+    }
+    a.near_jump(0xE8, "heading");
     hero_keys_row(a, 0x11, 5, hero_keys_second);
     a.near_jump(0xE8, "drawer");
     a.db({0x8A, 0x46, 0xFB, 0x30, 0xE4});  // mov al, [bp-5] / xor ah, ah
@@ -3558,6 +3573,9 @@ void hero_keys_row(assembler& a, std::uint8_t column, std::uint8_t row,
     a.label("row_cleared");
     a.db({0x90});
     a.label("name_drawn");
+    a.db({0x90, 0xC3});
+    // The heading's copy made, its point, and the drawer goes on.
+    a.label("heading");
     a.db({0x90, 0xC3});
 
     // The two routines the seam calls, where the facts say they are, each
@@ -3594,6 +3612,7 @@ void hero_keys_row(assembler& a, std::uint8_t column, std::uint8_t row,
     }
     out.row_cleared = static_cast<std::uint32_t>(a.offset_of("row_cleared"));
     out.name_drawn = static_cast<std::uint32_t>(a.offset_of("name_drawn"));
+    out.heading = static_cast<std::uint32_t>(a.offset_of("heading"));
     out.file = build_exe({.initial_cs = 0,
                           .initial_ip = 0,
                           .initial_ss = 0,
@@ -3608,7 +3627,8 @@ void hero_keys_row(assembler& a, std::uint8_t column, std::uint8_t row,
 
 /// One of the `hero-keys` handlers, from the `modern-controls` definition
 /// this build ships: 0 the key point, 1 the roster's cleared row, 2 its
-/// drawn name (the piece's points begin at the table's seventh).
+/// drawn name, 4 its heading's copy (the piece's points begin at the
+/// table's seventh).
 [[nodiscard]] machine::seam_handler hero_keys_handler(std::size_t which) {
   constexpr std::size_t first = 6;
   for (const machine::seam_definition& seam : machine::all_seams()) {
@@ -5891,8 +5911,8 @@ const machine::seam_definition& hero_keys_probe_definition() {
     return std::string(hex.data(), sha256_digest::text_length);
   }();
   static const std::array<std::string_view, 1> fingerprints{fingerprint};
-  static const std::array<machine::seam_point, 8> points = [] {
-    std::array<machine::seam_point, 8> built{};
+  static const std::array<machine::seam_point, 9> points = [] {
+    std::array<machine::seam_point, 9> built{};
     for (std::size_t i = 0; i < hero_keys_probe().key_offsets.size(); ++i) {
       built[i] = {.module = machine::resident_image,
                   .offset = hero_keys_probe().key_offsets[i],
@@ -5905,6 +5925,10 @@ const machine::seam_definition& hero_keys_probe_definition() {
     built[7] = {.module = machine::resident_image,
                 .offset = hero_keys_probe().name_drawn,
                 .run = hero_keys_handler(2),
+                .inside_calls = true};
+    built[8] = {.module = machine::resident_image,
+                .offset = hero_keys_probe().heading,
+                .run = hero_keys_handler(4),
                 .inside_calls = true};
     return built;
   }();

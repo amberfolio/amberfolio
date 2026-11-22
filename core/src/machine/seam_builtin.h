@@ -142,6 +142,12 @@ inline constexpr unsigned aim_flags_scratch = 9;
 inline constexpr std::uint16_t aim_offered = 1;
 inline constexpr std::uint16_t aim_range_shown = 2;
 
+/// The seam's own word `hero-keys` notes in that the roster has been drawn
+/// whole, heading first, at the main menu's column since the seam came on:
+/// one from then, and the rows are numbered only while it is (#656). A
+/// fresh enable starts it at zero, as it does every word.
+inline constexpr unsigned hero_keys_numbered_scratch = 10;
+
 /// The up and down arrows in the pick-lists, and the selected party member
 /// at the bars where Home and End step it (seam_list_arrows.cpp, #423).
 [[nodiscard]] std::span<const seam_point> list_arrows_points() noexcept;
