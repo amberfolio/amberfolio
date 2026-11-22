@@ -171,6 +171,7 @@
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/ega.h"
 #include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/memory_map.h"
 #include "amberfolio/machine/overlay.h"
 #include "amberfolio/machine/program_profile.h"
 #include "amberfolio/machine/seam.h"
@@ -1638,6 +1639,18 @@ std::span<const seam_point> secret_select_yellow_points() noexcept {
 // goes, so a seam switched on again starts from what it draws itself.
 void take_back_selection_margins(machine& box) {
   selection_margins& margins = box.margins();
+  // The stop lands at no known instruction, perhaps between the program's
+  // read that loads the latches and the latched write after it, so the
+  // latches are put back as they were after the last write here; the
+  // registers are, by `adapter_kept`. The three points leave the latches
+  // as their last read loaded them, as they always have; putting them back
+  // there too would change the state of every run with the seam on.
+  ega* const video =
+      ega::of(box.memory().owner(std::uint32_t{first_page_segment} * 16U));
+  std::array<std::uint8_t, ega::plane_count> latched{};
+  if (video != nullptr) {
+    latched = video->latches();
+  }
   std::optional<adapter_kept> adapter;
   for (unsigned page = 0; page < selection_margins::pages; ++page) {
     if (!margins.any(page)) {
@@ -1664,6 +1677,10 @@ void take_back_selection_margins(machine& box) {
         }
       }
     }
+  }
+  adapter.reset();
+  if (video != nullptr) {
+    video->restore_latches(latched);
   }
   margins.clear();
 }

@@ -1783,10 +1783,15 @@ key and a selection, as the yellow did, by shape rather than colour.
   off, puts every margin pixel it still holds back to black, on both pages
   and only where the pixel is still this machine's colour, as a cell's
   settling does, and then drops the bookkeeping, so a seam switched on
-  again takes back nothing it painted before. The registers are read
-  first and written back after, as at the three points; the adapter's
-  latches are left holding the last byte the stop read, because loading
-  them is what a read is. **The blocks' own cells are left**: they are
+  again takes back nothing it painted before. The stop lands at whatever
+  instruction the program is at, perhaps between a read that loads the
+  adapter's latches and the latched write after it, so it leaves the
+  adapter exactly as it found it: the registers read first and written
+  back after, as at the three points, and the four latches saved before
+  its first read and put back after its last write (`ega::latches()` and
+  `ega::restore_latches()`; no bus cycle can put a latch back). The three
+  points leave the latches as their last read loaded them, as they always
+  have. **The blocks' own cells are left**: they are
   cells the program drew, through its own blitter with the rows inverted,
   and they are the program's again at its next draw of them (a bar's at
   the next key, the roster's selected member at the list's next draw).

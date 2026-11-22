@@ -1603,6 +1603,43 @@ TEST(SeamSelectYellow,
   }
 }
 
+TEST(SeamSelectYellow, SwitchedOffTheStopLeavesTheLatchesAsItFoundThem) {
+  // The switch-off falls between the program's read that loads the latches
+  // and its latched write (write mode 1): the write copies what the program
+  // read, as it would with the seam never on, though the stop read and
+  // wrote the screen in between.
+  rig r;
+  r.arm();
+  r.attach_video();
+  r.fill_cell(first_page, 5, 10, white);
+  r.lay_seams_glyph(5, 10, white, true);
+  static_cast<void>(r.store(cell_drawn, blitter_bp));
+  ASSERT_EQ(r.pixel(first_page, 84, 39), white);
+
+  // The program's source byte: half red, half green; its read in read mode
+  // 0 loads the latches with it.
+  const std::uint16_t source = rig::offset_of(10, 20, 3);
+  const std::uint16_t target = rig::offset_of(12, 20, 3);
+  r.put_pixels(first_page, source, 0xF0, red);
+  r.put_pixels(first_page, source, 0x0F, green);
+  r.gc(5, 0);
+  static_cast<void>(r.box->processor().read_byte(first_page, source));
+  const std::array<std::uint8_t, ega::plane_count> loaded = r.video->latches();
+
+  ASSERT_EQ(r.box->seams().disable(seam_id), seam_reason::none);
+  r.step_elsewhere();
+  ASSERT_EQ(r.pixel(first_page, 84, 39), black) << "it did take it back";
+  EXPECT_EQ(r.video->latches(), loaded);
+
+  // The latched write, every plane on.
+  r.gc(5, 1);
+  r.box->processor().write_byte(first_page, target, 0);
+  r.gc(5, 0);
+  for (unsigned x = 160; x < 168; ++x) {
+    EXPECT_EQ(r.pixel(first_page, x, 99), x < 164 ? red : green) << x;
+  }
+}
+
 TEST(SeamSelectYellow, SwitchedOnAgainItTakesBackNothingFromBefore) {
   // Off, the program draws white in a pixel the margin had held; on again,
   // the cell beside it drawn plain takes nothing back, because the stop let

@@ -479,6 +479,29 @@ class ega final : public device {
     return latches_;
   }
 
+  /// The four latches put back to what `latches()` gave earlier. No bus
+  /// cycle can do this (only a read loads a latch, and it loads all four
+  /// from one offset), so it is native: **what a seam's stop uses to leave
+  /// the read path as it found it** (seam.h, "A point at a moment"). A
+  /// stop runs at no known instruction, perhaps between a program's read
+  /// that loads the latches and the latched write that follows it, and
+  /// its own reads must not change what that write does (#655). Nothing
+  /// else calls it.
+  void restore_latches(
+      const std::array<std::uint8_t, plane_count>& saved) noexcept {
+    latches_ = saved;
+  }
+
+  /// `dev` if it is this card, else null: the EGA found among a machine's
+  /// devices (`memory_map::owner()` of the video window), told by the
+  /// memory window it claims, which is this class's own array. No RTTI
+  /// and no cast on a guess.
+  [[nodiscard]] static ega* of(device* dev) noexcept {
+    return dev != nullptr && dev->claimed().memory.data() == windows_.data()
+               ? static_cast<ega*>(dev)
+               : nullptr;
+  }
+
   /// The map mask's live value: which planes the next write reaches.
   [[nodiscard]] std::uint8_t map_mask() const noexcept {
     return seq_regs_[sequencer_map_mask_index] & 0x0Fu;
