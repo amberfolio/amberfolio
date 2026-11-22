@@ -1687,8 +1687,8 @@ bytes: one record, disk 1, area 16, block 16, fifteen squares;
 reads it back, the panel at `3,6 S` drawing the mayor's house. A save in
 the ruins writes it at the format's version 3, which carries the pages of
 the script's numbering (`docs/seams.md` §10): saved at camp on the
-piece the script turns (stored `12,7`, the line's `12,16`), 2,512 bytes,
-four records, and loading C draws that page at the first Tab. A page that writes
+piece the script turns (stored `12,7`, the line's `12,16`), 1,886 bytes,
+three records (the town and two pages), and loading C draws that page at the first Tab. A page that writes
 a playthrough back keeps the rows above and nothing else, so a file
 that is not a row does not survive a reload there.
 

@@ -703,6 +703,36 @@ class automap_state {
            bar_geo_ == geo;
   }
 
+  /// The map the party's own bar has come up on since the party came to it,
+  /// on every program (#651), and **kept** when another bar comes up: the
+  /// `placed` of `observe()`. A script that takes the party to another map
+  /// has the program load it and run its script, and until that script
+  /// places the party its square is the one it left, in the old map's
+  /// coordinates on the new map, often for long enough for three looks to
+  /// agree: the script prints and waits there. The program's transition
+  /// byte (`program_profile::data_in_transition`) is down by then: it is up
+  /// only between the load and the top of the script loop, and the new
+  /// map's script runs below that. The party's bar does not come up until
+  /// the script has placed the party, so once it has, the party's square is
+  /// the map's even where the script put it on the coordinates it left.
+  /// The seam forgets it the moment the party is on any other map, so a
+  /// script that takes the party away and back without the bar coming up
+  /// in between is waited out as well. Presentation state like the bar
+  /// flag: dropped by `clear()`, never serialized.
+  void set_arrived_map(std::uint8_t disk, std::uint8_t area,
+                       std::uint8_t geo) noexcept {
+    arrived_known_ = true;
+    arrived_disk_ = disk;
+    arrived_area_ = area;
+    arrived_geo_ = geo;
+  }
+  void forget_arrived_map() noexcept { arrived_known_ = false; }
+  [[nodiscard]] bool arrived_on(std::uint8_t disk, std::uint8_t area,
+                                std::uint8_t geo) const noexcept {
+    return arrived_known_ && arrived_disk_ == disk && arrived_area_ == area &&
+           arrived_geo_ == geo;
+  }
+
   /// Whether some of the panel's pixels are still on the glass around a
   /// clear that took only part of its rect (#555).
   ///
@@ -874,8 +904,8 @@ class automap_state {
   /// program's own arrival script has not placed the party yet, and the
   /// position words still hold the cell it left. Revealing then paints
   /// cells on the new map that nobody has been to. So the seam waits for
-  /// the position to stop moving before it believes it, and this is what
-  /// it believes.
+  /// the position to leave that cell and stop moving before it believes
+  /// it (`observe()`), and this is what it believes.
   [[nodiscard]] bool settled() const noexcept { return settled_; }
   [[nodiscard]] automap_map_kind settled_kind() const noexcept {
     return settled_kind_;
@@ -919,8 +949,20 @@ class automap_state {
   /// line prints, and a mark goes on the page that square is on. A step
   /// from one page to the next is not a map change: the identity is the
   /// area's, and the page is where on it.
+  ///
+  /// **After a map change the square the party left is not a square of the
+  /// new map** (#651). A script that takes the party elsewhere has the
+  /// program load the new map and run its script, and the script may print
+  /// and wait before it places the party: the square is the one left, in
+  /// the last map's coordinates, still long enough for any number of looks
+  /// to agree. So a look at that square is not counted until the party has
+  /// moved off it or `placed` says the party's own bar has come up on this
+  /// map since the party came to it (`set_arrived_map`), which it does not
+  /// before the script is done. A position the script walks the party on
+  /// from there is believed as it always was.
   bool observe(automap_map_kind kind, std::uint8_t disk, std::uint8_t area,
-               std::uint8_t geo, std::uint8_t x, std::uint8_t y) noexcept;
+               std::uint8_t geo, std::uint8_t x, std::uint8_t y,
+               bool placed = true) noexcept;
 
   bool observe(std::uint8_t disk, std::uint8_t area, std::uint8_t geo,
                std::uint8_t x, std::uint8_t y) noexcept {
@@ -1027,6 +1069,10 @@ class automap_state {
   std::uint8_t bar_disk_{};
   std::uint8_t bar_area_{};
   std::uint8_t bar_geo_{};
+  bool arrived_known_{false};
+  std::uint8_t arrived_disk_{};
+  std::uint8_t arrived_area_{};
+  std::uint8_t arrived_geo_{};
 
   bool appearance_valid_{false};
   std::uint8_t appearance_area_{};
@@ -1050,6 +1096,9 @@ class automap_state {
   std::uint8_t looking_y_{};
   unsigned looks_{0};
   bool pending_entrance_{false};
+  bool holding_{false};
+  std::uint8_t held_x_{};
+  std::uint8_t held_y_{};
 
   std::array<std::uint8_t, automap_panel_pixels> pixels_{};
   std::uint32_t drawn_signature_{0};

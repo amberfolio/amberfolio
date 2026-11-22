@@ -2151,18 +2151,25 @@ template <const automap_facts& F>
   return false;
 }
 
-/// Note which map the party's own bar is up on, on a program whose area
-/// scripts may number their squares (`automap_state::set_bar_map`), and
-/// forget it under anybody else's bar.
+/// Note which map the party's own bar is up on: the map the party has
+/// arrived on (`automap_state::set_arrived_map`), and on a program whose
+/// area scripts may number their squares the map their squares are believed
+/// on (`automap_state::set_bar_map`), which is forgotten under anybody
+/// else's bar.
 template <const automap_facts& F>
 void note_bar_map(machine& box, std::uint16_t ds) {
+  automap_state& state = box.automap();
+  sample now{};
+  const bool partys = state.at_command_bar() &&
+                      adventuring(F, box.processor(), ds) &&
+                      take_sample(F, box.processor(), ds, now);
+  if (partys) {
+    state.set_arrived_map(now.disk, now.area, now.geo);
+  }
   if (F.profile.area_shown_column == 0) {
     return;
   }
-  automap_state& state = box.automap();
-  sample now{};
-  if (state.at_command_bar() && adventuring(F, box.processor(), ds) &&
-      take_sample(F, box.processor(), ds, now)) {
+  if (partys) {
     state.set_bar_map(now.disk, now.area, now.geo);
   } else {
     state.forget_bar_map();
@@ -2255,6 +2262,14 @@ void at_key_pending(machine& box, seam_context& ctx) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
+  // Whether the party's bar has come up on this map since the party came to
+  // it, which says a script has placed the party (#651,
+  // `automap_state::set_arrived_map`). A map the party is not on is
+  // forgotten: a script may bring the party back to it as it took it away.
+  const bool placed = state.arrived_on(now.disk, now.area, now.geo);
+  if (!placed) {
+    state.forget_arrived_map();
+  }
   if (now.numbered && !state.bar_map_is(now.disk, now.area, now.geo)) {
     // A square of a script's numbering, and the party's bar has not come
     // up on this map since it changed: the numbering may be the last
@@ -2288,11 +2303,12 @@ void at_key_pending(machine& box, seam_context& ctx) {
   const std::uint8_t was_x = state.settled_x();
   const std::uint8_t was_y = state.settled_y();
   const bool settled =
-      state.observe(kind, now.disk, now.area, now.geo, now.x, now.y);
+      state.observe(kind, now.disk, now.area, now.geo, now.x, now.y, placed);
   if (!settled) {
     // The party's position is not to be believed yet — the program's own
-    // arrival script has not placed it. Nothing is revealed and nothing
-    // is drawn from it.
+    // arrival script has not placed it: it is still on the square the
+    // party left, or still moving. Nothing is revealed and nothing is drawn
+    // from it.
     return;
   }
 
