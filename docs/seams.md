@@ -1829,9 +1829,7 @@ configuration, restored by `host::restore_journal_log()`. Both hosts
 print the callout at the end of a run
 (`host-service journal-open calls=1 last=4`).
 
-**Keys**: **none at all while the reader is down** (#346), but on Secret
-of the Silver Blades, whose party's bar has no room for `Notes`: `N` at
-that bar (below). There was one,
+**Keys**: **none at all while the reader is down** (#346). There was one,
 F1, claimed on every screen with a party roster and defended on the
 grounds that a function key has no character (`keyboard.h`) and so cannot
 be a command on any of this program's bars; the argument held and the key
@@ -1911,7 +1909,7 @@ profile's (`program_profile.h`).
 | its frame: string offset, segment, the clear flag | SP+4, SP+6, SP+8 | SP+4, SP+6, SP+8 | SP+4, SP+6, SP+8 |
 | the flag is read as | a word | **a byte**: the routine compares the byte, and the script's print command pushes it as `mov al, n` and `push ax`, AH left over | a byte, as on Curse |
 | a number the script prints | the same box, flag clear | the same box, flag clear | the same box, flag clear |
-| the party's bar | two, DGROUP `0x04B6` and `0x04DF` (33 and 27 characters) | one, DGROUP `0x03D8` (33 characters); the overhead view is toggled inside the same loop and keeps it | none in the data segment: `Move Area Cast View Encamp Search Look`, 38 characters, a constant of the loop's module copied to a stack temporary of exactly its length, **with no room for `Notes`**. The move mode's bar, `Exit`, likewise |
+| the party's bar | two, DGROUP `0x04B6` and `0x04DF` (33 and 27 characters) | one, DGROUP `0x03D8` (33 characters); the overhead view is toggled inside the same loop and keeps it | none in the data segment: `Move Area Cast View Encamp Search Look`, 38 characters, a constant of the loop's module copied to a stack temporary of exactly its length, **with no room for a word more**: `Notes` takes `Area`'s place in the menu-bar routine's own copy (below). The move mode's bar, `Exit`, is left the program's |
 | its call and return; the out-parameter | overlay 14 (word `0x730`): `0x09D0`/`0x09D5` and `0x0C40`/`0x0C45`; `BP-4` | overlay 15 (word `0x9A0`): `0x0927`/`0x092C`, a far call through the menu overlay's stub entry; `BP-4` | overlay 17 (word `0xD70`): the party's bar `+0x0928`/`+0x092D`, the move mode's `+0x0ACC`/`+0x0AD1`, both through `016B:002F`; `BP-4` |
 | the highlight | DGROUP `0x6B2B` | DGROUP `0x72AE` | DGROUP `0x8A61` |
 | the frame | a frame drawer that takes the box, a style, a colour and the title, image `0x41F8`, after the region clear | **none that takes a title**: the fixed outer frame, image `0x1330` (`0133:0000`), which takes nothing, clears rows 1 to `0x16` and columns 1 to `0x26` (the reader's box) and draws the border around them; the title is a string-drawer line on row 1 at `(1 + 0x26 - length) / 2`, where a titled frame centres it | Curse's outer frame, image `0x19D0` (`019D:0000`), the same box, but **it takes one word**, which its callers push and it never reads (`retf 2`); handed `1`, as nearly all of them hand it |
@@ -1920,7 +1918,7 @@ profile's (`program_profile.h`).
 | the roster drawn | its `retf`, image `0x148A` | its `retf 4`, overlay 25 `+0x092E` (the automap's point) | its `retf 4`, overlay 27 `+0x0984`, and the `retf 6` of the one-row redraw a roster step at the bar calls, `+0x0B17` (the automap's two) |
 | the keyboard; the pushback slot | image `0xA6FD`, `0xA70F`; DGROUP `0x8501` | `0x86EB`, `0x86FD`; DGROUP `0x8CBF` | `0xBA8A`, `0xBA9C`; DGROUP `0xA6E9` |
 | the clears | `0x4047`, `0x7D3B` | `0x17FD`, `0x56E2` | `0x1EE9`, `0x5EE4` |
-| the points | ten | eight: the same in the same order, with one bar call and its return | nine: Curse's first six, the one-row redraw's return, the menu-bar routine's cut (below) and the move mode's return; none at the party's bar's call |
+| the points | ten | eight: the same in the same order, with one bar call and its return | nine: Curse's first six, the one-row redraw's return, the menu-bar routine's cut (below) and the party's bar's return; none at the party's bar's call |
 
 Each routine was read twice, from its own code and from its callers in
 the store copy's `GAME.OVR`: the string drawer's frame (the string at
@@ -1975,80 +1973,89 @@ own bar.
 **On Secret of the Silver Blades** (#609) the seam is the same reader
 with that program's facts (the table above), its row `secret_journal`.
 A citation goes on the log and from there into the slot's
-`AFSEEN<S>.DAT` (`docs/journal.md` §6a). **`Notes` does not fit on the
-party's bar**: thirty-eight characters, and the menu-bar routine keeps
-forty. So the reader has two ways in here, decided by the maintainer:
+`AFSEEN<S>.DAT` (`docs/journal.md` §6a). **The party's bar has no room
+for an eighth word**: thirty-eight characters, and the menu-bar routine
+keeps forty. So **`Notes` takes `Area`'s place**, decided by the
+maintainer: the bar reads `MOVE NOTES CAST VIEW ENCAMP SEARCH LOOK`.
 
-- **`N` at the party's bar, with no word on it.** Taken at the two key
-  points, before the routine reads it, while the program's frames say
-  the routine running is the loop's call with that bar: a far return of
-  `+0x092D` in the segment the manager's word `0xD70` names, up the chain
-  of saved `BP`s, at most eight (the key routines are reached from the
-  menu-bar routine through a wrapper of their own, so its frame is the
-  second). With the seam off `N` is none of the bar's commands: the
-  routine reads it, matches nothing and waits for another key, at the
-  party's bar and in the move mode alike (driven).
-- **`NOTES` after `EXIT` on the move mode's bar.** The menu-bar routine
-  (overlay 29, file offset 250323, 6648 bytes, word `0x16C0`, `+0x03C9`)
-  copies the bar it is handed into its frame at `BP-0x53`, forty
-  characters at most, and at `+0x0423` cuts that copy into groups, one
-  per capital: the count at `BP-0x92`, group `n`'s first and last
-  character at `BP-0x93+2n` and the byte after. At `+0x0426`, on the
-  move mode's call (far return `+0x0AD1`), the seam appends ` Notes` to
-  the copy and its group to the table, and **leaves the count at one**:
-  the count is what decides whether `Left` and `Right` step the lit word
-  or go back to the loop, which turns the party with them, so a counted
-  second group would take the move mode's turns away. The routine's
-  letter scan covers every character of the copy and looks the group up
-  by its first, so `N` is matched and answered; at the return the seam
-  reads `AL` and `BP-4` as on Curse, puts the highlight back where the
-  routine found it (the match leaves it on `2`) and opens the log.
+- **Written into the routine's copy, over the second group.** The
+  menu-bar routine (overlay 29, file offset 250323, 6648 bytes, word
+  `0x16C0`, `+0x03C9`) copies the bar it is handed into its frame at
+  `BP-0x53`, forty characters at most, and at `+0x0423` cuts that copy
+  into groups, one per capital: the count at `BP-0x92`, group `n`'s
+  first and last character at `BP-0x93+2n` and the byte after. At
+  `+0x0426`, on the loop's call with the party's bar (far return
+  `+0x092D` in the segment the manager's word `0xD70` names), the seam
+  finds the group whose first character is `A`, writes `Notes` over its
+  word, moves the rest of the copy one character along, and adds one to
+  the two ends of every later group. The routine reads the copy's length
+  after this point. **The count and the numbering are the program's**:
+  seven groups, `Notes` the second as `Area` was, so the highlight byte
+  means the same group on both bars and nothing is put back at the
+  return.
+- **Answered at the return.** The routine upper-cases the key it reads
+  and matches the copy's capitals, so `N` is answered, and Return on the
+  lit word answers it too. At `+0x092D` the seam reads `AL` and `BP-4`
+  as on Curse and opens the log; it writes nothing. The loop compares
+  the letter with its seven (`M`, `A`, `C`, `V`, `E`, `S`, `L`), matches
+  none and goes round. The highlight stays on `NOTES`, as the program
+  leaves it on `AREA`, `SEARCH` and `LOOK`.
+- **`A` is none of the bar's commands**, so the program's overhead view
+  is not reachable with this seam on, as it is not under the first two
+  programs' move mode (`docs/modern-controls.md`); the automap's panel
+  is the overhead view. The view is one byte, DGROUP `0x89D6`, which
+  the loop's `A` toggles (`+0x097E`, where the area record allows it). **With it set the bar is left the program's**, so a seam switched
+  on with the view up leaves the player the command that takes it down.
+- **The move mode's bar is the program's**, `EXIT`, and `N` there is
+  none of its commands.
 - **The key read polls before it reads** (image `0x7133`; its poll's
-  call returns to `0x7144`), as the automap found: a key the seam takes
-  at that poll would leave the read waiting inside the BIOS, so it is
-  answered with `-` at once, the answer a key taken at the read gets.
+  call returns to `0x7144`), as the automap found: a key the reader
+  takes at that poll would leave the read waiting inside the BIOS, so it
+  is answered with `-` at once, the answer a key taken at the read gets.
 - **Nothing is held, and the stop is owed nothing.** The word is in the
-  routine's own copy, which goes with its frame. Switched off at the move
-  mode's bar (a temporary local hook, frame 8,300), the running call
-  keeps `NOTES` until it returns: gone at the turn's redraw (8,525), and
-  every still from there to 10,000 is the seam-off run's. With `N`
-  pressed after the stop, the running call answers it, the loop goes
-  round, and the same.
+  routine's own copy, which goes with its frame: the call that is
+  running keeps `NOTES` until it returns and the next call is handed the
+  program's string (`JournalReaderOnSecret.SwitchedOff*`).
 - **The lit word**, with `modern-controls` on, is a white block, as the
   log's cursor row is: the selection's colour here is the program's own
   highlight's (`selection_colour`), and the block and its margin are the
   selection block's (`docs/modern-controls.md`).
 
 - **Driven** on the Steam copy, slot A (`docs/playable-secret.md` leg 1),
-  over the synthetic store and over the real one ingested from Steam's
-  PDF (`entries=72 extracted=72 recognized=72`, `pictures=19/19`, no OCR
-  engine): `N` at 8,100 opens the log over the outer frame,
+  over the synthetic store: the bar at 8,050 reads `MOVE NOTES CAST VIEW
+  ENCAMP SEARCH LOOK`, `MOVE` lit. `A` at 8,100 does nothing (`--watch
+  89D6` stays `00`; with the seam off the same key sets it to `01` and
+  `A` again clears it). `N` opens the log over the outer frame,
   `ADVENTURER'S JOURNAL` centred on its top row and `* ENTRY 37  01-01
   00:01` on its first; `Return` opens the entry, `NEXT EXIT 1/3`; `N` and
   `N` walk to the picture (`PREV EXIT 3/3`), drawn whole in the box; `E`
   is the log again and `E` closes it: the screen the program composes is
-  pixel for pixel the one before `N`. `M`: the bar reads `EXIT NOTES`,
-  `EXIT` lit as the program lights it; `N` opens the log from there, and
-  `E` or `Escape` closes it, the move mode's screen given back pixel for
-  pixel.
-  `Left`, `Right` and `Up` with `NOTES` on the bar turn and step as with
-  the seam off, the status line the same at every key. A `Down` at the
-  party's bar (the one-row redraw) and then `N` opens it. Over the
-  automap's panel: `Tab`, `N`, an entry, `E` `E`, and the panel back
-  pixel for pixel.
+  pixel for pixel the one before `N` above the bar's row, and the bar is
+  the same with `NOTES` the lit word (`--watch 8A61`: `02` from the
+  frame `N` was pressed). `Return` then opens the log again and `E`
+  closes it, the screen the same to the pixel. `M`: the bar reads `EXIT`;
+  `N` changes nothing on the screen, `Left` turns the party (3,3 S to E)
+  and `E` ends the move mode. With `modern-controls` and the automap on
+  as well: `Right` lights `NOTES`, `Return` opens the log, `Escape`
+  closes it, `Right` and `Left` step `CAST`, `NOTES`, `MOVE`, and
+  `Return` on `MOVE` gives `EXIT`. **Not driven**: the seam switched on
+  with the overhead view up (the unit suite pins it), and the reader
+  over the store ingested from a store's own journal since `Notes` moved
+  onto the bar (the reader's screens are the ones that run read).
 - **Fidelity**: on and never asked, the run is the seam-off run until the
-  move mode's bar is first drawn. `secret-boot-journal` `identical
-  secret-boot` (the box never reached, all 15 checkpoints);
-  `secret-camp-journal` `identical secret-camp` (entry 37 cited and
-  logged, `N` never pressed and no move mode: all 106, with every reader
-  point armed); `secret-town-journal` `contrast secret-town` (`NOTES` on
-  the move mode's bar, never chosen; 90 of 138 identical, divergent from
-  tick 163,085,086, `MOVE`'s frame; the walk takes the same 1,157,911,091
-  steps to the ruins); `secret-notes` `contrast secret-notes-keys` (`N`
-  at the party's bar and `NOTES` walking, entry 37 read with its picture
-  both times over `tests/visual/secret-reader-store.txt`; 89 of 132,
-  from tick 161,096,486, the first `N`). Tests: `JournalOnSecret.*`,
-  `JournalReaderOnSecret.*`.
+  party's bar is first drawn, as on the first two programs.
+  `secret-boot-journal` `identical secret-boot` (the box never reached,
+  all 15 checkpoints); `secret-camp-journal` `contrast secret-camp`
+  (entry 37 cited and logged, `NOTES` on the bar and never chosen, the
+  camp and the sheet key for key; 85 of 106 identical, divergent from
+  tick 152,744,366, the bar's first draw); `secret-town-journal`
+  `contrast secret-town` (never chosen, the move mode's bar the
+  program's; 85 of 138, from the same tick; the walk takes the same
+  1,157,911,091 steps to the ruins); `secret-notes` `contrast
+  secret-notes-keys` (`N` at the bar, entry 37 read to its picture, the
+  log again by `Return` on the lit word, then the move mode, over
+  `tests/visual/secret-reader-store.txt`; 85 of 131, from the same
+  tick). Tests: `JournalOnSecret.*`, `JournalReaderOnSecret.*`.
 
 ### The explored overlay (#179, M5-E5a to M5-E5g)
 

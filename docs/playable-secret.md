@@ -80,7 +80,7 @@ rows below, as a player reads it.
 | the adventuring bar | `1`, `3`, `5`, `7`, `9` | the first member becomes the current one |
 | the adventuring bar | `,`, `.`, `Escape` | nothing |
 | the adventuring bar | `M` | the move mode, as `Return` on `MOVE` |
-| the adventuring bar, the move mode | `N` | nothing: it is none of either bar's commands (with `journal` on it opens Notes, below) |
+| the adventuring bar, the move mode | `N` | nothing: it is none of either bar's commands (with `journal` on, `NOTES` is on the adventuring bar in `AREA`'s place, below) |
 | the move mode | `Down`; `8` and `4`, the number row's or the keypad's | turns round; as `Up` and `Left` |
 | the move mode | `Return`, `E`; `Escape`, `Home`, `End` | the bar again, `MOVE` lit; nothing |
 | camp | `Escape` | at a member's sheet, back to the camp's bar; at that bar, out of camp |
@@ -640,10 +640,11 @@ line, or presses a key to end the pause and another for the command.
 ## The journal on this program
 
 What the game cites goes on the log, and with `--save-sidecars` the log
-goes beside the slot's save. The party's bar has no room for `Notes`, so
-**`N` at the party's bar** opens the log, with no word on the bar, and
-the move mode's bar reads `EXIT NOTES`, where `N` opens it too
-(`docs/seams.md` §10). `--journal-store` names the store; the sessions
+goes beside the slot's save. The party's bar has no room for an eighth
+word, so **`NOTES` takes `AREA`'s place on it**: `MOVE NOTES CAST VIEW
+ENCAMP SEARCH LOOK`. `N`, or `Return` with the word lit, opens the log;
+`A` is then none of the bar's commands, and the move mode's bar is the
+program's (`docs/seams.md` §10). `--journal-store` names the store; the sessions
 use `tests/visual/secret-reader-store.txt`, entry 37 in this project's
 own words with a synthetic picture.
 
@@ -652,9 +653,9 @@ own words with a synthetic picture.
 | leg 2 with `--seam journal` | the seventh page of the opening, at frame 5,122, puts entry 37 on the log, unread; one `journal-seen` callout, the message box reached 39 times, and the run is leg 2's |
 | leg 1, then `E@8200 S@8500 C@8800 N@9100`, with `--seam journal --save-sidecars` | the camp's save into slot C writes `AFSEENC.DAT`, one row: entry 37, unread |
 | leg 0, then `Down@1500 Down@1560 Return@1620 C@2100`, over that disk, with the same two flags | loading C reads `AFSEENC.DAT` back (`reads=1`); four `Down`, `Return` and `D` save the party to D from the party menu, and `AFSEEND.DAT` holds the same row |
-| leg 1, then `N@8100 Return@8400 N@8700 N@9000 E@9300 E@9600`, with `--seam journal` and a store | the log at 8,150 with entry 37 unread; the entry's first page at 8,450 (`NEXT EXIT 1/3`), its second, then its picture (`PREV EXIT 3/3`); the log again, and at 9,650 the adventuring screen pixel for pixel the one at 8,050 |
-| the same run, then `M@9900 N@10200 E@10500 E@10800` | the move mode's bar `EXIT NOTES`; the log from it at 10,250; `E` gives the move mode's screen back pixel for pixel, and `E` ends the move mode |
-| leg 1, then `M@8100 Left@8400 Right@8700 Right@9000 Up@9300`, with and without the seam | the same facing and square at every key: `Left` and `Right` turn with `NOTES` on the bar |
+| leg 1, then `N@8100 Return@8400 N@8700 N@9000 E@9300 E@9600`, with `--seam journal` and a store | the log at 8,150 with entry 37 unread; the entry's first page at 8,450 (`NEXT EXIT 1/3`), its second, then its picture (`PREV EXIT 3/3`); the log again, and at 9,650 the adventuring screen pixel for pixel the one at 8,050 above the bar's row, the bar the same with `NOTES` lit |
+| the same run, then `Return@9900 E@10200 M@10500 N@10800 Left@11100 E@11400` | `Return` on the lit `NOTES` opens the log at 9,950 and `E` closes it, the screen at 10,250 the one at 9,650 to the pixel; the move mode's bar `EXIT`, where `N` changes nothing, `Left` turns the party (3,3 S to E) and `E` ends it |
+| leg 1, then `A@8100`, with `--seam journal --watch 89D6`, and without the seam | with it `89D6` stays `00` and the screen is the same; without it `A` sets it to `01`, the overhead view |
 | leg 1 with the store ingested from Steam's PDF (`--journal`) and the first row's keys | entry 37's two pages of the journal's own text and its picture |
 
 ## The copy protection
@@ -707,10 +708,10 @@ rest on the Steam copy with its shipped slots (`secret-slots`).
 | `secret-modify` | | | leg 14 |
 | `secret-modify-block` | modern-controls | `contrast secret-modify` | 5 of 53 identical, divergent from tick 11,951,486; Modify's fields white blocks |
 | `secret-boot-journal` | journal | `identical secret-boot` | the watch never reached: all 15 checkpoints |
-| `secret-camp-journal` | journal | `identical secret-camp` | entry 37 cited by the opening and logged, `N` never pressed and no move mode; the watch writes nothing the machine holds: all 106 checkpoints |
-| `secret-town-journal` | journal | `contrast secret-town` | `NOTES` on the move mode's bar, never chosen, and the walk step for step: 90 of 138 identical, divergent from tick 163,085,086, `MOVE`'s frame |
+| `secret-camp-journal` | journal | `contrast secret-camp` | entry 37 cited by the opening and logged, `NOTES` on the party's bar and never chosen: 85 of 106 identical, divergent from tick 152,744,366, the bar's first draw |
+| `secret-town-journal` | journal | `contrast secret-town` | `NOTES` on the party's bar, never chosen, the move mode's bar the program's, and the walk step for step: 85 of 138 identical, divergent from the same tick |
 | `secret-notes-keys` | | | leg 1, then the next session's keys with no seam |
-| `secret-notes` | journal, a store | `contrast secret-notes-keys` | `N` at the party's bar and `NOTES` walking, entry 37 read to its picture each time: 89 of 132 identical, divergent from tick 161,096,486 |
+| `secret-notes` | journal, a store | `contrast secret-notes-keys` | `N` at the party's bar, entry 37 read to its picture, the log again by `Return` on the lit `NOTES`, then the move mode: 85 of 131 identical, divergent from tick 152,744,366 |
 | `secret-town` | | | leg 3, to the ruins at frame 11,600 |
 | `secret-camp-automap` | automap | `identical secret-camp` | `Tab` never pressed: all 106 checkpoints |
 | `secret-town-map` | automap | `contrast secret-town` | `Tab` on `MOVE`'s frame, 8,200: 90 of 138 identical, divergent from tick 163,085,086 |

@@ -217,7 +217,7 @@ TEST(KeyCard, SecretOfTheSilverBladesShowsNoRowOfAPieceItHasNot) {
   // draws the selection as a block (a row of the bars' card), and otherwise
   // for a host's reads; the Encamp Fix is not on it at all. The
   // message pause is, and a key ends it; the automap is, on Tab; the
-  // journal is, on N at the party's bar and Notes walking (#609).
+  // journal is, Notes in Area's place on the party's bar (#609).
   std::set<std::string_view> named;
   std::set<std::string_view> where_controls;
   for (const key_page& page :
