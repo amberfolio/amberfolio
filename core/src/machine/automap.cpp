@@ -67,6 +67,10 @@ void automap_state::clear() noexcept {
   bar_disk_ = 0;
   bar_area_ = 0;
   bar_geo_ = 0;
+  arrived_known_ = false;
+  arrived_disk_ = 0;
+  arrived_area_ = 0;
+  arrived_geo_ = 0;
   unsettle();
   settled_kind_ = automap_map_kind::grid;
   appearance_valid_ = false;
@@ -382,7 +386,7 @@ bool automap_state::rect_covers_panel(std::uint8_t bottom, std::uint8_t right,
 
 bool automap_state::observe(automap_map_kind kind, std::uint8_t disk,
                             std::uint8_t area, std::uint8_t geo, std::uint8_t x,
-                            std::uint8_t y) noexcept {
+                            std::uint8_t y, bool placed) noexcept {
   if (settled_ && (kind != settled_kind_ || disk != settled_disk_ ||
                    area != settled_area_ || geo != settled_geo_)) {
     // The map changed under the party. The cell it *left* is the last one
@@ -392,6 +396,8 @@ bool automap_state::observe(automap_map_kind kind, std::uint8_t disk,
         record_at(settled_kind_, settled_disk_, settled_area_, settled_geo_,
                   settled_x_, settled_y_);
     mark(previous, settled_x_, settled_y_, automap_marker::exit);
+    const std::uint8_t left_x = settled_x_;
+    const std::uint8_t left_y = settled_y_;
     unsettle();
     // ...and wherever the party turns out to be standing when it stops
     // moving is where it came in. Only then: the *first* position this
@@ -399,12 +405,25 @@ bool automap_state::observe(automap_map_kind kind, std::uint8_t disk,
     // was switched on, which is not an arrival and must not be marked as
     // one.
     pending_entrance_ = true;
+    // The cell it left is not one of this map's until the party has moved
+    // off it or its bar has said the script is done (#651).
+    holding_ = true;
+    held_x_ = left_x;
+    held_y_ = left_y;
   }
 
   if (settled_) {
     settled_x_ = x;
     settled_y_ = y;
     return true;
+  }
+
+  if (holding_) {
+    if (!placed && x == held_x_ && y == held_y_) {
+      looks_ = 0;
+      return false;
+    }
+    holding_ = false;
   }
 
   if (looks_ > 0 && x == looking_x_ && y == looking_y_) {
@@ -449,6 +468,9 @@ void automap_state::unsettle() noexcept {
   // the party — has not arrived anywhere; only `observe()`'s own map
   // change is an arrival, and it sets this again after calling here.
   pending_entrance_ = false;
+  holding_ = false;
+  held_x_ = 0;
+  held_y_ = 0;
 }
 
 // ---------------------------------------------------------------------------

@@ -563,6 +563,41 @@ TEST(AutomapState, AStoreHoldsMoreThanAPlaythroughAndThenReusesTheOldest) {
   EXPECT_NE(state->find(1, 16, 16), nullptr);
 }
 
+TEST(AutomapState, TheCellLeftIsNotANewMapsUntilThePartyIsPlaced) {
+  // #651: a script prints and waits before it places the party, the
+  // position words holding the cell left for any number of looks.
+  automap_state state;
+  for (int i = 0; i < 3; ++i) {
+    state.observe(1, 16, 16, 3, 0);
+  }
+  ASSERT_TRUE(state.settled());
+  for (int i = 0; i < 6; ++i) {
+    EXPECT_FALSE(state.observe(automap_map_kind::grid, 1, 33, 33, 3, 0,
+                               /*placed=*/false));
+  }
+  EXPECT_EQ(state.find(1, 33, 33), nullptr);
+
+  // The script puts the party on its square: believed as any position is.
+  EXPECT_FALSE(state.observe(automap_map_kind::grid, 1, 33, 33, 1, 1, false));
+  EXPECT_FALSE(state.observe(automap_map_kind::grid, 1, 33, 33, 1, 1, false));
+  EXPECT_TRUE(state.observe(automap_map_kind::grid, 1, 33, 33, 1, 1, false));
+  const automap_record* arrived = state.find(1, 33, 33);
+  ASSERT_NE(arrived, nullptr);
+  EXPECT_EQ(automap_state::marker_at(*arrived, 1, 1), automap_marker::entrance);
+
+  // And placed on the cell left, the party's bar says so.
+  automap_state again;
+  for (int i = 0; i < 3; ++i) {
+    again.observe(1, 16, 16, 3, 0);
+  }
+  for (int i = 0; i < 3; ++i) {
+    EXPECT_FALSE(again.observe(automap_map_kind::grid, 1, 33, 33, 3, 0, false));
+  }
+  EXPECT_FALSE(again.observe(automap_map_kind::grid, 1, 33, 33, 3, 0, true));
+  EXPECT_FALSE(again.observe(automap_map_kind::grid, 1, 33, 33, 3, 0, true));
+  EXPECT_TRUE(again.observe(automap_map_kind::grid, 1, 33, 33, 3, 0, true));
+}
+
 TEST(AutomapState, TheStatusRowIsNotThePanels) {
   // The program clears its status row as the clock ticks. A panel that
   // called that "something took my cells" would flicker once a minute.
@@ -2099,6 +2134,81 @@ TEST(AutomapPanel, SomebodyElseAskingIsNotAReasonToStopExploring) {
   const automap_record* map = r.map_state().find(3, 0, 3);
   ASSERT_NE(map, nullptr);
   EXPECT_TRUE(automap_state::seen(*map, 7, 5));
+}
+
+TEST(AutomapWalk, AnArrivalIsNotBelievedOnTheSquareThePartyLeft) {
+  // A script takes the party to another map (#651): the program loads it,
+  // and its script prints and waits before it places the party, the square
+  // the one left, in the last map's coordinates, for longer than three
+  // looks. The transition byte is down by then.
+  const rig r;
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  r.poll(4);
+  r.somebody_else_asks();
+  r.put_byte(record_segment, record_geometry_block, 9);
+  r.poll(6);
+  EXPECT_EQ(r.map_state().find(3, 0, 9), nullptr)
+      << "nothing of the new map from the square the party left";
+  const automap_record* left = r.map_state().find(3, 0, 3);
+  ASSERT_NE(left, nullptr);
+  EXPECT_EQ(automap_state::marker_at(*left, 7, 5), automap_marker::exit);
+
+  // The script puts the party on its square, and the question it asks
+  // there does not stop the exploring.
+  r.put_byte(rig::dgroup(), data_party_x, 2);
+  r.put_byte(rig::dgroup(), data_party_y, 12);
+  r.poll(6);
+  const automap_record* arrived = r.map_state().find(3, 0, 9);
+  ASSERT_NE(arrived, nullptr);
+  EXPECT_TRUE(automap_state::seen(*arrived, 2, 12));
+  EXPECT_EQ(automap_state::marker_at(*arrived, 2, 12),
+            automap_marker::entrance);
+  EXPECT_EQ(automap_state::marker_at(*arrived, 7, 5), automap_marker::none);
+}
+
+TEST(AutomapWalk, AnArrivalOnTheSameSquareIsBelievedAtThePartysBar) {
+  // A script may put the party on the coordinates it left: the party's own
+  // bar coming up on the map says it is done.
+  const rig r;
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  r.poll(4);
+  r.somebody_else_asks();
+  r.put_byte(record_segment, record_geometry_block, 9);
+  r.poll(6);
+  EXPECT_EQ(r.map_state().find(3, 0, 9), nullptr);
+
+  r.put_up_the_bar(rig::dgroup(), data_menu_3d_view);
+  r.poll(4);
+  const automap_record* arrived = r.map_state().find(3, 0, 9);
+  ASSERT_NE(arrived, nullptr);
+  EXPECT_TRUE(automap_state::seen(*arrived, 7, 5));
+  EXPECT_EQ(automap_state::marker_at(*arrived, 7, 5), automap_marker::entrance);
+}
+
+TEST(AutomapWalk, AMapTheScriptTakesThePartyAwayFromAndBackToIsWaitedOut) {
+  // Away to another map, placed there, and back with no party's bar in
+  // between: the square on coming back is the other map's until it moves.
+  const rig r;
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  r.poll(4);
+  r.somebody_else_asks();
+  r.put_byte(record_segment, record_geometry_block, 9);
+  r.put_byte(rig::dgroup(), data_party_x, 12);
+  r.put_byte(rig::dgroup(), data_party_y, 9);
+  r.poll(6);
+  ASSERT_NE(r.map_state().find(3, 0, 9), nullptr);
+  r.put_byte(record_segment, record_geometry_block, 3);
+  r.poll(6);
+  const automap_record* map = r.map_state().find(3, 0, 3);
+  ASSERT_NE(map, nullptr);
+  EXPECT_FALSE(automap_state::seen(*map, 12, 9));
+
+  r.put_up_the_bar(rig::dgroup(), data_menu_3d_view);
+  r.poll(4);
+  EXPECT_TRUE(automap_state::seen(*map, 12, 9));
 }
 
 TEST(AutomapHotkey, AwayFromThePartysBarTabIsNotThisSeamsKey) {
