@@ -594,6 +594,18 @@ struct rig {
              static_cast<std::uint16_t>(bytes));
   }
 
+  /// One step of the program at no point of the seam's: a NOP in the
+  /// image, at an offset no point names.
+  void step_elsewhere() const {
+    constexpr std::uint16_t nowhere = 0x0010;
+    put_byte(image_load_segment, nowhere, 0x90);
+    box->processor().reset();
+    cpu::registers& r = box->processor().regs();
+    r[cpu::sreg::cs] = image_load_segment;
+    r.ip = nowhere;
+    box->step();
+  }
+
   std::unique_ptr<machine> box;
   std::unique_ptr<ega> video;
 };
@@ -1503,6 +1515,114 @@ TEST(SeamSelectYellow, NoMarginBesideABlockThatIsNotOnTheScreen) {
   static_cast<void>(r.store(cell_drawn, blitter_bp));
   EXPECT_EQ(r.pixel(first_page, 84, 39), black);
   EXPECT_EQ(r.pixel(first_page, 88, 44), black);
+}
+
+// --- Switched off with a margin on the screen (#655) --------------------------
+//
+// The program never draws in most of a margin's pixels, so the seam's stop
+// takes them back when it is switched off: on both pages, only where they
+// are still this machine's, before the program's next instruction.
+
+TEST(SeamSelectYellow, SwitchedOffTheMarginGoesOnBothPagesBeforeTheNextStep) {
+  rig r;
+  r.arm();
+  r.attach_video();
+  for (const std::uint16_t page : {first_page, second_page}) {
+    r.fill_cell(page, 5, 10, white);
+  }
+  r.put_pixels(first_page, rig::offset_of(4, 10, 7), 0x10, green);
+  r.lay_seams_glyph(5, 10, white, true);
+  static_cast<void>(r.store(cell_drawn, blitter_bp));
+  ASSERT_EQ(r.pixel(second_page, 84, 39), white);
+  ASSERT_EQ(r.pixel(second_page, 88, 44), white);
+
+  ASSERT_EQ(r.box->seams().disable(seam_id), seam_reason::none);
+  r.step_elsewhere();
+  for (const std::uint16_t page : {first_page, second_page}) {
+    for (unsigned x = 80; x < 88; ++x) {
+      if (page == first_page && x == 83) {
+        EXPECT_EQ(r.pixel(page, x, 39), green) << "the program's descender";
+        continue;
+      }
+      EXPECT_EQ(r.pixel(page, x, 39), black) << page << " top " << x;
+    }
+    for (unsigned y = 39; y < 48; ++y) {
+      EXPECT_EQ(r.pixel(page, 88, y), black) << page << " right " << y;
+    }
+    EXPECT_EQ(r.pixel(page, 80, 40), white)
+        << "the block's own cell is the program's, drawn again at its next "
+           "draw";
+  }
+  EXPECT_FALSE(r.box->margins().any(0));
+  EXPECT_FALSE(r.box->margins().any(1));
+}
+
+TEST(SeamSelectYellow, SwitchedOffAMarginPixelTheProgramDrewOverIsLeftAlone) {
+  rig r;
+  r.arm();
+  r.attach_video();
+  r.fill_cell(first_page, 5, 10, white);
+  r.lay_seams_glyph(5, 10, white, true);
+  static_cast<void>(r.store(cell_drawn, blitter_bp));
+  // The program draws over two of the top margin's pixels, in its own
+  // colour, at no point the seam settles at.
+  r.put_pixels(first_page, rig::offset_of(4, 10, 7), 0x0C, red);
+
+  ASSERT_EQ(r.box->seams().disable(seam_id), seam_reason::none);
+  r.step_elsewhere();
+  for (unsigned x = 80; x < 88; ++x) {
+    EXPECT_EQ(r.pixel(first_page, x, 39), x == 84 || x == 85 ? red : black)
+        << x;
+  }
+}
+
+TEST(SeamSelectYellow,
+     SwitchedOffTheStopLeavesTheAdaptersRegistersAsItFoundThem) {
+  rig r;
+  r.arm();
+  r.attach_video();
+  r.fill_cell(first_page, 5, 10, white);
+  r.lay_seams_glyph(5, 10, white, true);
+  static_cast<void>(r.store(cell_drawn, blitter_bp));
+  // Whatever the program is in the middle of: a write mode, a bit mask and
+  // the sequencer's index of its own.
+  r.gc(5, 0x02);
+  r.gc(8, 0x3C);
+  r.box->write_port8(ega::sequencer_index_port, 4);
+  r.box->write_port8(ega::graphics_index_port, 3);
+
+  ASSERT_EQ(r.box->seams().disable(seam_id), seam_reason::none);
+  r.step_elsewhere();
+  ASSERT_EQ(r.pixel(first_page, 84, 39), black) << "it did take it back";
+  EXPECT_EQ(r.box->read_port8(ega::graphics_index_port), 3);
+  EXPECT_EQ(r.box->read_port8(ega::sequencer_index_port), 4);
+  for (const auto& [index, value] :
+       {std::pair<std::uint8_t, std::uint8_t>{5, 0x02}, {7, 0x0F}, {8, 0x3C}}) {
+    r.box->write_port8(ega::graphics_index_port, index);
+    EXPECT_EQ(r.box->read_port8(ega::graphics_data_port), value) << +index;
+  }
+}
+
+TEST(SeamSelectYellow, SwitchedOnAgainItTakesBackNothingFromBefore) {
+  // Off, the program draws white in a pixel the margin had held; on again,
+  // the cell beside it drawn plain takes nothing back, because the stop let
+  // go of every pixel it had.
+  rig r;
+  r.arm();
+  r.attach_video();
+  r.fill_cell(first_page, 5, 10, white);
+  r.lay_seams_glyph(5, 10, white, true);
+  static_cast<void>(r.store(cell_drawn, blitter_bp));
+  ASSERT_EQ(r.box->seams().disable(seam_id), seam_reason::none);
+  r.step_elsewhere();
+  r.put_pixels(first_page, rig::offset_of(4, 10, 7), 0xFF, white);
+
+  r.arm();
+  r.lay_seams_glyph(5, 10, white, false);
+  static_cast<void>(r.store(cell_drawn, blitter_bp));
+  for (unsigned x = 80; x < 88; ++x) {
+    EXPECT_EQ(r.pixel(first_page, x, 39), white) << x;
+  }
 }
 
 }  // namespace

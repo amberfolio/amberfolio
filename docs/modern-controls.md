@@ -1774,6 +1774,38 @@ key and a selection, as the yellow did, by shape rather than colour.
   (`screen_text.h`). Chosen from mock-ups of the block grown over anything
   and over black only, which looked the same: the frame's chain under a bar
   has 16 non-black pixels in its bottom row.
+- **Switched off with a block on the screen** (#655). Most of the margin
+  lies where the program never draws: the frame's black row above a bar,
+  the column right of the roster's names. So the seam says it holds
+  something (`seam_context::hold`, `docs/seams.md` §3b) whenever a page
+  has a block or a margin pixel in `selection_margins`, and its stop
+  (`take_back_selection_margins`), at the step after the seam is switched
+  off, puts every margin pixel it still holds back to black, on both pages
+  and only where the pixel is still this machine's colour, as a cell's
+  settling does, and then drops the bookkeeping, so a seam switched on
+  again takes back nothing it painted before. The registers are read
+  first and written back after, as at the three points; the adapter's
+  latches are left holding the last byte the stop read, because loading
+  them is what a read is. **The blocks' own cells are left**: they are
+  cells the program drew, through its own blitter with the rows inverted,
+  and they are the program's again at its next draw of them (a bar's at
+  the next key, the roster's selected member at the list's next draw).
+  **The main menu's cursor row** (`menu-cursor`, Pool of Radiance and
+  Curse of the Azure Bonds) is the one block the program did not ask for:
+  the seam drew it through the program's string routine, and the program
+  draws that row again only when it draws the menu anew, so it stays until
+  then. Driven, the seam switched off between frames as the panel does it,
+  and each run read against the same keys with the seam never on: on
+  Secret of the Silver Blades, leg 1 with `Right@7800 Left@7900`, off at
+  frame 8,000 with `MOVE` lit, then `Down Up`, `M` and the archway's walk
+  to the Well of Knowledge, every still from 8,100 (the bar's next draw)
+  to 10,650 is the seam-off run's; on Pool of Radiance, slot A of the
+  shipped slots loaded, off at 8,400 and `End` at 8,600, every still from
+  8,650; on Curse of the Azure Bonds, slot A loaded, on at 3,300, `End`,
+  off at 3,500, `End` and `B`, the margin gone from 3,550 and the menu's
+  cursor row the only difference until `B` draws the screen anew. Without
+  the stop the bar's top margin (one white row, `y` 191) and the roster
+  block's top row and right column stayed to the end of each run.
 - **Who else asks.** The `menu-cursor` piece draws a row of its own in the
   selection's colour, with a white key. The journal's Notes list draws a cursor row of
   its own and its reader's bars a highlight, both in the program's bright
@@ -1823,8 +1855,8 @@ key and a selection, as the yellow did, by shape rather than colour.
   (packed bars have no room for one, and it would move every word).
 
 **State**: the margin's bookkeeping, `box.margins()` (`selection_margin.h`):
-observation, which `reset()` drops, the serialization never sees and a replay
-rebuilds. **Host services**: none. **Keys**: none.
+observation, which `reset()` and the seam's stop drop, the serialization
+never sees and a replay rebuilds. **Host services**: none. **Keys**: none.
 
 **Fidelity**: seen the first time a highlight or a selected member is drawn,
 so a run with the seam on is not the run with it off (`docs/seams.md` §8.5), as with the
@@ -1837,7 +1869,8 @@ yellow (`bar-yn-keys`), the arena master's notice and question
 (`bar-script-keys`) and the menu's cursor row (`menu-down-cursor`). Unit: `SeamSelectYellow.*` (the bar's words on made-up bars, one
 shaped like the icon editor's, with the junk high halves a real push has,
 and each store's frames laid out for every call it recognises and some it
-must not); stand-ins: `select_yellow_probe_off`, `select_yellow_probe_on`.
+must not; `SeamSelectYellow.SwitchedO*` the stop, #655); stand-ins:
+`select_yellow_probe_off`, `select_yellow_probe_on`.
 **Driven** (Release, SDL dummy drivers, seam off and on, stills read): the
 adventuring bar and party list, the camp bar, the quit question, the
 pick-lists, Modify (a score and the hit points), the portrait bar, the icon

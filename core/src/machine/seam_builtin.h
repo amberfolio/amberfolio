@@ -173,6 +173,12 @@ inline constexpr unsigned hero_keys_numbered_scratch = 10;
 /// key letter as a white one (seam_select_yellow.cpp, #453, #483).
 [[nodiscard]] std::span<const seam_point> select_yellow_points() noexcept;
 
+/// Every margin pixel `select-yellow` painted beside a block and still holds,
+/// on both pages, put back to black, and the margins' bookkeeping dropped:
+/// what `modern-controls` owes when it is switched off with a block on the
+/// screen (seam_select_yellow.cpp, #655).
+void take_back_selection_margins(machine& box);
+
 /// The mark a seam sets in the high half of the colour word it hands the
 /// program's string routine when what it draws is a selection: the main
 /// menu's cursor row, the journal's listing row and its bar's lit word. The
