@@ -52,7 +52,9 @@ explored_window explored_window_top_left(int bias, int column,
 }
 
 void automap_state::clear() noexcept {
-  records_ = {};
+  // In place, here and below: `records_ = {}` builds the whole table as a
+  // temporary first, 160 kilobytes, which overruns a wasm stack (#653).
+  records_.fill(automap_record{});
   next_slot_ = 0;
   serial_ = 0;
   panel_open_ = false;
@@ -543,7 +545,7 @@ void put_word(std::span<std::uint8_t> bytes, std::size_t offset,
 }  // namespace
 
 void automap_state::forget_records() noexcept {
-  records_ = {};
+  records_.fill(automap_record{});
   next_slot_ = 0;
   ++serial_;
   // The map on the screen is not the map in the store any more.
@@ -659,7 +661,7 @@ bool automap_state::read_sidecar(std::span<const std::uint8_t> in) noexcept {
     return false;
   }
 
-  records_ = {};
+  records_.fill(automap_record{});
   next_slot_ = 0;
   for (std::size_t i = 0; i < count; ++i) {
     const std::span<const std::uint8_t> row =

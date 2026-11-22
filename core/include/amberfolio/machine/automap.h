@@ -139,8 +139,8 @@ inline constexpr unsigned automap_crossed_shift = 4;
 /// A grid uses the first `automap_grid_seen_bytes` of it and leaves the
 /// rest zero. The alternative — two record widths in one table — buys
 /// forty bytes a record and costs the property the fixed width was chosen
-/// for: that a reader can index into the table rather than walk it. Sixty-
-/// four records at this width is about seven kilobytes.
+/// for: that a reader can index into the table rather than walk it. A full
+/// table's bitmaps at this width are eighteen kilobytes.
 inline constexpr std::size_t automap_grid_seen_bytes = automap_map_cells / 8;
 inline constexpr std::size_t automap_overland_seen_bytes =
     automap_overland_cells / 8;
@@ -333,9 +333,10 @@ inline constexpr std::uint8_t automap_sidecar_first_version = 1;
 inline constexpr std::array<char, 3> automap_sidecar_magic{'A', 'F', 'M'};
 
 /// One record on disk, fixed width, little-endian where it is wider than
-/// a byte. Fixed rather than packed: a table of at most sixty-four maps
-/// is four and a half kilobytes at its very largest, and a format a
-/// reader can index into is worth more than the bytes.
+/// a byte. Fixed rather than packed: a full table of
+/// `automap_state::max_records` is twenty-nine kilobytes at this width
+/// (and 160 at version 3's, below), and a format a reader can index into
+/// is worth more than the bytes.
 ///
 ///     0   1   the disk
 ///     1   1   the area
@@ -471,16 +472,34 @@ struct automap_door_tally {
 /// Everything the automap knows, for one machine.
 class automap_state {
  public:
-  /// How many maps are remembered at once.
+  /// How many maps are remembered at once (#653).
   ///
-  /// The program ships thirty-five areas and a handful of in-place grid
-  /// swaps inside them, so this is roughly twice what one playthrough can
-  /// reach. A full table reuses the oldest-claimed slot rather than
-  /// refusing to record — losing the first map's fog is a worse answer
-  /// than losing the current one's, but both are better than a seam that
-  /// stops working, and neither is reachable by the program this build
-  /// targets.
-  static constexpr std::size_t max_records = 64;
+  /// **The bound.** A record is a map identity a party stood on, so a
+  /// playthrough claims at most one per (disk, area, geometry block) it
+  /// can stand in, one per wilderness area's overland, and one per page of
+  /// each script's numbering it walks. Counted from the programs' own data
+  /// and scripts:
+  ///
+  ///   * Pool of Radiance: its thirty-five areas, a handful of in-place
+  ///     grid swaps inside them and three overland maps, under fifty;
+  ///   * Curse of the Azure Bonds: the eighteen areas with a name on the
+  ///     panel and the three search grids, no overland;
+  ///   * Secret of the Silver Blades: nineteen (disk, area, block) a party
+  ///     stands in, and the pages of the areas whose scripts number their
+  ///     squares, which the reach of each numbering bounds: the ruins'
+  ///     reaches `83,56`, twenty-four pages, and every numbered area's
+  ///     together about ninety-five. So at most about 114, counting each
+  ///     numbered area's stored grid as a record of its own as well, the
+  ///     one an arrival there could leave (#651).
+  ///
+  /// The largest is under 120, and this is more than twice it, so that a
+  /// count that was an estimate (the pages of a numbering nobody has
+  /// walked to its end) still cannot reach it. A power of two, and cheap:
+  /// the sidecar at its widest is 160 kilobytes. A full table still
+  /// reuses the oldest-claimed slot rather than refusing to record —
+  /// losing the first map's fog is a worse answer than losing the current
+  /// one's, but both are better than a seam that stops working.
+  static constexpr std::size_t max_records = 256;
 
   /// Drop everything: no map explored, no panel, nothing settled. What
   /// `machine::reset()` calls, and what a test calls to start again.
@@ -894,6 +913,15 @@ class automap_state {
   /// On success the serial moves and the panel's drawn signature is
   /// cleared, because the map on the screen is no longer the map in the
   /// store.
+  ///
+  /// **A count above `max_records` is refused**, and the count is the
+  /// only thing that changed when the capacity did (#653): the versions
+  /// and the rows are what they were. So a file a build with the old
+  /// capacity of sixty-four wrote reads here as it always did, and such a
+  /// build reads a file of sixty-four records or fewer from this one. A
+  /// file of more is refused by it: the slot loads with an empty map, the
+  /// host says `not-a-sidecar`, and that build's next save of the slot
+  /// writes what it has explored since over it.
   [[nodiscard]] bool read_sidecar(std::span<const std::uint8_t> in) noexcept;
 
   // --- where the party was when it last stood still --------------------

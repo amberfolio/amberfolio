@@ -186,10 +186,11 @@ namespace amberfolio::host {
 
 /// The largest the exploration sidecar can be: the header plus every
 /// record the store can hold, at the widest row it writes (version 3's,
-/// written while it holds a page of a script's numbering). A fixed buffer,
-/// because a host has no business heap-allocating per write on a path the
-/// seam reaches from a keyboard poll; forty kilobytes, so it is the store's
-/// own and not a local (a wasm stack is sixty-four).
+/// written while it holds a page of a script's numbering): 160,264 bytes
+/// at 256 records (#653). A fixed buffer, because a host has no business
+/// heap-allocating per write on a path the seam reaches from a keyboard
+/// poll; the store's own and not a local, because it is more than twice a
+/// wasm stack's sixty-four kilobytes.
 inline constexpr std::size_t slot_store_automap_capacity =
     machine::automap_sidecar_header_bytes +
     (machine::automap_state::max_records *
