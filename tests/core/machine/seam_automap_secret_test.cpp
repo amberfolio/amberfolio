@@ -693,6 +693,33 @@ void place_the_stand_ins(const secret_rig& r) {
   r.put_word(secret_rig::dgroup(), stub_witness, 0);
 }
 
+TEST(SeamAutomapOnSecret, SwitchedOffBetweenThePollAndTheReadItStillAnswers) {
+  // A key taken at the poll is owed its answer at the read, and the
+  // switch-off waits for it as it waits for the panel (#657).
+  const secret_rig r;
+  r.panel_up();
+  place_the_stand_ins(r);
+  r.type(key_home);
+  r.poll(1);
+  ASSERT_TRUE(r.ring_empty());
+  ASSERT_EQ(r.box->seams().disable("automap"), seam_reason::none);
+  r.read();
+  EXPECT_FALSE(r.ring_empty()) << "answered, though the seam is going off";
+  EXPECT_EQ(r.ring_head(), key_dash);
+  EXPECT_EQ(r.box->seams().status("automap").state, seam_state::on)
+      << "and the panel is still up, so still on";
+
+  r.stand_on(image_load_segment, key_pending);
+  r.box->step();
+  for (int i = 0; i < 40; ++i) {
+    r.box->step();
+  }
+  EXPECT_EQ(r.word(secret_rig::dgroup(), stub_witness),
+            image_load_segment + summary_stub_paragraph)
+      << "the roster given back through the drawer's stub";
+  EXPECT_EQ(r.box->seams().status("automap").state, seam_state::off);
+}
+
 TEST(SeamAutomapOnSecret, ClosingItCallsTheDrawerAtItsStubsOwnSegment) {
   const secret_rig r;
   r.panel_up();

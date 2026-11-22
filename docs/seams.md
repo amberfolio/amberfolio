@@ -1498,6 +1498,29 @@ rule, settling quarantine and ownership signals are derived in
   `SeamAutomapOnCurse.TheReadingClimbsPastARoutineInBetween`,
   `SeamAutomapOnCurse.OnceReadTheBarsOwnEntryDecides`,
   `AutomapBar.SwitchedOnAtEitherOfThePartysBarsTabAnswersAtOnce`.
+- **Switched off with the panel up** (#657), the seam is not off until
+  the roster is back: what it drew only the program's own routines can
+  put right, and only a point at a known instruction may call them
+  (§3b, holding for its own points). Every point says, as it returns,
+  whether the panel or what is left of it beside a clear is on the
+  screen, and on Secret of the Silver Blades whether a key taken at a
+  poll is still owed its answer at the read; while any of that is so, a
+  switch-off leaves the seam on, stopping. Its next key point, poll or
+  read, makes the give-back `Tab` makes, the region clear over the
+  panel's rect and the roster drawer, and the engine finishes the
+  switch-off when that batch is done; a read owed its answer is answered
+  first. A screen the program clears whole or draws the roster over
+  (a camp, a sheet, a fight) finishes it at that point, the roster being
+  the program's to draw there. While stopping nothing new starts: no key
+  is claimed (`Tab` reaches the program), nothing is drawn, nothing is
+  explored. The panel stays open, as under somebody else's question, so
+  switched on again later it is drawn at the party's bar; switched on
+  again before the give-back, the switch-off is cancelled and the panel
+  stays as it was. A program that reaches none of the seam's points
+  keeps it on until it does; at the party's bar it polls the keyboard
+  continuously, so the roster is back within a frame. With the panel
+  down the switch-off is immediate, as before. Tests: `AutomapOff.*`,
+  `SeamAutomapOnSecret.SwitchedOffBetweenThePollAndTheReadItStillAnswers`.
 - Rejected as the "whose screen" gate: the program's "a script has the
   message area" byte, because `--watch 84E4` shows it oscillating every
   step.

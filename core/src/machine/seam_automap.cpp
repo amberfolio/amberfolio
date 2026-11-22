@@ -1945,7 +1945,7 @@ enum class claimable : std::uint8_t {
 /// very screen (`automap_state::roster_over_stranded()`), which answers
 /// the mode test below by itself: a temple's or a shop's screen is the
 /// program's shop mode, and it draws the roster there with this drawer.
-void give_the_roster_back(const automap_facts& f, machine& box,
+bool give_the_roster_back(const automap_facts& f, machine& box,
                           seam_context& ctx, std::uint16_t ds,
                           bool roster_just_drawn = false) {
   const program_profile& profile = f.profile;
@@ -1966,7 +1966,7 @@ void give_the_roster_back(const automap_facts& f, machine& box,
     // there to be redrawn on the modes that have one. A repaint the
     // program cannot perform would leave a corrupted screen, which is a
     // worse answer than a missing one.
-    return;
+    return false;
   }
 
   const auto image = static_cast<std::uint16_t>(ctx.image_base() / 16U);
@@ -1976,10 +1976,10 @@ void give_the_roster_back(const automap_facts& f, machine& box,
   const std::array<std::uint16_t, 2> current{
       cpu.read_word(ds, at(profile.data_current_member, 2)),
       cpu.read_word(ds, profile.data_current_member)};
-  (void)(ctx.call_program(image, profile.clear_region_entry, clear) &&
+  return ctx.call_program(image, profile.clear_region_entry, clear) &&
          ctx.call_program(
              static_cast<std::uint16_t>(image + f.roster_call_paragraph),
-             f.roster_call_offset, current));
+             f.roster_call_offset, current);
 }
 
 /// Take the panel off the screen because somebody other than the
@@ -2013,11 +2013,11 @@ void give_the_roster_back(const automap_facts& f, machine& box,
     return false;
   }
   if (state.panel_on_screen()) {
-    give_the_roster_back(f, box, ctx, ds);
+    (void)give_the_roster_back(f, box, ctx, ds);
     return true;
   }
   if (state.roster_over_stranded()) {
-    give_the_roster_back(f, box, ctx, ds, true);
+    (void)give_the_roster_back(f, box, ctx, ds, true);
     return true;
   }
   return false;
@@ -2032,7 +2032,7 @@ void give_the_roster_back(const automap_facts& f, machine& box,
   const bool open = !state.panel_open();
   state.set_panel_open(open);
   if (!open && state.panel_on_screen()) {
-    give_the_roster_back(f, box, ctx, ds);
+    (void)give_the_roster_back(f, box, ctx, ds);
     return true;
   }
   state.set_drawn_signature(0);
@@ -2190,6 +2190,51 @@ void read_the_bar_once(machine& box, seam_context& ctx, std::uint16_t ds) {
 }
 
 // ---------------------------------------------------------------------------
+// Being switched off with the panel up (#657)
+// ---------------------------------------------------------------------------
+
+/// Whether something this seam drew is on the program's screen, or a key
+/// it took is still owed an answer: what only one of its own points can
+/// put right, so a switch-off waits for one (`seam_context::hold_for_points`).
+/// The whole panel, or what is left of it beside a clear
+/// (`automap_state::stranded()`); and, on a program whose reader polls
+/// before it reads, a key taken at a poll and not yet answered at the read.
+template <const automap_facts& F>
+[[nodiscard]] bool holds_the_screen(const automap_state& state,
+                                    const seam_context& ctx) {
+  return state.panel_on_screen() || state.stranded() ||
+         (F.polls_before_its_read && ctx.scratch(word_poll_took) != 0);
+}
+
+/// Every point says what it holds when it is done, so a switch-off asked
+/// for between two of them knows whether it has to wait.
+template <const automap_facts& F, seam_handler H>
+void and_say_what_it_holds(machine& box, seam_context& ctx) {
+  H(box, ctx);
+  ctx.hold_for_points(holds_the_screen<F>(box.automap(), ctx));
+}
+
+/// At a key point while the seam is on its way off: the roster back over
+/// the panel, through the same two calls `Tab` and a question make, and
+/// nothing else. The panel stays open, as under somebody else's question,
+/// so a seam switched on again draws it at the party's bar; nothing is
+/// claimed, drawn or explored. True when a batch is on its way.
+template <const automap_facts& F>
+bool give_back_to_stop(machine& box, seam_context& ctx, std::uint16_t ds) {
+  const automap_state& state = box.automap();
+  if (state.panel_on_screen()) {
+    return give_the_roster_back(F, box, ctx, ds);
+  }
+  if (state.roster_over_stranded()) {
+    return give_the_roster_back(F, box, ctx, ds, true);
+  }
+  // Nothing on the screen, or what is left of the panel is beside
+  // somebody else's drawing, which puts the roster back itself: a roster
+  // drawn over it says when (`at_roster_drawn`).
+  return false;
+}
+
+// ---------------------------------------------------------------------------
 // The handlers
 // ---------------------------------------------------------------------------
 
@@ -2205,6 +2250,17 @@ void at_key_pending(machine& box, seam_context& ctx) {
   }
   read_the_bar_once<F>(box, ctx, ds);
   automap_state& state = box.automap();
+
+  if (ctx.stopping()) {
+    // Switched off with the panel up (#657): the roster back, and the
+    // switch-off finished once that is done. Polled, and this poll took
+    // nothing.
+    note_poll(F, ctx, false);
+    if (give_back_to_stop<F>(box, ctx, ds)) {
+      note_batch(F, ctx);
+    }
+    return;
+  }
 
   if (!state.at_command_bar()) {
     // Somebody other than the adventuring screen is asking the player
@@ -2483,6 +2539,12 @@ void at_key_read(machine& box, seam_context& ctx) {
     }
   }
   automap_state& state = box.automap();
+  if (ctx.stopping()) {
+    // On its way off (#657): a read with the panel up gives the roster
+    // back as a poll does, and no key is claimed.
+    (void)give_back_to_stop<F>(box, ctx, ds);
+    return;
+  }
   if (!state.at_command_bar()) {
     (void)yield_to_the_program(F, box, ctx, ds);
     return;
@@ -2597,22 +2659,29 @@ void at_roster_drawn(machine& box, seam_context& ctx) {
 constexpr std::array<seam_point, 6> pool_of_radiance_automap_points{
     {{.module = resident_image,
       .offset = pool_of_radiance.key_pending_entry,
-      .run = &at_key_pending<pool_of_radiance_automap>},
+      .run = &and_say_what_it_holds<pool_of_radiance_automap,
+                                    &at_key_pending<pool_of_radiance_automap>>},
      {.module = resident_image,
       .offset = pool_of_radiance.key_read_entry,
-      .run = &at_key_read<pool_of_radiance_automap>},
+      .run = &and_say_what_it_holds<pool_of_radiance_automap,
+                                    &at_key_read<pool_of_radiance_automap>>},
      {.module = resident_image,
       .offset = pool_of_radiance.clear_region_entry,
-      .run = &at_clear_region},
+      .run =
+          &and_say_what_it_holds<pool_of_radiance_automap, &at_clear_region>},
      {.module = resident_image,
       .offset = pool_of_radiance.clear_screen_entry,
-      .run = &at_clear_screen},
+      .run =
+          &and_say_what_it_holds<pool_of_radiance_automap, &at_clear_screen>},
      {.module = resident_image,
       .offset = pool_of_radiance.roster_drawn_return,
-      .run = &at_roster_drawn},
+      .run =
+          &and_say_what_it_holds<pool_of_radiance_automap, &at_roster_drawn>},
      {.module = resident_image,
       .offset = pool_of_radiance.command_bar_entry,
-      .run = &at_command_bar<pool_of_radiance_automap>}}};
+      .run =
+          &and_say_what_it_holds<pool_of_radiance_automap,
+                                 &at_command_bar<pool_of_radiance_automap>>}}};
 
 /// Curse's: the keyboard, the two region clears and the full-screen
 /// clear, and the menu-bar thunk in the resident image; the roster
@@ -2620,53 +2689,59 @@ constexpr std::array<seam_point, 6> pool_of_radiance_automap_points{
 constexpr std::array<seam_point, 7> curse_automap_points{
     {{.module = resident_image,
       .offset = curse_of_the_azure_bonds.key_pending_entry,
-      .run = &at_key_pending<curse_automap>},
+      .run = &and_say_what_it_holds<curse_automap,
+                                    &at_key_pending<curse_automap>>},
      {.module = resident_image,
       .offset = curse_of_the_azure_bonds.key_read_entry,
-      .run = &at_key_read<curse_automap>},
+      .run =
+          &and_say_what_it_holds<curse_automap, &at_key_read<curse_automap>>},
      {.module = resident_image,
       .offset = curse_of_the_azure_bonds.clear_region_entry,
-      .run = &at_clear_region},
+      .run = &and_say_what_it_holds<curse_automap, &at_clear_region>},
      {.module = resident_image,
       .offset = curse_text_clear_entry,
-      .run = &at_clear_region},
+      .run = &and_say_what_it_holds<curse_automap, &at_clear_region>},
      {.module = resident_image,
       .offset = curse_of_the_azure_bonds.clear_screen_entry,
-      .run = &at_clear_screen},
+      .run = &and_say_what_it_holds<curse_automap, &at_clear_screen>},
      {.module = curse_of_the_azure_bonds.summary_overlay,
       .offset = curse_roster_drawn_return,
-      .run = &at_roster_drawn},
+      .run = &and_say_what_it_holds<curse_automap, &at_roster_drawn>},
      {.module = resident_image,
       .offset = curse_of_the_azure_bonds.command_bar_entry,
-      .run = &at_command_bar<curse_automap>}}};
+      .run = &and_say_what_it_holds<curse_automap,
+                                    &at_command_bar<curse_automap>>}}};
 
 /// Secret of the Silver Blades': Curse's seven, and the roster's one-row
 /// redraw's return beside the drawer's in its overlay.
 constexpr std::array<seam_point, 8> secret_automap_points{
     {{.module = resident_image,
       .offset = secret_of_the_silver_blades.key_pending_entry,
-      .run = &at_key_pending<secret_automap>},
+      .run = &and_say_what_it_holds<secret_automap,
+                                    &at_key_pending<secret_automap>>},
      {.module = resident_image,
       .offset = secret_of_the_silver_blades.key_read_entry,
-      .run = &at_key_read<secret_automap>},
+      .run =
+          &and_say_what_it_holds<secret_automap, &at_key_read<secret_automap>>},
      {.module = resident_image,
       .offset = secret_of_the_silver_blades.clear_region_entry,
-      .run = &at_clear_region},
+      .run = &and_say_what_it_holds<secret_automap, &at_clear_region>},
      {.module = resident_image,
       .offset = secret_text_clear_entry,
-      .run = &at_clear_region},
+      .run = &and_say_what_it_holds<secret_automap, &at_clear_region>},
      {.module = resident_image,
       .offset = secret_of_the_silver_blades.clear_screen_entry,
-      .run = &at_clear_screen},
+      .run = &and_say_what_it_holds<secret_automap, &at_clear_screen>},
      {.module = secret_of_the_silver_blades.summary_overlay,
       .offset = secret_roster_drawn_return,
-      .run = &at_roster_drawn},
+      .run = &and_say_what_it_holds<secret_automap, &at_roster_drawn>},
      {.module = secret_of_the_silver_blades.summary_overlay,
       .offset = secret_roster_row_return,
-      .run = &at_roster_drawn},
+      .run = &and_say_what_it_holds<secret_automap, &at_roster_drawn>},
      {.module = resident_image,
       .offset = secret_of_the_silver_blades.command_bar_entry,
-      .run = &at_command_bar<secret_automap>}}};
+      .run = &and_say_what_it_holds<secret_automap,
+                                    &at_command_bar<secret_automap>>}}};
 
 /// The points on every program but the baseline, whose points are the
 /// definition's own (seam.h, schema 9).
