@@ -735,6 +735,10 @@ export function runDevPage() {
         ' and press boot.',
     );
     sayWhatIsKept();
+    // There is a copy for a sidecar to go beside again, so the panel says
+    // so (#385, #658): it was painted when the database opened, before
+    // this put the copy back.
+    paintSidecars();
   }
 
   /// The write-back, armed for a loaded program, or null.
@@ -1459,6 +1463,9 @@ export function runDevPage() {
         keptReady = openKeptStore();
         await keptReady;
         sayWhatIsKept();
+        // The copy and the answer went with the rest, and the panel says
+        // what that leaves (#658).
+        paintSidecars();
         const parts = [];
         if (had.disk > 0) parts.push(`${had.disk} file(s) of a copy`);
         if (had.play > 0) parts.push(`${had.play} file(s) of your own`);
