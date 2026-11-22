@@ -544,7 +544,7 @@ TEST(AutomapState, AMapChangeMarksTheCellTheePartyLeftAndTheOneItArrivesAt) {
 TEST(AutomapState, AStoreHoldsMoreThanAPlaythroughAndThenReusesTheOldest) {
   // #653: the most any of the three programs can claim is about 114
   // (automap.h), and the store holds more than twice that.
-  static_assert(automap_state::max_records >= 2 * 114);
+  static_assert(automap_state::max_records >= std::size_t{2} * 114);
   auto state = std::make_unique<automap_state>();
   for (unsigned i = 0; i < automap_state::max_records; ++i) {
     state->reveal(
