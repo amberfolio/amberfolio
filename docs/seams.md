@@ -1694,9 +1694,9 @@ three things of this program's own besides the facts above:
   | `MINE LEVELS 5-8` | 2, 50 (48) | the lift's levels 5 to 8; the lizard king's barracks, the dead mage, Oswulf's tomb and the teleporter that goes only to level 9 | `mine-5.php` to `mine-8.php` |
   | `MINES` | 2, 51 (49) | the lift's temple level (where the way in from the ruins lands), level 9 (the teleporter's arrival) and level B (whose hole leads to area 64): three of the mine's places, so the mine's name | `mine-9.php`, `mine-b.php` |
   | `TEMPLE OF TYR` | 2, 52 (50) | the antechambers, the acolytes' rooms, the treasury, the armoury, the old dwarf, the portal | `templeoftyr.php` |
-  | `DUNGEON LEVELS 10-7` | 2, 64 (64) | the driders, the prisoner, the portal's guards, the riddles at the stairs; exits to the mine (51), the Drider Base (68) and the stairs to 65 | `dungeon-107.php` |
-  | `DUNGEON LEVELS 6-3` | 2, 65 (65) | the image's trap, the mage with the papers, the moaning medusae; exits to 64 and 66 | `dungeon-63.php` |
-  | `DUNGEON LEVELS 2-1` | 2, 66 (66) | the blind enchanter, the prisoner and his worm, the pyro-hydras; the iced stairs to the castle (96) and the tunnel to the Western Crevasses (80) | `dungeon-21.php` |
+  | `DUNGEON LEVELS 10-7` | 2, 64 (64) | its grid four walled-off quarters of 64 squares, the page's four levels; the driders, the prisoner, the portal's guards, the riddles at the stairs; exits to the mine (51), the Drider Base (68) and the stairs to 65 | `dungeon-107.php` |
+  | `DUNGEON LEVELS 6-3` | 2, 65 (65) | its grid four walled-off parts, the page's four levels; the image's trap, the mage with the papers, the moaning medusae; exits to 64 and 66 | `dungeon-63.php` |
+  | `DUNGEON LEVELS 2-1` | 2, 66 (66) | its grid two walled-off halves, the page's two levels; the blind enchanter, the prisoner and his worm, the pyro-hydras; the iced stairs to the castle (96) and the tunnel to the Western Crevasses (80) | `dungeon-21.php` |
   | `DRIDER BASE` | 2, 68 (68) | the knight and his captured friend, the kitchen, the skeleton, the summoning; its one exit, to 64 | `driderbase.php` |
   | `WESTERN CRE\|VASSES` | 3, 80 (80) | the kidnapped clerk; exits to the ruins (32), the dungeon (66) and the village (81) | `westerncrevasses.php` |
   | `FROST GIANT VILLAGE` | 3, 81 (81) | the village's guards, the white dragons' residences, the worg kennel; exits to 80 and 82 | `frostgiantvillage.php` |
