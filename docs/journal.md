@@ -892,7 +892,7 @@ of 99 and 121 of 121, each item against its digest. In the game, with
 headless, the page's own journal input, #610): `72 of 72 entries read
 from the document itself, no OCR engine needed, 19 of 19 pictures`,
 nothing fetched from the engine's directory, and the same store
-fingerprint. In the game, over that store, `N` at the party's bar opens
+fingerprint. In the game, over that store, `Notes` on the party's bar opens
 the log and entry 37, its two pages of text and then its picture
 (`docs/seams.md` §10).
 
@@ -1005,8 +1005,8 @@ The reader is a seam (`docs/seams.md` §10). This section is the join.
 - **One page size and one way in** (M5-E4d #305, #346): the frame
   drawer's full screen, twenty rows of thirty-eight characters, opened
   off the `Notes` command and off nothing else; on Secret of the Silver
-  Blades, whose party's bar has no room for the word, off `N` at that
-  bar and `Notes` on the move mode's (`docs/seams.md` §10).
+  Blades, whose party's bar has no room for a word more, `Notes` takes
+  `Area`'s place on it (`docs/seams.md` §10).
   `journal_state::bar_live()`, set and cleared at the `Notes` splice's
   own points, says whether the party's own command-bar routine is
   running, which is the one precondition under which the program's screen
@@ -1047,8 +1047,7 @@ The reader is a seam (`docs/seams.md` §10). This section is the join.
   in one call for the row in the message green and one more for each
   word's initial over its own cell in the bright - up to four, fewer on
   any bar that has dropped a word. There is no other key: since #346 this
-  seam claims nothing at all while the reader is down, but `N` at Secret
-  of the Silver Blades' party's bar.
+  seam claims nothing at all while the reader is down.
 - **The bar answers the bar keys** (#471). The reader's bars are its own,
   so the seam's point at the program's menu-bar routine cannot reach them;
   with `modern-controls` on the reader takes the keys itself. Left and Right step the

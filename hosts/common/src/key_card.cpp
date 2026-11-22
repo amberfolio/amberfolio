@@ -228,9 +228,8 @@ constexpr std::array journal_rows{
 // modern-controls takes a key on this program, the hero keys at the party
 // menu's member picker, and one draws every selection as a block, so of its
 // rows only those two are here; the message pause's, the automap's and the
-// journal's are too. Its party's bar has no
-// room for Notes: `N` there opens the log with no word on the bar, and the
-// walking bar carries the word (#609).
+// journal's are too. Its party's bar has no room for a word more, so
+// with the journal on Notes takes Area's place on it (#609).
 
 constexpr std::array blades_explore_rows{
     key_row{"Up, Down", "at the bar: the previous or next party member"},
@@ -288,8 +287,8 @@ constexpr std::array blades_combat_rows{
 };
 
 constexpr std::array blades_journal_rows{
-    key_row{"N", "at the party's bar: open the Notes log", "journal"},
-    key_row{"N, walking", "Notes on the walking bar: open the log", "journal"},
+    key_row{"N", "Notes on the party's bar: open the log", "journal"},
+    key_row{"A", "nothing: Notes has Area's place on the bar", "journal"},
     key_row{"Up, Down", "in the log: the entry above or below", "journal"},
     key_row{"Return", "open the entry under the cursor", "journal"},
     key_row{"N, P", "in an entry: next and previous page", "journal"},
@@ -401,8 +400,8 @@ constexpr std::array legends{
                 "its party menu. With modern-controls on, the number row's 1 "
                 "to 8 choose a party member at the party menu's Pick "
                 "Character, where the keypad keeps its digits. With the "
-                "journal on, N at the party's bar opens Notes, with no word on "
-                "the bar, which has no room for one. A row that names a seam "
+                "journal on, Notes takes Area's place on the party's bar, "
+                "which has no room for a word more. A row that names a seam "
                 "shows only while that seam is on."},
 };
 
