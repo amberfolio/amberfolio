@@ -2586,7 +2586,7 @@ The interior screen where the area's script numbers the squares itself
 (Secret of the Silver Blades' ruins, #609):
 
 ```json
-{"screen":"explore","disk":1,"area":32,"zone":"AREA 32",
+{"screen":"explore","disk":1,"area":32,"zone":"RUINS",
  "x":13,"y":19,"facing":"north","stored":{"x":11,"y":4,"facing":"south"},
  "around":{"ahead":"wall","right":"wall","behind":"wall","left":"open"},
  "view":[{"x":11,"y":4,"north":"wall","east":"open","south":"wall","west":"wall"}, ...],
@@ -2871,10 +2871,14 @@ A fight (game mode 5, the tactical grid):
     south and west, plane 3 two bits a face. The wall sets' words are at
     a stride of four from `0x89D8`, slot 1 at `+4`: block 21 in the
     town and 7 in the ruins.
-  - **No door graphic is measured and no map is named.** A door is what
-    the loaded map says itself, as on a map of Pool of Radiance the
-    table has no row for: the kinds it has shut somewhere, or, with none
-    shut, every way through. Every `zone` is `AREA <n>`.
+  - **The maps are named and no door graphic is measured.** `zone` is
+    the automap's name for the area (`docs/seams.md` §10, the automap):
+    `NEW VERDIGRIS` in the town, `RUINS` on every square of the ruins'
+    numbering, `WELL OF KNOWLEDGE` at the mayor's portal; `AREA <n>`
+    for the wheel lift, the opening and the title's demonstration. A
+    door is what the loaded map says itself, as on a map of Pool of
+    Radiance the table has no row for: the kinds it has shut somewhere,
+    or, with none shut, every way through.
   - **`map` is the automap's**, as on the first two programs, while it
     is on (#609): driven down leg 3, at `15,8 E` it lists the squares
     walked from the mayor's house, his door a `door` south of `3,4`; in

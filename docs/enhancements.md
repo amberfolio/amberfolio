@@ -158,9 +158,13 @@ none.
 **In Secret of the Silver Blades** it is the same panel, up in the game's
 own move mode as at the party's bar. While it is up, Up and Down (and the
 keypad's 2 and 8) do not change the current member, as Home and End do
-not in the first two games; in the move mode they walk. No door graphic
-or place name is measured there yet, so every way through is drawn as a
-door and every map is `AREA <n>`. **The ruins east of the town are
+not in the first two games; in the move mode they walk. Each map is
+named as a walkthrough of the game names it (New Verdigris, the Ruins,
+the Well of Knowledge, `MINE LEVELS 1-4`, `DUNGEON LEVELS 10-7`, the
+castle's levels and so on); where one of the game's maps holds several
+of the mine's or the dungeon's levels the label names them together. No
+door graphic is measured there yet, so every way through is drawn as a
+door. **The ruins east of the town are
 mapped in the squares the status line names there**: the game numbers
 them itself, counting your steps, and moves the party between pieces of
 one stored map at its doors, turning a piece as well as moving it. Each

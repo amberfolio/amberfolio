@@ -611,8 +611,8 @@ void note_secret_bar(machine& box, const seam_context& ctx, std::uint16_t ds) {
 
 /// Secret of the Silver Blades (#609). The renderer's tables are Curse's,
 /// at their own offsets; the frame and ground colours are set through the
-/// same routine. No place has a name and no wall set a measured door row
-/// (`secret_of_the_silver_blades_places()`). The roster drawer is overlaid
+/// same routine. Its maps are named and no wall set has a measured door
+/// row (`secret_of_the_silver_blades_places()`). The roster drawer is overlaid
 /// as Curse's is. Its move mode is the program's own, with a bar of its
 /// own; the status line's square is the area script's where it keeps one,
 /// and such an area is mapped in the script's squares (`sample::numbered`).

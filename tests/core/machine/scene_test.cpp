@@ -1725,7 +1725,7 @@ struct secret_rig : rig {
   }
 };
 
-TEST(SceneOnSecret, SaysWhereThePartyIsAndNamesTheAreaByItsNumber) {
+TEST(SceneOnSecret, SaysWhereThePartyIsAndNamesTheArea) {
   const secret_rig r;
   r.grid(3, 8, east, 0x10, 0x10);
   r.face(3, 8, north, 1, 0);
@@ -1739,8 +1739,8 @@ TEST(SceneOnSecret, SaysWhereThePartyIsAndNamesTheAreaByItsNumber) {
   EXPECT_EQ(s.x, 3);
   EXPECT_EQ(s.y, 8);
   EXPECT_EQ(s.facing, east);
-  // Nobody has named this program's maps.
-  EXPECT_EQ(std::string_view(s.zone.data(), s.zone_length), "AREA 16");
+  EXPECT_EQ(std::string_view(s.zone.data(), s.zone_length), "NEW VERDIGRIS")
+      << "the soft break the panel's band may split it at is not said";
   ASSERT_GT(s.view_count, 0U);
   EXPECT_EQ(s.view[0].face(north), scene_face::wall);
   EXPECT_EQ(s.view[0].face(east), scene_face::open);
@@ -1762,6 +1762,49 @@ TEST(SceneOnSecret, NeverUsesAnotherProgramsNameForTheSameNumbers) {
   const scene s = r.read();
   ASSERT_EQ(r.last, scene_trouble::none);
   EXPECT_EQ(std::string_view(s.zone.data(), s.zone_length), "AREA 1");
+}
+
+TEST(SceneOnSecret, EachDisksMapsAreNamedByTheDiskAndTheArea) {
+  // The disk is the number in the script file's name: the Well of
+  // Knowledge is disk 1's area 33, and the same area on another disk is no
+  // map anybody has named.
+  const secret_rig r;
+  r.grid(1, 1, east, 33, 33);
+  scene s = r.read();
+  ASSERT_EQ(r.last, scene_trouble::none);
+  EXPECT_EQ(std::string_view(s.zone.data(), s.zone_length),
+            "WELL OF KNOWLEDGE");
+  r.sdata(secret::data_disk, 2);
+  s = r.read();
+  EXPECT_EQ(std::string_view(s.zone.data(), s.zone_length), "AREA 33");
+
+  for (const auto& [disk, area, geo, name] :
+       {std::tuple{1, 34, 34, "BLACK CIRCLE HQ"},
+        std::tuple{2, 49, 48, "MINE LEVELS 1-4"},
+        std::tuple{2, 51, 49, "MINES"}, std::tuple{2, 52, 50, "TEMPLE OF TYR"},
+        std::tuple{2, 64, 64, "DUNGEON LEVELS 10-7"},
+        std::tuple{2, 68, 68, "DRIDER BASE"},
+        std::tuple{3, 80, 80, "WESTERN CREVASSES"},
+        std::tuple{3, 81, 81, "FROST GIANT VILLAGE"},
+        std::tuple{3, 99, 98, "CASTLE LEVEL 3"}}) {
+    r.grid(3, 3, north, static_cast<std::uint8_t>(area),
+           static_cast<std::uint8_t>(geo));
+    r.sdata(secret::data_disk, static_cast<std::uint8_t>(disk));
+    s = r.read();
+    ASSERT_EQ(r.last, scene_trouble::none) << name;
+    EXPECT_EQ(std::string_view(s.zone.data(), s.zone_length), name);
+  }
+}
+
+TEST(SceneOnSecret, TheWheelLiftIsNamedByItsNumber) {
+  // Area 48 is the mine's wheel lift: its script asks where to go and goes
+  // there, and no party stands at its bar.
+  const secret_rig r;
+  r.grid(3, 3, north, 48, 48);
+  r.sdata(secret::data_disk, 2);
+  const scene s = r.read();
+  ASSERT_EQ(r.last, scene_trouble::none);
+  EXPECT_EQ(std::string_view(s.zone.data(), s.zone_length), "AREA 48");
 }
 
 TEST(SceneOnSecret, TheTitlesInTheAdventuringModeAreNoScene) {
@@ -1823,7 +1866,7 @@ TEST(SceneOnSecret, WhereTheStatusLinePrintsAScriptsSquareTheSceneSaysBoth) {
   ASSERT_GT(s.view_count, 0U);
   EXPECT_EQ(s.view[0].x, 11) << "the view is the stored grid's";
   EXPECT_EQ(s.view[0].y, 2);
-  EXPECT_EQ(std::string_view(s.zone.data(), s.zone_length), "AREA 32");
+  EXPECT_EQ(std::string_view(s.zone.data(), s.zone_length), "RUINS");
   const std::string text = r.json();
   EXPECT_NE(text.find(R"("x":0,"y":15,"facing":"east",)"
                       R"("stored":{"x":11,"y":2,"facing":"east"},)"
@@ -1933,7 +1976,7 @@ TEST(SceneOnSecret, AFightThereStillReads) {
   ASSERT_EQ(r.last, scene_trouble::none) << r.json();
   EXPECT_EQ(s.screen, scene_screen::combat);
   EXPECT_EQ(s.area, 0x20U);
-  EXPECT_EQ(std::string_view(s.zone.data(), s.zone_length), "AREA 32");
+  EXPECT_EQ(std::string_view(s.zone.data(), s.zone_length), "RUINS");
   EXPECT_EQ(s.window_x, 24);
   EXPECT_EQ(s.window_y, 10);
   ASSERT_EQ(s.combatant_count, 2U);
