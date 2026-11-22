@@ -2295,6 +2295,177 @@ TEST(AutomapHotkey, OnceSomethingElseOwnsTheCellsTheyAreItsKeysAgain) {
 }
 
 // ---------------------------------------------------------------------------
+// Switched off with the panel up (#657)
+// ---------------------------------------------------------------------------
+
+/// The panel up over the roster, the program's repaint in place.
+void panel_up(rig& r) {
+  r.attach_video();
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  r.poll(4);
+  r.type(key_tab);
+  r.poll(2);
+  ASSERT_TRUE(r.map_state().panel_on_screen());
+  install_the_programs_repaint(r);
+}
+
+/// How many times the engine has said the automap went off.
+[[nodiscard]] std::size_t offs(const rig& r) {
+  std::size_t n = 0;
+  for (const seam_event& event : r.log.seam_events) {
+    n += event.id == "automap" && event.kind == seam_event_kind::disabled ? 1U
+                                                                          : 0U;
+  }
+  return n;
+}
+
+/// The program's region clear over part of the panel, not all of it: the
+/// rows a message or a box takes.
+void clear_part_of_the_panel(const rig& r) {
+  r.stand_on(r.point(2));
+  r.put_word(rig::dgroup(), 0x0404, 0x05);  // bottom
+  r.put_word(rig::dgroup(), 0x0406, 0x26);  // right
+  r.put_word(rig::dgroup(), 0x0408, 0x01);  // top
+  r.put_word(rig::dgroup(), 0x040A, 0x11);  // left
+  r.regs()[cpu::reg16::sp] = 0x0400;
+  r.pc().step();
+}
+
+TEST(AutomapOff, WithThePanelUpTheRosterIsGivenBackAtTheNextPoll) {
+  rig r;
+  panel_up(r);
+  ASSERT_EQ(r.pc().seams().disable("automap"), seam_reason::none);
+  EXPECT_EQ(r.pc().seams().status("automap").state, seam_state::on)
+      << "on, and saying so, until the screen is the program's again";
+  EXPECT_TRUE(r.pc().seams().status("automap").stopping);
+  EXPECT_EQ(offs(r), 0U);
+
+  r.stand_on(r.point(0));
+  r.pc().step();
+  EXPECT_FALSE(r.map_state().panel_on_screen());
+  EXPECT_EQ(r.pc().seams().status("automap").state, seam_state::on)
+      << "still on while its give-back runs";
+  for (int i = 0; i < 40; ++i) {
+    r.pc().step();
+  }
+
+  // The two calls `Tab` makes: the panel's rect cleared, the roster drawn.
+  EXPECT_EQ(r.word_at(rig::dgroup(), clear_rect_witness),
+            automap_panel_bottom_row);
+  EXPECT_EQ(r.word_at(rig::dgroup(),
+                      static_cast<std::uint16_t>(clear_rect_witness + 6)),
+            automap_panel_left_col);
+  EXPECT_EQ(r.word_at(rig::dgroup(), roster_witness),
+            static_cast<std::uint16_t>(image_load_segment + roster_paragraph));
+  EXPECT_EQ(r.pc().seams().status("automap").state, seam_state::off);
+  EXPECT_FALSE(r.pc().seams().status("automap").armed)
+      << "and its points are down";
+  EXPECT_EQ(offs(r), 1U);
+  EXPECT_TRUE(r.map_state().panel_open())
+      << "taken off the screen, as under a question, not closed";
+}
+
+TEST(AutomapOff, WithThePanelDownItIsOffAtOnce) {
+  rig r;
+  r.attach_video();
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  r.poll(4);
+  ASSERT_FALSE(r.map_state().panel_on_screen());
+  ASSERT_EQ(r.pc().seams().disable("automap"), seam_reason::none);
+  EXPECT_EQ(r.pc().seams().status("automap").state, seam_state::off);
+  EXPECT_EQ(offs(r), 1U);
+
+  // And put away with Tab first: the roster is back, nothing is held.
+  rig closed;
+  panel_up(closed);
+  closed.type(key_tab);
+  closed.stand_on(closed.point(0));
+  closed.pc().step();
+  for (int i = 0; i < 40; ++i) {
+    closed.pc().step();
+  }
+  closed.poll(1);
+  ASSERT_EQ(closed.pc().seams().disable("automap"), seam_reason::none);
+  EXPECT_EQ(closed.pc().seams().status("automap").state, seam_state::off);
+}
+
+TEST(AutomapOff, WhileItIsGoingOffItStartsNothingNew) {
+  // Held on a stranded panel: part of it cleared, the rest beside the
+  // program's drawing, which puts the roster back itself.
+  rig r;
+  panel_up(r);
+  clear_part_of_the_panel(r);
+  ASSERT_TRUE(r.map_state().stranded());
+  ASSERT_EQ(r.pc().seams().disable("automap"), seam_reason::none);
+  ASSERT_TRUE(r.pc().seams().status("automap").stopping);
+
+  const std::uint32_t serial = r.map_state().serial();
+  r.adventuring(9, 5, lane_north);
+  r.type(key_tab);
+  r.poll(5);
+  EXPECT_EQ(r.keys_waiting(), 1U) << "Tab is the program's";
+  EXPECT_FALSE(r.map_state().panel_on_screen()) << "nothing is drawn";
+  EXPECT_EQ(r.map_state().serial(), serial) << "nothing is explored";
+  EXPECT_EQ(r.pc().seams().status("automap").state, seam_state::on);
+
+  // The program draws the roster over it: the give-back is owed, and made.
+  r.stand_on(r.point(4));
+  r.pc().step();
+  // The return the drawer comes back through, which standing on the point
+  // put a HLT over.
+  install_the_programs_repaint(r);
+  r.stand_on(r.point(0));
+  r.pc().step();
+  for (int i = 0; i < 40; ++i) {
+    r.pc().step();
+  }
+  EXPECT_EQ(r.word_at(rig::dgroup(), roster_witness),
+            static_cast<std::uint16_t>(image_load_segment + roster_paragraph));
+  EXPECT_EQ(r.pc().seams().status("automap").state, seam_state::off);
+}
+
+TEST(AutomapOff, ThePanelTakenAnotherWayFinishesItThere) {
+  // A camp or a sheet clears the whole screen: nothing of the panel is
+  // left, and the switch-off is finished at that point.
+  rig r;
+  panel_up(r);
+  ASSERT_EQ(r.pc().seams().disable("automap"), seam_reason::none);
+  r.stand_on(r.point(3));
+  r.pc().step();
+  EXPECT_EQ(r.pc().seams().status("automap").state, seam_state::off);
+  EXPECT_EQ(r.word_at(rig::dgroup(), roster_witness), 0U)
+      << "nothing called: the program is drawing that screen itself";
+}
+
+TEST(AutomapOff, SwitchedOnAgainFirstThePanelIsAsItWas) {
+  rig r;
+  panel_up(r);
+  ASSERT_EQ(r.pc().seams().disable("automap"), seam_reason::none);
+  ASSERT_EQ(r.pc().seams().enable("automap"), seam_reason::none);
+  EXPECT_FALSE(r.pc().seams().status("automap").stopping);
+  r.poll(2);
+  EXPECT_TRUE(r.map_state().panel_on_screen());
+  EXPECT_TRUE(r.map_state().panel_open());
+  EXPECT_EQ(r.word_at(rig::dgroup(), roster_witness), 0U);
+  EXPECT_EQ(offs(r), 0U);
+}
+
+TEST(AutomapOff, AResetDropsItAndTheSeamIsSimplyOff) {
+  rig r;
+  panel_up(r);
+  ASSERT_EQ(r.pc().seams().disable("automap"), seam_reason::none);
+  r.pc().reset();
+  EXPECT_FALSE(r.pc().seams().armed());
+  sha256_digest baseline;
+  ASSERT_TRUE(parse_digest(known_editions().front().fingerprint, baseline));
+  r.pc().seams().loaded(baseline, image_load_segment);
+  EXPECT_EQ(r.pc().seams().status("automap").state, seam_state::off);
+  EXPECT_FALSE(r.pc().seams().status("automap").stopping);
+}
+
+// ---------------------------------------------------------------------------
 // The fidelity pair
 // ---------------------------------------------------------------------------
 

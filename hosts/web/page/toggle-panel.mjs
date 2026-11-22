@@ -221,8 +221,16 @@ export function storedSeams(value) {
 /// off, so that the record they leave behind is the record a player who
 /// never opened the panel has. There is one meaning of "off" and it does
 /// not depend on how you got there.
-export function seamsToStore(rows) {
-  const on = rows.filter((row) => row.on).map((row) => row.id);
+///
+/// `chosen`, `{ id, on }`, is the row a player has just toggled, stored as
+/// they left it rather than as core has it: a seam switched off with
+/// something of its own on the screen stays on, stopping, until a point of
+/// its own has put the screen back (docs/seams.md §3b, #657), and the
+/// choice is off all the same.
+export function seamsToStore(rows, chosen = null) {
+  const on = rows
+    .filter((row) => (chosen !== null && row.id === chosen.id ? chosen.on : row.on))
+    .map((row) => row.id);
   return on.length === 0 ? null : on;
 }
 

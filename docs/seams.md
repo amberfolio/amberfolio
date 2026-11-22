@@ -420,11 +420,33 @@ BIOS reaches no address of its own, so no address can pace it.
 - **Cost**: `machine::step()` asks `due(now)` beside `wants(at)`, one
   comparison against the earliest moment any seam has asked for; with
   none asked it is false at every tick. A stop owed is due now.
+- **Holding for its own points** (`seam_context::hold_for_points`,
+  #657). Some of what a seam holds only the program can put back, through
+  its own routines, and `call_program` needs a known instruction: a stop
+  cannot do it. A seam holding such a thing says so with
+  `hold_for_points(true)`, and a `disable()` while it holds and is armed
+  does not switch it off. The seam stays **on**, `stopping`, and every
+  surface that reads `status()` says on (`seam_status::stopping` says
+  why); its points go on being offered, and a handler that sees
+  `seam_context::stopping()` starts nothing new, gives back what it holds
+  and lets go with `hold_for_points(false)`. After that point has been
+  offered, and after the batch it started when it started one, the
+  engine finishes the switch-off: the ordinary one, its `disabled` event,
+  a stop owed if one is. An off seam never acts; a seam that has not
+  finished going off is on and says so. So the switch-off lands at the
+  seam's next point, and **a program that never reaches one keeps the
+  seam on** until it does. `enable()` before then cancels it and the seam
+  carries on as it was; `disable()` again changes nothing; `clear()`, and
+  so a reset, drops it and the seam is simply off; a sibling in a group
+  being switched on switches a stopping or holding seam off at once (§6).
+  A seam that never holds for its points is off the moment `disable()`
+  returns, as always.
 
 Tests: `SeamMoment.*` (`tests/core/machine/seam_moment_test.cpp`),
 `SeamMoment.ServingOneThatWritesNothingLeavesTheRunIdentical` the
 fidelity one, `SeamMoment.SwitchedOff*` and `SeamMoment.SwitchedOnAgainItHoldsNothing`
-the stop's.
+the stop's; `SeamStopping.*` (`tests/core/machine/seam_stopping_test.cpp`)
+holding for its own points.
 
 ---
 
@@ -661,10 +683,20 @@ compare as runs and not as spellings.
   the native suite does for `seam_probe` and `seam_probe_off`).
 
 **Alternatives.** Seams that share a `group` are one choice: `enable()`
-disables the others in it first, each with its own `disabled` event,
-so the panel, a config file and a replay's preamble all end with at most
-one of them on (`SeamGroup.*`). Both panels redraw every row after a
+disables the others in it first, each with its own `disabled` event and
+at once, whatever it holds for its points (§3b), so the panel, a config
+file and a replay's preamble all end with at most one of them on
+(`SeamGroup.*`, `SeamStopping.AGroupNeverHasTwoOnWhileOneIsStopping`). Both panels redraw every row after a
 toggle for that reason.
+
+**Stopping** (§3b) is `on` in this table, a seam switched off but not
+yet finished, and the desktop panel shows it so. What a host
+*remembers* is the person's choice, and so off: the desktop's
+`remember_panel_seams()` skips a row that says `stopping`, and the page
+leaves the box it toggled, and the record it writes, as toggled
+(`docs/hosts.md` §8). The ABI has no word for it (`af_machine_seam_state`
+answers `AF_SEAM_ON`); it lasts until the seam's next point, at a
+party's bar a frame or less.
 
 Seam state is configuration, not machine state: `machine::reset()`
 clears it, the serialization omits it, a replay records the active set
@@ -1466,6 +1498,29 @@ rule, settling quarantine and ownership signals are derived in
   `SeamAutomapOnCurse.TheReadingClimbsPastARoutineInBetween`,
   `SeamAutomapOnCurse.OnceReadTheBarsOwnEntryDecides`,
   `AutomapBar.SwitchedOnAtEitherOfThePartysBarsTabAnswersAtOnce`.
+- **Switched off with the panel up** (#657), the seam is not off until
+  the roster is back: what it drew only the program's own routines can
+  put right, and only a point at a known instruction may call them
+  (§3b, holding for its own points). Every point says, as it returns,
+  whether the panel or what is left of it beside a clear is on the
+  screen, and on Secret of the Silver Blades whether a key taken at a
+  poll is still owed its answer at the read; while any of that is so, a
+  switch-off leaves the seam on, stopping. Its next key point, poll or
+  read, makes the give-back `Tab` makes, the region clear over the
+  panel's rect and the roster drawer, and the engine finishes the
+  switch-off when that batch is done; a read owed its answer is answered
+  first. A screen the program clears whole or draws the roster over
+  (a camp, a sheet, a fight) finishes it at that point, the roster being
+  the program's to draw there. While stopping nothing new starts: no key
+  is claimed (`Tab` reaches the program), nothing is drawn, nothing is
+  explored. The panel stays open, as under somebody else's question, so
+  switched on again later it is drawn at the party's bar; switched on
+  again before the give-back, the switch-off is cancelled and the panel
+  stays as it was. A program that reaches none of the seam's points
+  keeps it on until it does; at the party's bar it polls the keyboard
+  continuously, so the roster is back within a frame. With the panel
+  down the switch-off is immediate, as before. Tests: `AutomapOff.*`,
+  `SeamAutomapOnSecret.SwitchedOffBetweenThePollAndTheReadItStillAnswers`.
 - Rejected as the "whose screen" gate: the program's "a script has the
   message area" byte, because `--watch 84E4` shows it oscillating every
   step.

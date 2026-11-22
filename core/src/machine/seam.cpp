@@ -279,6 +279,19 @@ void seam_context::hold(bool holding) noexcept {
   engine_->slots_[at].holding = holding;
 }
 
+void seam_context::hold_for_points(bool holding) noexcept {
+  const std::size_t at = engine_->index_of(id_);
+  if (at == seam_engine::max_seams || !engine_->slots_[at].enabled) {
+    return;
+  }
+  engine_->slots_[at].held_for_points = holding;
+}
+
+bool seam_context::stopping() const noexcept {
+  const std::size_t at = engine_->index_of(id_);
+  return at != seam_engine::max_seams && engine_->slots_[at].stopping;
+}
+
 std::uint16_t seam_engine::scratch(std::string_view id,
                                    unsigned word) const noexcept {
   const std::size_t at = index_of(id);
@@ -496,6 +509,7 @@ seam_status seam_engine::slot_status(std::size_t index) const noexcept {
     return out;
   }
   out.state = s.enabled ? seam_state::on : seam_state::off;
+  out.stopping = s.stopping;
   out.trigger = s.seam->trigger;
   out.waiting = s.waiting;
   out.pulled_at = s.pulled_at;
@@ -573,8 +587,14 @@ void seam_engine::clear() noexcept {
     slots_[i].moment = ticks{};
     slots_[i].holding = false;
     slots_[i].stop_owed = false;
+    // And a switch-off that was waiting for a point of its own (#657):
+    // the seam is simply off, as everything is, and what it held is the
+    // reset machine's to put back.
+    slots_[i].held_for_points = false;
+    slots_[i].stopping = false;
   }
   stops_owed_ = 0;
+  stopping_ = 0;
   enabled_ = 0;
   points_ = {};
   armed_ = 0;
@@ -650,6 +670,13 @@ seam_error seam_engine::enable_slot(std::size_t index) {
   slot& s = slots_[index];
   const std::string_view id = s.seam->id;
   if (s.enabled) {
+    if (s.stopping) {
+      // Switched on again before it had finished going off (#657): the
+      // switch-off is cancelled, and the seam carries on with what it
+      // holds, as it was.
+      s.stopping = false;
+      --stopping_;
+    }
     return seam_reason::none;
   }
 
@@ -671,11 +698,13 @@ seam_error seam_engine::enable_slot(std::size_t index) {
     return seam_reason::too_many_points;
   }
 
-  // Alternatives: the sibling goes off first, through the one door a
-  // seam goes off by, so it says so and its points come down with it.
+  // Alternatives: the sibling goes off first, so it says so and its
+  // points come down with it. At once, whatever it holds: two of a group
+  // on together is the thing a group exists to rule out, even for the
+  // moment a stopping one would take (#657).
   for (std::size_t i = 0; i < registered_; ++i) {
     if (slots_[i].enabled && sibling(slots_[i])) {
-      static_cast<void>(disable(slots_[i].seam->id));
+      static_cast<void>(finish_disable(i));
     }
   }
 
@@ -690,6 +719,7 @@ seam_error seam_engine::enable_slot(std::size_t index) {
   s.offered = false;
   s.moment = ticks{};
   s.holding = false;
+  s.held_for_points = false;
   ++enabled_;
   report(id, seam_event_kind::enabled, seam_reason::none);
   arm_all(overlays_);
@@ -703,9 +733,36 @@ seam_error seam_engine::disable(std::string_view id) {
     return seam_reason::unknown_seam;
   }
   slot& s = slots_[index];
+  if (!s.enabled || s.stopping) {
+    return seam_reason::none;
+  }
+  if (s.held_for_points && s.armed) {
+    // Something of the program's is out that only a point of this seam
+    // can give back (#657). The seam stays on, and says so, until one
+    // has: an off seam never acts. A pull outstanding dies here rather
+    // than at the finish, because a seam on its way off starts nothing.
+    s.stopping = true;
+    ++stopping_;
+    if (s.waiting) {
+      s.waiting = false;
+      rebuild_filter();
+    }
+    return seam_reason::none;
+  }
+  return finish_disable(index);
+}
+
+seam_error seam_engine::finish_disable(std::size_t index) {
+  slot& s = slots_[index];
+  const std::string_view id = s.seam->id;
   if (!s.enabled) {
     return seam_reason::none;
   }
+  if (s.stopping) {
+    s.stopping = false;
+    --stopping_;
+  }
+  s.held_for_points = false;
   s.enabled = false;
   s.armed = false;
   s.reason = seam_reason::none;
@@ -979,6 +1036,19 @@ void seam_engine::offer_moment(std::string_view id, bool offered,
   slots_[at].offered = offered;
   slots_[at].moment = moment;
   rebuild_moments();
+}
+
+void seam_engine::finish_stopping() {
+  for (std::size_t i = 0; i < registered_; ++i) {
+    const slot& s = slots_[i];
+    if (!s.stopping || s.held_for_points) {
+      continue;
+    }
+    if (call_.active && call_.owner == s.seam->id) {
+      continue;  // its give-back is still running; done when it is.
+    }
+    static_cast<void>(finish_disable(i));
+  }
 }
 
 void seam_engine::serve_stops(machine& box, std::uint32_t at) {
@@ -1262,6 +1332,12 @@ void seam_engine::dispatch(machine& box, std::uint32_t at) {
                          : ticks{};
       report(owner.seam->id, seam_event_kind::served, seam_reason::none);
     }
+  }
+  if (stopping_ != 0) {
+    // A seam on its way off that a point above let go of is off now
+    // (#657), after the walk and not during it: finishing rebuilds the
+    // table the walk was reading.
+    finish_stopping();
   }
 }
 

@@ -15,14 +15,24 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <array>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "amberfolio/cpu/address.h"
+#include "amberfolio/cpu/registers.h"
+#include "amberfolio/machine/edition.h"
+#include "amberfolio/machine/loader.h"
+#include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/seam.h"
+#include "amberfolio/sha256.h"
 #include "desktop_config.h"
 #include "options.h"
 
@@ -360,6 +370,61 @@ TEST_F(LaunchConfig, ThePanelRemembersOneNumberOverWhatTheFileHeld) {
   EXPECT_EQ(back.settings, (std::optional<std::vector<seam_setting_choice>>{
                                {{.seam = "other", .value = 3},
                                 {.seam = "message-pause", .value = 1750}}}));
+}
+
+/// A seam that holds something only its own point can give back, and
+/// never gives it back: switched off, it stays on and stopping (#657).
+void hold_for_good(machine::machine& /*box*/, machine::seam_context& ctx) {
+  ctx.hold_for_points(true);
+}
+constexpr std::string_view held_hex =
+    "6565656565656565656565656565656565656565656565656565656565656565";
+constexpr std::array<std::string_view, 1> held_binaries{held_hex};
+constexpr std::array<machine::seam_point, 1> held_points{
+    {{.module = machine::resident_image, .offset = 0, .run = &hold_for_good}}};
+constexpr machine::seam_definition held_seam{.id = "test-held-panel",
+                                             .about = "holds for good",
+                                             .fingerprints = held_binaries,
+                                             .points = held_points};
+
+TEST_F(LaunchConfig, ASeamOnItsWayOffIsRememberedOff) {
+  // On the heap: a machine is a megabyte of memory.
+  const auto owned =
+      std::make_unique<machine::machine>(machine::memory_layout::pc);
+  machine::machine& box = *owned;
+  ASSERT_TRUE(box.seams().add(held_seam));
+  sha256_digest digest;
+  ASSERT_TRUE(machine::parse_digest(held_hex, digest));
+  box.seams().loaded(digest, machine::image_load_segment);
+  const std::uint32_t at =
+      cpu::physical_address(machine::image_load_segment, 0);
+  box.memory().ram()[at] = 0xF4;  // HLT on the point
+  box.processor().reset();
+  box.processor().regs()[cpu::sreg::cs] = machine::image_load_segment;
+  box.processor().regs().ip = 0;
+  ASSERT_EQ(box.seams().enable("test-held-panel"), machine::seam_reason::none);
+  box.step();
+  ASSERT_EQ(box.seams().disable("test-held-panel"), machine::seam_reason::none);
+  ASSERT_EQ(box.seams().status("test-held-panel").state,
+            machine::seam_state::on);
+  ASSERT_TRUE(box.seams().status("test-held-panel").stopping);
+
+  options opts;
+  opts.config_path = config_with(
+      "amberfolio-config 2\n"
+      "program START.EXE\n"
+      "seam test-held-panel\n");
+  testing::internal::CaptureStderr();
+  remember_panel_seams(opts, box.seams());
+  static_cast<void>(testing::internal::GetCapturedStderr());
+
+  desktop_config back;
+  std::ifstream file(opts.config_path, std::ios::binary);
+  const std::string text((std::istreambuf_iterator<char>(file)),
+                         std::istreambuf_iterator<char>());
+  ASSERT_TRUE(back.parse(text).ok());
+  EXPECT_FALSE(back.seams.has_value())
+      << "the player switched it off, whatever the engine is finishing";
 }
 
 TEST_F(LaunchConfig, ThePanelWritesNothingUnderNoConfig) {

@@ -2114,6 +2114,17 @@ because `config_of()` would also write down this run's `--speed` and
 `--scale`), and the page writes its `seams` key. `--no-config` says so
 and writes nothing.
 
+**What is written down is the choice, not the moment.** A seam switched
+off with something of its own on the screen stays on, stopping, until
+its next point has put the screen back (`seams.md` §3b, #657), and
+neither panel remembers it on. The desktop panel reads `status()` at
+every paint, so it shows on until the seam is off, and its write skips a
+row whose `seam_status::stopping` is set. The page leaves the box it
+toggled as the player left it and writes that row as left; its
+half-second refresh shows core's word, which differs from the box only
+while the seam is stopping. Neither disagrees with core for longer than
+the stop takes.
+
 Nothing persisted is machine state. `reset()` still clears seam state,
 the serialization still omits it, and no checkpoint in a recording
 hashes any of it (`replay.md`).
