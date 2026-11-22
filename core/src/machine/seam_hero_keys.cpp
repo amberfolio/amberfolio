@@ -100,6 +100,13 @@
 //     the column goes back.
 //     **The column is left as the program had it** at every other arrival.
 //
+// **From the whole list on** (#656). The numbers start at the first draw of
+// the whole list after the seam comes on, which the heading's point notes
+// in the seam's own word: until then the row and armour class points leave
+// a row the program's, so a seam switched on with the list up never lays a
+// numbered row over unnumbered ones (Secret of the Silver Blades' picker
+// draws one row again, over the old, without clearing it).
+//
 // **What a long name keeps.** Beside the viewport the name field is
 // columns `0x13` to `0x20` now, fourteen, so a name of fifteen characters
 // shows its first fourteen. The armour class is right-aligned in `0x21` to
@@ -610,6 +617,15 @@ void call_and_return_here(machine& box, seam_context& ctx,
                offset);
 }
 
+/// Whether the rows are numbered yet: from the first whole draw of the
+/// roster, heading first, after the seam came on (#656). A seam switched on
+/// with the roster up leaves it the program's until then, so a routine that
+/// draws one row again (Secret of the Silver Blades' member picker) does not
+/// lay a numbered row over an unnumbered list.
+[[nodiscard]] bool numbered(const seam_context& ctx) noexcept {
+  return ctx.scratch(hero_keys_numbered_scratch) != 0;
+}
+
 /// The frame of the drawer, or of the routine that draws one row again.
 template <const hero_keys_facts& F, bool Row>
 [[nodiscard]] constexpr const frame_layout& layout_of() noexcept {
@@ -643,6 +659,9 @@ void at_row_cleared(machine& box, seam_context& ctx) {
     }
     ctx.decline(seam_reason::point_not_recognized);
     return;
+  }
+  if (!numbered(ctx)) {
+    return;  // the roster on the screen is still the program's layout.
   }
 
   // The name moves right, which the program does for both of its paths
@@ -725,6 +744,9 @@ void at_ac_column(machine& box, seam_context& ctx) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
+  if (!numbered(ctx)) {
+    return;
+  }
   cpu::registers& regs = cpu.regs();
   const std::uint16_t column = regs[cpu::reg16::ax];
   if (column < first_ac_column || column > last_ac_column) {
@@ -766,6 +788,9 @@ void at_heading_copied(machine& box, seam_context& ctx) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
+  // The whole roster is drawn from here, heading first: its rows are
+  // numbered from this draw on (#656).
+  ctx.set_scratch(hero_keys_numbered_scratch, 1);
   // The armour class's two characters one column right, into the gap's
   // first space; the hit points' stay where they are.
   const std::uint8_t first = read(1);

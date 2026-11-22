@@ -728,6 +728,17 @@ TEST(SeamModernControlsOnCurse, ADigitAtTheMainMenuSelectsThatMember) {
 TEST(SeamModernControlsOnCurse, TheMainMenusRosterDrawsTheNumberWithPaper) {
   const curse_rig r;
   r.arm();
+  // The drawer begins the whole roster with its heading (a stand-in copy of
+  // its shape), and the rows are numbered from there (#656).
+  r.put_byte(stack_segment, frame_base - 5, 0x01);
+  r.put_byte(stack_segment, frame_base - 6, 2);
+  const std::array<std::uint8_t, 7> heading{6, 'Q', 'R', ' ', ' ', 'S', 'T'};
+  for (std::size_t i = 0; i < heading.size(); ++i) {
+    r.put_byte(stack_segment, static_cast<std::uint16_t>(frame_base - 0x0E + i),
+               heading[i]);
+  }
+  r.stand_on(picker_segment, roster_points[3]);
+  r.box->step();
   r.lay_party(4, 0);
   // The drawer's frame on the main menu: column one, the third member's
   // row, the member's far pointer.

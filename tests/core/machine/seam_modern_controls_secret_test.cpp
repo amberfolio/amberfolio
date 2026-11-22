@@ -392,6 +392,21 @@ void lay_row_frame(const secret_rig& r, std::uint16_t column_below,
   r.put_word(stack_segment, frame_base - 2, party_segment);
 }
 
+/// The roster drawer has begun the whole list at the party menu's column,
+/// heading first (its copy a stand-in of the heading's shape): the rows are
+/// numbered from here (#656).
+void roster_drawn_whole(const secret_rig& r) {
+  r.put_byte(stack_segment, frame_base - 5, 0x01);
+  r.put_byte(stack_segment, frame_base - 6, 2);
+  const std::array<std::uint8_t, 7> heading{6, 'Q', 'R', ' ', ' ', 'S', 'T'};
+  for (std::size_t i = 0; i < heading.size(); ++i) {
+    r.put_byte(stack_segment, static_cast<std::uint16_t>(frame_base - 0x0E + i),
+               heading[i]);
+  }
+  r.stand_on(summary_segment, roster_points[3]);
+  r.box->step();
+}
+
 /// After an arrival that called the blitter: CS:IP is the blitter's, and the
 /// words on the stack its far return to the point and its arguments.
 void expect_the_number_drawn(const secret_rig& r, std::uint16_t point) {
@@ -413,6 +428,7 @@ void expect_the_number_drawn(const secret_rig& r, std::uint16_t point) {
 TEST(SeamModernControlsOnSecret, ThePartyMenusRosterDrawsTheNumberWithPaper) {
   const secret_rig r;
   r.arm();
+  roster_drawn_whole(r);
   lay_row_frame(r, 5, 6, 0x01);
   r.put_byte(static_cast<std::uint16_t>(image_load_segment + glyph_paragraph),
              glyph_offset, 0x90);
@@ -426,6 +442,7 @@ TEST(SeamModernControlsOnSecret, ThePartyMenusRosterDrawsTheNumberWithPaper) {
 TEST(SeamModernControlsOnSecret, ARowDrawnAgainKeepsItsNumberAndItsColumns) {
   const secret_rig r;
   r.arm();
+  roster_drawn_whole(r);
   // The routine that draws one row again keeps its column at BP-9 and its
   // row at BP-0x0A.
   lay_row_frame(r, 9, 0x0A, 0x01);
@@ -469,6 +486,49 @@ TEST(SeamModernControlsOnSecret,
   r.box->step();
   EXPECT_EQ(r.box->processor().regs()[cpu::reg16::ax], 0x21);
   EXPECT_EQ(r.box->seams().status(seam_id).declined, 0U);
+}
+
+TEST(SeamModernControlsOnSecret,
+     SwitchedOnAtThePickerARowDrawnAgainIsTheProgramsUntilTheWholeRoster) {
+  // #656: the seam comes on with the party menu's roster up, unnumbered, and
+  // the picker draws two rows again for a step. They stay the program's, in
+  // its layout, until the drawer draws the whole roster, heading first.
+  const secret_rig r;
+  r.arm();
+  lay_row_frame(r, 9, 0x0A, 0x01);
+  r.stand_on(summary_segment, row_points[0]);
+  r.box->step();
+  EXPECT_EQ(r.byte(stack_segment, frame_base - 9), 0x01) << "no name moved";
+  EXPECT_EQ(r.box->processor().regs()[cpu::sreg::cs], summary_segment)
+      << "and no number drawn";
+  r.stand_on(summary_segment, row_points[2]);
+  r.box->processor().regs()[cpu::reg16::ax] = 0x21;
+  r.box->step();
+  EXPECT_EQ(r.box->processor().regs()[cpu::reg16::ax], 0x21)
+      << "nor the armour class";
+
+  roster_drawn_whole(r);
+  lay_row_frame(r, 9, 0x0A, 0x01);
+  r.put_byte(static_cast<std::uint16_t>(image_load_segment + glyph_paragraph),
+             glyph_offset, 0x90);
+  r.stand_on(summary_segment, row_points[0]);
+  r.box->step();
+  EXPECT_EQ(r.byte(stack_segment, frame_base - 9), 0x03);
+  expect_the_number_drawn(r, row_points[0]);
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0U);
+}
+
+TEST(SeamModernControlsOnSecret, SwitchedOnAgainItWaitsForTheWholeRosterAgain) {
+  const secret_rig r;
+  r.arm();
+  roster_drawn_whole(r);
+  ASSERT_EQ(r.box->seams().disable(seam_id), seam_reason::none);
+  r.arm();
+  lay_row_frame(r, 9, 0x0A, 0x01);
+  r.stand_on(summary_segment, row_points[0]);
+  r.box->step();
+  EXPECT_EQ(r.byte(stack_segment, frame_base - 9), 0x01);
+  EXPECT_EQ(r.box->processor().regs()[cpu::sreg::cs], summary_segment);
 }
 
 // --- The selection block -----------------------------------------------------
