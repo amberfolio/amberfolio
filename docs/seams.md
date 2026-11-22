@@ -1286,6 +1286,18 @@ memory (§8.4); the report is drawn on the interrupted exit because the
 pass of the menu it would otherwise wait for never comes; the batch
 budget (§3).
 
+**Not on the later two games: each camp has a `FIX` of its own.** Curse
+of the Azure Bonds' is in `docs/playable-curse.md` leg 5. Secret of the
+Silver Blades' camp bar is `SAVE VIEW MAGIC REST ALTER FIX EXIT` (its
+magic bar `CAST MEMORIZE SCRIBE DISPLAY REST EXIT`, its rest bar `REST
+DAYS HOURS MINS ADD SUBTRACT EXIT`), and its `FIX` heals with no word
+asked of the player, the clock moving 10:15 at each press. **Driven**
+(`docs/playable-secret.md` leg 2): after leg 4's fight, one press takes
+Paine from 55 to 74, Epona from 82 to 91 and Dominic, the cleric, from
+51 to 78, the whole party; with every member on one hit point, each
+press restores 37 to 62, to the first member hurt in the roster's order
+first, and eight presses make the party whole. Nothing is ported.
+
 ### The roster fix
 
 Not a PLAN.md §5 item: a fix for a way the program hangs that a player
@@ -1333,6 +1345,21 @@ word `0x07D0`, the one match of the manager's-record search):
   among them, which reaches it twice. `roster-add` holds what it does over
   a stranded name.
 - **Open**: nothing.
+
+**Not on Secret of the Silver Blades: it keeps no roster file.** `ADD
+CHARACTER TO PARTY` asks `ADD FROM WHERE? SECRET CURSE EXIT`, and its list
+is a directory search: overlay 21 (file offset 145645, 13542 bytes, load
+word `0xF90`) puts the save directory (DGROUP `0x7422`) before `*.who`,
+or `*.guy` for the other answer, and the runtime's search (INT 21h `4Eh`
+and `4Fh`, image `0xBEEF` and `0xBF0C`) makes the list, so every name on
+it is a file there at that moment. Taking one opens each of its files,
+the `.WHO` and the `.SFX` beside it, only after a search has found it.
+**Driven** over a
+character made as leg 5 makes one (`TO.WHO`, `TO.SFX`) on a scratch copy
+of the disk: with both files `SECRET` lists `TO` and `Return` adds it;
+with the `.SFX` removed the same, its search finding nothing and nothing
+opened in its place; with the `.WHO` removed nothing is listed and the menu
+comes back. Nothing asks for a disk, and nothing is ported.
 
 ### The automap panel (#173, M5-E2a to M5-E2e)
 
@@ -2106,6 +2133,24 @@ the old claim (`ExploredFidelity.TheArrivalIsNoLongerTheScreenItWouldHaveBeen`,
 squares named), `exp-steady.leg` (no flicker across the icon's
 animation).
 
+**Not on the later two games: neither has an overland that is walked.**
+Curse of the Azure Bonds' is a journey menu (its profile). Secret of the
+Silver Blades has no view kind and no travel view at all: the program
+sets game mode 3 in two places, both in the interpreter (overlay 4
+`+0x1D18` and `+0x3E5D`), each only when the area record's 3D word
+(`+0x1CC`) is zero. That word is written twice in the program, both in
+overlay 14 (`+0x03F8`, `+0x0828`), where a game is begun or loaded,
+both times to 1 after the record is cleared, and never by a script:
+the area variables the scripts use are words of the record at `(var -
+0x4A00) * 2`, and over all 22 script blocks of `ECL1.DAX` to `ECL3.DAX`
+they write `0x4BC0` to `0x4CFF`, `+0x380` and beyond, never `0x4AE6`.
+So every area is walked on its grid in the 3D view, the ruins included
+(`docs/playable-secret.md`). **Driven**: the mode byte
+over leg 15 through the town and the ruins' script doors and back, and
+over leg 4 through its fight to a camp after it, is 0, 4, 2, 5 and 6,
+and never 3. Nothing is
+ported.
+
 ### Modern controls (#423, #425, #434, #439, #453, #455, #473, #479)
 
 `seam_modern_controls.cpp`: arrows, Enter, Esc and the number keys at
@@ -2179,6 +2224,34 @@ to its `pop bp; retf 2`.
   And of what is left between a key and a turned view, about four frames
   at the 386 governor are the program composing the view in its back
   buffer and copying it out.
+
+**Not on Secret of the Silver Blades: its driver has no wait to skip.**
+The dispatch entry, image `0x7E60` (`push bp`, the request at `[BP+6]`,
+`retf 2` at `0x7F08`), is Curse of the Azure Bonds' (`0x69B0` there):
+requests 0 and 1 start no sound, `0xFF` stops the driver, `0x0F` sets
+a word, and any other starts the sound for the setting at DGROUP
+`0x741A` and returns. Nothing in it tests a busy word or spins. The
+footstep is request `0x0A`, the word at DGROUP `0x19DA`, from three
+calls in overlay 17 (load-segment word `0xD70`) and one in overlay 4
+(`0x510`):
+
+| call | its far return | after it |
+| --- | --- | --- |
+| a step's commit | overlay 17 `0x07D5` | the runtime's `Delay(50)` (image `0xB79:0x029E`), then the square moves and the view is drawn |
+| a turn left, a turn right | overlay 17 `0x0B6A`, `0x0BB9` | the view is drawn |
+| the adventuring loop, when the square differs from the one it last saw | overlay 4 `0x4089` | nothing |
+
+So a turn waits for nothing, and a step's one wait is the program's own
+pause between its two clicks, the one quick steps keeps on Pool of
+Radiance. Curse of the Azure Bonds has the same four calls and the same
+`Delay(50)` after its step's commit (overlay 15 `0x081A`). **Driven** at
+the 386 governor from leg 1 into the move mode, eight steps and three
+turns on the town's streets (`docs/playable-secret.md` has the numbers):
+a turn's view is finished 3 or 4 frames after the key, a step's 5 or 6,
+of which 1.79 frames are the `Delay` (Secret's runtime millisecond is
+0.6 of one, *The message pause* below), and the profile is the same
+frame for frame under each of the four sound lines, silent included.
+There is nothing for the seam to remove, and nothing is ported.
 
 ### The message pause (#531)
 
@@ -2534,6 +2607,34 @@ driver does not do:
   and the keyboard never differ).
 - **Open**: nothing.
 
+#### On Secret of the Silver Blades: not ported
+
+Whether it has anything to do here is for a person's ear: **the titles
+play a tune of their own**, from the moment the piece would start. The
+facts that bear on it:
+
+- **Where the piece would start.** The titles are overlay 2 (GAME.OVR
+  file offset 210, 1896 bytes, load-segment word `0x480`), at `0x0571`,
+  a `push bp`, the second entry of its stub (image `0x0495`). The boot
+  calls it at image `0x01B6` when its loading is done: at the 386
+  governor in frame 122 (tick 2,429,246), `LOADING...PLEASE WAIT`
+  showing from frame 100.
+- **What the program plays there.** The titles first ask the driver for
+  `0xFF` (dispatch entry `0x7E60`, *Quick steps* above), which stops it
+  and gives the timer back, and then, unless the sound setting (DGROUP
+  `0x741A`) is 5, start the tune through overlay 3's entries in the
+  same frame, 123. The setting is the configuration's sound line: `A`
+  writes 2, `T` 3, `P` 4, and silent 5. With the AdLib card the machine
+  has, **the tune is on the card under `T`, `A` and `P` alike**: 2,417
+  writes to it over the first 3,700 frames, no speaker edge, and four
+  writes to the Tandy chip in all, the start-up's silencing
+  (`docs/hosts.md` §4b). Silent, nothing plays.
+- **So under `T`**, which every copy is started as, the Tandy chip is
+  idle under the titles, as on the first two games, and a piece on it
+  would sound together with the program's tune on the card; the driver
+  starts again at `PLAY` (frame 900 on leg 0), and from the party menu
+  on writes the chip at every tick, as Curse of the Azure Bonds' does.
+
 ### The timer fix
 
 Not a PLAN.md §5 item: what quick steps needs to leave the sound driver
@@ -2573,6 +2674,18 @@ place, and the next sound's install hooked over it.
   vector is the BIOS's again after each sound that waits (18 hooks, 18
   unhooks).
 - **Open**: nothing.
+
+**Not on Secret of the Silver Blades: the failure does not exist.** Its
+driver hooks the timer once, when it is started, and not around each
+sound. The start routine, image `0x7F0B`, sets the started byte (DGROUP
+`0x741C`) and, unless the sound line is silent, calls the install at
+`0xB28E`, which keeps the vector in its own segment and installs its
+handler (`0x34BC` in the driver's segment); request `0xFF` at the
+dispatch calls the uninstall, `0xB2C3`, and clears the byte. Every call
+of the start routine but the boot's first is behind a test of that byte
+being clear. **Driven** over leg 4, from the boot through the fight to
+its treasure: nine hooks and eight unhooks, alternating, and every hook
+found the BIOS's vector (`F000:0108`) in the table. Nothing is ported.
 
 ### The text faces
 

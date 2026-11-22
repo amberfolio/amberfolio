@@ -91,7 +91,23 @@ rows below, as a player reads it.
 | a line of text | `Backspace`, `Escape` | erases the last character; takes the line as typed |
 
 Driven over leg 1 to its adventuring bar, over leg 0 and its party menu,
-over leg 4 to its fight and over leg 10 to its name. `Home` and `End` at
+over leg 4 to its fight and over leg 10 to its name.
+
+**A step and a turn at `386`.** Leg 1, then `M@8100`, five `Up` from
+8,250, `Left@9000`, `Up@9150`, `Up@9300`, `Right@9450`, `Left@9600` and
+`Up@9750`, down the street from the mayor's house and east along it,
+stills every frame:
+
+| key | the view finished | of which waiting |
+| --- | --- | --- |
+| a turn | 3 or 4 frames after the key | none |
+| a step | 5 or 6 frames after the key | 1.79 frames, the program's `Delay(50)` after the step's first click |
+
+A step asks for the footstep twice, at its commit and after the redraw,
+and a turn once. The numbers are the same frame for frame under each of
+the four sound lines (`--sound tandy`, `adlib`, `speaker`, `silent`):
+the pause is the program's own, whatever is heard (`docs/seams.md` §10,
+quick steps). `Home` and `End` at
 the adventuring bar were seen once each, too little to say: `End` took
 the current member from the second back to the first, and did nothing
 on the first; `Home` did nothing on the first.
@@ -173,6 +189,13 @@ The first `Return` cuts the titles to `PLAY DEMO` and the second takes
 the party. **Nothing is asked on the way**: no question, no document.
 `secret-boot` is this leg.
 
+**The titles' tune starts in frame 123**, the frame after the boot's
+loading hands over to the titles (frame 122, `LOADING...PLEASE WAIT`
+up from frame 100). On this machine it plays on the AdLib card under
+the sound lines `T`, `A` and `P` alike, with nothing on the speaker and
+the Tandy chip silent; under the silent line nothing plays
+(`docs/seams.md` §10, the fanfare).
+
 ## Leg 1: slot A, through the opening, to the adventuring bar
 
 ```
@@ -213,6 +236,17 @@ again.
 
 `S` at camp saves: the slot's letter, and the files are in the save
 layer's table (`docs/hosts.md` §6).
+
+**The camp's own `FIX`.** `M` is the magic bar, `CAST MEMORIZE SCRIBE
+DISPLAY REST EXIT`, and `R` the rest's, `REST DAYS HOURS MINS ADD
+SUBTRACT EXIT` over `REST TIME: 00:00:00`. `F` heals, asking nothing,
+and moves the clock 10:15 at each press. At camp `Down` steps the
+current member, as at the party's bar.
+
+| run | what it shows |
+| --- | --- |
+| leg 4, then `E@28500 E@28800 F@29100` | the fight's three wounded, Paine 55 of 74, Epona 82 of 91 and Dominic, the cleric, 51 of 78, all whole within eleven frames of `F`; the clock from 01:03 to 11:18 |
+| leg 1, then `E@8200`, `V@8500` with `--seam cheat-wound-party --pull cheat-wound-party@8500`, `E@8800`, `F` every 300 frames from 9,100 | every member on one hit point; each press restores 37 to 62 hit points, the first member hurt in the roster's order first, the others one a day; the eighth press makes the party whole, the clock at 10:00 three days on. Three of the presses put `THE WHOLE PARTY IS HEALED` up for a few frames before the rest, with members still hurt |
 
 ## Leg 3: out of the east gate
 
@@ -295,6 +329,18 @@ goes through it to stored `10,3`, and five more `Up` reach stored
 
 `secret-new-party` is this leg, 116 checkpoints. Shipped slot B is a
 second party of six at this same point of the story.
+
+**The list is the save directory's own files.** Leg 5's keys to
+`Y@4600` leave `TO.WHO` and `TO.SFX` on the disk; leg 0 over a copy of
+it, then `Down@1500 Return@1650 S@1950 Return@2250 E@2550`:
+
+| the copy | what `SECRET` does |
+| --- | --- |
+| as left | lists `TO`; `Return` adds it, opening both files |
+| `TO.SFX` removed | lists `TO`; `Return` adds it, the `.SFX` searched for and not opened |
+| `TO.WHO` removed | lists nothing and goes back to the party menu |
+
+Nothing asks for a disk (`docs/seams.md` §10, the roster fix).
 
 **The other answer, `CURSE`**, lists the Curse of the Azure Bonds
 characters (`*.GUY`) in the same save directory, and **`A` takes one
@@ -480,7 +526,8 @@ opening to turn through. `secret-load` is this leg, pinned to that disk.
 **There is no overland.** Where the first two games have a wilderness
 or a journey between places, this one has the town's gates and, the
 mayor says, a teleporter in his house; neither has shown a travel mode
-(game mode 3) in anything driven.
+(game mode 3) in anything driven, and nothing in the program or its
+scripts leads to it (`docs/seams.md` §10, the explored overlay).
 
 ## Leg 13: the party menu's member picker
 

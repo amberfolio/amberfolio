@@ -17,8 +17,13 @@ the disk and every file the game owns are never modified.
 **Each game has its own.** An enhancement is written for a program, and
 the toggle panel lists the ones the game you loaded has: Curse of the
 Azure Bonds has no Encamp Fix (the game has a Fix of its own), explored
-overlay or quick steps, and a fanfare of its own. The key card is each
-game's too.
+overlay or quick steps, and a fanfare of its own. Secret of the Silver
+Blades has no Encamp Fix (its camp has a Fix too), no explored overlay
+(no overland is walked), no quick steps (a turn never waits for its
+click, and a step waits only the pause between its two), no fanfare (its
+titles play a tune of their own), and needs neither fix: its Add list is
+the save directory's own files, and its sound driver hooks the timer
+once. The key card is each game's too.
 
 ## Answer the code wheel once
 
