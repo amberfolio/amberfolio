@@ -3395,6 +3395,20 @@ if (missing.length === 0) {
     seamsToStore([panelRow(aSeam({ state: AF_SEAM_OFF, armed: false }))]) === null,
     'a player who turned everything off left a record behind',
   );
+  // A seam unticked while it is still on its way off (#657): core says on
+  // until a point of its own has put the screen back, and the record says
+  // what the player chose.
+  check(
+    seamsToStore([panelRow(aSeam())], { id: 'automap', on: false }) === null,
+    'a seam switched off but still stopping was remembered on',
+  );
+  check(
+    seamsToStore(
+      [panelRow(aSeam()), panelRow(aSeam({ id: 'journal' }))],
+      { id: 'automap', on: false },
+    ).join(',') === 'journal',
+    'switching one seam off changed what was remembered about another',
+  );
   check(SEAMS_SETTING === 'seams', `the settings key is '${SEAMS_SETTING}'`);
 
   // --- A stored choice is applied, never assumed ----------------------

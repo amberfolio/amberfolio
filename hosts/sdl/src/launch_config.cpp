@@ -250,8 +250,10 @@ void remember_panel_seams(const options& opts,
   }
   std::vector<std::string> on;
   for (std::size_t i = 0; i < seams.count(); ++i) {
+    // A seam on its way off is off to the person who unticked it, though
+    // the engine reports it on until it has put the screen back (#657).
     if (const machine::seam_status row = seams.status(i);
-        row.state == machine::seam_state::on) {
+        row.state == machine::seam_state::on && !row.stopping) {
       on.emplace_back(row.id);
     }
   }

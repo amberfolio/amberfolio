@@ -843,6 +843,11 @@ struct seam_status {
   /// at least one module its points name is resident (#477). On and
   /// unarmed is a seam waiting for a module or a document.
   bool armed{false};
+  /// Switched off and finishing (#657): on, `state` says so, until a point
+  /// of its own has given back what it holds (`seam_context::stopping`).
+  /// A host remembering what a person chose reads a seam that is
+  /// stopping as off; one showing where the seam stands reads it as on.
+  bool stopping{false};
 
   /// How many times one of its handlers has actually **acted** since it
   /// was enabled — run, and not declined.
@@ -1244,6 +1249,21 @@ class seam_context {
   /// `disable()` and `clear()` let go.
   void hold(bool holding) noexcept;
 
+  /// Say that this seam is, or is no longer, holding something of the
+  /// program's that **only one of its own points can give back** (#657):
+  /// what it drew over the program's screen, which the program's own
+  /// routines put back and which only a point at a known instruction may
+  /// call. A `disable()` while it holds leaves the seam on, `stopping()`,
+  /// until a point has given it back and said so with `false`; the engine
+  /// finishes the switch-off after that point, or after the batch it
+  /// started. `enable()`, `disable()` and `clear()` let go.
+  void hold_for_points(bool holding) noexcept;
+
+  /// Whether this seam has been switched off and is finishing: a handler
+  /// that sees it starts nothing new, gives back what it holds, and lets
+  /// go (`hold_for_points(false)`).
+  [[nodiscard]] bool stopping() const noexcept;
+
   /// At an `at_moment` point, the moment this arrival was asked for —
   /// at or before the machine's clock, never after it. Zero anywhere
   /// else.
@@ -1438,6 +1458,13 @@ class seam_engine {
   /// moment asked for, or was holding something (`seam_context::hold`),
   /// and names a `stop` is owed it, at the next step boundary (#540,
   /// #627).
+  ///
+  /// **One holding something only its own points can give back**
+  /// (`seam_context::hold_for_points`), and armed, is not off yet: it
+  /// stays on, **stopping**, and its points go on being offered until
+  /// one of them has given it back and let go; the switch-off is finished
+  /// there, `disabled` event and all (#657). `enable()` before then
+  /// cancels it, and `clear()` drops it with everything else.
   seam_error disable(std::string_view id);
 
   /// Turn everything off. `machine::reset()` calls this — an enabled seam
@@ -1728,6 +1755,13 @@ class seam_engine {
     /// Switched off while `offered` or `holding`, with a `stop` to run:
     /// owed it at the next step boundary (#540, #627).
     bool stop_owed{false};
+    /// Holding something only one of its own points can give back
+    /// (`seam_context::hold_for_points`, #657). Configuration like the
+    /// moment.
+    bool held_for_points{false};
+    /// Switched off while `held_for_points`, and still on until a point
+    /// lets go (#657).
+    bool stopping{false};
     /// How many times a handler of this seam has declined
     /// (`seam_context::decline`). Zero means it has not, which is what
     /// the diagnostics channel's report-once test reads; the count
@@ -1853,6 +1887,15 @@ class seam_engine {
   /// Turn on the seam in slot `index`, once the checks are made.
   seam_error enable_slot(std::size_t index);
 
+  /// Turn off the seam in slot `index`, now, whatever it holds: the
+  /// ordinary switch-off, and the end of a stopping one (#657).
+  seam_error finish_disable(std::size_t index);
+
+  /// Finish every stopping seam that has let go and has no batch of its
+  /// own running (#657). After the points of a step have been offered,
+  /// never while the armed table is being walked.
+  void finish_stopping();
+
   /// Whether `seam` names the loaded program's digest.
   [[nodiscard]] bool applies(const seam_definition& seam) const noexcept;
 
@@ -1948,6 +1991,9 @@ class seam_engine {
 
   /// How many slots say `stop_owed` (#540).
   std::size_t stops_owed_{};
+
+  /// How many slots say `stopping` (#657).
+  std::size_t stopping_{};
 
   void rebuild_moments() noexcept;
   void offer_moment(std::string_view id, bool offered, ticks moment) noexcept;

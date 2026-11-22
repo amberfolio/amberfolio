@@ -2188,10 +2188,18 @@ function renderSeams(
         return;
       }
       // Every row, not this one: a sibling in its group may have gone off.
-      for (const seam of panelRows(machine)) writeRow(seam);
+      // This one's box stays as the player left it. A seam switched off
+      // with something of its own on the screen is on in core until a
+      // point of its own has put the screen back (#657), a frame at most
+      // at the party's bar; a box re-ticked from that would then stay
+      // ticked until the next refresh, half a second after core said off.
+      for (const seam of panelRows(machine)) {
+        writeRow(seam.id === row.id ? { ...seam, on: wanted } : seam);
+      }
       // And a toggle **in the panel** is a player choosing, which is the
-      // only gesture on this page that is. `persist.mjs`'s `seams` key.
-      void remember(seamsToStore(panelRows(machine)));
+      // only gesture on this page that is. `persist.mjs`'s `seams` key,
+      // with this row as the player left it.
+      void remember(seamsToStore(panelRows(machine), { id: row.id, on: wanted }));
     });
 
     body.append(line, readingRow);
