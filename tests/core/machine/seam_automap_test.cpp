@@ -541,6 +541,28 @@ TEST(AutomapState, AMapChangeMarksTheCellTheePartyLeftAndTheOneItArrivesAt) {
             automap_marker::entrance);
 }
 
+TEST(AutomapState, AStoreHoldsMoreThanAPlaythroughAndThenReusesTheOldest) {
+  // #653: the most any of the three programs can claim is about 114
+  // (automap.h), and the store holds more than twice that.
+  static_assert(automap_state::max_records >= 2 * 114);
+  auto state = std::make_unique<automap_state>();
+  for (unsigned i = 0; i < automap_state::max_records; ++i) {
+    state->reveal(
+        state->record_for_numbered(2, 49, 48, (i % 16U) * 16U, (i / 16U) * 16U),
+        0, 0);
+  }
+  EXPECT_EQ(state->records_used(), automap_state::max_records);
+  ASSERT_NE(state->find_numbered(2, 49, 48, 0, 0), nullptr)
+      << "the first page is still there at the last";
+
+  state->reveal(state->record_for(1, 16, 16), 3, 3);
+  EXPECT_EQ(state->records_used(), automap_state::max_records);
+  EXPECT_EQ(state->find_numbered(2, 49, 48, 0, 0), nullptr)
+      << "one more takes the oldest-claimed slot";
+  EXPECT_NE(state->find_numbered(2, 49, 48, 16, 0), nullptr);
+  EXPECT_NE(state->find(1, 16, 16), nullptr);
+}
+
 TEST(AutomapState, TheStatusRowIsNotThePanels) {
   // The program clears its status row as the clock ticks. A panel that
   // called that "something took my cells" would flicker once a minute.

@@ -425,6 +425,74 @@ TEST(AutomapSidecar, AnEmptyTableIsAFileAndNotNothing) {
   EXPECT_EQ(after.records_used(), 0u) << "and it replaces what was there";
 }
 
+TEST(AutomapSidecar, AFullStoreAtItsWidestFitsTheSlotStoresBuffer) {
+  // #653: every record a numbered page, the widest row the sidecar
+  // writes, and the buffer a host writes it through holds it exactly.
+  auto before = std::make_unique<automap_state>();
+  for (unsigned i = 0; i < automap_state::max_records; ++i) {
+    const unsigned x = (i % 16U) * 16U;
+    const unsigned y = (i / 16U) * 16U;
+    automap_record& page = before->record_for_numbered(3, 80, 80, x, y);
+    ASSERT_TRUE(before->stand_on_numbered(page, x, y, i % 16U, 3, 1));
+  }
+  ASSERT_EQ(before->records_used(), automap_state::max_records);
+  EXPECT_EQ(before->sidecar_bytes(), slot_store_automap_capacity);
+
+  std::vector<std::uint8_t> bytes(slot_store_automap_capacity);
+  ASSERT_EQ(before->write_sidecar(bytes), slot_store_automap_capacity);
+  auto after = std::make_unique<automap_state>();
+  ASSERT_TRUE(after->read_sidecar(bytes));
+  EXPECT_EQ(after->records_used(), automap_state::max_records);
+  const automap_record* last =
+      after->find_numbered(3, 80, 80, 15U * 16U, 15U * 16U);
+  ASSERT_NE(last, nullptr);
+  EXPECT_EQ(automap_state::numbered_stored_x(*last, 15U * 16U, 15U * 16U), 15U);
+}
+
+TEST(AutomapSidecar, ACountAboveTheCapacityIsRefused) {
+  // The count is what a build with a smaller capacity refuses a larger
+  // store's file by (automap.h, `read_sidecar`); this build does the same
+  // above its own.
+  automap_state state;
+  state.reveal(state.record_for(3, 0, 0), 1, 1);
+  std::vector<std::uint8_t> bytes(slot_store_automap_capacity);
+  const std::size_t size = state.write_sidecar(bytes);
+  ASSERT_GT(size, 0u);
+  constexpr std::size_t too_many = automap_state::max_records + 1;
+  bytes[4] = static_cast<std::uint8_t>(too_many);
+  bytes[5] = static_cast<std::uint8_t>(too_many >> 8U);
+  bytes.resize(machine::automap_sidecar_header_bytes +
+               (too_many * machine::automap_sidecar_record_bytes));
+
+  automap_state other;
+  other.reveal(other.record_for(9, 9, 9), 5, 5);
+  EXPECT_FALSE(other.read_sidecar(bytes));
+  EXPECT_NE(other.find(9, 9, 9), nullptr);
+}
+
+TEST(AutomapSidecar, AFileOfTheOldSixtyFourRecordsStillOpens) {
+  // What the build before #653 could write at its fullest: sixty-four
+  // records, version 2.
+  auto before = std::make_unique<automap_state>();
+  for (unsigned i = 0; i < 64; ++i) {
+    before->reveal(before->record_for(static_cast<std::uint8_t>(1 + (i / 32)),
+                                      static_cast<std::uint8_t>(i % 32), 0),
+                   i % 16U, 2);
+  }
+  std::vector<std::uint8_t> bytes(slot_store_automap_capacity);
+  const std::size_t size = before->write_sidecar(bytes);
+  ASSERT_EQ(size, machine::automap_sidecar_header_bytes +
+                      (64 * machine::automap_sidecar_record_bytes));
+  EXPECT_EQ(bytes[3], machine::automap_sidecar_version);
+
+  auto after = std::make_unique<automap_state>();
+  ASSERT_TRUE(after->read_sidecar({bytes.data(), size}));
+  EXPECT_EQ(after->records_used(), 64u);
+  const automap_record* first = after->find(1, 0, 0);
+  ASSERT_NE(first, nullptr);
+  EXPECT_TRUE(automap_state::seen(*first, 0, 2));
+}
+
 TEST(AutomapSidecar, ABufferTooSmallIsRefusedRatherThanTruncated) {
   automap_state state;
   state.reveal(state.record_for(3, 0, 0), 1, 1);

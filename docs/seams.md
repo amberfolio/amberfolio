@@ -1474,7 +1474,15 @@ rule, settling quarantine and ownership signals are derived in
 **State**: `machine::automap()` (a map's fog is thirty-two bytes, and
 a seam's own words are twelve), observation beside the overlay tracker:
 dropped by `reset()`, absent from the serialization, rebuilt by a replay.
-The colour cache and the door tally live there too. **Host services**:
+The colour cache and the door tally live there too. **It holds 256
+maps** (`automap_state::max_records`, #653), more than twice the most a
+playthrough can claim on any of the three programs: under fifty on Pool
+of Radiance (its areas, their in-place swaps and three overland maps),
+about twenty on Curse of the Azure Bonds, and on Secret of the Silver
+Blades the nineteen (disk, area, block) a party stands in and the pages
+of its scripts' numberings, about ninety-five by how far each numbering
+reaches, so about 114. A full
+store reuses the oldest-claimed slot. **Host services**:
 `automap_update`, called with the store's serial when a reveal changes
 something. The store is the host's (`hosts/common/.../slot_store.h`,
 shape decided in `machine/automap.h` because the explored overlay reads

@@ -367,6 +367,18 @@ eight-byte files into the player's save directory. The replacing half
 stays: an empty snapshot is the truth about the party saving now, and must
 still replace the last one's.
 
+**How big `AFMAP<L>.DAT` gets.** Eight bytes of header and a row per map
+the party has stood on, 113 bytes (version 2) or, while the store holds
+a page of a script's numbering, 626 (version 3); the store holds 256
+maps (`docs/seams.md` §10, #653), so the file is at most 160,264 bytes.
+Both hosts write and read it through one buffer of that size in the
+shared slot store; the page keeps it as it keeps every file of the
+playthrough's, through `af_machine_vfs_get` into IndexedDB's `play` store (§5), with no size of
+its own, so neither the ABI nor the page changed with the capacity. A
+build from before #653 held 64 and refuses a file of more: the slot
+loads with an empty map and `trouble=not-a-sidecar`, and its next save
+of the slot replaces the file.
+
 `hosts/sdl/src/sidecar_consent.h` and `hosts/web/page/sidecars.mjs` are
 the two halves; `hosts/sdl/cmake/run-sidecar-consent.cmake` is the check
 that spans two launches.

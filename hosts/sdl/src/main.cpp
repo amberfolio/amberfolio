@@ -209,8 +209,9 @@ int main(int argc, char** argv) try {
   // attached device, and it changes nothing at all about a run with
   // every seam off — no handler runs, so nothing calls out. The same
   // object the web host attaches (hosts/common), so a callout means the
-  // same thing on both.
-  host::host_services services;
+  // same thing on both. Static rather than on this stack: the sidecars'
+  // buffer in it is 160 kilobytes (`slot_store.h`, #653).
+  static host::host_services services;
   box.seams().set_host(&services);
   // And the sidecars beside the saves (M5-E2c #173, #351). Enabled here
   // and attached after the disk is mounted, below, because `attach()`
