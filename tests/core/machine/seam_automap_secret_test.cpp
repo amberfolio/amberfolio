@@ -19,6 +19,7 @@
 #include <memory>
 #include <span>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "amberfolio/cpu/address.h"
@@ -430,6 +431,69 @@ TEST(SeamAutomapOnSecret, ItsSquareIsBelievedOnceThePartysBarIsUpOnTheMap) {
   r.put_up_the_bar(adventure_segment, move_bar_return);
   r.poll(6);
   EXPECT_NE(r.map_state().find_numbered(1, 32, 32, 0, 15), nullptr);
+}
+
+TEST(SeamAutomapOnSecret, ThePortalsArrivalIsBelievedWhereTheScriptPutsIt) {
+  // The mayor's portal at the town's 3,0 (#651): its question's YES loads
+  // area 33 with the party still on 3,0 facing east, and the Well's script
+  // prints and waits before it puts the party on 1,1 facing south. The
+  // transition byte is down all the while.
+  const secret_rig r;
+  r.enable();
+  r.adventuring();
+  r.put_byte(secret_rig::dgroup(), data_party_y, 0);
+  r.put_byte(secret_rig::dgroup(), data_party_facing, 2);
+  r.poll(6);
+  r.put_up_the_bar(0x2000, 0x0100);  // the archway's YES NO
+
+  r.put_byte(secret_rig::dgroup(), data_area_id, 33);
+  r.put_word(record_segment, record_geometry_block, 33);
+  r.poll(6);
+  EXPECT_EQ(r.map_state().find(1, 33, 33), nullptr)
+      << "nothing of the Well from the town's square";
+
+  r.put_byte(secret_rig::dgroup(), data_party_x, 1);
+  r.put_byte(secret_rig::dgroup(), data_party_y, 1);
+  r.put_byte(secret_rig::dgroup(), data_party_facing, 4);
+  r.poll(6);
+  const automap_record* well = r.map_state().find(1, 33, 33);
+  ASSERT_NE(well, nullptr) << "its own square, with the PRESS RETURN still up";
+  EXPECT_TRUE(automap_state::seen(*well, 1, 1));
+  // Behind the party facing south: what the town's square revealed, facing
+  // east from 3,0 on the Well's grid.
+  constexpr std::array<std::pair<unsigned, unsigned>, 3> town_squares{
+      {{3, 0}, {4, 0}, {5, 0}}};
+  for (const auto& [x, y] : town_squares) {
+    EXPECT_FALSE(automap_state::seen(*well, x, y)) << x << ',' << y;
+    EXPECT_EQ(automap_state::marker_at(*well, x, y), automap_marker::none);
+  }
+  EXPECT_EQ(automap_state::marker_at(*well, 1, 1), automap_marker::entrance);
+  const automap_record* town = r.map_state().find(1, 16, 16);
+  ASSERT_NE(town, nullptr);
+  EXPECT_EQ(automap_state::marker_at(*town, 3, 0), automap_marker::exit);
+}
+
+TEST(SeamAutomapOnSecret, TheRuinsLeaveNoRecordOfTheStoredGridOnArrival) {
+  // Through the gate (#651): between the ruins' load and their script the
+  // line prints the stored square, the party on the town's 15,8.
+  const secret_rig r;
+  r.enable();
+  r.adventuring();
+  r.put_byte(secret_rig::dgroup(), data_party_x, 15);
+  r.put_byte(secret_rig::dgroup(), data_party_y, 8);
+  r.put_byte(secret_rig::dgroup(), data_party_facing, 2);
+  r.poll(6);
+  r.put_up_the_bar(0x2000, 0x0100);  // the gate's YES NO
+  in_the_ruins(r, 15, 8, 2, 0xFF, 0, 0);
+  r.poll(6);
+  in_the_ruins(r, 11, 2, 2, 0, 15, 0);
+  r.poll(6);
+  r.put_up_the_bar(adventure_segment, move_bar_return);
+  r.poll(6);
+  EXPECT_EQ(r.map_state().find(1, 32, 32), nullptr)
+      << "no record of the stored grid";
+  EXPECT_NE(r.map_state().find_numbered(1, 32, 32, 0, 15), nullptr);
+  EXPECT_EQ(r.map_state().records_used(), 2U) << "the town and the page";
 }
 
 TEST(SeamAutomapOnSecret,

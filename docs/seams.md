@@ -1470,6 +1470,35 @@ rule, settling quarantine and ownership signals are derived in
   message area" byte, because `--watch 84E4` shows it oscillating every
   step.
 - Exploration is never gated on whose bar is up.
+- **An arrival is not believed on the square the party left** (#651).
+  A script that takes the party to another map has the program load it
+  and run the new map's script, and the script may print and wait before
+  it places the party: the position bytes hold the square left, in the
+  last map's coordinates, for as long as the wait, and three looks agree
+  there. The program's transition byte is no help: its interpreter sets
+  it when a script changes the area and clears it at the top of its
+  script loop, before the new map's scripts run (Secret of the Silver
+  Blades: DGROUP `0x59B5`, set at overlay 4 `+0x0C70`, cleared at
+  `+0x3C73`; Curse of the Azure Bonds: `0x47F9`, overlay 3 `+0x0C27` and
+  `+0x368E`; Pool of Radiance's loop is the same). So after a map change
+  a look at the square left does not count until the party has moved off
+  it or the party's own bar has come up on the new map since the party
+  came to it (`automap_state::set_arrived_map`), which says the script is
+  done; a script that walks the party on from where it put it is
+  explored as before. A map the party is seen to leave is forgotten as
+  arrived on. `AutomapWalk.AnArrival*`,
+  `AutomapState.TheCellLeftIsNotANewMapsUntilThePartyIsPlaced`,
+  `SeamAutomapOnSecret.ThePortalsArrivalIsBelievedWhereTheScriptPutsIt`.
+  Driven: Secret of the Silver Blades' portal in the mayor's house
+  (`docs/playable-secret.md`) held the town's `3,0` on the Well's grid
+  from its load to the script's move to `1,1`, some twenty frames
+  (`--watch A4C2 --watch 89D7 --watch 89D8`), and revealed `3,0`, `4,0`, `5,0` and `4,1` there with the entrance on
+  `3,0`; now the Well's map is `1,1` alone, the entrance on it. Its gate
+  into the ruins held the town's `15,8` on the ruins' stored grid until
+  the script numbered the party's square, and left a record of that
+  grid; now the store is the town and the pages. Pool of Radiance's gate
+  west of New Phlan's `0,4` puts the party on `15,4` before the program
+  next polls the keyboard, so nothing was held there before or now.
 
 **State**: `machine::automap()` (a map's fog is thirty-two bytes, and
 a seam's own words are twelve), observation beside the overlay tracker:
@@ -1679,14 +1708,15 @@ three things of this program's own besides the facts above:
     leaf: the script carried the party through it. The tally prints such
     leaves as `walked=` where there are any. The mark is the line's
     square and facing.
-  - **Believed only once the party's bar is up on the map**
+  - **Believed only while the party's bar is up on the map**
     (`automap_state::set_bar_map`). When the program changes areas it
     loads the new grid and runs the new script some frames later, and in
     between the record still holds the last numbering (or none: `0` on
-    a record fresh from a save, through the opening's pages) and the
-    party the square it left, still for long enough for three looks to
-    agree. The party's bar does not come up until the script has placed
-    the party.
+    a record fresh from a save, through the opening's pages, or `0xFF`,
+    the stored square) and the party the square it left, still for long
+    enough for three looks to agree. The party's bar does not come up
+    until the script has placed the party. A page waits for it at every
+    square; on a grid only the square the party left waits (above).
   - **The sidecar** is version 3 while the store holds a numbered page
     (automap.h: version 2's row, then the page and the 512 bytes);
     without one it is version 2 byte for byte, so the first two programs
@@ -1774,10 +1804,8 @@ three things of this program's own besides the facts above:
   way, every square the one the walk out drew, and west through the gate
   the town's panel. Leg 4's fight in the ruins gives the panel back at
   `0,13` after it. With `--save-sidecars`, a save at camp on the turned
-  piece writes `AFMAPC.DAT` at version 3 (four records: the town, a
-  two-square record of the stored grid from the frames between the
-  ruins' load and its script, and the two pages), and loading C draws
-  the page at the first Tab.
+  piece writes `AFMAPC.DAT` at version 3 (three records: the town and
+  the two pages), and loading C draws the page at the first Tab.
 - **Fidelity**: `secret-camp-automap` `identical secret-camp` (on, Tab
   never pressed, all 106 checkpoints); `secret-town-map` `contrast
   secret-town` (Tab on `MOVE`'s frame, 90 of 138 identical, divergent
