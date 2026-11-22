@@ -226,6 +226,38 @@ constexpr std::array<zone_name, 18> curse_zone_names{
      {.disk = 6, .area = 66, .name = "RUINS OF MYTH DRANNOR"},
      {.disk = 6, .area = 67, .name = "GRAND RUINED TEMPLE"}}};
 
+/// Secret of the Silver Blades' maps (#609), by (disk, area) as above: the
+/// disk is the number in the script file's name (`ECL<n>.DAX`). The names
+/// are the area names of the same site's walkthrough of that game
+/// (docs/seams.md §10 has the pages), each matched as Curse's are. A
+/// script may hold several of the walkthrough's levels: the mine's wheel
+/// lift sends levels 1 to 4 to area 49 and 5 to 8 to area 50, and the
+/// dungeon's three pages are three scripts. Area 51 is the mine's temple
+/// level, level 9 and level B, which no one page covers, so it is the
+/// mine's. Areas 98 and 99 are the castle's last level, one grid. The
+/// opening (17), the title's demonstration (3) and the wheel lift (48),
+/// where no party stands at its bar, have no row.
+constexpr std::array<zone_name, 19> secret_zone_names{
+    {{.disk = 1, .area = 16, .name = "NEW VERDI|GRIS"},
+     {.disk = 1, .area = 32, .name = "RUINS"},
+     {.disk = 1, .area = 33, .name = "WELL OF KNOWL|EDGE"},
+     {.disk = 1, .area = 34, .name = "BLACK CIRCLE HQ"},
+     {.disk = 2, .area = 49, .name = "MINE LEVELS 1-4"},
+     {.disk = 2, .area = 50, .name = "MINE LEVELS 5-8"},
+     {.disk = 2, .area = 51, .name = "MINES"},
+     {.disk = 2, .area = 52, .name = "TEMPLE OF TYR"},
+     {.disk = 2, .area = 64, .name = "DUNGEON LEVELS 10-7"},
+     {.disk = 2, .area = 65, .name = "DUNGEON LEVELS 6-3"},
+     {.disk = 2, .area = 66, .name = "DUNGEON LEVELS 2-1"},
+     {.disk = 2, .area = 68, .name = "DRIDER BASE"},
+     {.disk = 3, .area = 80, .name = "WESTERN CRE|VASSES"},
+     {.disk = 3, .area = 81, .name = "FROST GIANT VILLAGE"},
+     {.disk = 3, .area = 82, .name = "EASTERN CRE|VASSES"},
+     {.disk = 3, .area = 96, .name = "CASTLE LEVEL 1"},
+     {.disk = 3, .area = 97, .name = "CASTLE LEVEL 2"},
+     {.disk = 3, .area = 98, .name = "CASTLE LEVEL 3"},
+     {.disk = 3, .area = 99, .name = "CASTLE LEVEL 3"}}};
+
 /// A sub-map that is a district of its own, by the geometry block its
 /// parent's script loads. Looked up before `zone_names`.
 ///
@@ -371,7 +403,7 @@ constexpr place_tables curse_of_the_azure_bonds_tables{
     .sub_maps = {},
     .lairs = {}};
 constexpr place_tables secret_of_the_silver_blades_tables{
-    .doors = {}, .zones = {}, .sub_maps = {}, .lairs = {}};
+    .doors = {}, .zones = secret_zone_names, .sub_maps = {}, .lairs = {}};
 
 lair_found find_lair(const place_tables& places, std::uint8_t disk,
                      std::uint8_t area, std::uint8_t geo,

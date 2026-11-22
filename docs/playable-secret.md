@@ -618,6 +618,7 @@ ticks (`tests/sessions/README.md`).
 | leg 1 with `Tab@8100`, then `Up`, `Tab`, `Down`, `Tab`, `Tab`, `8`, `Tab`, 150 frames apart | `Up` taken with the panel up, the member unchanged; `Down` and `8` with it down step the member, and each next `Tab` draws the panel |
 | leg 1 with `Tab@8100`, then leg 2's `E`, `V`, `E`, `E` 300 frames apart from 8,250 | the camp's bar and the sheet take the panel away with the roster drawn, and `EXIT` from camp brings it back |
 | leg 1 with `Tab@8100`, `A`, `A` | `AREA` draws the program's own overhead map in the viewport beside the panel, and `A` again the 3D view |
+| leg 1 with `Tab@8100 M@8250`, then `Right Up Right Up Up Up Right Up` 150 frames apart from 8,400, `Y@9750 Return@10050 E@10350` | the label `NEW VERDIGRIS` in the mayor's house; at `3,0` the archway's question, and `Y` takes the party to the Well of Knowledge (disk 1, area 33) at `1,1` facing south at `00:05`, the label `WELL OF KNOWLEDGE` at the party's bar |
 | leg 1 with `--save-sidecars`, `Tab@8100`, `MOVE`, three `Up`, `E`, `E`, `S`, `C`, `N` | `AFMAPC.DAT` written beside the saves (`docs/hosts.md` §6); slot C loaded and `BEGIN ADVENTURING`, `Tab` draws the mayor's house from it |
 
 ## The message pause on this program

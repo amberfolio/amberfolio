@@ -1505,7 +1505,7 @@ definition's `programs`:
 | shape tiles; first slot, columns, rows | `0x6A58`; `0x0C8C`, `0x0C96`, `0x0CA0` | `0x721C`; `0x0ADA`, `0x0AE4`, `0x0AEE` | `0x89CA`; `0x0AD8`, `0x0AE2`, `0x0AEC` |
 | tile banks, their first codes | `0x5E3A`, `0x2722` | `0x65D0`, `0x2682` (a fifth bank past `0xFF` that no wall row reaches) | `0x7DEA`, `0x1A7C` (the same ranges, the fifth to `0x14D`) |
 | frame colour, ground colour | `0x6A60`, `0x6A63` | `0x7224`, `0x7227` (dark grey, set by the program on this adapter) | `0x89D2`, `0x89D5`. The ground byte stays zero (the 3D view's ground is tiles), so the floor is dark grey (`floor_when_unset`) |
-| places | measured | a door table and the maps' names (`curse_of_the_azure_bonds_places()`); no sub-maps, no lairs | none measured (`secret_of_the_silver_blades_places()`): every grid is `AREA <n>` |
+| places | measured | a door table and the maps' names (`curse_of_the_azure_bonds_places()`); no sub-maps, no lairs | the maps' names (`secret_of_the_silver_blades_places()`, below); no door table, no sub-maps, no lairs |
 | door graphics (disk, WALLDEF block, rows) | 19 rows | 17 rows: disk 2 blocks 1 (`0x10`), 2 (`0x02`), 3 (`0x01`), 4 (`0x10`); disk 3 blocks 3 (`0x01`), 5 (`0x14`), 6 (`0x10`), 7 (`0x12`); disk 4 blocks 3 (`0x01`), 8 (`0x18`), 9 (`0x10`), 10 (`0x10`), 11 (`0x14`); disk 5 blocks 8 (`0x18`), 12 (`0x18`); disk 6 blocks 3 (`0x01`), 13 (`0x10`) | none: a map with no shut face draws every way through as a door |
 | a door on the party's square | under the mark | over the mark, under its white (`doors_over_party`) | over the mark |
 
@@ -1669,6 +1669,47 @@ three things of this program's own besides the facts above:
     step from `9,15` to `9,16` turns to the page below, and the first
     street stays on the page above. The script's own table of where the party
     arrives from the other areas reaches `83,56`, six pages across.
+- **Names**: a table keyed (disk, area), as the first two programs', with
+  `AREA <n>` for an area that has no row. The disk is the number in the
+  script file's name: the program opens `ECL` with the disk byte
+  (DGROUP `0x7420`) appended (overlay 10 `+0x035C`), so an area's disk is
+  the `ECL<n>.DAX` that holds its block. The names are the area names of
+  GameBanshee's Secret of the Silver Blades walkthrough
+  (`https://www.gamebanshee.com/secretofthesilverblades/walkthrough.php`,
+  one page per area at `.../walkthrough/<name>.php`), matched as Curse's
+  are: what each area's script does against the page's numbered places,
+  and which areas its exits lead to. Two of the walkthrough's series are
+  several pages over one script: the mine's wheel lift (area 48) sends
+  its levels 1 to 4 to area 49 and 5 to 8 to area 50, both on grid 48, and
+  the dungeon's three pages are its three scripts. On a numbered page the
+  label is the area's, the same on every page.
+
+  | label | disk, area (grid) | what it was matched by | page |
+  | --- | --- | --- | --- |
+  | `NEW VERDI\|GRIS` | 1, 16 (16) | the mayor's house and the portal in it, the training hall, the vault, the pub, the temple, the armoury; the gate east to area 32. Driven | `newverdigris.php` |
+  | `RUINS` | 1, 32 (32) | its exits: the town (16), the Black Circle's headquarters (34), the Well's domain (33), the Western Crevasses (80); the lift's surface comes back to it. Driven | `ruins.php` |
+  | `WELL OF KNOWL\|EDGE` | 1, 33 (33) | the two factions' battle, the red dragons round the well, the well's answers for gems, its portals, which every other area's script reaches. Driven: the mayor's portal at the town's `3,0` puts the party at `1,1` | `wellofknowledge.php` |
+  | `BLACK CIRCLE HQ` | 1, 34 (34) | the old administration building: the guards' captain, the officers' rooms, the commander's desk, the clerk, the mouth in the wall, the practice room, the library; exits to 32 and 33 | `blackcircleheadquarters.php` |
+  | `MINE LEVELS 1-4` | 2, 49 (48) | the lift's levels 1 to 4; the dead adventurer, the wyvern lair, the dug walls, the umber hulks | `mine-1.php` to `mine-4.php` |
+  | `MINE LEVELS 5-8` | 2, 50 (48) | the lift's levels 5 to 8; the lizard king's barracks, the dead mage, Oswulf's tomb and the teleporter that goes only to level 9 | `mine-5.php` to `mine-8.php` |
+  | `MINES` | 2, 51 (49) | the lift's temple level (where the way in from the ruins lands), level 9 (the teleporter's arrival) and level B (whose hole leads to area 64): three of the mine's places, so the mine's name | `mine-9.php`, `mine-b.php` |
+  | `TEMPLE OF TYR` | 2, 52 (50) | the antechambers, the acolytes' rooms, the treasury, the armoury, the old dwarf, the portal | `templeoftyr.php` |
+  | `DUNGEON LEVELS 10-7` | 2, 64 (64) | the driders, the prisoner, the portal's guards, the riddles at the stairs; exits to the mine (51), the Drider Base (68) and the stairs to 65 | `dungeon-107.php` |
+  | `DUNGEON LEVELS 6-3` | 2, 65 (65) | the image's trap, the mage with the papers, the moaning medusae; exits to 64 and 66 | `dungeon-63.php` |
+  | `DUNGEON LEVELS 2-1` | 2, 66 (66) | the blind enchanter, the prisoner and his worm, the pyro-hydras; the iced stairs to the castle (96) and the tunnel to the Western Crevasses (80) | `dungeon-21.php` |
+  | `DRIDER BASE` | 2, 68 (68) | the knight and his captured friend, the kitchen, the skeleton, the summoning; its one exit, to 64 | `driderbase.php` |
+  | `WESTERN CRE\|VASSES` | 3, 80 (80) | the kidnapped clerk; exits to the ruins (32), the dungeon (66) and the village (81) | `westerncrevasses.php` |
+  | `FROST GIANT VILLAGE` | 3, 81 (81) | the village's guards, the white dragons' residences, the worg kennel; exits to 80 and 82 | `frostgiantvillage.php` |
+  | `EASTERN CRE\|VASSES` | 3, 82 (82) | Oswulf's spirit at the castle's gates; exits to 81 and the castle (96) | `easterncrevasses.php` |
+  | `CASTLE LEVEL 1` | 3, 96 (96) | the companion's word at the entrance, the castellan's scroll (to a cell in area 64); stairs to 66 and 97 | `castle-1.php` |
+  | `CASTLE LEVEL 2` | 3, 97 (97) | the storm giants' map, the hydras; stairs to 96 and 98 | `castle-2.php` |
+  | `CASTLE LEVEL 3` | 3, 98 (98) and 3, 99 (98) | the three key doors; and the Dreadlord and his soul gem, whose script loads the same grid | `castle-3.php` |
+
+  **Left at `AREA <n>`**: disk 1 area 3, the title's demonstration (on
+  the Well's grid); disk 2 area 17, the opening's pages, with no grid;
+  disk 2 area 48, the wheel lift, whose script asks where to go and goes
+  there, with no party's bar in between. Only the town, the ruins and
+  the Well were driven; the rest are matched from the scripts alone.
 - **Driven** on slot A (`docs/playable-secret.md` leg 3) with Tab at
   the party's bar: the panel stays up in the move mode and through the
   two signs, and is drawn again at each step. Compared with the walked
@@ -1679,7 +1720,8 @@ three things of this program's own besides the facts above:
   and the armoury's doors on its north at `7,7`, `10,7` and `14,7`, the
   vault's and the temple's on its south at `7,8` and `10,8`, and the gate
   a leaf east of `15,8`. Walls are brown and light grey on the dark grey
-  floor; the label is `AREA 16`. The gate's `YES NO`
+  floor; the label is `NEW VERDIGRIS`, set as `NEW` over `VERDI-` over
+  `GRIS`. The gate's `YES NO`
   takes the panel away with the roster drawn, and the move mode's bar in
   the ruins brings it back on the first page (below).
   Up, Down, Home and the keypad's 8 with the panel up are taken and the
